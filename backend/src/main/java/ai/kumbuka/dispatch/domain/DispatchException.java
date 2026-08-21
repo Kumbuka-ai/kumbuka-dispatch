@@ -42,7 +42,30 @@ public class DispatchException extends RuntimeException {
         /** The session settings the read contract needs were not bound. */
         SESSION_NOT_BOUND,
         /** No exchange at that address. */
-        NOT_FOUND
+        NOT_FOUND,
+        /** The caller has no subject, or no capacity the core can act on. */
+        ACTOR_UNKNOWN,
+        /**
+         * The executing apparatus called the ratification verb.
+         *
+         * <p>Its own reason rather than a reuse of the transition refusal: the
+         * transition IS permitted from this state, just not to this caller,
+         * and an adapter that could not tell the two apart would report "you
+         * cannot do that yet" where the truth is "not you, ever".
+         */
+        RATIFICATION_NOT_PERMITTED,
+        /** A claim is required for what was asked, and the caller holds none. */
+        CLAIM_REQUIRED,
+        /** The receipt presented does not match the one held on the exchange. */
+        RECEIPT_MISMATCH,
+        /** A caller supplied a holder identifier. Holders are minted, never accepted. */
+        HOLDER_NOT_ACCEPTED,
+        /** A claim duration was zero or negative. */
+        CLAIM_DURATION_NOT_POSITIVE,
+        /** The exchange already carries a ratified handover. */
+        HANDOVER_ALREADY_RATIFIED,
+        /** Metadata carried an assertion, or a URL carrying credentials. */
+        METADATA_REFUSED
     }
 
     private final transient Reason reason;

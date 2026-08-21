@@ -5,6 +5,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.jboss.logging.Logger;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +28,8 @@ public class SelectorRegistry {
     /** The query parameter every lookup binds the scope to. */
     private static final String P_SCOPE = "scope";
 
+    private static final Logger LOG = Logger.getLogger(SelectorRegistry.class);
+
     @Inject EntityManager em;
 
     /**
@@ -40,13 +43,20 @@ public class SelectorRegistry {
      */
     @Transactional
     public Selector requireDeclared(UUID scopeId, String name) {
-        Selector selector = find(scopeId, name).orElseThrow(() -> new DispatchException(
+        LOG.debugf("checking selector '%s'", name);
+        Selector selector = find(scopeId, name).orElseThrow(() -> {
+            LOG.warnf("selector '%s' refused: %s", name,
+                DispatchException.Reason.SELECTOR_NOT_DECLARED);
+            return new DispatchException(
             DispatchException.Reason.SELECTOR_NOT_DECLARED,
             "selector '" + name + "' is not declared in this scope. Bracket names are "
                 + "declared before use, never by first use: a typo must not silently "
-                + "open a namespace."));
+                + "open a namespace.");
+        });
 
         if (Boolean.TRUE.equals(selector.withdrawn)) {
+            LOG.warnf("selector '%s' refused: %s", name,
+                DispatchException.Reason.SELECTOR_WITHDRAWN);
             throw new DispatchException(DispatchException.Reason.SELECTOR_WITHDRAWN,
                 "selector '" + name + "' is withdrawn. Addresses already issued under it "
                     + "remain readable; no new exchange is numbered under it.");
@@ -90,6 +100,7 @@ public class SelectorRegistry {
         }
         selector.withdrawn = Boolean.TRUE;
         em.flush();
+        LOG.infof("selector '%s' withdrawn", name);
         return selector;
     }
 

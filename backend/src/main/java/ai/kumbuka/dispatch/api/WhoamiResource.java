@@ -4,6 +4,7 @@ import ai.kumbuka.dispatch.tenancy.TenantContext;
 import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
@@ -30,12 +31,22 @@ import java.util.Map;
 @Authenticated
 public class WhoamiResource {
 
+    /**
+     * The endpoint logs that it was reached and nothing about who reached it.
+     * The subject is exactly the field the convention keeps out of this
+     * stream: correlation runs through a request id, never through a subject
+     * id, because a second aggregatable record of who did what would be the
+     * circumvention of not collecting it.
+     */
+    private static final Logger LOG = Logger.getLogger(WhoamiResource.class);
+
     @Inject SecurityIdentity identity;
     @Inject TenantContext tenantContext;
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public Map<String, String> whoami() {
+        LOG.debug("whoami");
         return Map.of(
             "subject", identity.getPrincipal().getName(),
             "tenant", tenantContext.current().toString());

@@ -7,11 +7,14 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.NoResultException;
 import jakarta.transaction.Transactional;
+import org.jboss.logging.Logger;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,6 +45,18 @@ public class ExchangeService {
     /** The query parameter every lookup binds the scope to. */
     private static final String P_SCOPE = "scope";
 
+    /**
+     * What this logger may say is fixed by convention and enforced by a guard:
+     * address, selector, number, transition, status, typed reason, duration,
+     * scope id. Never a title, a body, metadata text, a token or a receipt —
+     * the operator boundary is built as a missing GRANT, and a log shipper
+     * carrying a title out of the container walks around it. The actor is
+     * absent too: that belongs in the audit log, whose collection is governed,
+     * and a second aggregatable stream of the same fact would be the
+     * circumvention of not collecting behavioural data.
+     */
+    private static final Logger LOG = Logger.getLogger(ExchangeService.class);
+
     @Inject EntityManager em;
     @Inject SelectorRegistry selectors;
 
@@ -71,11 +86,11 @@ public class ExchangeService {
      */
     @Transactional
     public Exchange openBracket(UUID scopeId, String selector, String title,
-                                String apparatus, LocalDate date, String actor) {
+                                String apparatus, LocalDate date, Actor actor) {
         selectors.requireDeclared(scopeId, selector);
         int number = allocateNumber(scopeId, selector);
         return insert(new NewExchange(scopeId, selector, number, 0, null, title,
-            apparatus, date, actor));
+            apparatus, date, actor.subject()));
     }
 
     /**
@@ -85,12 +100,12 @@ public class ExchangeService {
      */
     @Transactional
     public Exchange addChild(UUID scopeId, String selector, int number, String title,
-                             String apparatus, LocalDate date, String actor) {
+                             String apparatus, LocalDate date, Actor actor) {
         selectors.requireDeclared(scopeId, selector);
         requireBracketExists(scopeId, selector, number);
         int sub = nextSub(scopeId, selector, number);
         return insert(new NewExchange(scopeId, selector, number, sub, null, title,
-            apparatus, date, actor));
+            apparatus, date, actor.subject()));
     }
 
     /**
@@ -105,7 +120,7 @@ public class ExchangeService {
      */
     @Transactional
     public Exchange addAddendum(UUID scopeId, ExchangeAddress base, String title,
-                                String apparatus, LocalDate date, String actor) {
+                                String apparatus, LocalDate date, Actor actor) {
         if (base.isAddendum()) {
             throw new DispatchException(DispatchException.Reason.ADDENDUM_MALFORMED,
                 "an addendum corrects an exchange, not another addendum: " + base);
@@ -117,7 +132,7 @@ public class ExchangeService {
                     + "commitment was acquired; before that the exchange is simply edited.");
         }
         String suffix = nextSuffix(scopeId, base);
-        return insertAddendum(scopeId, base, suffix, title, apparatus, date, actor);
+        return insertAddendum(scopeId, base, suffix, title, apparatus, date, actor.subject());
     }
 
     // ----------------------------------------------------------------------
@@ -181,68 +196,228 @@ public class ExchangeService {
 
     /** Freezes the dispatch and opens it to an executor. */
     @Transactional
-    public Exchange send(UUID scopeId, ExchangeAddress address, String actor) {
+    public Exchange send(UUID scopeId, ExchangeAddress address, Actor actor) {
+        return send(scopeId, address, actor, null);
+    }
+
+    /**
+     * Freezes the dispatch, opens it to an executor, and freezes its metadata
+     * at the same gate.
+     */
+    @Transactional
+    public Exchange send(UUID scopeId, ExchangeAddress address, Actor actor,
+                         Map<String, String> metadata) {
         Exchange e = require(scopeId, address);
+        Metadata.validate(metadata);
+        if (metadata != null) {
+            e.dispatchMetadata = metadata;
+        }
         if (e.apply(Transition.SEND)) {
             e.freezeDispatch(Instant.now(clock));
         }
-        return touch(e, actor);
+        touch(e, actor.subject());
+        LOG.infof("send %s -> %s", e.address(), e.status().wireName());
+        return e;
+    }
+
+    /**
+     * Shows an open commission without claiming it.
+     *
+     * <p>Writes nothing. That is the entire reason it is a separate verb: the
+     * predecessor merged showing and taking up, and described itself as "the
+     * only query in the service that writes" — an honest description of a
+     * construction fault. Looking at the queue should not commit anybody to
+     * anything.
+     *
+     * <p>What comes back carries enough to REFUSE and not enough to WORK.
+     * There is no body field on {@link ExchangeView} — not an empty one, none
+     * — when the caller is an executing apparatus. Withholding it is what makes
+     * "no body without a claim" a property rather than an intention: a loser
+     * of the race cannot have started, because it never had anything to start
+     * from.
+     */
+    @Transactional
+    public ExchangeView view(UUID scopeId, ExchangeAddress address, Actor actor) {
+        Exchange e = require(scopeId, address);
+        LOG.debugf("view %s", e.address());
+        return ExchangeView.of(e, actor, Instant.now(clock));
+    }
+
+    /**
+     * Claims an open commission and mints the receipt that proves it.
+     *
+     * <p>The receipt is returned to the winner and stored only as a hash. It
+     * is not derived from anything the caller knows or supplies: several
+     * executor instances on one machine reach this service through one channel
+     * and would collide on any name they could derive for themselves, leaving
+     * the service seeing one holder where there are two.
+     *
+     * @param duration how long the claim stands. Positive is form, not taste:
+     *                 a zero or negative duration would award a claim that has
+     *                 already lapsed, and every later reader would have to
+     *                 decide what that meant.
+     * @return the claimed exchange and the receipt, which is the only copy
+     */
+    @Transactional
+    public ClaimResult takeup(UUID scopeId, ExchangeAddress address, Actor actor,
+                              Duration duration) {
+        requirePositive(duration);
+        Exchange e = require(scopeId, address);
+        Instant now = Instant.now(clock);
+
+        // An expired claim is reclaimed HERE, in this claimant's transaction,
+        // with this claimant as the actor. Nothing else writes it — there is
+        // no reaper and no expiry event, so the rule that every audit entry
+        // has a verb call and an actor holds without an exception.
+        if (e.status() == ExchangeStatus.ACTIVE && !e.claimEffective(now)) {
+            reclaim(e, actor);
+        }
+
+        e.apply(Transition.TAKEUP);
+        String receipt = Receipt.mint();
+        e.award(actor.subject(), receipt, now.plus(duration));
+        touch(e, actor.subject());
+
+        LOG.infof("takeup %s -> %s", e.address(), e.status().wireName());
+        return new ClaimResult(e, receipt);
     }
 
     @Transactional
-    public Exchange takeup(UUID scopeId, ExchangeAddress address, String actor) {
-        return transition(scopeId, address, Transition.TAKEUP, actor);
-    }
-
-    @Transactional
-    public Exchange reject(UUID scopeId, ExchangeAddress address, String actor) {
+    public Exchange reject(UUID scopeId, ExchangeAddress address, Actor actor) {
         return transition(scopeId, address, Transition.REJECT, actor);
     }
 
     @Transactional
-    public Exchange fail(UUID scopeId, ExchangeAddress address, String actor) {
+    public Exchange fail(UUID scopeId, ExchangeAddress address, Actor actor) {
         return transition(scopeId, address, Transition.FAIL, actor);
     }
 
     @Transactional
-    public Exchange block(UUID scopeId, ExchangeAddress address, String actor) {
+    public Exchange block(UUID scopeId, ExchangeAddress address, Actor actor) {
         return transition(scopeId, address, Transition.BLOCK, actor);
     }
 
     @Transactional
-    public Exchange resume(UUID scopeId, ExchangeAddress address, String actor) {
+    public Exchange resume(UUID scopeId, ExchangeAddress address, Actor actor) {
         return transition(scopeId, address, Transition.RESUME, actor);
     }
 
     /**
-     * Writes the answer and freezes it, in one transaction with the transition.
+     * Writes or overwrites the handover draft, while the exchange stays active.
      *
-     * <p>Two steps would leave a window in which an answer exists and is not
-     * yet frozen, and that window is exactly where a correction would slip in
-     * unrecorded.
+     * <p>The draft is replaced wholesale and there is no verb that appends to
+     * one. Rework is the normal case, not the exception: the operator reads,
+     * the answer does not fit, and the executor writes it again. No new
+     * object, no addendum, no reopening — and the intermediate rounds do not
+     * survive in the document, which is the deliberate trade. They land in the
+     * audit log a level down, and nobody needs a wrong handover text kept.
+     *
+     * <p>Three bolts stand between a race and a corrupted answer, and they
+     * defend different axes rather than repeating each other:
+     * no body without a claim, so a loser cannot begin; only the receipt
+     * holder writes, plus a console identity; and a ratified exchange takes no
+     * further handover at all — a state precondition that does not depend on
+     * who is asking, which is the cover for several runs sharing one service
+     * identity.
      */
     @Transactional
-    public Exchange ratify(UUID scopeId, ExchangeAddress address, String answer, String actor) {
+    public Exchange writeHandoverDraft(UUID scopeId, ExchangeAddress address, Actor actor,
+                                       String receipt, String draft,
+                                       Map<String, String> metadata) {
         Exchange e = require(scopeId, address);
-        if (e.apply(Transition.RATIFY)) {
-            e.freezeHandover(answer, Instant.now(clock));
+        Instant now = Instant.now(clock);
+
+        // Bolt three. Deliberately first, and deliberately independent of
+        // identity: two runs sharing a service identity would both pass a
+        // holder check, and a receipt is a bearer token that instances on one
+        // machine can read from a shared filesystem.
+        if (e.ratifiedAt() != null) {
+            throw new DispatchException(DispatchException.Reason.HANDOVER_ALREADY_RATIFIED,
+                e.address() + " carries a ratified handover and takes no further one. "
+                    + "A correction to something ratified attaches as an addendum.");
         }
-        return touch(e, actor);
+
+        requireMayWriteHandover(e, actor, now);
+        if (actor.isExecutor()) {
+            // Bolt two. The subject alone is not enough: several runs can share
+            // one service identity, and the receipt is what distinguishes the
+            // run that won the award from one that merely looks like it.
+            requireReceipt(e, receipt);
+        }
+        Metadata.validate(metadata);
+        e.writeDraft(draft, metadata);
+        touch(e, actor.subject());
+
+        LOG.infof("handover draft written on %s", e.address());
+        return e;
+    }
+
+    /**
+     * Ratifies the handover that is already there, and freezes it.
+     *
+     * <p>Takes no answer text. Ratification is the operator's own act on
+     * something somebody else wrote, and a signature that accepted the text
+     * would let one call be both the writing and the approving of it — which
+     * is not a review.
+     *
+     * <p>The executing apparatus cannot call this. That is a permission in the
+     * core bound to the actor, not an omission in an adapter: anything that
+     * must hold has to hold for every caller that reaches the core.
+     */
+    @Transactional
+    public Exchange ratify(UUID scopeId, ExchangeAddress address, Actor actor) {
+        if (actor.isExecutor()) {
+            LOG.warnf("ratify refused on %s: %s", address,
+                DispatchException.Reason.RATIFICATION_NOT_PERMITTED);
+            throw new DispatchException(DispatchException.Reason.RATIFICATION_NOT_PERMITTED,
+                "the executing apparatus cannot ratify " + address + ". Ratification is "
+                    + "the operator's own act; an executor that could approve its own "
+                    + "answer would be reviewing itself.");
+        }
+
+        Exchange e = require(scopeId, address);
+        if (e.handoverBody() == null) {
+            throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
+                e.address() + " has no handover draft to ratify. Ratification freezes an "
+                    + "answer that is already there; it does not create one.");
+        }
+
+        if (e.apply(Transition.RATIFY)) {
+            e.freezeHandover(Instant.now(clock));
+        }
+        touch(e, actor.subject());
+
+        LOG.infof("ratify %s -> %s", e.address(), e.status().wireName());
+        return e;
     }
 
     @Transactional
-    public Exchange close(UUID scopeId, ExchangeAddress address, String actor) {
+    public Exchange close(UUID scopeId, ExchangeAddress address, Actor actor) {
         return transition(scopeId, address, Transition.CLOSE, actor);
     }
 
     @Transactional
-    public Exchange consume(UUID scopeId, ExchangeAddress address, String actor) {
+    public Exchange consume(UUID scopeId, ExchangeAddress address, Actor actor) {
         return transition(scopeId, address, Transition.CONSUME, actor);
     }
 
+    /**
+     * The deliberate human way back: an active exchange returns to open.
+     *
+     * <p>Drops the claim and discards any unratified draft, in this
+     * transaction. A draft that was never ratified never happened, and leaving
+     * one for the next executor to inherit would be worse than deleting it —
+     * the inherited text looks plausible and reads as somebody's answer.
+     */
     @Transactional
-    public Exchange revert(UUID scopeId, ExchangeAddress address, String actor) {
-        return transition(scopeId, address, Transition.REVERT, actor);
+    public Exchange revert(UUID scopeId, ExchangeAddress address, Actor actor) {
+        Exchange e = require(scopeId, address);
+        e.apply(Transition.REVERT);
+        e.releaseClaim();
+        e.discardDraft();
+        touch(e, actor.subject());
+        LOG.infof("revert %s -> %s", e.address(), e.status().wireName());
+        return e;
     }
 
     // ----------------------------------------------------------------------
@@ -250,7 +425,7 @@ public class ExchangeService {
     // ----------------------------------------------------------------------
 
     private Exchange transition(UUID scopeId, ExchangeAddress address,
-                                Transition t, String actor) {
+                                Transition t, Actor actor) {
         Exchange e = require(scopeId, address);
 
         // The bracket closes through the termination of its .0, and the check
@@ -268,9 +443,13 @@ public class ExchangeService {
         // one non-terminal behind a terminated base would create an object
         // nobody can reach and nothing can close.
         if (moved && t.to().terminal() && !e.isAddendum()) {
-            cascadeToAddenda(scopeId, e, actor);
+            cascadeToAddenda(scopeId, e, actor.subject());
         }
-        return touch(e, actor);
+        touch(e, actor.subject());
+        if (moved) {
+            LOG.infof("%s %s -> %s", t.verb(), e.address(), e.status().wireName());
+        }
+        return e;
     }
 
     /**
@@ -315,6 +494,72 @@ public class ExchangeService {
                 touch(addendum, actor);
             }
         }
+    }
+
+    /**
+     * Reclaims an exchange whose claim has lapsed, as part of the next
+     * claimant's transaction.
+     *
+     * <p>This is the only place expiry causes a write, and it is not expiry
+     * that causes it — it is the new claim. The orphaned draft goes with the
+     * old claim, for the same reason it goes on revert.
+     */
+    private void reclaim(Exchange e, Actor actor) {
+        LOG.infof("reclaiming %s: previous claim lapsed", e.address());
+        e.apply(Transition.REVERT);
+        e.releaseClaim();
+        e.discardDraft();
+    }
+
+    /**
+     * Who may write a handover draft: the effective receipt holder, or a
+     * console identity.
+     *
+     * <p>The console exception is not a loophole. Operators edit handovers as
+     * a matter of course, and requiring them to hold the claim would mean
+     * taking work away from the executor in order to correct its wording.
+     */
+    private void requireMayWriteHandover(Exchange e, Actor actor, Instant now) {
+        if (actor.isConsole()) {
+            return;
+        }
+        if (!e.claimEffective(now)) {
+            throw new DispatchException(DispatchException.Reason.CLAIM_REQUIRED,
+                e.address() + " carries no effective claim. A handover is written by "
+                    + "whoever holds the exchange; a lapsed claim holds nothing.");
+        }
+        if (!actor.subject().equals(e.effectiveHolder(now))) {
+            throw new DispatchException(DispatchException.Reason.CLAIM_REQUIRED,
+                e.address() + " is held by somebody else.");
+        }
+    }
+
+    /**
+     * Refuses a receipt supplied where one was minted, and checks the one that
+     * was presented.
+     */
+    private void requireReceipt(Exchange e, String presented) {
+        if (presented == null || presented.isBlank()) {
+            throw new DispatchException(DispatchException.Reason.CLAIM_REQUIRED,
+                e.address() + " needs the receipt that was issued at takeup.");
+        }
+        if (!e.receiptMatches(presented)) {
+            throw new DispatchException(DispatchException.Reason.RECEIPT_MISMATCH,
+                "the receipt presented for " + e.address() + " is not the one it holds.");
+        }
+    }
+
+    private static void requirePositive(Duration duration) {
+        if (duration == null || duration.isZero() || duration.isNegative()) {
+            throw new DispatchException(DispatchException.Reason.CLAIM_DURATION_NOT_POSITIVE,
+                "a claim duration must be positive, was " + duration + ". A claim that has "
+                    + "already lapsed when it is awarded leaves every later reader to "
+                    + "decide what that was supposed to mean.");
+        }
+    }
+
+    /** A claimed exchange and the receipt that proves it. The receipt is not stored. */
+    public record ClaimResult(Exchange exchange, String receipt) {
     }
 
     private Exchange touch(Exchange e, String actor) {

@@ -33,7 +33,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class StatusMachineIT {
 
     static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
-    static final String ACTOR = "probe";
+    /**
+     * Two actors, because two of this service's guarantees are permissions
+     * bound to the caller. Where a test does not care which, it uses the
+     * console — the capacity with the fewer restrictions, so a refusal in such
+     * a test is never about the capacity.
+     */
+    /** A claim long enough that nothing in a test lapses by accident. */
+    static final java.time.Duration CLAIM = java.time.Duration.ofHours(1);
+
+    static final Actor EXECUTOR = new Actor("probe-executor", Actor.Kind.EXECUTOR);
+    static final Actor CONSOLE = new Actor("probe-console", Actor.Kind.CONSOLE);
 
     @Inject ExchangeService exchanges;
     @Inject TenantContext tenantContext;
@@ -130,9 +140,9 @@ class StatusMachineIT {
     @Test
     void rejected_is_reachable_from_open_and_from_nowhere_else() {
         Exchange e = openAndSend("a commission that will be refused");
-        exchanges.takeup(SCOPE, address(e), ACTOR);
+        exchanges.takeup(SCOPE, address(e), EXECUTOR, CLAIM);
 
-        assertThatThrownBy(() -> exchanges.reject(SCOPE, address(e), ACTOR))
+        assertThatThrownBy(() -> exchanges.reject(SCOPE, address(e), CONSOLE))
             .as("a refusal says the commission was wrong, which can only be said before "
                 + "taking it up. After takeup the honest verb is `fail`")
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
@@ -143,7 +153,7 @@ class StatusMachineIT {
     void failed_is_reachable_from_active_and_from_nowhere_else() {
         Exchange e = openAndSend("a commission nobody took up");
 
-        assertThatThrownBy(() -> exchanges.fail(SCOPE, address(e), ACTOR))
+        assertThatThrownBy(() -> exchanges.fail(SCOPE, address(e), CONSOLE))
             .as("a failure says the WORK was wrong, and there is no work until somebody "
                 + "took the exchange up. From open the honest verb is `reject`")
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
@@ -154,7 +164,7 @@ class StatusMachineIT {
     void a_refusal_names_what_is_permitted_instead() {
         Exchange e = openAndSend("a draft that cannot be consumed");
 
-        assertThatThrownBy(() -> exchanges.consume(SCOPE, address(e), ACTOR))
+        assertThatThrownBy(() -> exchanges.consume(SCOPE, address(e), CONSOLE))
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.getMessage())
                 .as("a refusal that only states the rule sends the reader back to the "
                     + "documentation; naming the permitted predecessors answers the "
@@ -169,9 +179,9 @@ class StatusMachineIT {
     @Test
     void closing_an_already_closed_exchange_succeeds_and_changes_nothing() {
         Exchange e = openAndSend("an exchange closed twice");
-        exchanges.close(SCOPE, address(e), ACTOR);
+        exchanges.close(SCOPE, address(e), CONSOLE);
 
-        Exchange again = exchanges.close(SCOPE, address(e), ACTOR);
+        Exchange again = exchanges.close(SCOPE, address(e), CONSOLE);
 
         assertThat(again.status())
             .as("re-terminating a terminal exchange is a successful no-op. Without it a "
@@ -184,7 +194,7 @@ class StatusMachineIT {
     void re_sending_is_NOT_a_no_op() {
         Exchange e = openAndSend("an exchange sent twice");
 
-        assertThatThrownBy(() -> exchanges.send(SCOPE, address(e), ACTOR))
+        assertThatThrownBy(() -> exchanges.send(SCOPE, address(e), CONSOLE))
             .as("only the TERMINATING verbs are idempotent. Send carries content and "
                 + "takeup carries a holder; repeating either silently would hide a real "
                 + "conflict rather than absorb a retry")
@@ -200,10 +210,10 @@ class StatusMachineIT {
     void a_bracket_cannot_terminate_while_a_sibling_is_non_terminal() {
         Exchange bracket = openAndSend("the bracket");
         Exchange child = exchanges.addChild(SCOPE, "sprint", bracket.number,
-            "a child still running", "code", LocalDate.now(), ACTOR);
-        exchanges.send(SCOPE, address(child), ACTOR);
+            "a child still running", "code", LocalDate.now(), CONSOLE);
+        exchanges.send(SCOPE, address(child), CONSOLE);
 
-        assertThatThrownBy(() -> exchanges.close(SCOPE, address(bracket), ACTOR))
+        assertThatThrownBy(() -> exchanges.close(SCOPE, address(bracket), CONSOLE))
             .isInstanceOfSatisfying(DispatchException.class, x -> {
                 assertThat(x.reason())
                     .isEqualTo(DispatchException.Reason.SIBLINGS_NON_TERMINAL);
@@ -219,8 +229,8 @@ class StatusMachineIT {
 
         // And once the child is terminal the bracket closes. Without this the
         // assertion above would hold against a bracket that never closes.
-        exchanges.close(SCOPE, address(child), ACTOR);
-        assertThat(exchanges.close(SCOPE, address(bracket), ACTOR).status())
+        exchanges.close(SCOPE, address(child), CONSOLE);
+        assertThat(exchanges.close(SCOPE, address(bracket), CONSOLE).status())
             .as("with every sibling terminal the bracket closes, so the refusal above was "
                 + "about the sibling and not about the bracket")
             .isEqualTo(ExchangeStatus.CLOSED);
@@ -249,9 +259,9 @@ class StatusMachineIT {
     @Test
     void numbers_are_allocated_in_sequence_within_a_circle() {
         Exchange first = exchanges.openBracket(SCOPE, "sprint", "first", "code",
-            LocalDate.now(), ACTOR);
+            LocalDate.now(), CONSOLE);
         Exchange second = exchanges.openBracket(SCOPE, "sprint", "second", "code",
-            LocalDate.now(), ACTOR);
+            LocalDate.now(), CONSOLE);
 
         assertThat(second.number)
             .as("each bracket takes the next number in its circle")
@@ -263,9 +273,9 @@ class StatusMachineIT {
     void children_number_within_the_bracket_instance() {
         Exchange bracket = openAndSend("a bracket with children");
         Exchange one = exchanges.addChild(SCOPE, "sprint", bracket.number, "one", "code",
-            LocalDate.now(), ACTOR);
+            LocalDate.now(), CONSOLE);
         Exchange two = exchanges.addChild(SCOPE, "sprint", bracket.number, "two", "code",
-            LocalDate.now(), ACTOR);
+            LocalDate.now(), CONSOLE);
 
         assertThat(one.sub).isEqualTo(1);
         assertThat(two.sub)
@@ -281,8 +291,8 @@ class StatusMachineIT {
 
     private Exchange openAndSend(String title) {
         Exchange e = exchanges.openBracket(SCOPE, "sprint", title, "code",
-            LocalDate.now(), ACTOR);
-        return exchanges.send(SCOPE, address(e), ACTOR);
+            LocalDate.now(), CONSOLE);
+        return exchanges.send(SCOPE, address(e), CONSOLE);
     }
 
     private static ExchangeAddress address(Exchange e) {

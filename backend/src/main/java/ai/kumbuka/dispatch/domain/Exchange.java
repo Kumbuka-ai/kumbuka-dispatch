@@ -9,11 +9,14 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.generator.EventType;
 import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -98,6 +101,28 @@ public class Exchange {
     @Column(name = "ratified_at")
     private Instant ratifiedAt;
 
+    // --- the claim --------------------------------------------------------
+
+    @Column(name = "holder_subject")
+    private String holderSubject;
+
+    /** SHA-256 of the receipt, hex-encoded. Never the receipt. */
+    @Column(name = "holder_receipt_hash")
+    private String holderReceiptHash;
+
+    @Column(name = "claim_expires_at")
+    private Instant claimExpiresAt;
+
+    // --- the caller's own field, one per role -----------------------------
+
+    @Column(name = "dispatch_metadata", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    public Map<String, String> dispatchMetadata;
+
+    @Column(name = "handover_metadata", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    public Map<String, String> handoverMetadata;
+
     // --- technical fields, server-derived ---------------------------------
 
     @Generated(event = EventType.INSERT)
@@ -148,6 +173,92 @@ public class Exchange {
 
     public boolean isAddendum() {
         return addendumSuffix != null;
+    }
+
+    // ----------------------------------------------------------------------
+    // The claim, read as it EFFECTIVELY stands
+    // ----------------------------------------------------------------------
+
+    /**
+     * The holder as it effectively stands at {@code now} — null once the claim
+     * has expired, whatever the row still says.
+     *
+     * <p><strong>Every read surface goes through here.</strong> The stored
+     * holder outlives the claim by design: expiry writes nothing, and the
+     * transition is written by the next claimant. So the row is not wrong, it
+     * is simply not the answer to "who holds this" — and a surface that
+     * reported the stored value would show a free exchange as taken, with no
+     * error anywhere to notice it by.
+     */
+    public String effectiveHolder(Instant now) {
+        return claimEffective(now) ? holderSubject : null;
+    }
+
+    /** Whether the claim still stands at {@code now}. */
+    public boolean claimEffective(Instant now) {
+        return holderSubject != null && claimExpiresAt != null
+            && claimExpiresAt.isAfter(now);
+    }
+
+    /** The stored holder, expired or not. For the transition that reclaims it. */
+    String storedHolder() {
+        return holderSubject;
+    }
+
+    /**
+     * The stored holder, for the probe that has to show the gap.
+     *
+     * <p>Exists so a test can assert what a careless read surface WOULD have
+     * returned, next to what the effective projection returns instead. That
+     * gap is the silent failure, and a probe that could not name both sides of
+     * it could not show the failure at all — it could only assert the correct
+     * answer, which is what a broken implementation would also do.
+     */
+    public String storedHolderForProbe() {
+        return holderSubject;
+    }
+
+    public Instant claimExpiresAt() {
+        return claimExpiresAt;
+    }
+
+    /** Whether a presented receipt matches the one this exchange holds. */
+    boolean receiptMatches(String presented) {
+        return Receipt.matches(presented, holderReceiptHash);
+    }
+
+    /** Awards the claim. The receipt itself is returned to the winner, never stored. */
+    void award(String subject, String receipt, Instant expiresAt) {
+        this.holderSubject = subject;
+        this.holderReceiptHash = Receipt.hash(receipt);
+        this.claimExpiresAt = expiresAt;
+    }
+
+    /** Drops the claim entirely — all three fields together, as the table requires. */
+    void releaseClaim() {
+        this.holderSubject = null;
+        this.holderReceiptHash = null;
+        this.claimExpiresAt = null;
+    }
+
+    /**
+     * Discards an unratified handover draft.
+     *
+     * <p>A draft that was never ratified never happened. Nobody inherits a
+     * stranger's half-written text: that would be worse than overwriting it,
+     * because the result looks plausible and reads as somebody's answer.
+     */
+    void discardDraft() {
+        if (ratifiedAt == null) {
+            this.handoverBody = null;
+            this.handoverMetadata = null;
+        }
+    }
+
+    /** Writes or overwrites the handover draft. Wholesale — there is no append. */
+    void writeDraft(String draft, Map<String, String> metadata) {
+        this.handoverBody = draft;
+        this.handoverMetadata = metadata;
     }
 
     /** True for the exchange the bracket is derived from. */
@@ -206,9 +317,16 @@ public class Exchange {
         this.sentAt = at;
     }
 
-    /** Writes and freezes the answer, in the same call as the transition to returned. */
-    void freezeHandover(String answer, Instant at) {
-        this.handoverBody = answer;
+    /**
+     * Freezes the answer that is already there.
+     *
+     * <p>Takes no text, and that is the change this makes to the earlier
+     * shape. Ratification is the operator's own act on an answer somebody else
+     * wrote; a signature that accepted the text would let the ratifying call
+     * also be the writing call, and the review it is supposed to conclude
+     * would have nothing to have looked at.
+     */
+    void freezeHandover(Instant at) {
         this.ratifiedAt = at;
     }
 }

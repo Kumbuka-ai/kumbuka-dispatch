@@ -55,6 +55,10 @@ class FailClosedProbeIT {
         tenantB = UUID.randomUUID();
     }
 
+    /** A console actor: these probes are about tenancy, not about capacity. */
+    static final ai.kumbuka.dispatch.domain.Actor PROBE =
+        new ai.kumbuka.dispatch.domain.Actor("probe", ai.kumbuka.dispatch.domain.Actor.Kind.CONSOLE);
+
     @Inject ExchangeService exchanges;
     @Inject TenantContext tenantContext;
 
@@ -153,10 +157,10 @@ class FailClosedProbeIT {
         DomainFixture.declareSelector(tenantA, SCOPE, "sprint");
         DomainFixture.declareSelector(tenantB, SCOPE, "sprint");
         try (AutoCloseable ignored = tenantContext.bind(tenantA)) {
-            exchanges.openBracket(SCOPE, "sprint", "layers-a", "code", LocalDate.now(), "probe");
+            exchanges.openBracket(SCOPE, "sprint", "layers-a", "code", LocalDate.now(), PROBE);
         }
         try (AutoCloseable ignored = tenantContext.bind(tenantB)) {
-            exchanges.openBracket(SCOPE, "sprint", "layers-b", "code", LocalDate.now(), "probe");
+            exchanges.openBracket(SCOPE, "sprint", "layers-b", "code", LocalDate.now(), PROBE);
         }
     }
 }
