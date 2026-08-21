@@ -38,10 +38,10 @@ class StatusMachineIT {
      * bound to the caller. Where a test does not care which, it uses the
      * console — the capacity with the fewer restrictions, so a refusal in such
      * a test is never about the capacity.
+     *
+     * <p>{@code CLAIM} is long enough that nothing in a test lapses by accident.
      */
-    /** A claim long enough that nothing in a test lapses by accident. */
     static final java.time.Duration CLAIM = java.time.Duration.ofHours(1);
-
     static final Actor EXECUTOR = new Actor("probe-executor", Actor.Kind.EXECUTOR);
     static final Actor CONSOLE = new Actor("probe-console", Actor.Kind.CONSOLE);
 

@@ -270,7 +270,7 @@ public class ExchangeService {
         // no reaper and no expiry event, so the rule that every audit entry
         // has a verb call and an actor holds without an exception.
         if (e.status() == ExchangeStatus.ACTIVE && !e.claimEffective(now)) {
-            reclaim(e, actor);
+            reclaim(e);
         }
 
         e.apply(Transition.TAKEUP);
@@ -503,8 +503,15 @@ public class ExchangeService {
      * <p>This is the only place expiry causes a write, and it is not expiry
      * that causes it — it is the new claim. The orphaned draft goes with the
      * old claim, for the same reason it goes on revert.
+     *
+     * <p>Takes no actor, which is not an oversight. The attribution happens in
+     * the caller, where the new claim is awarded and {@code updated_by} is
+     * stamped; and the log line deliberately does not name who reclaimed —
+     * that belongs in the audit log under its own rules. A parameter here
+     * would suggest this method does something with an actor, and the only
+     * honest thing it could do with one is put it somewhere it must not go.
      */
-    private void reclaim(Exchange e, Actor actor) {
+    private void reclaim(Exchange e) {
         LOG.infof("reclaiming %s: previous claim lapsed", e.address());
         e.apply(Transition.REVERT);
         e.releaseClaim();
