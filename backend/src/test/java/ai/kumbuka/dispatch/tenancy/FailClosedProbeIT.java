@@ -38,14 +38,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class FailClosedProbeIT {
 
+    /** The scope the selectors are declared in. Any uuid; fixed for legibility. */
+    static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
+
     /**
      * A fresh pair of tenants per test method — the tests share one database,
      * and a count under a fixed tenant would include whatever an earlier test
      * planted there. See the same note in {@link RowLevelSecurityProbeIT}.
      */
-    /** The scope the selectors are declared in. Any uuid; fixed for legibility. */
-    static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
-
     private UUID tenantA;
     private UUID tenantB;
 

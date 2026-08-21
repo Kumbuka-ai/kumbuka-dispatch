@@ -39,6 +39,9 @@ public class ExchangeService {
     /** The last letter a suffix may take. Overflow beyond it is deferred, not wrapped. */
     private static final char LAST_SUFFIX = 'z';
 
+    /** The query parameter every lookup binds the scope to. */
+    private static final String P_SCOPE = "scope";
+
     @Inject EntityManager em;
     @Inject SelectorRegistry selectors;
 
@@ -71,7 +74,8 @@ public class ExchangeService {
                                 String apparatus, LocalDate date, String actor) {
         selectors.requireDeclared(scopeId, selector);
         int number = allocateNumber(scopeId, selector);
-        return insert(scopeId, selector, number, 0, null, title, apparatus, date, actor);
+        return insert(new NewExchange(scopeId, selector, number, 0, null, title,
+            apparatus, date, actor));
     }
 
     /**
@@ -85,7 +89,8 @@ public class ExchangeService {
         selectors.requireDeclared(scopeId, selector);
         requireBracketExists(scopeId, selector, number);
         int sub = nextSub(scopeId, selector, number);
-        return insert(scopeId, selector, number, sub, null, title, apparatus, date, actor);
+        return insert(new NewExchange(scopeId, selector, number, sub, null, title,
+            apparatus, date, actor));
     }
 
     /**
@@ -148,7 +153,7 @@ public class ExchangeService {
                   AND e.addendumSuffix IS NOT NULL
                 ORDER BY e.addendumSuffix
                 """, Exchange.class)
-            .setParameter("scope", scopeId)
+            .setParameter(P_SCOPE, scopeId)
             .setParameter("sel", base.selector())
             .setParameter("num", base.number())
             .setParameter("sub", base.sub())
@@ -164,7 +169,7 @@ public class ExchangeService {
                   AND e.sub > 0 AND e.addendumSuffix IS NULL
                 ORDER BY e.sub
                 """, Exchange.class)
-            .setParameter("scope", scopeId)
+            .setParameter(P_SCOPE, scopeId)
             .setParameter("sel", selector)
             .setParameter("num", number)
             .getResultList();
@@ -263,7 +268,7 @@ public class ExchangeService {
         // one non-terminal behind a terminated base would create an object
         // nobody can reach and nothing can close.
         if (moved && t.to().terminal() && !e.isAddendum()) {
-            cascadeToAddenda(scopeId, e, t, actor);
+            cascadeToAddenda(scopeId, e, actor);
         }
         return touch(e, actor);
     }
@@ -293,13 +298,19 @@ public class ExchangeService {
         }
     }
 
-    private void cascadeToAddenda(UUID scopeId, Exchange base, Transition t, String actor) {
+    /**
+     * Closes every addendum hanging from a terminated base, in this transaction.
+     *
+     * <p>Always CLOSE, and deliberately NOT the base's own verb — which is why
+     * this takes no transition. An addendum was never rejected on its own terms
+     * and never failed on its own terms, and consuming one separately would
+     * claim it had been curated forward by itself. It has no standing of its
+     * own; administrative closure is the only honest thing to say about it.
+     */
+    private void cascadeToAddenda(UUID scopeId, Exchange base, String actor) {
         for (Exchange addendum : addenda(scopeId,
                 new ExchangeAddress(base.selector, base.number, base.sub, null))) {
             if (!addendum.status().terminal()) {
-                // CLOSE, not the base's own verb: an addendum was never
-                // rejected or failed on its own terms, and consuming one
-                // separately would claim it was curated forward by itself.
                 addendum.apply(Transition.CLOSE);
                 touch(addendum, actor);
             }
@@ -330,7 +341,7 @@ public class ExchangeService {
                     SELECT c FROM NumberCircle c
                     WHERE c.scopeId = :scope AND c.selector = :sel
                     """, NumberCircle.class)
-                .setParameter("scope", scopeId)
+                .setParameter(P_SCOPE, scopeId)
                 .setParameter("sel", selector)
                 .setLockMode(LockModeType.PESSIMISTIC_WRITE)
                 .getSingleResult();
@@ -352,7 +363,7 @@ public class ExchangeService {
                 WHERE e.scopeId = :scope AND e.selector = :sel AND e.number = :num
                   AND e.addendumSuffix IS NULL
                 """, Integer.class)
-            .setParameter("scope", scopeId)
+            .setParameter(P_SCOPE, scopeId)
             .setParameter("sel", selector)
             .setParameter("num", number)
             .getSingleResult();
@@ -373,7 +384,7 @@ public class ExchangeService {
                   AND e.number = :num AND e.sub = :sub
                   AND e.addendumSuffix IS NOT NULL
                 """, String.class)
-            .setParameter("scope", scopeId)
+            .setParameter(P_SCOPE, scopeId)
             .setParameter("sel", base.selector())
             .setParameter("num", base.number())
             .setParameter("sub", base.sub())
@@ -396,22 +407,38 @@ public class ExchangeService {
     // Lookups
     // ----------------------------------------------------------------------
 
-    private Exchange insert(UUID scopeId, String selector, int number, int sub,
-                            String suffix, String title, String apparatus,
-                            LocalDate date, String actor) {
-        Exchange e = new Exchange();
-        e.scopeId = scopeId;
-        e.selector = selector;
-        e.number = number;
-        e.sub = sub;
-        e.addendumSuffix = suffix;
-        e.title = title;
-        e.apparatus = apparatus;
-        e.dispatchDate = date;
-        e.createdBy = actor;
-        e.updatedBy = actor;
+    /**
+     * The fields a new exchange is built from.
+     *
+     * <p>A record rather than a parameter list: four of these are strings and
+     * two are ints, so a transposed pair would compile and land the title in
+     * the apparatus column. Naming them at the call site is what makes that
+     * mistake visible while it is being made.
+     */
+    private record NewExchange(UUID scopeId, String selector, int number, int sub,
+                               String suffix, String title, String apparatus,
+                               LocalDate date, String actor) {
+    }
+
+    private Exchange insert(NewExchange spec) {
+        Exchange e = build(spec);
         em.persist(e);
         em.flush();
+        return e;
+    }
+
+    private Exchange build(NewExchange spec) {
+        Exchange e = new Exchange();
+        e.scopeId = spec.scopeId();
+        e.selector = spec.selector();
+        e.number = spec.number();
+        e.sub = spec.sub();
+        e.addendumSuffix = spec.suffix();
+        e.title = spec.title();
+        e.apparatus = spec.apparatus();
+        e.dispatchDate = spec.date();
+        e.createdBy = spec.actor();
+        e.updatedBy = spec.actor();
         return e;
     }
 
@@ -425,17 +452,8 @@ public class ExchangeService {
     private Exchange insertAddendum(UUID scopeId, ExchangeAddress base, String suffix,
                                     String title, String apparatus, LocalDate date,
                                     String actor) {
-        Exchange e = new Exchange();
-        e.scopeId = scopeId;
-        e.selector = base.selector();
-        e.number = base.number();
-        e.sub = base.sub();
-        e.addendumSuffix = suffix;
-        e.title = title;
-        e.apparatus = apparatus;
-        e.dispatchDate = date;
-        e.createdBy = actor;
-        e.updatedBy = actor;
+        Exchange e = build(new NewExchange(scopeId, base.selector(), base.number(),
+            base.sub(), suffix, title, apparatus, date, actor));
 
         // Sent BEFORE the insert, not after it. An addendum corrects something
         // that was already frozen, so there is no moment at which it is a
@@ -481,7 +499,7 @@ public class ExchangeService {
                     """, Exchange.class);
 
         List<Exchange> found = query
-            .setParameter("scope", scopeId)
+            .setParameter(P_SCOPE, scopeId)
             .setParameter("sel", address.selector())
             .setParameter("num", address.number())
             .setParameter("sub", address.sub())

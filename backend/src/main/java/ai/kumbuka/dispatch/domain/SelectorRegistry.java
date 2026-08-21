@@ -24,6 +24,9 @@ import java.util.UUID;
 @TenantBound
 public class SelectorRegistry {
 
+    /** The query parameter every lookup binds the scope to. */
+    private static final String P_SCOPE = "scope";
+
     @Inject EntityManager em;
 
     /**
@@ -56,7 +59,7 @@ public class SelectorRegistry {
         return em.createQuery("""
                 SELECT s FROM Selector s WHERE s.scopeId = :scope ORDER BY s.name
                 """, Selector.class)
-            .setParameter("scope", scopeId)
+            .setParameter(P_SCOPE, scopeId)
             .getResultList();
     }
 
@@ -75,7 +78,7 @@ public class SelectorRegistry {
                 SELECT COUNT(e) FROM Exchange e
                 WHERE e.scopeId = :scope AND e.selector = :sel
                 """, Long.class)
-            .setParameter("scope", scopeId)
+            .setParameter(P_SCOPE, scopeId)
             .setParameter("sel", name)
             .getSingleResult();
 
@@ -94,7 +97,7 @@ public class SelectorRegistry {
         List<Selector> found = em.createQuery("""
                 SELECT s FROM Selector s WHERE s.scopeId = :scope AND s.name = :name
                 """, Selector.class)
-            .setParameter("scope", scopeId)
+            .setParameter(P_SCOPE, scopeId)
             .setParameter("name", name)
             .getResultList();
         return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
