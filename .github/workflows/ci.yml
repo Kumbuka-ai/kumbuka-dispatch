@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # -------------------------------------------------------------------------
+  # The full suite, with no opt-in profile.
+  #
+  # Every load-bearing statement this service makes is a statement about a
+  # running PostgreSQL or a running Keycloak, and both are started by the
+  # tests themselves. GitHub-hosted runners provide Docker, so the gate here
+  # is the same suite a developer runs locally rather than a reduced one.
+  # -------------------------------------------------------------------------
+  backend:
+    name: backend · mvn verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Print versions
+        run: |
+          java -version
+          mvn -version
+          docker version
+
+      - name: mvn verify
+        working-directory: backend
+        run: mvn -B -ntp verify
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            backend/target/surefire-reports/**
+            backend/target/failsafe-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # The container builds.
+  #
+  # A separate job because it answers a separate question. The suite above
+  # says the code is right; this says the artifact that ships can be produced
+  # at all — a Dockerfile that stopped building would otherwise be discovered
+  # at deployment time.
+  # -------------------------------------------------------------------------
+  image:
+    name: backend · docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: docker build
+        working-directory: backend
+        run: docker build -t kumbuka-dispatch:ci .
