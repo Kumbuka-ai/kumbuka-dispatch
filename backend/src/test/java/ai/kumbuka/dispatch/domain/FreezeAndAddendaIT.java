@@ -37,7 +37,14 @@ import static org.eclipse.microprofile.config.ConfigProvider.getConfig;
 class FreezeAndAddendaIT {
 
     static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
-    static final String ACTOR = "probe";
+    /**
+     * Two actors, because two of this service's guarantees are permissions
+     * bound to the caller. Where a test does not care which, it uses the
+     * console — the capacity with the fewer restrictions, so a refusal in such
+     * a test is never about the capacity.
+     */
+    static final Actor EXECUTOR = new Actor("probe-executor", Actor.Kind.EXECUTOR);
+    static final Actor CONSOLE = new Actor("probe-console", Actor.Kind.CONSOLE);
 
     @Inject ExchangeService exchanges;
     @Inject TenantContext tenantContext;
@@ -64,7 +71,7 @@ class FreezeAndAddendaIT {
     @Test
     void a_draft_is_fully_mutable() throws SQLException {
         Exchange draft = exchanges.openBracket(SCOPE, "sprint", "first wording", "code",
-            LocalDate.now(), ACTOR);
+            LocalDate.now(), CONSOLE);
 
         assertThat(draft.frozen())
             .as("before send there is no commitment to protect")
@@ -139,9 +146,9 @@ class FreezeAndAddendaIT {
         ExchangeAddress at = new ExchangeAddress(base.selector, base.number, base.sub, null);
 
         Exchange first = exchanges.addAddendum(SCOPE, at, "a correction", "code",
-            LocalDate.now(), ACTOR);
+            LocalDate.now(), CONSOLE);
         Exchange second = exchanges.addAddendum(SCOPE, at, "another correction", "code",
-            LocalDate.now(), ACTOR);
+            LocalDate.now(), CONSOLE);
 
         assertThat(first.addendumSuffix).isEqualTo("a");
         assertThat(second.addendumSuffix).isEqualTo("b");
@@ -167,7 +174,7 @@ class FreezeAndAddendaIT {
     void an_addendum_is_not_independently_drawable() {
         Exchange base = openAndSend("the exchange being corrected");
         ExchangeAddress at = new ExchangeAddress(base.selector, base.number, base.sub, null);
-        exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), ACTOR);
+        exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), CONSOLE);
 
         ExchangeAddress addendumAddress =
             new ExchangeAddress(base.selector, base.number, base.sub, "a");
@@ -187,11 +194,11 @@ class FreezeAndAddendaIT {
     @Test
     void an_addendum_cannot_hang_from_a_draft() {
         Exchange draft = exchanges.openBracket(SCOPE, "sprint", "still provisional", "code",
-            LocalDate.now(), ACTOR);
+            LocalDate.now(), CONSOLE);
         ExchangeAddress at = new ExchangeAddress(draft.selector, draft.number, draft.sub, null);
 
         assertThatThrownBy(() -> exchanges.addAddendum(SCOPE, at, "a correction", "code",
-            LocalDate.now(), ACTOR))
+            LocalDate.now(), CONSOLE))
             .as("there is nothing to correct until a commitment was acquired; before that "
                 + "the exchange is simply edited")
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
@@ -202,13 +209,13 @@ class FreezeAndAddendaIT {
     void terminating_the_base_cascades_onto_its_addenda_in_one_transaction() {
         Exchange base = openAndSend("the exchange being corrected");
         ExchangeAddress at = new ExchangeAddress(base.selector, base.number, base.sub, null);
-        exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), ACTOR);
+        exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), CONSOLE);
 
         assertThat(exchanges.addenda(SCOPE, at).get(0).status().terminal())
             .as("the addendum starts non-terminal, or the cascade below would prove nothing")
             .isFalse();
 
-        exchanges.close(SCOPE, at, ACTOR);
+        exchanges.close(SCOPE, at, CONSOLE);
 
         assertThat(exchanges.addenda(SCOPE, at).get(0).status())
             .as("a terminal transition of the base cascades onto its addenda. Leaving one "
@@ -224,7 +231,7 @@ class FreezeAndAddendaIT {
     @Test
     void an_undeclared_selector_is_a_typed_refusal() {
         assertThatThrownBy(() -> exchanges.openBracket(SCOPE, "never-declared", "a title",
-            "code", LocalDate.now(), ACTOR))
+            "code", LocalDate.now(), CONSOLE))
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
                 .as("bracket names are declared before use, never by first use: a typo "
                     + "must not silently open a namespace")
@@ -237,9 +244,9 @@ class FreezeAndAddendaIT {
 
     private Exchange openAndSend(String title) {
         Exchange e = exchanges.openBracket(SCOPE, "sprint", title, "code",
-            LocalDate.now(), ACTOR);
+            LocalDate.now(), CONSOLE);
         return exchanges.send(SCOPE,
-            new ExchangeAddress(e.selector, e.number, e.sub, e.addendumSuffix), ACTOR);
+            new ExchangeAddress(e.selector, e.number, e.sub, e.addendumSuffix), CONSOLE);
     }
 
     /**

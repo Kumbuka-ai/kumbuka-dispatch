@@ -6,6 +6,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.jboss.logging.Logger;
 
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +43,11 @@ import java.util.UUID;
 @TenantBound
 public class ScopeDirectory {
 
+    /** Bound by the same convention as every logger here: no title, no body, no
+     *  metadata text, no token, and no actor. A slug is a scope name and an
+     *  address; the subject that asked for it is the audit log's business. */
+    private static final Logger LOG = Logger.getLogger(ScopeDirectory.class);
+
     @Inject EntityManager em;
 
     /**
@@ -66,6 +72,8 @@ public class ScopeDirectory {
         if (rows.isEmpty()) {
             // Reached only with both settings bound, so this genuinely means
             // "no such scope for this subject" and not "nothing was bound".
+            LOG.warnf("scope '%s' unresolved: %s", slug,
+                DispatchException.Reason.SCOPE_UNRESOLVED);
             throw new DispatchException(DispatchException.Reason.SCOPE_UNRESOLVED,
                 "no scope '" + slug + "' is open to this subject. The directory answers "
                     + "for the bound subject only, and existence in its answer is the "
@@ -73,6 +81,7 @@ public class ScopeDirectory {
                     + "worked around.");
         }
 
+        LOG.debugf("resolved scope '%s'", slug);
         Object[] row = rows.get(0);
         return new ScopeAccess(
             (UUID) row[0],
@@ -117,6 +126,8 @@ public class ScopeDirectory {
             "SELECT NULLIF(current_setting('app.subject', true), '')").getSingleResult();
 
         if (tenant == null || subject == null) {
+            LOG.warnf("directory call with unbound session: %s",
+                DispatchException.Reason.SESSION_NOT_BOUND);
             throw new DispatchException(DispatchException.Reason.SESSION_NOT_BOUND,
                 ("the session contract is not bound (app.tenant_id=%s, app.subject=%s), so "
                     + "the directory would return zero rows for every scope. That reads as "

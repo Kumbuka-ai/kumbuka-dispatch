@@ -49,6 +49,10 @@ class TenantBindingEdgeCaseIT {
     // which shares its simple name. Without it here the injection point
     // matches by type and is rejected for want of a matching qualifier.
     @Inject @PersistenceUnitExtension HibernateTenantResolver hibernateResolver;
+    /** A console actor: these probes are about tenancy, not about capacity. */
+    static final ai.kumbuka.dispatch.domain.Actor PROBE =
+        new ai.kumbuka.dispatch.domain.Actor("probe", ai.kumbuka.dispatch.domain.Actor.Kind.CONSOLE);
+
     @Inject ExchangeService exchanges;
 
     // -----------------------------------------------------------------------
@@ -190,7 +194,7 @@ class TenantBindingEdgeCaseIT {
 
         try (AutoCloseable ignored = tenantContext.bind(tenant)) {
             var opened = exchanges.openBracket(scope, "sprint", "count-probe", "code",
-                java.time.LocalDate.now(), "probe");
+                java.time.LocalDate.now(), PROBE);
             assertThat(opened.tenantId)
                 .as("a write through the ORM carries the bound tenant without the caller "
                     + "supplying it — that is what the @TenantId filter is for")
