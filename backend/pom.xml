@@ -143,6 +143,18 @@
             <scope>test</scope>
         </dependency>
         <!--
+            Flyway's PostgreSQL adapter, for the one test that drives Flyway
+            directly. The Quarkus extension supplies it to the application at
+            runtime but not to a test that constructs its own Flyway instance,
+            and without it Flyway reports "no database plugin found" rather
+            than doing anything with the database.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
             Instruments the code that @QuarkusTest classes drive. Quarkus runs
             those under its own classloader, which the ordinary JaCoCo agent
             cannot see; this extension can, and writes target/jacoco-quarkus.exec.

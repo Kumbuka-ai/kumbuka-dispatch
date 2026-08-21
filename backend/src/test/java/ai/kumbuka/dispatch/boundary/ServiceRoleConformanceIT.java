@@ -1,9 +1,11 @@
 package ai.kumbuka.dispatch.boundary;
 
+import ai.kumbuka.dispatch.platform.PlatformFixture;
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.eclipse.microprofile.config.ConfigProvider;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -12,25 +14,30 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The conformance probe: this service's role holds rights on its own schema
- * and on nothing else.
+ * The conformance probe: this service's role holds its own schema, plus
+ * {@code SELECT} on exactly one view, and nothing else anywhere.
  *
  * <p>{@link MissingGrantProbeIT} observes one boundary against one
- * neighbouring table. This asks the question the architecture actually poses
- * — <em>does this role hold anything it should not</em> — of the whole
- * catalog, so it also covers the neighbour that does not exist yet, the view
- * somebody grants next year, and the schema this service has never heard of.
- * Each service carries a probe of this shape; this is that probe for this
- * service.
+ * neighbouring table. This asks the question the architecture actually poses —
+ * <em>does this role hold anything it should not</em> — of the whole catalog,
+ * so it also covers the neighbour that does not exist yet and the grant
+ * somebody issues next year.
  *
- * <p>Two things are asserted rather than one. That the role holds nothing
- * outside its schema, and that it holds something inside it — a role granted
- * nothing anywhere would pass the first assertion perfectly while being
- * unable to run the service.
+ * <h2>The permitted set is a list of objects, not of schemas</h2>
+ *
+ * The service now consumes a platform read contract, so it holds something
+ * outside its own schema for the first time. Adding {@code platform} to a list
+ * of permitted SCHEMAS would have been the obvious edit and would have been a
+ * blank cheque: every future object in that schema would pass unnoticed,
+ * including one granted by mistake. What is permitted is one view and one
+ * privilege on it, so that is what the list holds — and
+ * {@link #the_check_finds_a_second_object_in_a_permitted_schema} watches the
+ * distinction hold.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -38,68 +45,110 @@ class ServiceRoleConformanceIT {
 
     private static final String SERVICE_ROLE = SubstrateDatabaseResource.SERVICE_ROLE;
 
+    /** The service's own schema. It owns what is in here; that is its whole entitlement. */
+    private static final String OWN_SCHEMA = "dispatch";
+
     /**
-     * Schemas the role may hold something in. The service's own, and — when a
-     * platform read contract is consumed — that one view and nothing beside
-     * it. The list is here rather than inferred so that widening it is an
-     * edit someone has to make and explain.
+     * Everything the role may hold OUTSIDE its own schema, named object by
+     * object. One entry today: the published read contract.
      */
-    private static final List<String> PERMITTED_SCHEMAS = List.of("dispatch");
+    private static final Set<String> PERMITTED_FOREIGN_OBJECTS = Set.of(
+        SubstrateDatabaseResource.PLATFORM_SCHEMA + "." + SubstrateDatabaseResource.DIRECTORY_VIEW);
+
+    @BeforeAll
+    static void grantDirectoryAccess() {
+        PlatformFixture.grantDirectoryAccess();
+    }
 
     @Test
-    void the_service_role_holds_nothing_outside_its_own_schema() throws SQLException {
+    void the_service_role_holds_nothing_it_was_not_meant_to() throws SQLException {
         assertThat(foreignHoldings())
-            .as("the service role must hold nothing — owned or granted — outside %s. Anything "
-                + "listed here is a route from this service into another service's data, and "
-                + "the architecture's isolation rests on there being no such route rather than "
-                + "on nobody taking it", PERMITTED_SCHEMAS)
+            .as("outside %s the service role may hold only %s. Anything else listed here "
+                + "is a route from this service into data it does not own, and the "
+                + "isolation rests on there being no such route rather than on nobody "
+                + "taking it", OWN_SCHEMA, PERMITTED_FOREIGN_OBJECTS)
             .isEmpty();
     }
 
     /**
-     * The red state of the check above, observed on every build.
+     * The red state, and the reason the permitted set names objects.
      *
-     * <p>"The role holds nothing outside its schema" is a claim about an
-     * empty query result, and an empty result is also what a query against
-     * the wrong catalog, the wrong role name or the wrong column would
-     * return. So a privilege is granted here that should not exist, the check
-     * is required to name it, and it is revoked again.
+     * <p>A second object is granted in the SAME schema the read contract lives
+     * in. The check must still name it. If it did not, adding that schema to
+     * the permitted set would have quietly turned one permitted view into a
+     * permitted schema, and the next grant issued there — by a migration, by a
+     * mistake — would pass without anybody seeing it.
      */
     @Test
-    void the_check_finds_a_privilege_that_should_not_exist() throws SQLException {
-        String neighbour = SubstrateDatabaseResource.NEIGHBOUR_SCHEMA
-            + "." + SubstrateDatabaseResource.NEIGHBOUR_TABLE;
-        try (Connection c = admin()) {
-            try {
-                c.createStatement().execute(
-                    "GRANT SELECT ON " + neighbour + " TO " + SERVICE_ROLE);
+    void the_check_finds_a_second_object_in_a_permitted_schema() throws SQLException {
+        String extra = SubstrateDatabaseResource.PLATFORM_SCHEMA + ".scope_access_copy";
+        try {
+            PlatformFixture.run(
+                "CREATE VIEW " + extra + " AS SELECT 1 AS one",
+                "GRANT SELECT ON " + extra + " TO " + SERVICE_ROLE);
 
-                assertThat(foreignHoldings())
-                    .as("RED STATE, observed: a single GRANT on a neighbouring service's "
-                        + "table must show up here. If it did not, the empty result above "
-                        + "would be a query that finds nothing rather than a role that "
-                        + "holds nothing")
-                    .anyMatch(holding -> holding.contains(SubstrateDatabaseResource.NEIGHBOUR_TABLE));
-            } finally {
-                c.createStatement().execute(
-                    "REVOKE SELECT ON " + neighbour + " FROM " + SERVICE_ROLE);
-            }
+            assertThat(foreignHoldings())
+                .as("RED STATE, observed: a grant on a DIFFERENT object in the permitted "
+                    + "schema must be reported. The entitlement is one view, not the "
+                    + "schema it happens to live in")
+                .anyMatch(holding -> holding.contains("scope_access_copy"));
+        } finally {
+            PlatformFixture.run("DROP VIEW IF EXISTS " + extra);
         }
 
         assertThat(foreignHoldings())
-            .as("and gone again, so the red state was the grant and nothing else")
+            .as("and gone again, so the red state was that grant and nothing else")
             .isEmpty();
     }
 
-    /** Everything the service role owns or was granted outside its own schema. */
+    /**
+     * The other red state: the permitted grant itself must be what the probe
+     * is seeing. Revoking it has to change the answer, or the check is
+     * matching on something else entirely.
+     */
+    @Test
+    void the_permitted_grant_is_really_the_one_being_permitted() throws SQLException {
+        assertThat(grantsOn(SubstrateDatabaseResource.PLATFORM_SCHEMA,
+                SubstrateDatabaseResource.DIRECTORY_VIEW))
+            .as("the role must actually hold SELECT on the read contract — a permitted "
+                + "entry that is not held would make the check pass by absence")
+            .containsExactly("SELECT");
+    }
+
+    @Test
+    void the_service_role_does_hold_its_own_schema() throws SQLException {
+        try (Connection c = admin();
+             var st = c.prepareStatement("""
+                 SELECT count(*)
+                 FROM pg_class cl
+                 JOIN pg_namespace n ON n.oid = cl.relnamespace
+                 WHERE n.nspname = ?
+                   AND cl.relkind = 'r'
+                   AND pg_get_userbyid(cl.relowner) = ?
+                 """)) {
+            st.setString(1, OWN_SCHEMA);
+            st.setString(2, SERVICE_ROLE);
+            try (ResultSet rs = st.executeQuery()) {
+                rs.next();
+                assertThat(rs.getLong(1))
+                    .as("a role that owns nothing anywhere would satisfy every assertion "
+                        + "above and be unable to run the service — a green suite "
+                        + "describing a broken deployment")
+                    .isPositive();
+            }
+        }
+    }
+
+    /**
+     * Everything the service role owns or was granted outside its own schema,
+     * minus what it is explicitly permitted.
+     */
     private static List<String> foreignHoldings() throws SQLException {
         List<String> foreign = new ArrayList<>();
 
         try (Connection c = admin()) {
             // Ownership and explicit grants are two different ways to hold a
-            // privilege, and asking about only one of them would miss the
-            // other entirely. pg_class covers what the role owns; the
-            // information_schema view covers what it was granted.
+            // privilege; asking about only one would miss the other entirely.
             try (var st = c.prepareStatement("""
                     SELECT n.nspname, cl.relname, 'owns'
                     FROM pg_class cl
@@ -119,9 +168,12 @@ class ServiceRoleConformanceIT {
                 try (ResultSet rs = st.executeQuery()) {
                     while (rs.next()) {
                         String schema = rs.getString(1);
-                        if (!PERMITTED_SCHEMAS.contains(schema)) {
-                            foreign.add(schema + "." + rs.getString(2) + " [" + rs.getString(3) + "]");
+                        String object = rs.getString(2);
+                        if (OWN_SCHEMA.equals(schema)
+                            || PERMITTED_FOREIGN_OBJECTS.contains(schema + "." + object)) {
+                            continue;
                         }
+                        foreign.add(schema + "." + object + " [" + rs.getString(3) + "]");
                     }
                 }
             }
@@ -129,27 +181,24 @@ class ServiceRoleConformanceIT {
         return foreign;
     }
 
-    @Test
-    void the_service_role_does_hold_its_own_schema() throws SQLException {
+    private static List<String> grantsOn(String schema, String object) throws SQLException {
+        List<String> privileges = new ArrayList<>();
         try (Connection c = admin();
              var st = c.prepareStatement("""
-                 SELECT count(*)
-                 FROM pg_class cl
-                 JOIN pg_namespace n ON n.oid = cl.relnamespace
-                 WHERE n.nspname = 'dispatch'
-                   AND cl.relkind = 'r'
-                   AND pg_get_userbyid(cl.relowner) = ?
+                 SELECT DISTINCT privilege_type FROM information_schema.role_table_grants
+                 WHERE grantee = ? AND table_schema = ? AND table_name = ?
+                 ORDER BY privilege_type
                  """)) {
             st.setString(1, SERVICE_ROLE);
+            st.setString(2, schema);
+            st.setString(3, object);
             try (ResultSet rs = st.executeQuery()) {
-                rs.next();
-                assertThat(rs.getLong(1))
-                    .as("and it must hold its own — a role that owns nothing anywhere would "
-                        + "satisfy the previous assertion and be unable to run the service, "
-                        + "which is a green suite describing a broken deployment")
-                    .isPositive();
+                while (rs.next()) {
+                    privileges.add(rs.getString(1));
+                }
             }
         }
+        return privileges;
     }
 
     private static Connection admin() throws SQLException {

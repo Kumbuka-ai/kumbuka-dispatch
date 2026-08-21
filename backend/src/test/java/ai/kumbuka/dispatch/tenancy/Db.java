@@ -70,9 +70,9 @@ final class Db {
         }
     }
 
-    static long countScopes(Connection c) throws SQLException {
+    static long countExchanges(Connection c) throws SQLException {
         try (Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM dispatch.scope")) {
+             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM dispatch.exchange")) {
             rs.next();
             return rs.getLong(1);
         }
@@ -85,16 +85,25 @@ final class Db {
     }
 
     /**
-     * Insert a scope row directly, bypassing the ORM, under whatever tenant
-     * the GUC currently names. Used to plant rows a later read must or must
-     * not see.
+     * Insert an exchange directly, bypassing the ORM, under whatever tenant
+     * the setting currently names. Used to plant rows a later read must or
+     * must not see.
+     *
+     * <p>Going around the ORM is the point: layer 1 rewrites every statement
+     * it builds, so a row planted through it could never demonstrate what
+     * layer 2 does on its own.
      */
-    static UUID insertScope(Connection c, UUID tenant, String slug) throws SQLException {
-        try (var st = c.prepareStatement(
-                "INSERT INTO dispatch.scope (tenant_id, platform_scope_id, slug) "
-              + "VALUES (?::uuid, gen_random_uuid(), ?) RETURNING id")) {
+    static UUID insertExchange(Connection c, UUID tenant, String title) throws SQLException {
+        try (var st = c.prepareStatement("""
+                INSERT INTO dispatch.exchange
+                    (tenant_id, scope_id, selector, number, sub, title, apparatus, dispatch_date)
+                VALUES (?::uuid, gen_random_uuid(), 'sprint',
+                        (SELECT coalesce(max(number), 0) + 1 FROM dispatch.exchange),
+                        0, ?, 'code', CURRENT_DATE)
+                RETURNING id
+                """)) {
             st.setString(1, tenant.toString());
-            st.setString(2, slug);
+            st.setString(2, title);
             try (ResultSet rs = st.executeQuery()) {
                 rs.next();
                 return UUID.fromString(rs.getString(1));

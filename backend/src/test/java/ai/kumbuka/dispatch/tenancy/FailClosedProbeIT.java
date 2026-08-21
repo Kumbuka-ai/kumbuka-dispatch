@@ -1,7 +1,8 @@
 package ai.kumbuka.dispatch.tenancy;
 
-import ai.kumbuka.dispatch.substrate.Scope;
-import ai.kumbuka.dispatch.substrate.ScopeRepository;
+import ai.kumbuka.dispatch.domain.DomainFixture;
+import ai.kumbuka.dispatch.domain.Exchange;
+import ai.kumbuka.dispatch.domain.ExchangeService;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,6 +38,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class FailClosedProbeIT {
 
+    /** The scope the selectors are declared in. Any uuid; fixed for legibility. */
+    static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
+
     /**
      * A fresh pair of tenants per test method — the tests share one database,
      * and a count under a fixed tenant would include whatever an earlier test
@@ -50,21 +55,21 @@ class FailClosedProbeIT {
         tenantB = UUID.randomUUID();
     }
 
-    @Inject ScopeRepository scopes;
+    @Inject ExchangeService exchanges;
     @Inject TenantContext tenantContext;
 
     @Test
     void an_unbound_read_returns_nothing_and_the_rows_are_still_there() throws SQLException {
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
-            Db.insertScope(c, tenantA, "fail-closed-a");
+            Db.insertExchange(c, tenantA, "fail-closed-a");
             c.commit();
 
             // First half: no binding, no rows. The predicate compares against
             // NULL, which a policy treats as failing, so the table is closed
             // rather than open.
             Db.bindTenant(c, null);
-            assertThat(Db.countScopes(c))
+            assertThat(Db.countExchanges(c))
                 .as("a transaction that never bound a tenant must see nothing at all — "
                     + "the predicate fails closed, and this is the half that is the guarantee")
                 .isZero();
@@ -73,7 +78,7 @@ class FailClosedProbeIT {
             // assertion above would hold just as well against a table that is
             // simply empty, and an empty table proves nothing about a policy.
             Db.bindTenant(c, tenantA);
-            assertThat(Db.countScopes(c))
+            assertThat(Db.countExchanges(c))
                 .as("and with the tenant bound the row is present and unchanged — which is "
                     + "what makes the emptiness above a lock rather than an absence")
                 .isEqualTo(1);
@@ -94,29 +99,32 @@ class FailClosedProbeIT {
 
         try (Connection c = Db.asService()) {
             try {
-                Db.exec(c, "ALTER TABLE dispatch.scope DISABLE ROW LEVEL SECURITY");
+                Db.exec(c, "ALTER TABLE dispatch.exchange DISABLE ROW LEVEL SECURITY");
                 c.commit();
 
                 try (AutoCloseable ignored = tenantContext.bind(tenantA)) {
-                    List<Scope> rows = scopes.findAll();
-                    assertThat(rows)
+                    List<Exchange> rows = exchanges.children(SCOPE, "sprint", 1);
+                    // The bracket itself, read back through the ORM.
+                    Exchange bracket = exchanges.read(SCOPE,
+                        ai.kumbuka.dispatch.domain.ExchangeAddress.bracket("sprint", 1));
+                    assertThat(bracket.tenantId)
                         .as("with the policy disabled, the ORM filter is the only thing "
                             + "scoping this read — and it must still scope it")
-                        .hasSize(1);
-                    assertThat(rows.get(0).tenantId).isEqualTo(tenantA.toString());
+                        .isEqualTo(tenantA.toString());
+                    assertThat(rows).isEmpty();
                 }
 
                 // The other side of the same observation: raw SQL, which the
                 // ORM never rewrote, now sees everything. That is precisely
                 // the gap layer 2 exists to close, and it is visible here.
                 Db.bindTenant(c, tenantA);
-                assertThat(Db.countScopes(c))
+                assertThat(Db.countExchanges(c))
                     .as("RED STATE, observed: with the policy off, raw SQL under tenant A "
                         + "reads tenant B's row too. The ORM filter cannot reach a statement "
                         + "it did not build, which is the whole reason for a second layer")
                     .isEqualTo(2);
             } finally {
-                Db.exec(c, "ALTER TABLE dispatch.scope ENABLE ROW LEVEL SECURITY");
+                Db.exec(c, "ALTER TABLE dispatch.exchange ENABLE ROW LEVEL SECURITY");
                 c.commit();
             }
         }
@@ -133,7 +141,7 @@ class FailClosedProbeIT {
 
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
-            assertThat(Db.countScopes(c))
+            assertThat(Db.countExchanges(c))
                 .as("raw SQL bypasses the ORM filter entirely, so this count is the policy's "
                     + "work and nobody else's")
                 .isEqualTo(1);
@@ -142,11 +150,13 @@ class FailClosedProbeIT {
 
     /** One row per tenant, written through the ORM so both layers are on the path. */
     private void plantOneScopePerTenant() throws Exception {
+        DomainFixture.declareSelector(tenantA, SCOPE, "sprint");
+        DomainFixture.declareSelector(tenantB, SCOPE, "sprint");
         try (AutoCloseable ignored = tenantContext.bind(tenantA)) {
-            scopes.register(UUID.randomUUID(), "layers-a");
+            exchanges.openBracket(SCOPE, "sprint", "layers-a", "code", LocalDate.now(), "probe");
         }
         try (AutoCloseable ignored = tenantContext.bind(tenantB)) {
-            scopes.register(UUID.randomUUID(), "layers-b");
+            exchanges.openBracket(SCOPE, "sprint", "layers-b", "code", LocalDate.now(), "probe");
         }
     }
 }

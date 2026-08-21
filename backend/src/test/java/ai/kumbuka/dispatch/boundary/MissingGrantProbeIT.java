@@ -80,10 +80,10 @@ class MissingGrantProbeIT {
         assertRefusedThenGrantedThenRefused(
             SubstrateDatabaseResource.PROVIDER_ROLE,
             SubstrateDatabaseResource.PROVIDER_PASSWORD,
-            "SELECT count(*) FROM dispatch.scope",
+            "SELECT count(*) FROM dispatch.exchange",
             "GRANT USAGE ON SCHEMA dispatch TO " + SubstrateDatabaseResource.PROVIDER_ROLE
-                + "; GRANT SELECT ON dispatch.scope TO " + SubstrateDatabaseResource.PROVIDER_ROLE,
-            "REVOKE SELECT ON dispatch.scope FROM " + SubstrateDatabaseResource.PROVIDER_ROLE
+                + "; GRANT SELECT ON dispatch.exchange TO " + SubstrateDatabaseResource.PROVIDER_ROLE,
+            "REVOKE SELECT ON dispatch.exchange FROM " + SubstrateDatabaseResource.PROVIDER_ROLE
                 + "; REVOKE USAGE ON SCHEMA dispatch FROM " + SubstrateDatabaseResource.PROVIDER_ROLE,
             "the operator has no read path to a tenant's exchanges. The role carries "
                 + "BYPASSRLS, so this refusal cannot be row-level security doing the work — "

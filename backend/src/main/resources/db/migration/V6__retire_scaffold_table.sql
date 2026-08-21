@@ -1,0 +1,30 @@
+-- ===========================================================================
+-- V6: retire the scaffold table.
+--
+-- `dispatch.scope` was created in the substrate for one reason: the acceptance
+-- criteria there required at least one tenant-scoped table, and the domain was
+-- out of scope, so the tenancy axis needed somewhere to live in order to be
+-- observed holding at all. It said so in its own comment.
+--
+-- It is not a scope register and never was. It mirrored three columns of the
+-- platform's published read contract, which makes it precisely the divergence
+-- the contract exists to prevent: two places holding the same fact, one of
+-- them updated by somebody else, and no mechanism that would notice them
+-- drifting apart. A service that keeps a local copy of a directory it is
+-- supposed to consume has stopped consuming it.
+--
+-- THIS IS A DROP, AND DROPS ARE OTHERWISE NOT DONE HERE
+--
+-- Migrations in this service are additive and N-1 compatible: no drops, no
+-- renames, no narrowing constraints in the same release as the code that needs
+-- them. This is the one exception, it is deliberate, and it is sequenced
+-- accordingly. The probes that used to run against this table were rewritten
+-- onto `dispatch.exchange` FIRST and observed green there; only then does the
+-- table go. The reverse order would have left a window in which the tenancy
+-- guarantees had no probe standing behind them.
+--
+-- Nothing reads this table any more. The entity and repository that mapped it
+-- are removed in the same change.
+-- ===========================================================================
+
+DROP TABLE dispatch.scope;
