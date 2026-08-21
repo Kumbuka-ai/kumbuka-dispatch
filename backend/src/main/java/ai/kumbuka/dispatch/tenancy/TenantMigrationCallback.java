@@ -22,8 +22,7 @@ import java.sql.SQLException;
  *
  * <p>Configuration is read through {@code ConfigProvider} rather than
  * injected: this runs during boot, before CDI is fully available.
- */
-/**
+ *
  * <h2>How this callback reaches Flyway</h2>
  *
  * Through {@code quarkus.flyway.callbacks} in application.properties, and

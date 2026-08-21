@@ -38,8 +38,7 @@ import java.util.List;
  * <p>Idempotent, and quiet when there is nothing to do: an object whose owner
  * already matches is skipped, so a deployment that migrates as the service
  * role itself never issues a statement.
- */
-/**
+ *
  * <h2>How this callback reaches Flyway</h2>
  *
  * Through {@code quarkus.flyway.callbacks} in application.properties, and
