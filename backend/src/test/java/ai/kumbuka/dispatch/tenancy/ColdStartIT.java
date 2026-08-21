@@ -4,10 +4,15 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ColdStartIT {
 
     @Test
-    void flyway_creates_the_schema_and_its_table() throws SQLException {
+    void flyway_creates_the_schema_and_its_table() throws SQLException, IOException {
         try (Connection c = Db.asAdmin()) {
             assertThat(scalar(c, "SELECT count(*) FROM information_schema.schemata "
                 + "WHERE schema_name = 'dispatch'"))
@@ -40,9 +45,21 @@ class ColdStartIT {
                 .isEqualTo("1");
 
             assertThat(scalar(c, "SELECT count(*) FROM information_schema.tables "
-                + "WHERE table_schema = 'dispatch' AND table_name = 'scope'"))
-                .as("V1 must have created the substrate table")
+                + "WHERE table_schema = 'dispatch' AND table_name = 'exchange'"))
+                .as("V4 must have created the exchange table")
                 .isEqualTo("1");
+
+            // The expectation is counted from the migration directory rather
+            // than written here as a number. A literal would have to be
+            // maintained alongside every new migration, and the failure when
+            // somebody forgets reads as "a migration did not apply" — which
+            // sends the next reader looking at the database instead of at
+            // this line. The two sources are genuinely different: one is the
+            // files on disk, the other is what the database recorded running.
+            long expected = countVersionedMigrationFiles();
+            assertThat(expected)
+                .as("the migration directory must have been found at all")
+                .isPositive();
 
             // Only the versioned rows are counted. Flyway records its own
             // schema creation as an unversioned entry, and counting that as a
@@ -50,13 +67,13 @@ class ColdStartIT {
             // than with the migration set.
             assertThat(scalar(c, "SELECT count(*) FROM dispatch.flyway_schema_history "
                 + "WHERE success AND version IS NOT NULL"))
-                .as("every versioned migration must have applied")
-                .isEqualTo("3");
+                .as("every versioned migration on disk must have applied successfully")
+                .isEqualTo(String.valueOf(expected));
 
             assertThat(scalar(c, "SELECT max(version::int) FROM dispatch.flyway_schema_history "
                 + "WHERE success AND version IS NOT NULL"))
-                .as("and the schema must stand at the last of them")
-                .isEqualTo("3");
+                .as("and the schema must stand at the highest of them")
+                .isEqualTo(String.valueOf(expected));
         }
     }
 
@@ -113,9 +130,27 @@ class ColdStartIT {
     void the_service_reaches_its_own_table_and_reaches_nothing_else() throws SQLException {
         try (Connection c = Db.asService()) {
             // Its own: an owner needs no grant, which is why V2 issues none.
-            assertThat(Db.countScopes(c))
+            assertThat(Db.countExchanges(c))
                 .as("the service role must reach its own table as its owner")
                 .isNotNegative();
+        }
+    }
+
+    /**
+     * Counts {@code V<n>__*.sql} files in the migration directory.
+     *
+     * <p>Deliberately not a constant: this is the one number in the test that
+     * would otherwise need editing every time a migration is added, and the
+     * edit that gets forgotten produces a failure describing the wrong thing.
+     */
+    private static long countVersionedMigrationFiles() throws IOException {
+        Path dir = Files.isDirectory(Paths.get("src/main/resources/db/migration"))
+            ? Paths.get("src/main/resources/db/migration")
+            : Paths.get("backend/src/main/resources/db/migration");
+        try (Stream<Path> files = Files.list(dir)) {
+            return files.map(f -> f.getFileName().toString())
+                .filter(n -> n.matches("V\\d+__.*\\.sql"))
+                .count();
         }
     }
 

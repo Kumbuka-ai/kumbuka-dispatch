@@ -61,18 +61,18 @@ class RowLevelSecurityProbeIT {
     void a_read_under_one_tenant_does_not_see_another_tenants_row() throws SQLException {
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
-            Db.insertScope(c, tenantA, "probe-a");
+            Db.insertExchange(c, tenantA, "probe-a");
             Db.bindTenant(c, tenantB);
-            Db.insertScope(c, tenantB, "probe-b");
+            Db.insertExchange(c, tenantB, "probe-b");
             c.commit();
 
             Db.bindTenant(c, tenantA);
-            assertThat(Db.countScopes(c))
+            assertThat(Db.countExchanges(c))
                 .as("a session bound to tenant A must see A's row and only A's")
                 .isEqualTo(1);
 
             Db.bindTenant(c, tenantB);
-            assertThat(Db.countScopes(c))
+            assertThat(Db.countExchanges(c))
                 .as("and symmetrically for B — otherwise the filter is not a filter but "
                     + "a coincidence about which rows happen to exist")
                 .isEqualTo(1);
@@ -97,9 +97,9 @@ class RowLevelSecurityProbeIT {
 
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
-            Db.insertScope(c, tenantA, ownSlug);
+            Db.insertExchange(c, tenantA, ownSlug);
             Db.bindTenant(c, tenantB);
-            Db.insertScope(c, tenantB, foreignSlug);
+            Db.insertExchange(c, tenantB, foreignSlug);
             c.commit();
 
             // The assertion is about the FOREIGN row specifically, not about a
@@ -107,17 +107,17 @@ class RowLevelSecurityProbeIT {
             // including rows other tests planted, so a total would depend on
             // execution order and would report the wrong thing when it failed.
             Db.bindTenant(c, tenantA);
-            assertThat(countBySlug(c, foreignSlug))
+            assertThat(countByTitle(c, foreignSlug))
                 .as("green state: with FORCE, the owner is bound by its own policy and the "
                     + "other tenant's row is not there")
                 .isZero();
 
             try {
-                Db.exec(c, "ALTER TABLE dispatch.scope NO FORCE ROW LEVEL SECURITY");
+                Db.exec(c, "ALTER TABLE dispatch.exchange NO FORCE ROW LEVEL SECURITY");
                 c.commit();
                 Db.bindTenant(c, tenantA);
 
-                assertThat(countBySlug(c, foreignSlug))
+                assertThat(countByTitle(c, foreignSlug))
                     .as("RED STATE, observed: with FORCE removed, the same session under the "
                         + "same tenant reads the other tenant's row. The policy still exists "
                         + "and still says the right thing; it simply does not apply to the "
@@ -126,12 +126,12 @@ class RowLevelSecurityProbeIT {
                         + "every tenant returned")
                     .isEqualTo(1);
             } finally {
-                Db.exec(c, "ALTER TABLE dispatch.scope FORCE ROW LEVEL SECURITY");
+                Db.exec(c, "ALTER TABLE dispatch.exchange FORCE ROW LEVEL SECURITY");
                 c.commit();
             }
 
             Db.bindTenant(c, tenantA);
-            assertThat(countBySlug(c, foreignSlug))
+            assertThat(countByTitle(c, foreignSlug))
                 .as("and restored: the isolation is back, so the red state above was the "
                     + "removal and not some other change")
                 .isZero();
@@ -139,13 +139,13 @@ class RowLevelSecurityProbeIT {
     }
 
     /**
-     * Counts rows with a given slug as the CURRENT session sees them —
+     * Counts rows with a given title as the CURRENT session sees them —
      * which, under a policy, is the only sense of "sees" that matters.
      */
-    private static long countBySlug(Connection c, String slug) throws SQLException {
+    private static long countByTitle(Connection c, String title) throws SQLException {
         try (var st = c.prepareStatement(
-                "SELECT count(*) FROM dispatch.scope WHERE slug = ?")) {
-            st.setString(1, slug);
+                "SELECT count(*) FROM dispatch.exchange WHERE title = ?")) {
+            st.setString(1, title);
             try (var rs = st.executeQuery()) {
                 rs.next();
                 return rs.getLong(1);
@@ -165,7 +165,7 @@ class RowLevelSecurityProbeIT {
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
             try {
-                Db.insertScope(c, tenantB, "planted-across-the-boundary");
+                Db.insertExchange(c, tenantB, "planted-across-the-boundary");
                 throw new AssertionError(
                     "a session bound to tenant A inserted a row owned by tenant B — WITH CHECK "
                         + "is missing from the policy, and every write path can now cross the "

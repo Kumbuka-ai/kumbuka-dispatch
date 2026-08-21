@@ -82,6 +82,33 @@ public class SubstrateDatabaseResource implements QuarkusTestResourceLifecycleMa
     public static final String NEIGHBOUR_SCHEMA = "public";
     public static final String NEIGHBOUR_TABLE = "memory";
 
+    /**
+     * The platform's role, and the read contract it publishes.
+     *
+     * <p>The directory view is owned by this role rather than by the container
+     * superuser, which is what a deployment's owner-normalisation sweep
+     * arranges. The distinction is load-bearing: a view without
+     * {@code security_invoker} reads its base tables with its OWNER's
+     * privileges, so a superuser-owned view is exempt from
+     * {@code FORCE ROW LEVEL SECURITY} — and the failure is silent, because
+     * the view returns rows and raises nothing.
+     */
+    public static final String PLATFORM_ROLE = "kumbuka";
+    public static final String PLATFORM_SCHEMA = "platform";
+    public static final String DIRECTORY_VIEW = "scope_access";
+
+    /** The scope the directory publishes to the probing subject. */
+    public static final String PROBE_SCOPE_SLUG = "probe-scope";
+    public static final String PROBE_SUBJECT = "probe-subject";
+
+    /**
+     * The tenancy axis and the scope under test. Fixed rather than random so
+     * that the value in a failure message can be recognised, and matched to
+     * the same two values in the test configuration.
+     */
+    public static final String TENANT_ID = "00000000-0000-0000-0000-000000000001";
+    public static final String SCOPE_ID  = "00000000-0000-0000-0000-000000000010";
+
     private static PostgreSQLContainer<?> postgres;
 
     @Override
@@ -150,6 +177,8 @@ public class SubstrateDatabaseResource implements QuarkusTestResourceLifecycleMa
                 END $$;
                 """.formatted(PROVIDER_ROLE, PROVIDER_ROLE, PROVIDER_PASSWORD));
 
+            stagePlatformDirectory(s);
+
             // The neighbour. Owned by the migrator, granted to nobody. Its
             // one row exists so that a successful read is distinguishable
             // from a permitted read that happens to find nothing.
@@ -161,6 +190,89 @@ public class SubstrateDatabaseResource implements QuarkusTestResourceLifecycleMa
         } catch (SQLException e) {
             throw new IllegalStateException("failed to stage the roles and the neighbour", e);
         }
+    }
+
+    /**
+     * Reconstructs the platform's published read contract, as a deployment
+     * has it: base tables under FORCE row-level security, a view over them in
+     * its own schema, and the consuming role holding SELECT on the view and
+     * nothing else.
+     *
+     * <p>Staged here rather than migrated, because none of it belongs to this
+     * service. Building it in a migration would mean this service creates the
+     * contract it consumes, and a consumer that can create its own contract
+     * can widen it.
+     */
+    private void stagePlatformDirectory(Statement s) throws SQLException {
+        s.execute("""
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '%s') THEN
+                    CREATE ROLE %s NOSUPERUSER NOBYPASSRLS;
+                END IF;
+            END $$;
+            """.formatted(PLATFORM_ROLE, PLATFORM_ROLE));
+
+        s.execute("""
+            CREATE TABLE IF NOT EXISTS public.scope (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id uuid NOT NULL,
+                slug text NOT NULL,
+                kind text NOT NULL,
+                archived boolean NOT NULL DEFAULT false)
+            """);
+        s.execute("""
+            CREATE TABLE IF NOT EXISTS public.user_account (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id uuid NOT NULL,
+                subject text NOT NULL,
+                status text NOT NULL DEFAULT 'active')
+            """);
+
+        for (String table : new String[] {"scope", "user_account"}) {
+            s.execute("ALTER TABLE public." + table + " ENABLE ROW LEVEL SECURITY");
+            s.execute("ALTER TABLE public." + table + " FORCE  ROW LEVEL SECURITY");
+            s.execute("DROP POLICY IF EXISTS " + table + "_tenant_isolation ON public." + table);
+            s.execute("CREATE POLICY " + table + "_tenant_isolation ON public." + table
+                + " USING      (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)"
+                + " WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)");
+        }
+
+        s.execute("CREATE SCHEMA IF NOT EXISTS " + PLATFORM_SCHEMA);
+        s.execute("REVOKE ALL ON SCHEMA " + PLATFORM_SCHEMA + " FROM PUBLIC");
+        s.execute("""
+            CREATE OR REPLACE VIEW platform.scope_access AS
+                SELECT sc.id AS scope_id, sc.tenant_id, sc.slug, sc.archived
+                FROM public.scope sc
+                JOIN public.user_account ua ON ua.tenant_id = sc.tenant_id
+                WHERE sc.kind = 'project'
+                  AND sc.tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+                  AND ua.subject  = NULLIF(current_setting('app.subject',   true), '')
+                  AND ua.status   = 'active'
+            """);
+
+        // The owner-normalisation sweep, in the one respect this suite cares
+        // about: the view must not be owned by a superuser.
+        s.execute("ALTER TABLE public.scope        OWNER TO " + PLATFORM_ROLE);
+        s.execute("ALTER TABLE public.user_account OWNER TO " + PLATFORM_ROLE);
+        s.execute("ALTER VIEW  platform.scope_access OWNER TO " + PLATFORM_ROLE);
+
+        // The grants are NOT issued here, and the omission is deliberate. The
+        // service role does not exist yet — the migration creates it during
+        // boot, which is after this runs — and in a deployment the platform
+        // grants to a role the platform knows about, in its own migration.
+        // PlatformFixture issues them once the role exists, which is also the
+        // order a deployment has.
+
+        // One project scope, and a subject that is an active member of its tenant.
+        s.execute("SELECT set_config('app.tenant_id', '" + TENANT_ID + "', false)");
+        s.execute("INSERT INTO public.scope (id, tenant_id, slug, kind) "
+            + "SELECT '" + SCOPE_ID + "', '" + TENANT_ID + "', '" + PROBE_SCOPE_SLUG + "', 'project' "
+            + "WHERE NOT EXISTS (SELECT 1 FROM public.scope WHERE id = '" + SCOPE_ID + "')");
+        s.execute("INSERT INTO public.user_account (tenant_id, subject) "
+            + "SELECT '" + TENANT_ID + "', '" + PROBE_SUBJECT + "' "
+            + "WHERE NOT EXISTS (SELECT 1 FROM public.user_account "
+            + "WHERE subject = '" + PROBE_SUBJECT + "')");
+        s.execute("RESET app.tenant_id");
     }
 
     private Connection adminConnection() throws SQLException {

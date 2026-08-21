@@ -32,7 +32,7 @@ public class UnboundRawSqlFixture {
         this.em = em;
     }
 
-    public Object countScopes() {
-        return em.createNativeQuery("SELECT count(*) FROM dispatch.scope").getSingleResult();
+    public Object countExchanges() {
+        return em.createNativeQuery("SELECT count(*) FROM dispatch.exchange").getSingleResult();
     }
 }

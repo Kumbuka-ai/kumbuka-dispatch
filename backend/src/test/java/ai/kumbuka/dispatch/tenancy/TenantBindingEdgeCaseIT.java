@@ -1,6 +1,7 @@
 package ai.kumbuka.dispatch.tenancy;
 
-import ai.kumbuka.dispatch.substrate.ScopeRepository;
+import ai.kumbuka.dispatch.domain.DomainFixture;
+import ai.kumbuka.dispatch.domain.ExchangeService;
 import io.quarkus.hibernate.orm.PersistenceUnitExtension;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -48,7 +49,7 @@ class TenantBindingEdgeCaseIT {
     // which shares its simple name. Without it here the injection point
     // matches by type and is rejected for want of a matching qualifier.
     @Inject @PersistenceUnitExtension HibernateTenantResolver hibernateResolver;
-    @Inject ScopeRepository scopes;
+    @Inject ExchangeService exchanges;
 
     // -----------------------------------------------------------------------
     // The bind stack
@@ -182,16 +183,23 @@ class TenantBindingEdgeCaseIT {
     // -----------------------------------------------------------------------
 
     @Test
-    void the_orm_count_is_scoped_to_the_bound_tenant() throws Exception {
+    void the_orm_read_is_scoped_to_the_bound_tenant() throws Exception {
         UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.fromString("00000000-0000-0000-0000-000000000010");
+        DomainFixture.declareSelector(tenant, scope, "sprint");
+
         try (AutoCloseable ignored = tenantContext.bind(tenant)) {
-            assertThat(scopes.count())
-                .as("a fresh tenant owns nothing")
-                .isZero();
-            scopes.register(UUID.randomUUID(), "count-probe");
-            assertThat(scopes.count())
-                .as("and sees exactly what it wrote — not what its neighbours wrote")
-                .isEqualTo(1);
+            var opened = exchanges.openBracket(scope, "sprint", "count-probe", "code",
+                java.time.LocalDate.now(), "probe");
+            assertThat(opened.tenantId)
+                .as("a write through the ORM carries the bound tenant without the caller "
+                    + "supplying it — that is what the @TenantId filter is for")
+                .isEqualTo(tenant.toString());
+            assertThat(exchanges.read(scope,
+                    ai.kumbuka.dispatch.domain.ExchangeAddress.bracket("sprint", opened.number))
+                .title)
+                .as("and reads back exactly what it wrote")
+                .isEqualTo("count-probe");
         }
     }
 
