@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -38,40 +39,62 @@ import static org.assertj.core.api.Assertions.assertThat;
  * without anybody deciding to circumvent it. Correlation runs through a
  * request id.
  *
+ * <h2>Identifiers, not substrings</h2>
+ *
+ * A forbidden thing is looked for as an identifier written in the source, and
+ * the identifier is compared by the words it is made of. The earlier version
+ * searched for substrings, and searching for a substring of a word catches
+ * every longer word that happens to contain it: the actor was looked for as
+ * {@code ctor}, so {@code selector} was reported as carrying the actor. The
+ * selector is on the permitted list, immediately after the address. The
+ * convention is not the thing that was wrong.
+ *
+ * <p>Comparing words rather than whole identifiers is what keeps the reach the
+ * substring version had. {@code subjectId} and {@code getTitle} still fall,
+ * because {@code subject} and {@code title} are words inside them.
+ * {@code selector} and {@code somebody} do not, because {@code actor} and
+ * {@code body} are not words inside them — only letters.
+ *
  * <h2>The cardinality trap</h2>
  *
  * A guard that walks a tree and finds no log calls passes. It also passes when
  * the logging was deleted, when the pattern stopped matching, and when it is
  * pointed at the wrong directory. So this asserts a minimum count as well: the
- * check must have had something to check.
+ * check must have had something to check. That applies to the permitted
+ * fixture too — a green result over an empty directory says nothing.
  */
 class LogContentGuardTest {
 
     /**
-     * Arguments a log call must never carry.
+     * Words a log call's arguments must never contain.
      *
      * <p>Matched on the argument expression rather than on a resolved value,
      * because the point is to catch the habit — {@code log.debugf("...%s", e)}
      * while debugging a race — at the moment somebody writes it.
+     *
+     * <p>Each entry is a whole word, compared case-insensitively against the
+     * words an identifier is made of. So {@code actor} covers {@code actor},
+     * {@code Actor}, {@code getActor} and {@code e.actor()}, and does not
+     * cover {@code selector}.
      */
-    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+    private static final List<String> FORBIDDEN_WORDS = List.of(
         // The commission itself. The two fields the operator boundary exists for.
-        ".title", ".body", "getTitle()", "getBody()",
+        "title", "body",
         // Free text belonging to the caller.
-        "etadata",
+        "metadata",
         // A bearer token, in a file the provider operates.
-        "eceipt",
+        "receipt",
         // Who did it. That is the audit log's business, under its own rules.
-        "subject", "getPrincipal", "ctor");
+        "subject", "principal", "actor");
 
     /**
      * Arguments that ARE a whole entity.
      *
-     * <p>Matched exactly rather than as a fragment: printing an entity prints
-     * its title and its metadata along with everything else, and the habit
-     * looks harmless because the call site says nothing about content. An
-     * exact match is used because a bare identifier is too short to look for
-     * as a substring without hitting every other word.
+     * <p>Matched exactly rather than by word: printing an entity prints its
+     * title and its metadata along with everything else, and the habit looks
+     * harmless because the call site says nothing about content. An exact
+     * match is used because a bare identifier is too short to look for any
+     * other way — {@code e} is a word inside a great many identifiers.
      */
     private static final List<String> FORBIDDEN_WHOLE_ARGUMENTS = List.of(
         "e", "exchange", "ex", "entity", "row");
@@ -79,8 +102,24 @@ class LogContentGuardTest {
     /** Below this the guard is not measuring the tree it thinks it is. */
     private static final int MINIMUM_LOG_CALLS = 8;
 
+    /**
+     * One log call per item the convention permits — address, selector,
+     * number, transition, status, typed reason, duration, scope id.
+     */
+    private static final int MINIMUM_ALLOWED_FIXTURE_LOG_CALLS = 8;
+
     private static final Pattern LOG_CALL = Pattern.compile(
         "LOG\\.(trace|debug|info|warn|error)f?\\(([^;]*)\\)\\s*;", Pattern.DOTALL);
+
+    /** An identifier as Java spells one. */
+    private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*");
+
+    /**
+     * The boundaries inside an identifier: {@code scopeId} is two words,
+     * {@code SCOPE_UNRESOLVED} is two words, {@code SELECTOR} is one.
+     */
+    private static final Pattern WORD_BOUNDARY = Pattern.compile(
+        "[_$]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])");
 
     @Test
     void no_log_call_carries_content_the_operator_boundary_withholds() throws IOException {
@@ -102,6 +141,39 @@ class LogContentGuardTest {
     }
 
     /**
+     * The green counter-probe, observed on every build.
+     *
+     * <p>A fixture carries one log call per permitted item, written with the
+     * bare identifiers a developer actually reaches for. All of them must come
+     * back clean. Without this, the empty result over the main sources is a
+     * check nobody has seen say yes — and a check that only ever says no is
+     * indistinguishable from one that has quietly started refusing things the
+     * convention allows. That is not hypothetical: {@code selector} was
+     * reported as carrying the actor, and the first developer to log a
+     * selector would have got a red build saying their call carried
+     * {@code ctor}.
+     */
+    @Test
+    void the_guard_passes_every_shape_the_convention_permits() throws IOException {
+        Findings findings = scan(allowedFixtureRoot());
+
+        assertThat(findings.total())
+            .as("the permitted fixture must have been read. A green result over a "
+                + "directory the guard found nothing in is the same green it would give "
+                + "for a deleted fixture or a stale pattern, and it is the reason this "
+                + "counter-probe would otherwise prove nothing")
+            .isGreaterThanOrEqualTo(MINIMUM_ALLOWED_FIXTURE_LOG_CALLS);
+
+        assertThat(findings.offenders())
+            .as("every one of these is on the permitted list: an address, a selector, a "
+                + "number, a transition, a status, a typed reason, a duration and a scope "
+                + "id. A guard that reports one of them is refusing what the convention "
+                + "allows, and the developer who hits it gets a red build about a rule "
+                + "that does not exist")
+            .isEmpty();
+    }
+
+    /**
      * The red state, observed on every build.
      *
      * <p>A fixture carries the two log calls the convention exists to stop —
@@ -112,7 +184,7 @@ class LogContentGuardTest {
     @Test
     void the_guard_catches_a_log_call_carrying_a_title_and_one_carrying_an_entity()
             throws IOException {
-        Findings findings = scan(sourceRoot("test").resolve("ai/kumbuka/dispatch/fixture"));
+        Findings findings = scan(forbiddenFixtureRoot());
 
         assertThat(findings.offenders())
             .as("RED STATE, observed: the fixture logs a title and logs a whole exchange, "
@@ -121,6 +193,35 @@ class LogContentGuardTest {
                 + "guard rather than a javadoc line")
             .hasSizeGreaterThanOrEqualTo(2);
         assertThat(findings.offenders().toString()).contains("ForbiddenLogFixture");
+    }
+
+    /**
+     * The red state for the actor specifically, in each shape it is written.
+     *
+     * <p>The actor is the entry that motivated the substring search in the
+     * first place, and narrowing the check to identifiers is exactly the move
+     * that could drop it along with the false positive. Dropping it would be
+     * the quiet kind of damage: the guard stays green, the convention still
+     * says the actor is forbidden, and nothing runs that would notice the
+     * difference. So each of the four shapes gets its own assertion, and each
+     * report has to name the actor rather than merely count.
+     */
+    @Test
+    void the_guard_catches_the_actor_in_each_shape_it_is_written() throws IOException {
+        Findings findings = scan(forbiddenFixtureRoot());
+
+        for (String shape : List.of("actor", "Actor.EXECUTOR", "e.getActor()", "e.actor()")) {
+            assertThat(findings.offenders())
+                .as("RED STATE, observed: the actor written as '%s' must be reported, and "
+                    + "the report must name the actor — an offence the developer cannot "
+                    + "trace back to a word in their own call is how '%s carries ctor' "
+                    + "happened", shape, "selector")
+                .anySatisfy(offence -> {
+                    assertThat(offence).contains("\"changed by %s\", " + shape);
+                    assertThat(offence.substring(0, offence.indexOf(" — ")))
+                        .containsIgnoringCase("actor");
+                });
+        }
     }
 
     private static Findings scan(Path root) throws IOException {
@@ -152,14 +253,18 @@ class LogContentGuardTest {
     /**
      * The first forbidden thing among a call's arguments, or null.
      *
-     * <p>Arguments are split rather than searched as one string, so that a
-     * bare entity can be matched exactly. Searching for {@code "e"} as a
-     * substring would match almost every line ever written.
+     * <p>The identifier is returned as it was written rather than as the word
+     * that matched it, so the report names something the developer can find by
+     * searching their own call. Whole entities are checked after identifiers
+     * and by splitting on commas, so that a bare entity can be matched
+     * exactly.
      */
     private static String offenceIn(String argumentTail) {
-        for (String fragment : FORBIDDEN_FRAGMENTS) {
-            if (argumentTail.contains(fragment)) {
-                return fragment;
+        Matcher identifiers = IDENTIFIER.matcher(argumentTail);
+        while (identifiers.find()) {
+            String written = identifiers.group();
+            if (wordsIn(written).stream().anyMatch(FORBIDDEN_WORDS::contains)) {
+                return written;
             }
         }
         for (String argument : argumentTail.split(",")) {
@@ -169,6 +274,32 @@ class LogContentGuardTest {
             }
         }
         return null;
+    }
+
+    /**
+     * The words an identifier is made of, lower-cased.
+     *
+     * <p>{@code getActor} is {@code get} and {@code actor}; {@code scopeId} is
+     * {@code scope} and {@code id}; {@code SELECTOR_WITHDRAWN} is
+     * {@code selector} and {@code withdrawn}; {@code selector} is one word and
+     * is not any of them.
+     */
+    private static List<String> wordsIn(String identifier) {
+        List<String> words = new ArrayList<>();
+        for (String word : WORD_BOUNDARY.split(identifier)) {
+            if (!word.isEmpty()) {
+                words.add(word.toLowerCase(Locale.ROOT));
+            }
+        }
+        return words;
+    }
+
+    private static Path forbiddenFixtureRoot() {
+        return sourceRoot("test").resolve("ai/kumbuka/dispatch/fixture");
+    }
+
+    private static Path allowedFixtureRoot() {
+        return forbiddenFixtureRoot().resolve("allowed");
     }
 
     private static Path sourceRoot(String sourceSet) {
