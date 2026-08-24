@@ -4,6 +4,8 @@ import java.util.UUID;
 
 import org.jboss.logging.Logger;
 
+import ai.kumbuka.dispatch.domain.DispatchException;
+
 /**
  * Every shape the logging convention allows, for the guard to pass over.
  *
@@ -61,11 +63,44 @@ public class AllowedLogFixture {
     }
 
     /**
-     * A typed reason. A constant from a closed set, so the log carries the
-     * category of the refusal and never the caller's prose about it.
+     * A typed reason, reached through a variable.
+     *
+     * <p>A constant from a closed set, so the log carries the category of the
+     * refusal and never the caller's prose about it.
      */
-    public void logATypedReason(Reason reason) {
+    public void logATypedReason(DispatchException.Reason reason) {
         LOG.warnf("refused: %s", reason);
+    }
+
+    /**
+     * A typed reason, reached through the constant itself.
+     *
+     * <p>This is the form the main sources actually write —
+     * {@code SelectorRegistry} logs {@code DispatchException.Reason
+     * .SELECTOR_NOT_DECLARED} exactly like this. The variable form above
+     * passes a lower-case identifier and therefore says nothing about what a
+     * check does with a constant's name, which is how three permitted reasons
+     * came to be reported as content.
+     *
+     * <p>These three are not an arbitrary sample. They are every constant in
+     * {@link DispatchException.Reason} whose first word is on the forbidden
+     * list: the receipt, the metadata and the actor. The real enum is imported
+     * rather than mirrored so that renaming or removing one of them breaks
+     * this file at compile time instead of leaving a copy that quietly stops
+     * describing the service.
+     */
+    public void logAReceiptReason() {
+        LOG.warnf("refused: %s", DispatchException.Reason.RECEIPT_MISMATCH);
+    }
+
+    /** See {@link #logAReceiptReason()}. */
+    public void logAMetadataReason() {
+        LOG.warnf("refused: %s", DispatchException.Reason.METADATA_REFUSED);
+    }
+
+    /** See {@link #logAReceiptReason()}. */
+    public void logAnActorReason() {
+        LOG.warnf("refused: %s", DispatchException.Reason.ACTOR_UNKNOWN);
     }
 
     /** A duration. How long it took, which is about the machine. */
@@ -76,15 +111,5 @@ public class AllowedLogFixture {
     /** A scope id. An opaque identifier, resolvable only with the directory. */
     public void logAScopeId(UUID scopeId) {
         LOG.debugf("scope %s", scopeId);
-    }
-
-    /**
-     * Stands in for the typed reason, so the fixture needs no domain import.
-     *
-     * <p>Upper case on purpose: a constant is how a typed reason reaches a log
-     * call in the main sources, and it must survive the check as written.
-     */
-    public enum Reason {
-        SCOPE_UNRESOLVED, SELECTOR_WITHDRAWN
     }
 }

@@ -40,6 +40,24 @@ public class ForbiddenLogFixture {
         LOG.debugf("state now: %s", e);
     }
 
+    public void logABody(Exchangeish e) {
+        LOG.debugf("carrying: %s", e.body);
+    }
+
+    public void logMetadataText(Exchangeish e) {
+        LOG.debugf("carrying: %s", e.metadata);
+    }
+
+    /** The receipt is a bearer token, in a file the provider operates. */
+    public void logAReceipt(String receipt) {
+        LOG.debugf("carrying: %s", receipt);
+    }
+
+    /** The subject is the actor under the name the token gives it. */
+    public void logASubject(String subject) {
+        LOG.debugf("carrying: %s", subject);
+    }
+
     /** The actor as a bare identifier — a local, a parameter, a field. */
     public void logTheActorBare(String actor) {
         LOG.infof("changed by %s", actor);
@@ -63,6 +81,8 @@ public class ForbiddenLogFixture {
     /** Stands in for the entity, so the fixture needs no domain import. */
     public static class Exchangeish {
         public String title = "a commission's title";
+        public String body = "a commission's body";
+        public String metadata = "free text belonging to the caller";
 
         public String getActor() {
             return "who did it";

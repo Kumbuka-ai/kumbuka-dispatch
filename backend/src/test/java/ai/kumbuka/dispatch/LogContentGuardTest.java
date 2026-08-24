@@ -104,9 +104,11 @@ class LogContentGuardTest {
 
     /**
      * One log call per item the convention permits — address, selector,
-     * number, transition, status, typed reason, duration, scope id.
+     * number, transition, status, typed reason, duration, scope id — plus the
+     * typed reason written as a constant for each of the three reason names
+     * that collide with the forbidden list.
      */
-    private static final int MINIMUM_ALLOWED_FIXTURE_LOG_CALLS = 8;
+    private static final int MINIMUM_ALLOWED_FIXTURE_LOG_CALLS = 11;
 
     private static final Pattern LOG_CALL = Pattern.compile(
         "LOG\\.(trace|debug|info|warn|error)f?\\(([^;]*)\\)\\s*;", Pattern.DOTALL);
@@ -196,6 +198,33 @@ class LogContentGuardTest {
     }
 
     /**
+     * The red state for every other thing the convention withholds.
+     *
+     * <p>The title and the whole entity have their own test above, and the
+     * actor has one below. This covers the rest of the forbidden list one
+     * entry at a time, because a count cannot tell which of them is still
+     * being caught. That matters most exactly when a rule is added to let
+     * something through: the way such a rule fails is by letting one more
+     * thing through than intended, and a test that only counts offences would
+     * stay green while it happened.
+     */
+    @Test
+    void the_guard_catches_every_thing_the_convention_withholds() throws IOException {
+        Findings findings = scan(forbiddenFixtureRoot());
+
+        for (String written : List.of("e.title", "e.body", "e.metadata", "receipt", "subject")) {
+            assertThat(findings.offenders())
+                .as("RED STATE, observed: a log call carrying '%s' must be reported, and "
+                    + "the report must name what it carries", written)
+                .anySatisfy(offence -> {
+                    assertThat(offence).endsWith(", " + written);
+                    assertThat(offence.substring(0, offence.indexOf(" — ")))
+                        .containsIgnoringCase(written.replace("e.", ""));
+                });
+        }
+    }
+
+    /**
      * The red state for the actor specifically, in each shape it is written.
      *
      * <p>The actor is the entry that motivated the substring search in the
@@ -280,11 +309,16 @@ class LogContentGuardTest {
      * The words an identifier is made of, lower-cased.
      *
      * <p>{@code getActor} is {@code get} and {@code actor}; {@code scopeId} is
-     * {@code scope} and {@code id}; {@code SELECTOR_WITHDRAWN} is
-     * {@code selector} and {@code withdrawn}; {@code selector} is one word and
-     * is not any of them.
+     * {@code scope} and {@code id}; {@code selector} is one word and is not
+     * any of them.
+     *
+     * <p>A constant is the exception and is one word: its whole name. See
+     * {@link #isConstant(String)}.
      */
     private static List<String> wordsIn(String identifier) {
+        if (isConstant(identifier)) {
+            return List.of(identifier.toLowerCase(Locale.ROOT));
+        }
         List<String> words = new ArrayList<>();
         for (String word : WORD_BOUNDARY.split(identifier)) {
             if (!word.isEmpty()) {
@@ -292,6 +326,41 @@ class LogContentGuardTest {
             }
         }
         return words;
+    }
+
+    /**
+     * Whether an identifier is written the way Java writes a constant: no
+     * lower-case letter anywhere in it.
+     *
+     * <p>A constant out of a closed set carries a category, never content.
+     * {@code ACTOR_UNKNOWN} says the caller had no subject; it does not say
+     * who the caller was. That is precisely why the typed reason is on the
+     * permitted list, and it is why a constant's name is compared whole rather
+     * than split into words. Split into words, {@code RECEIPT_MISMATCH} reads
+     * as the receipt, {@code METADATA_REFUSED} as metadata text and
+     * {@code ACTOR_UNKNOWN} as the actor — three category names reported as
+     * the content they exist to describe. The main sources already write this
+     * form: {@code SelectorRegistry} logs
+     * {@code DispatchException.Reason.SELECTOR_NOT_DECLARED}.
+     *
+     * <p>Whole-name comparison is not a blanket exemption. A constant that
+     * names nothing but a forbidden thing is still reported, because its whole
+     * name IS the forbidden word: {@code ACTOR}, {@code TITLE} and
+     * {@code BODY} all fall. What passes is a name that says something about
+     * the forbidden thing rather than being it.
+     *
+     * <p>The price, stated rather than hidden: this opens a gap for an
+     * identifier that looks like a constant and carries content, such as a
+     * hypothetical {@code EXCHANGE_TITLE}. The gap is narrow, because a
+     * constant is fixed in the source and an exchange's title is not — the
+     * content this guard exists to keep out of the log does not exist at
+     * compile time. It is weighed against the alternative, which is a guard
+     * that reports three permitted reason names as content and teaches the
+     * next developer to delete a word from the forbidden list.
+     */
+    private static boolean isConstant(String identifier) {
+        return identifier.chars().noneMatch(Character::isLowerCase)
+            && identifier.chars().anyMatch(Character::isLetter);
     }
 
     private static Path forbiddenFixtureRoot() {
