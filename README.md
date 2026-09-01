@@ -40,10 +40,27 @@ transaction that forgot to bind a tenant therefore sees nothing rather than
 everything.
 
 **`FORCE`, not just `ENABLE`.** `ENABLE ROW LEVEL SECURITY` exempts the
-table's owner, and this service connects as the owner of its own tables — so
-`ENABLE` alone would switch the policy off for the only role that ever
-connects. `RowLevelSecurityProbeIT` removes `FORCE`, watches a foreign
-tenant's row appear, and puts it back.
+table's owner. The owner here is the migrating role, and it is not a
+hypothetical caller: `V5` carries DML and runs under it, so `ENABLE` alone
+would let a migration write across the tenant boundary. `FORCE` binds it, and
+`RowLevelSecurityProbeIT` removes `FORCE`, watches a foreign tenant's row
+appear under the owner, and puts it back. The service role is not the owner
+and is therefore bound by `ENABLE` already — and, holding no ownership, it
+cannot take `FORCE` off, cannot `DISABLE` the policy and cannot `DROP` it.
+The same probe observes all three refusals.
+
+**The service role owns nothing.** Its whole entitlement is `USAGE` on the
+schema plus `SELECT`, `INSERT` and `UPDATE` on three named tables, written out
+in `V8__enumerated_privileges.sql`. No `DELETE` — no verb deletes. Nothing at
+all on `flyway_schema_history`. And in particular no `TRUNCATE`, which bypasses
+row-level security completely, independently of every policy and of whether a
+tenant is bound. An owner would hold all of those implicitly, with no grant
+anywhere to show for it, which is what this arrangement replaces. The price is
+accepted and named: a later migration that forgets its grant produces a service
+that cannot read its own new table — loudly and immediately, rather than
+silently and permanently. `ServiceRolePrivilegeIT` reads the catalog and
+reports drift in both directions, so a grant too many and a grant too few both
+fail the build.
 
 **The operator boundary is a missing GRANT.** No privilege exists that would
 let the provider's role read an exchange. It is not a rule in application
@@ -59,13 +76,15 @@ Three, kept apart deliberately.
 
 | Role | Holds | Why |
 | --- | --- | --- |
-| `kumbuka_dispatch` | its own schema, by owning it | The service connects as this and nothing else. Neither superuser nor `BYPASSRLS` — either would make every policy in the schema inert. |
-| the migrating role | `CREATEROLE`, and `CREATE` on the database | Creating the service role is the one privileged act the migration set performs. Superuser would additionally confer `BYPASSRLS` and make a migration's own DML untestable. |
+| `kumbuka_dispatch` | `USAGE` on its schema, `SELECT`/`INSERT`/`UPDATE` on three named tables — and nothing else, anywhere | The service connects as this and nothing else. It owns nothing: an owner holds the full ACL implicitly and can grant itself back whatever is revoked. Neither superuser nor `BYPASSRLS` — either would make every policy in the schema inert. |
+| the migrating role | `CREATEROLE`, `CREATE` on the database, and ownership of the schema and everything in it | Creating the service role is the one privileged act the migration set performs. It must carry neither superuser nor `BYPASSRLS`, and `V8` refuses to apply if it does: the migrator owns every view, and a view without `security_invoker` reads its base tables with its owner's privileges, so either attribute would void the tenant filter silently. |
 | the provider role | nothing here | The operator boundary. |
 
 The service role holds nothing outside its schema, and
 `ServiceRoleConformanceIT` asks the whole catalog rather than one table — so
-it also covers the neighbouring service that does not exist yet.
+it also covers the neighbouring service that does not exist yet. Inside the
+schema the entitlement is checked relation by relation and privilege by
+privilege by `ServiceRolePrivilegeIT`.
 
 ## Running it
 

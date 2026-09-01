@@ -19,14 +19,20 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The conformance probe: this service's role holds its own schema, plus
- * {@code SELECT} on exactly one view, and nothing else anywhere.
+ * The conformance probe: outside its own schema this service's role holds
+ * {@code SELECT} on exactly one view and nothing else anywhere.
  *
  * <p>{@link MissingGrantProbeIT} observes one boundary against one
  * neighbouring table. This asks the question the architecture actually poses —
  * <em>does this role hold anything it should not</em> — of the whole catalog,
  * so it also covers the neighbour that does not exist yet and the grant
  * somebody issues next year.
+ *
+ * <p>Inside its own schema the question is a different one and has its own
+ * probe: {@code ServiceRolePrivilegeIT} checks the entitlement relation by
+ * relation and privilege by privilege, in both directions. Here the own
+ * schema is skipped, and only the counterweight below insists the role reaches
+ * anything at all.
  *
  * <h2>The permitted set is a list of objects, not of schemas</h2>
  *
@@ -45,7 +51,7 @@ class ServiceRoleConformanceIT {
 
     private static final String SERVICE_ROLE = SubstrateDatabaseResource.SERVICE_ROLE;
 
-    /** The service's own schema. It owns what is in here; that is its whole entitlement. */
+    /** The service's own schema. What it may do inside is V8's enumerated list. */
     private static final String OWN_SCHEMA = "dispatch";
 
     /**
@@ -115,23 +121,35 @@ class ServiceRoleConformanceIT {
             .containsExactly("SELECT");
     }
 
+    /**
+     * The counterweight: the role must actually reach something.
+     *
+     * <p>This asked whether the role OWNED tables in its own schema until
+     * the ownership model changed. It owns nothing now — that is the point, and
+     * the ownership itself is what handed it the full privilege set. So the
+     * question the counterweight has to ask moved with the model: not what the
+     * role owns, but what it was granted. Without it every assertion above is
+     * satisfied by a role holding nothing at all, and a service that cannot
+     * read its own tables would be reported as perfectly bounded.
+     *
+     * <p>Which privileges, on which relations, and nothing beyond them, is
+     * {@code ServiceRolePrivilegeIT}'s question. This one only insists there
+     * is something.
+     */
     @Test
-    void the_service_role_does_hold_its_own_schema() throws SQLException {
+    void the_service_role_does_reach_its_own_schema() throws SQLException {
         try (Connection c = admin();
              var st = c.prepareStatement("""
                  SELECT count(*)
-                 FROM pg_class cl
-                 JOIN pg_namespace n ON n.oid = cl.relnamespace
-                 WHERE n.nspname = ?
-                   AND cl.relkind = 'r'
-                   AND pg_get_userbyid(cl.relowner) = ?
+                 FROM information_schema.role_table_grants
+                 WHERE grantee = ? AND table_schema = ? AND privilege_type = 'SELECT'
                  """)) {
-            st.setString(1, OWN_SCHEMA);
-            st.setString(2, SERVICE_ROLE);
+            st.setString(1, SERVICE_ROLE);
+            st.setString(2, OWN_SCHEMA);
             try (ResultSet rs = st.executeQuery()) {
                 rs.next();
                 assertThat(rs.getLong(1))
-                    .as("a role that owns nothing anywhere would satisfy every assertion "
+                    .as("a role granted nothing anywhere would satisfy every assertion "
                         + "above and be unable to run the service — a green suite "
                         + "describing a broken deployment")
                     .isPositive();

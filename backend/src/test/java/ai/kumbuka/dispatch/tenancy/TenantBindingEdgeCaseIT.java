@@ -211,10 +211,19 @@ class TenantBindingEdgeCaseIT {
     // Callback registration surface
     // -----------------------------------------------------------------------
 
+    /**
+     * One callback remains, and it answers for one event.
+     *
+     * <p>There were two. {@code SchemaOwnershipCallback}
+     * answered for {@code AFTER_MIGRATE} and handed the schema and every
+     * relation in it to the runtime role; it is deleted, because an owner
+     * holds the full ACL on what it owns implicitly — TRUNCATE included, which
+     * bypasses row-level security entirely. What the runtime role may do is
+     * written out in V8 instead.
+     */
     @Test
-    void each_callback_answers_for_its_own_event_and_no_other() {
+    void the_callback_answers_for_its_own_event_and_no_other() {
         var migration = new TenantMigrationCallback();
-        var ownership = new SchemaOwnershipCallback();
 
         assertThat(migration.supports(Event.BEFORE_EACH_MIGRATE, null)).isTrue();
         assertThat(migration.supports(Event.AFTER_MIGRATE, null))
@@ -222,17 +231,10 @@ class TenantBindingEdgeCaseIT {
                 + "it was never written for")
             .isFalse();
 
-        assertThat(ownership.supports(Event.AFTER_MIGRATE, null)).isTrue();
-        assertThat(ownership.supports(Event.BEFORE_EACH_MIGRATE, null))
-            .as("ownership normalisation before a migration would hand over objects the "
-                + "migration is about to create, and miss them")
-            .isFalse();
-
-        // Both are instantiated above with the no-argument constructor, which
-        // is how the Flyway extension instantiates them. A constructor that
-        // grew a dependency would break here rather than at boot.
+        // Instantiated above with the no-argument constructor, which is how
+        // the Flyway extension instantiates it. A constructor that grew a
+        // dependency would break here rather than at boot.
         assertThat(migration).isNotNull();
-        assertThat(ownership).isNotNull();
     }
 
     // -----------------------------------------------------------------------

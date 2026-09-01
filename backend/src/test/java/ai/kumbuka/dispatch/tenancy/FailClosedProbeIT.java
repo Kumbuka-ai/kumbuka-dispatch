@@ -103,8 +103,11 @@ class FailClosedProbeIT {
 
         try (Connection c = Db.asService()) {
             try {
-                Db.exec(c, "ALTER TABLE dispatch.exchange DISABLE ROW LEVEL SECURITY");
-                c.commit();
+                // Switched by the table's OWNER — the migrator. The service
+                // role owns nothing any more and may not reconfigure
+                // a policy; the measurement below is still its own, which is
+                // the half that matters.
+                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.exchange DISABLE ROW LEVEL SECURITY");
 
                 try (AutoCloseable ignored = tenantContext.bind(tenantA)) {
                     List<Exchange> rows = exchanges.children(SCOPE, "sprint", 1);
@@ -128,8 +131,7 @@ class FailClosedProbeIT {
                         + "it did not build, which is the whole reason for a second layer")
                     .isEqualTo(2);
             } finally {
-                Db.exec(c, "ALTER TABLE dispatch.exchange ENABLE ROW LEVEL SECURITY");
-                c.commit();
+                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.exchange ENABLE ROW LEVEL SECURITY");
             }
         }
     }
