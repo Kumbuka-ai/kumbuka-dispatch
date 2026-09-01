@@ -378,18 +378,23 @@ public class VerbSurface {
      * field no view carries and no projection would gate — a version marker.
      */
     private String conflictToken(Entry in, ExchangeAddress address) {
-        try {
-            Instant written = exchanges.read(in.scopeId(), address).updatedAt;
-            return written == null ? null : written.truncatedTo(ChronoUnit.MICROS).toString();
-        } catch (DispatchException e) {
-            if (e.reason() == DispatchException.Reason.ADDENDUM_NOT_DRAWABLE) {
-                // An addendum is not independently drawable, so there is no
-                // version marker for one. It takes no field write either, so
-                // the token it would carry has nothing to protect.
-                return null;
-            }
-            throw e;
+        // Asked BEFORE the call rather than caught after it, and the
+        // difference is not style. An addendum is not independently drawable,
+        // so the domain refuses to read one -- and that refusal is thrown out
+        // of a @Transactional method, which marks the surrounding transaction
+        // rollback-only whether or not anybody catches it. Catching it here
+        // therefore produced a 201 for an append that was then quietly rolled
+        // back: an answer naming an address that does not exist. Measured on
+        // 2026-09-01, and the reason a read-after-commit assertion is now part
+        // of the append probe.
+        if (address.isAddendum()) {
+            // No version marker for an addendum, and nothing for one to
+            // protect: it takes no field write.
+            return null;
         }
+
+        Instant written = exchanges.read(in.scopeId(), address).updatedAt;
+        return written == null ? null : written.truncatedTo(ChronoUnit.MICROS).toString();
     }
 
     private void requireConflictToken(Entry in, String presented) {

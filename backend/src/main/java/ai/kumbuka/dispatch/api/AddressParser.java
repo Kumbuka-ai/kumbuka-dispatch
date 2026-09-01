@@ -58,7 +58,7 @@ public final class AddressParser {
      * {@code 07.1} and {@code 7.1} would be two strings for one exchange, which
      * is the same identity-by-leniency the case rule refuses.
      */
-    private static final Pattern ID = Pattern.compile("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)([a-z])?");
+    private static final Pattern ID = Pattern.compile("(0|[1-9]\\d*)\\.(0|[1-9]\\d*)([a-z])?");
 
     private AddressParser() {
     }

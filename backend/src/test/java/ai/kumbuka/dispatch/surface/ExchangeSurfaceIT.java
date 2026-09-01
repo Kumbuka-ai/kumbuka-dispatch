@@ -242,6 +242,15 @@ class ExchangeSurfaceIT {
                 + "an ordinary child would carry the handover expectation and would count "
                 + "in the terminality check")
             .endsWith(".0a");
+
+        // Read back in a LATER transaction, which the 201 alone does not show.
+        // A 201 built inside the writing transaction names an address that a
+        // rollback then takes away, and the answer looks identical either way:
+        // this assertion is here because that is exactly what happened once.
+        get(SurfaceFixture.item(number(bracket) + ".0a"))
+            .then()
+            .statusCode(200)
+            .body("address", equalTo(SurfaceFixture.SELECTOR + "/" + number(bracket) + ".0a"));
     }
 
     @Test
@@ -400,6 +409,170 @@ class ExchangeSurfaceIT {
         given().delete(SurfaceFixture.item(bracket))
             .then()
             .statusCode(405);
+    }
+
+    /**
+     * POST on a plain item URI names no verb, and is refused as such.
+     *
+     * <p>405 rather than 404: the address resolved and the object may well be
+     * there — what does not exist is a verb by that spelling. A 404 would send
+     * the caller looking for the exchange.
+     */
+    @Test
+    void a_post_on_an_item_that_names_no_verb_is_405_with_allow() {
+        String bracket = openBracket();
+
+        Response refused = post(SurfaceFixture.item(bracket), Map.of());
+
+        refused.then()
+            .statusCode(405)
+            .body("reason", equalTo("WRITE_ON_TRUNCATED_ADDRESS"));
+        assertThat(refused.header("Allow")).isEqualTo("GET, PATCH, POST");
+    }
+
+    @Test
+    void a_colon_naming_no_verb_of_this_scheme_is_refused_the_same_way() {
+        String bracket = openBracket();
+
+        post(SurfaceFixture.item(bracket) + ":frobnicate", Map.of())
+            .then()
+            .statusCode(405)
+            .body("reason", equalTo("WRITE_ON_TRUNCATED_ADDRESS"));
+    }
+
+    // =======================================================================
+    // What the verbs refuse about their arguments
+    // =======================================================================
+
+    @Test
+    void a_body_that_is_not_the_json_this_verb_takes_is_a_form_refusal() {
+        given().contentType(ContentType.JSON).accept(ContentType.JSON)
+            .body("{\"title\": ")
+            .post(SurfaceFixture.collection())
+            .then()
+            .statusCode(400)
+            .body("reason", equalTo("PAYLOAD_MALFORMED"));
+    }
+
+    @Test
+    void a_verb_that_takes_a_body_and_got_none_says_so() {
+        given().accept(ContentType.JSON).contentType(ContentType.JSON)
+            .post(SurfaceFixture.collection())
+            .then()
+            .statusCode(400)
+            .body("reason", equalTo("PAYLOAD_MALFORMED"));
+    }
+
+    @Test
+    void a_claim_with_no_duration_is_refused_rather_than_given_a_default() {
+        String bracket = openBracket();
+        send(bracket);
+
+        SurfaceFixture.asExecutor(identity);
+        post(SurfaceFixture.item(bracket) + ":claim", Map.of())
+            .then()
+            .statusCode(400)
+            .body("reason", equalTo("PAYLOAD_MALFORMED"))
+            .body("message", org.hamcrest.Matchers.containsString("policy"));
+    }
+
+    @Test
+    void a_claim_duration_that_is_not_a_duration_is_refused() {
+        String bracket = openBracket();
+        send(bracket);
+
+        SurfaceFixture.asExecutor(identity);
+        post(SurfaceFixture.item(bracket) + ":claim", Map.of("duration", "one hour"))
+            .then().statusCode(400).body("reason", equalTo("PAYLOAD_MALFORMED"));
+    }
+
+    @Test
+    void a_claim_duration_that_has_already_lapsed_is_refused_by_the_domain() {
+        String bracket = openBracket();
+        send(bracket);
+
+        SurfaceFixture.asExecutor(identity);
+        post(SurfaceFixture.item(bracket) + ":claim", Map.of("duration", "PT0S"))
+            .then()
+            .statusCode(400)
+            .body("reason", equalTo("CLAIM_DURATION_NOT_POSITIVE"));
+    }
+
+    /**
+     * The receipt is checked, and a wrong one is a different refusal from a
+     * missing claim.
+     *
+     * <p>Several runs can share one service identity, so the subject alone is
+     * not enough: the receipt is what distinguishes the run that won the award
+     * from one that merely looks like it.
+     */
+    @Test
+    void a_receipt_that_is_not_the_one_held_is_refused_as_a_mismatch() {
+        String bracket = openBracket();
+        send(bracket);
+
+        SurfaceFixture.asExecutor(identity);
+        claim(bracket);
+        String token = get(SurfaceFixture.item(bracket)).header("ETag");
+
+        given().contentType(ContentType.JSON).accept(ContentType.JSON)
+            .header("If-Match", token)
+            .body(Map.of("draft", "the answer", "receipt", "not-the-minted-one"))
+            .patch(SurfaceFixture.item(bracket))
+            .then()
+            .statusCode(403)
+            .body("reason", equalTo("RECEIPT_MISMATCH"));
+    }
+
+    /**
+     * Metadata that carries a credential is refused, on the surface as in the
+     * core.
+     *
+     * <p>This service holds pointers and never follows them, so a credential
+     * stored here can only ever be read by somebody — never used.
+     */
+    @Test
+    void metadata_carrying_a_credential_is_refused_at_the_send_gate() {
+        String bracket = openBracket();
+
+        post(SurfaceFixture.item(bracket) + ":send",
+            Map.of("metadata", Map.of("mirror", "https://user:secret@example.invalid/x")))
+            .then()
+            .statusCode(422)
+            .body("reason", equalTo("METADATA_REFUSED"));
+    }
+
+    @Test
+    void metadata_survives_the_send_gate_when_it_is_a_pointer() {
+        String bracket = openBracket();
+
+        post(SurfaceFixture.item(bracket) + ":send",
+            Map.of("metadata", Map.of("pr", "https://example.invalid/pull/5")))
+            .then().statusCode(200).body("status", equalTo("open"));
+    }
+
+    /**
+     * An addendum is readable through the surface, and carries no conflict
+     * token.
+     *
+     * <p>Both halves are consequences of the domain rather than choices here,
+     * and the second one is the reason the first is worth asserting: the token
+     * is taken from a method that refuses to draw an addendum at all, and
+     * letting that refusal escape would turn a read into a 422 about a field
+     * the caller never asked for.
+     */
+    @Test
+    void an_addendum_reads_without_a_conflict_token() {
+        String bracket = openBracket();
+        send(bracket);
+        post(SurfaceFixture.item(bracket) + "/addenda",
+            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01"))
+            .then().statusCode(201);
+
+        Response read = get(SurfaceFixture.item(number(bracket) + ".0a"));
+
+        read.then().statusCode(200);
+        assertThat(read.header("ETag")).isNull();
     }
 
     // =======================================================================

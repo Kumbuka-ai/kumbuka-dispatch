@@ -72,40 +72,41 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 .entity(new Payloads.Refusal(e.reason().name(), e.getMessage(), e.offenders()))
                 .build();
         }
+
+        /**
+         * One status per domain reason.
+         *
+         * <p>No {@code default}. A reason added to the domain must be given a
+         * status here, and the compiler is what asks for it — the alternative is a
+         * new refusal quietly becoming a 500 in a deployment nobody is watching.
+         */
+        private static int statusOf(DispatchException.Reason reason) {
+            return switch (reason) {
+                // The call is malformed, and no scope had to be known to say so.
+                case ADDENDUM_MALFORMED, NUMBER_NOT_ACCEPTED, HOLDER_NOT_ACCEPTED,
+                     CLAIM_DURATION_NOT_POSITIVE -> 400;
+
+                // Not this caller. Ever, or with this proof.
+                case RATIFICATION_NOT_PERMITTED, RECEIPT_MISMATCH -> 403;
+                case ACTOR_UNKNOWN -> 403;
+
+                // Nothing there — or nothing this subject may know is there.
+                case NOT_FOUND, SCOPE_UNRESOLVED -> 404;
+
+                // The object is real and its state says no.
+                case TRANSITION_NOT_PERMITTED, FROZEN, SIBLINGS_NON_TERMINAL, SELECTOR_IN_USE,
+                     ADDENDUM_SUFFIX_EXHAUSTED, CLAIM_REQUIRED, HANDOVER_ALREADY_RATIFIED -> 409;
+
+                // Vocabulary: well-formed, addressed at something this scope does
+                // not have, or carrying content the scope refuses.
+                case SELECTOR_NOT_DECLARED, SELECTOR_WITHDRAWN, ADDENDUM_NOT_DRAWABLE,
+                     METADATA_REFUSED -> 422;
+
+                // Ours, not the caller's: the session contract was not bound, and
+                // no retry of theirs will fix it.
+                case SESSION_NOT_BOUND -> 500;
+            };
+        }
     }
 
-    /**
-     * One status per domain reason.
-     *
-     * <p>No {@code default}. A reason added to the domain must be given a
-     * status here, and the compiler is what asks for it — the alternative is a
-     * new refusal quietly becoming a 500 in a deployment nobody is watching.
-     */
-    private static int statusOf(DispatchException.Reason reason) {
-        return switch (reason) {
-            // The call is malformed, and no scope had to be known to say so.
-            case ADDENDUM_MALFORMED, NUMBER_NOT_ACCEPTED, HOLDER_NOT_ACCEPTED,
-                 CLAIM_DURATION_NOT_POSITIVE -> 400;
-
-            // Not this caller. Ever, or with this proof.
-            case RATIFICATION_NOT_PERMITTED, RECEIPT_MISMATCH -> 403;
-            case ACTOR_UNKNOWN -> 403;
-
-            // Nothing there — or nothing this subject may know is there.
-            case NOT_FOUND, SCOPE_UNRESOLVED -> 404;
-
-            // The object is real and its state says no.
-            case TRANSITION_NOT_PERMITTED, FROZEN, SIBLINGS_NON_TERMINAL, SELECTOR_IN_USE,
-                 ADDENDUM_SUFFIX_EXHAUSTED, CLAIM_REQUIRED, HANDOVER_ALREADY_RATIFIED -> 409;
-
-            // Vocabulary: well-formed, addressed at something this scope does
-            // not have, or carrying content the scope refuses.
-            case SELECTOR_NOT_DECLARED, SELECTOR_WITHDRAWN, ADDENDUM_NOT_DRAWABLE,
-                 METADATA_REFUSED -> 422;
-
-            // Ours, not the caller's: the session contract was not bound, and
-            // no retry of theirs will fix it.
-            case SESSION_NOT_BOUND -> 500;
-        };
-    }
 }

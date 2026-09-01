@@ -37,6 +37,13 @@ public final class McpTools {
     public record Tool(String name, String description, Map<String, Object> inputSchema) {
     }
 
+    /** The JSON Schema types this surface's arguments take. */
+    private static final String STRING = "string";
+    private static final String OBJECT = "object";
+
+    /** The argument every verb acting on an existing object takes. */
+    private static final String ARG_ADDRESS = "address";
+
     private static final String ADDRESS_DOC =
         "The complete address of the exchange: dispatch://<scope>/<selector>/<number>.<sub>, "
             + "with an optional single lower-case letter for an addendum.";
@@ -53,12 +60,12 @@ public final class McpTools {
                     + "one it adds a child to that bracket. The number is allocated "
                     + "transactionally and is never supplied by the caller.",
                 schema(
-                    required("scope", "string", "The scope name, a DNS label."),
-                    required("selector", "string", "The declared bracket name."),
-                    required("title", "string", "The exchange's title."),
-                    required("apparatus", "string", "The apparatus this exchange addresses."),
-                    required("date", "string", "The dispatch date, as ISO-8601 (YYYY-MM-DD)."),
-                    optional("parent", "string",
+                    required("scope", STRING, "The scope name, a DNS label."),
+                    required("selector", STRING, "The declared bracket name."),
+                    required("title", STRING, "The exchange's title."),
+                    required("apparatus", STRING, "The apparatus this exchange addresses."),
+                    required("date", STRING, "The dispatch date, as ISO-8601 (YYYY-MM-DD)."),
+                    optional("parent", STRING,
                         "The bracket root to add a child to, as a complete address. Omit to "
                             + "open a new bracket."))),
 
@@ -67,81 +74,81 @@ public final class McpTools {
                     + "actor: an executing apparatus does not receive the body of an "
                     + "exchange it has not claimed, and the field is absent rather than "
                     + "empty.",
-                schema(required("address", "string", ADDRESS_DOC))),
+                schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),
 
             new Tool("update",
                 "Replace the handover draft. Carries a conflict token, which is the one "
                     + "handed out with the last read; a stale token is refused rather than "
                     + "overwritten.",
                 schema(
-                    required("address", "string", ADDRESS_DOC),
-                    required("conflict_token", "string",
+                    required(ARG_ADDRESS, STRING, ADDRESS_DOC),
+                    required("conflict_token", STRING,
                         "The token from the last read of this exchange."),
-                    required("draft", "string", "The handover text, replaced wholesale."),
-                    optional("receipt", "string",
+                    required("draft", STRING, "The handover text, replaced wholesale."),
+                    optional("receipt", STRING,
                         "The receipt issued at claim. Required of an executing apparatus."),
-                    optional("metadata", "object", "Handover metadata."))),
+                    optional("metadata", OBJECT, "Handover metadata."))),
 
             new Tool("append",
                 "Attach an addendum to a frozen exchange. Additive and not removable "
                     + "afterwards, which is why it is not an update.",
                 schema(
-                    required("address", "string", ADDRESS_DOC),
-                    required("title", "string", "The addendum's title."),
-                    required("apparatus", "string", "The apparatus it addresses."),
-                    required("date", "string", "Its date, as ISO-8601 (YYYY-MM-DD)."))),
+                    required(ARG_ADDRESS, STRING, ADDRESS_DOC),
+                    required("title", STRING, "The addendum's title."),
+                    required("apparatus", STRING, "The apparatus it addresses."),
+                    required("date", STRING, "Its date, as ISO-8601 (YYYY-MM-DD)."))),
 
             new Tool("send",
                 "The author commits their own content outward. Freezes the dispatch and "
                     + "opens it to an executor.",
                 schema(
-                    required("address", "string", ADDRESS_DOC),
-                    optional("metadata", "object",
+                    required(ARG_ADDRESS, STRING, ADDRESS_DOC),
+                    optional("metadata", OBJECT,
                         "Dispatch metadata, frozen at the same gate."))),
 
             new Tool("accept",
                 "A second party accepts what somebody else produced: the handover is "
                     + "ratified and frozen. Not callable by an executing apparatus — a "
                     + "permission in the core, not an omission in this adapter.",
-                schema(required("address", "string", ADDRESS_DOC))),
+                schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),
 
             new Tool("claim",
                 "Acquire a lease on a named exchange. The service mints the receipt; a "
                     + "caller-supplied holder is refused.",
                 schema(
-                    required("address", "string", ADDRESS_DOC),
-                    required("duration", "string",
+                    required(ARG_ADDRESS, STRING, ADDRESS_DOC),
+                    required("duration", STRING,
                         "How long the claim stands, as an ISO-8601 duration such as PT1H. "
                             + "There is no default."))),
 
             new Tool("release",
                 "Give up a lease. The exchange returns to its pre-claim state and any "
                     + "unratified draft is discarded with it.",
-                schema(required("address", "string", ADDRESS_DOC))),
+                schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),
 
             new Tool("abandon",
                 "The executor does not deliver. Terminal. The prior state decides whether "
                     + "this is a refusal before takeup or a failure after it; the caller "
                     + "does not name it.",
-                schema(required("address", "string", ADDRESS_DOC))),
+                schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),
 
             new Tool("block",
                 "The executor is stuck and the commissioner is due. Not terminal, and the "
                     + "holder keeps the exchange.",
-                schema(required("address", "string", ADDRESS_DOC))),
+                schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),
 
             new Tool("resume",
                 "The commissioner has answered. Back to work.",
-                schema(required("address", "string", ADDRESS_DOC))),
+                schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),
 
             new Tool("close",
                 "Terminal, administrative. A bracket root refuses while a sibling is "
                     + "still running, and names the ones that are.",
-                schema(required("address", "string", ADDRESS_DOC))),
+                schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),
 
             new Tool("consume",
                 "Terminal, curated forward into a named object.",
-                schema(required("address", "string", ADDRESS_DOC))));
+                schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))));
     }
 
     // ----------------------------------------------------------------------
@@ -178,7 +185,7 @@ public final class McpTools {
         }
 
         Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("type", "object");
+        schema.put("type", OBJECT);
         schema.put("properties", properties);
         schema.put("required", List.copyOf(mandatory));
         schema.put("additionalProperties", false);

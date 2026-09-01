@@ -61,7 +61,14 @@ public class McpResource {
     private static final String PROTOCOL_VERSION = "2025-06-18";
 
     private static final String JSONRPC = "2.0";
+
+    /** The envelope's version field, by name. */
+    private static final String KEY_JSONRPC = "jsonrpc";
     private static final String KEY_ID = "id";
+
+    /** The two arguments a verb takes when it acts on no existing object. */
+    private static final String ARG_SCOPE = "scope";
+    private static final String ARG_SELECTOR = "selector";
     private static final String KEY_NAME = "name";
     private static final String KEY_ADDRESS = "address";
 
@@ -74,7 +81,7 @@ public class McpResource {
 
     @POST
     public Response rpc(Map<String, Object> request) {
-        if (request == null || !JSONRPC.equals(request.get("jsonrpc"))) {
+        if (request == null || !JSONRPC.equals(request.get(KEY_JSONRPC))) {
             return error(null, INVALID_PARAMS, "a JSON-RPC 2.0 envelope is required");
         }
 
@@ -167,9 +174,9 @@ public class McpResource {
             // Not in tools/list, and still answered by name: an unknown-tool
             // reply would send the caller looking for a spelling.
             case "query" -> uncarried(() -> verbs.query(actor,
-                required(in, "scope"), required(in, "selector")));
+                required(in, ARG_SCOPE), required(in, ARG_SELECTOR)));
             case "claim_next" -> uncarried(() -> verbs.claimNext(actor,
-                required(in, "scope"), required(in, "selector")));
+                required(in, ARG_SCOPE), required(in, ARG_SELECTOR)));
             case "withdraw" -> uncarried(() -> at(in,
                 (s, l, i) -> { verbs.withdraw(actor, s, l, i); return null; }));
             case "validate" -> uncarried(() -> at(in,
@@ -182,8 +189,8 @@ public class McpResource {
     }
 
     private Object create(Actor actor, Map<String, Object> in) {
-        String scope = required(in, "scope");
-        String selector = required(in, "selector");
+        String scope = required(in, ARG_SCOPE);
+        String selector = required(in, ARG_SELECTOR);
         Payloads.CreateRequest body = new Payloads.CreateRequest(
             required(in, "title"), required(in, "apparatus"), date(in, "date"), null);
 
@@ -335,7 +342,7 @@ public class McpResource {
 
     private static Response result(Object id, Object payload) {
         Map<String, Object> envelope = new LinkedHashMap<>();
-        envelope.put("jsonrpc", JSONRPC);
+        envelope.put(KEY_JSONRPC, JSONRPC);
         envelope.put(KEY_ID, id);
         envelope.put("result", payload);
         return Response.ok(envelope).build();
@@ -343,7 +350,7 @@ public class McpResource {
 
     private static Response error(Object id, int code, String message) {
         Map<String, Object> envelope = new LinkedHashMap<>();
-        envelope.put("jsonrpc", JSONRPC);
+        envelope.put(KEY_JSONRPC, JSONRPC);
         envelope.put(KEY_ID, id);
         envelope.put("error", Map.of("code", code, "message", message));
         return Response.ok(envelope).build();

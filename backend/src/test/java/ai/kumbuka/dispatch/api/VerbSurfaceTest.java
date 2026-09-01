@@ -247,21 +247,23 @@ class VerbSurfaceTest {
     }
 
     /**
-     * An addendum has no version marker, and asking for one is not an error to
-     * propagate.
+     * An addendum has no version marker, and the domain is never asked for
+     * one.
      *
-     * <p>The domain refuses to draw an addendum on its own, which is right —
-     * it has no standing without what it corrects. Letting that refusal escape
-     * from a token lookup would turn a read of an addendum into a 422 about a
-     * field the caller never asked for.
+     * <p>Asked before the call rather than caught after it. The domain refuses
+     * to draw an addendum on its own — right, since it has no standing without
+     * what it corrects — and that refusal comes out of a
+     * {@code @Transactional} method, which marks the surrounding transaction
+     * rollback-only whether or not anybody catches it. Catching it produced a
+     * 201 for an append that was then silently rolled back. So what is
+     * asserted is that the call is not made, not that its failure is handled.
      */
     @Test
-    void an_addendum_carries_no_conflict_token_rather_than_failing_the_read() {
-        when(exchanges.read(any(), any())).thenThrow(new DispatchException(
-            DispatchException.Reason.ADDENDUM_NOT_DRAWABLE, "not independently drawable"));
-
+    void an_addendum_is_never_asked_for_a_conflict_token() {
         assertThat(verbs.read(EXECUTOR, "probe-scope", "sprint", "164.0a").conflictToken())
             .isNull();
+
+        verify(exchanges, never()).read(any(), any());
     }
 
     // =======================================================================
