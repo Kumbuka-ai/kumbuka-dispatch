@@ -1,0 +1,83 @@
+# The verb surface of the dispatch scheme.
+#
+# THIS FILE IS THE EXPECTATION. It is transcribed from the dispatch's own
+# table and from the two ratified concept documents, and it is deliberately
+# NOT derived from the built code: a probe that reads its expectation out of
+# the thing it is probing checks that two copies agree, never that either is
+# right. Both expositions are probed against this one file and neither is the
+# source for the other.
+#
+# Columns, tab-separated:
+#   class     carried | uncarried | refusal | binding | extension
+#   verb      the platform verb name, or '-' where the row names no verb
+#   method    the HTTP method
+#   path      the form, exactly as it must appear
+#   depth     item | collection | sub-collection | none
+#   repeat    the declared repetition behaviour
+#
+# ---------------------------------------------------------------------------
+# THE OUTWARD FORMS -- carried, uncarried, refusal
+# ---------------------------------------------------------------------------
+# What a caller writes. These are probed END TO END against a running service
+# and a running database: each is called and must be answered by the surface
+# rather than by the framework's own not-found. That is the coverage half.
+#
+# `carried` rows are the thirteen verbs of the dispatch. `uncarried` rows are
+# the four verbs the scheme does not carry, each of which must answer a typed
+# category error naming the reason -- never a 404, never an unimplemented
+# path, never a silent absence. The `refusal` row is a writing verb on a
+# truncated address: 405 with `Allow`.
+
+class	verb	method	path	depth	repeat
+carried	create	POST	/api/{scope}/{selector}	collection	idempotency-key
+carried	create	POST	/api/{scope}/{selector}/{id}/children	sub-collection	idempotency-key
+carried	read	GET	/api/{scope}/{selector}/{id}	item	none
+carried	update	PATCH	/api/{scope}/{selector}/{id}	item	conflict-token
+carried	append	POST	/api/{scope}/{selector}/{id}/addenda	sub-collection	idempotency-key
+carried	send	POST	/api/{scope}/{selector}/{id}:send	item	transition-guard
+carried	accept	POST	/api/{scope}/{selector}/{id}:accept	item	transition-guard
+carried	claim	POST	/api/{scope}/{selector}/{id}:claim	item	transition-guard
+carried	release	POST	/api/{scope}/{selector}/{id}:release	item	transition-guard
+carried	abandon	POST	/api/{scope}/{selector}/{id}:abandon	item	transition-guard
+carried	block	POST	/api/{scope}/{selector}/{id}:block	item	transition-guard
+carried	resume	POST	/api/{scope}/{selector}/{id}:resume	item	transition-guard
+carried	close	POST	/api/{scope}/{selector}/{id}:close	item	transition-guard
+carried	consume	POST	/api/{scope}/{selector}/{id}:consume	item	transition-guard
+uncarried	query	GET	/api/{scope}/{selector}	collection	none
+uncarried	claim_next	POST	/api/{scope}/{selector}:claim_next	collection	none
+uncarried	withdraw	POST	/api/{scope}/{selector}/{id}:withdraw	item	none
+uncarried	validate	POST	/api/{scope}/{selector}/{id}:validate	item	none
+refusal	-	POST	/api/{scope}/{selector}:{verb}	collection	none
+
+# ---------------------------------------------------------------------------
+# THE BINDINGS
+# ---------------------------------------------------------------------------
+# What the framework may have registered. These are probed STATICALLY against
+# the annotations, and that is the closure half: a route outside this list is
+# a violation, whatever it does.
+#
+# There are fewer bindings than outward forms, and the reason is measured
+# rather than chosen. Quarkus REST 3.33.2, measured 2026-09-01: a path
+# template takes the whole segment it appears in, and a narrowing regex on it
+# is ignored -- so `@Path("{id}:send")` registers as `{id}` and the eleven
+# colon verbs would collapse into one route. The colon is therefore split off
+# in the surface, from a table the probe reads separately. The outward form is
+# unchanged; only where the split happens moved.
+
+binding	-	POST	/api/{scope}/{selector}	collection	-
+binding	-	GET	/api/{scope}/{selector}	collection	-
+binding	-	POST	/api/{scope}/{selector}/{id}	item	-
+binding	-	GET	/api/{scope}/{selector}/{id}	item	-
+binding	-	PATCH	/api/{scope}/{selector}/{id}	item	-
+binding	-	POST	/api/{scope}/{selector}/{id}/children	sub-collection	-
+binding	-	POST	/api/{scope}/{selector}/{id}/addenda	sub-collection	-
+
+# ---------------------------------------------------------------------------
+# THE DECLARED EXTENSIONS
+# ---------------------------------------------------------------------------
+# REST is extensible while an extension adds no effect: reads, projections,
+# protocol furniture. State changes come from a verb, without exception. Every
+# extension is DECLARED, which is what lets the probe check closure at all.
+
+extension	-	GET	/api/whoami	none	-
+extension	-	POST	/mcp	none	-
