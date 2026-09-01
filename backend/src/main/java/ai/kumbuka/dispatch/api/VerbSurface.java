@@ -8,6 +8,7 @@ import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.domain.ExchangeService;
 import ai.kumbuka.dispatch.domain.ExchangeStatus;
 import ai.kumbuka.dispatch.domain.ExchangeView;
+import ai.kumbuka.dispatch.domain.QueryFilter;
 import ai.kumbuka.dispatch.platform.ScopeDirectory;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -17,6 +18,8 @@ import org.jboss.logging.Logger;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -252,45 +255,77 @@ public class VerbSurface {
     }
 
     // ======================================================================
-    // The four the scheme does not carry
+    // query and claim_next — the two verbs that act on a truncated address
+    // ======================================================================
+
+    /**
+     * The exchanges of one selector, narrowed by the declared filter.
+     *
+     * <p>Reading on a collection, so GET on the collection URI. The form
+     * follows from the target and the effect class and is not chosen per verb.
+     *
+     * <p>The filter fields are the DOMAIN's, not this adapter's: an adapter
+     * that decided what is filterable would be a second place the question is
+     * answered, and the two would drift. What arrives here is whatever the
+     * caller wrote, and {@link QueryFilter} refuses anything undeclared —
+     * naming the field, rather than ignoring it and returning a full set that
+     * looks like a correct narrow one.
+     *
+     * @param rawFilters the query parameters exactly as the caller wrote them
+     */
+    @Transactional
+    public Listing query(Actor actor, String rawScope, String rawSelector,
+                         Map<String, String> rawFilters) {
+        Entry in = collection(actor, rawScope, rawSelector);
+        QueryFilter filter = QueryFilter.of(rawFilters);
+
+        List<Payloads.ExchangeResponse> found =
+            exchanges.query(in.scopeId(), in.selector(), filter, actor).stream()
+                .map(Payloads.ExchangeResponse::of)
+                .toList();
+
+        LOG.debugf("query %s in scope %s: %d hit(s)", in.selector(), in.scopeId(), found.size());
+        return new Listing(found);
+    }
+
+    /**
+     * Takes up the next claimable exchange of a selector.
+     *
+     * <p>A write on a truncated address, which is admissible here and nowhere
+     * else among the transitions: the verb contract declares set semantics,
+     * and the only declarable set semantics is exactly one. Every other
+     * transition addressed at a collection stays a 405 carrying {@code Allow}.
+     *
+     * <p>The atomicity is the domain's and is not reconstructed here. Building
+     * this as a read followed by a claim would be a second construction of the
+     * draw, in the one place that cannot make it atomic.
+     */
+    @Transactional
+    public ClaimOutcome claimNext(Actor actor, String rawScope, String rawSelector,
+                                  Payloads.ClaimRequest request) {
+        Entry in = collection(actor, rawScope, rawSelector);
+        ExchangeService.ClaimResult claimed = exchanges.claimNext(in.scopeId(), in.selector(),
+            actor, required(request).parsed());
+
+        ExchangeAddress address = addressOf(claimed.exchange());
+        LOG.infof("claim_next %s in scope %s", address, in.scopeId());
+        return new ClaimOutcome(at(in, address), claimed.receipt());
+    }
+
+    // ======================================================================
+    // The two the scheme does not carry
     //
     // Each is a typed category error naming the reason -- never a 404, never
     // an unimplemented path, never a silent absence. A caller has to be able
     // to tell "this will never work, and here is why" from "not there right
     // now" and from "not built yet"; only the first stops it retrying.
     //
-    // All four sit BEHIND scope visibility, because capability is declared
-    // per scope and a category error is therefore in principle a statement
-    // about a scope. Today the declaration is identical for every scope so
-    // nothing leaks either way; the order is the ratified one and a per-scope
+    // Both sit BEHIND scope visibility, because capability is declared per
+    // scope and a category error is therefore in principle a statement about
+    // a scope. Today the declaration is identical for every scope so nothing
+    // leaks either way; the order is the ratified one and a per-scope
     // declaration is the direction of travel.
     // ======================================================================
-
-    /**
-     * Granted to the scheme in the capability matrix, unmapped in the mapping
-     * table. Reported, not decided.
-     */
-    @Transactional
-    public void query(Actor actor, String rawScope, String rawSelector) {
-        collection(actor, rawScope, rawSelector);
-        throw notCarried("query",
-            "It is granted to the scheme in the capability matrix and left unmapped in the "
-                + "mapping table, and the two have not been reconciled. A category error "
-                + "with an open specification behind it, not a route waiting to be built.");
-    }
-
-    /**
-     * The atomic draw. It has its own draw semantics, its own filter model and
-     * a tombstone decision, and it is not smuggled in as a loop over a read.
-     */
-    @Transactional
-    public void claimNext(Actor actor, String rawScope, String rawSelector) {
-        collection(actor, rawScope, rawSelector);
-        throw notCarried("claim_next",
-            "The atomic draw carries its own draw semantics and its own filter model. "
-                + "Building it as a loop over a read here would be a second construction "
-                + "of it, in the place least able to make it atomic.");
-    }
 
     /** Refused on the machine surface: withdrawal is a ratchet. */
     @Transactional
@@ -313,10 +348,6 @@ public class VerbSurface {
                 + "here would be deciding a specification gap in an adapter.");
     }
 
-    private static SurfaceException notCarried(String verb, String why) {
-        return new SurfaceException(SurfaceException.Reason.VERB_NOT_CARRIED,
-            "the dispatch scheme does not carry '" + verb + "' on this surface. " + why);
-    }
 
     // ======================================================================
     // Stage 1 and stage 2
@@ -460,6 +491,24 @@ public class VerbSurface {
 
     /** A claim, and the receipt that is its only copy. */
     public record ClaimOutcome(Result result, String receipt) {
+    }
+
+    /**
+     * What a listing answers with.
+     *
+     * <p>An object around the list rather than the bare array, so that
+     * anything a listing later needs to say about itself — a continuation
+     * token above all — is an added key rather than a changed shape. A bare
+     * array cannot grow a sibling field, and this surface is a published
+     * contract from the day it answers.
+     *
+     * <p><strong>There is no paging today and none is implied.</strong> The
+     * whole matching set comes back. That is a bounded thing for a selector of
+     * the size this scheme is built for and an unbounded one in general, and
+     * it is reported rather than quietly deferred: introducing paging is a
+     * decision about the published contract, which is not this run's to make.
+     */
+    public record Listing(List<Payloads.ExchangeResponse> exchanges) {
     }
 
     /** Everything one call needs once the first two stages have held. */

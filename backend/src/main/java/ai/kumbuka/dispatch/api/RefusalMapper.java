@@ -132,14 +132,22 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 // Nothing there — or nothing this subject may know is there.
                 case NOT_FOUND, SCOPE_UNRESOLVED -> 404;
 
-                // The object is real and its state says no.
+                // The object is real and its state says no. NOTHING_TO_CLAIM is
+                // the same shape with a set in place of the object: the selector
+                // is there and nothing in it is free right now, which a caller
+                // waits on rather than re-addresses. Never 404 — that would say
+                // the selector is missing and send it looking for a typo.
                 case TRANSITION_NOT_PERMITTED, FROZEN, SIBLINGS_NON_TERMINAL, SELECTOR_IN_USE,
-                     ADDENDUM_SUFFIX_EXHAUSTED, CLAIM_REQUIRED, HANDOVER_ALREADY_RATIFIED -> 409;
+                     ADDENDUM_SUFFIX_EXHAUSTED, CLAIM_REQUIRED, HANDOVER_ALREADY_RATIFIED,
+                     NOTHING_TO_CLAIM -> 409;
 
                 // Vocabulary: well-formed, addressed at something this scope does
-                // not have, or carrying content the scope refuses.
+                // not have, or carrying content the scope refuses. A filter field
+                // this scheme does not carry and a value a field cannot take are
+                // both vocabulary — the call parses, and it names something that
+                // is not part of the offering.
                 case SELECTOR_NOT_DECLARED, SELECTOR_WITHDRAWN, ADDENDUM_NOT_DRAWABLE,
-                     METADATA_REFUSED -> 422;
+                     METADATA_REFUSED, FILTER_FIELD_UNKNOWN, FILTER_VALUE_REFUSED -> 422;
 
                 // Ours, not the caller's: the session contract was not bound, and
                 // no retry of theirs will fix it.

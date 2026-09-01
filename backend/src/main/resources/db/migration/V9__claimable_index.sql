@@ -1,0 +1,51 @@
+-- ===========================================================================
+-- V9: the index the draw needs.
+--
+-- `claim_next` takes the next claimable exchange of a selector: the candidate
+-- set in the order of the address space, first row, locked. Written out, that
+-- is a filter on (scope, selector), a status predicate, an ORDER BY number,
+-- sub, and LIMIT 1.
+--
+-- WHY THE EXISTING INDEXES DO NOT COVER IT
+--
+-- `idx_exchange_bracket (tenant_id, scope_id, selector, number)` covers the
+-- base set and the leading part of the order. What it does not do is exclude
+-- the rows that can never be drawn — and over the life of a selector those
+-- are the overwhelming majority, because every exchange ends terminal and
+-- stays there. A draw served from that index walks past every closed and
+-- consumed exchange the selector ever had, in address order, to reach the
+-- first open one.
+--
+-- `idx_exchange_status (tenant_id, status)` has the opposite problem: it
+-- selects the right rows and knows nothing about the order the draw needs.
+--
+-- SO THIS ONE IS PARTIAL, AND THAT IS THE POINT
+--
+-- The WHERE clause holds exactly the rows a draw could take: not an addendum
+-- (an addendum has no standing of its own and is never drawn), and in a
+-- status from which a claim is reachable. `open` is claimable outright;
+-- `active` is claimable when its claim has lapsed, which is a comparison
+-- against the clock and therefore not something an index can hold — so
+-- `active` rows are kept and the lapsed check stays in the query. The four
+-- terminal statuses, `draft` and `needs_input` are not in the set at all.
+--
+-- The column order is the draw's own: the equality columns first, then the
+-- two the ORDER BY names, so the first matching row IS the answer and there
+-- is no sort.
+--
+-- NO GRANT ACCOMPANIES THIS, AND THAT IS NOT AN OMISSION
+--
+-- The privilege model established in V8 is enumerated per named table, and
+-- every new relation is supposed to carry its grants in the migration that
+-- creates it. An index is not a grantable object: it has no ACL of its own,
+-- it is reached only through the table it indexes, and the privileges that
+-- decide whether it may be used are that table's. Its owner is this
+-- migration's role, which is the table's owner, so nothing moves there
+-- either. The rule is satisfied by there being nothing to write, not by
+-- skipping it.
+-- ===========================================================================
+
+CREATE INDEX idx_exchange_claimable
+    ON dispatch.exchange (tenant_id, scope_id, selector, number, sub)
+    WHERE addendum_suffix IS NULL
+      AND status IN ('open', 'active');

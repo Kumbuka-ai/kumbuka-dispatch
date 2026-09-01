@@ -22,8 +22,8 @@
 # and a running database: each is called and must be answered by the surface
 # rather than by the framework's own not-found. That is the coverage half.
 #
-# `carried` rows are the thirteen verbs of the dispatch. `uncarried` rows are
-# the four verbs the scheme does not carry, each of which must answer a typed
+# `carried` rows are the fifteen verbs of the dispatch. `uncarried` rows are
+# the two verbs the scheme does not carry, each of which must answer a typed
 # category error naming the reason -- never a 404, never an unimplemented
 # path, never a silent absence. The `refusal` row is a writing verb on a
 # truncated address: 405 with `Allow`.
@@ -43,8 +43,8 @@ carried	block	POST	/api/{scope}/{selector}/{id}:block	item	transition-guard
 carried	resume	POST	/api/{scope}/{selector}/{id}:resume	item	transition-guard
 carried	close	POST	/api/{scope}/{selector}/{id}:close	item	transition-guard
 carried	consume	POST	/api/{scope}/{selector}/{id}:consume	item	transition-guard
-uncarried	query	GET	/api/{scope}/{selector}	collection	none
-uncarried	claim_next	POST	/api/{scope}/{selector}:claim_next	collection	none
+carried	query	GET	/api/{scope}/{selector}	collection	none
+carried	claim_next	POST	/api/{scope}/{selector}:claim_next	collection	exactly-one
 uncarried	withdraw	POST	/api/{scope}/{selector}/{id}:withdraw	item	none
 uncarried	validate	POST	/api/{scope}/{selector}/{id}:validate	item	none
 refusal	-	POST	/api/{scope}/{selector}:{verb}	collection	none

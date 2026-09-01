@@ -82,7 +82,7 @@ class SurfaceConformanceIT {
     @Test
     void the_probe_called_the_whole_specified_set() {
         assertThat(specifiedForms())
-            .as("thirteen carried forms across fourteen rows, four uncarried, one refusal")
+            .as("fifteen carried verbs across sixteen rows, two uncarried, one refusal")
             .hasSize(19);
     }
 
@@ -92,7 +92,7 @@ class SurfaceConformanceIT {
      * <p>Asserted over the specification rather than one by one, so a verb
      * added to the uncarried list is covered the moment it is written down.
      * The status class is what a caller acts on: 404 says try again later, and
-     * these four never will.
+     * these two never will.
      */
     @Test
     void every_uncarried_verb_answers_a_typed_category_error() {
@@ -223,7 +223,9 @@ class SurfaceConformanceIT {
             case "create", "append" -> Map.of(
                 "title", "a probe", "apparatus", "code", "date", "2026-09-01");
             case "update" -> Map.of("draft", "a probe");
-            case "claim" -> Map.of("duration", "PT1H");
+            // claim_next takes the same argument as claim: the draw is a claim
+            // whose target is chosen by position rather than named.
+            case "claim", "claim_next" -> Map.of("duration", "PT1H");
             default -> Map.of();
         };
     }

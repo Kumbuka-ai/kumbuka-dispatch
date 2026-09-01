@@ -170,13 +170,11 @@ public class McpResource {
             case "resume" -> at(in, (s, l, i) -> verbs.resume(actor, s, l, i)).exchange();
             case "close" -> at(in, (s, l, i) -> verbs.close(actor, s, l, i)).exchange();
             case "consume" -> at(in, (s, l, i) -> verbs.consume(actor, s, l, i)).exchange();
+            case "query" -> query(actor, in);
+            case "claim_next" -> claimNext(actor, in);
 
             // Not in tools/list, and still answered by name: an unknown-tool
             // reply would send the caller looking for a spelling.
-            case "query" -> uncarried(() -> verbs.query(actor,
-                required(in, ARG_SCOPE), required(in, ARG_SELECTOR)));
-            case "claim_next" -> uncarried(() -> verbs.claimNext(actor,
-                required(in, ARG_SCOPE), required(in, ARG_SELECTOR)));
             case "withdraw" -> uncarried(() -> at(in,
                 (s, l, i) -> { verbs.withdraw(actor, s, l, i); return null; }));
             case "validate" -> uncarried(() -> at(in,
@@ -229,6 +227,35 @@ public class McpResource {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
         VerbSurface.ClaimOutcome claimed = verbs.claim(actor, at.scope(), at.selector(),
             at.id(), new Payloads.ClaimRequest(required(in, "duration")));
+        return new Payloads.ClaimResponse(claimed.result().exchange(), claimed.receipt());
+    }
+
+    /**
+     * The listing, with the filter read from the tool arguments.
+     *
+     * <p>Every argument beyond scope and selector is a filter field, passed
+     * through raw. The adapter deliberately does not name them: the list of
+     * filterable fields is the domain's, and an adapter holding its own copy
+     * is a second place for it to be decided.
+     */
+    private Object query(Actor actor, Map<String, Object> in) {
+        String scope = required(in, ARG_SCOPE);
+        String selector = required(in, ARG_SELECTOR);
+
+        Map<String, String> filters = new java.util.LinkedHashMap<>();
+        in.forEach((name, value) -> {
+            if (!ARG_SCOPE.equals(name) && !ARG_SELECTOR.equals(name) && value != null) {
+                filters.put(name, String.valueOf(value));
+            }
+        });
+
+        return verbs.query(actor, scope, selector, filters);
+    }
+
+    private Object claimNext(Actor actor, Map<String, Object> in) {
+        VerbSurface.ClaimOutcome claimed = verbs.claimNext(actor,
+            required(in, ARG_SCOPE), required(in, ARG_SELECTOR),
+            new Payloads.ClaimRequest(required(in, "duration")));
         return new Payloads.ClaimResponse(claimed.result().exchange(), claimed.receipt());
     }
 

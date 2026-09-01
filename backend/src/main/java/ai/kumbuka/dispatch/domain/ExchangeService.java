@@ -190,6 +190,172 @@ public class ExchangeService {
             .getResultList();
     }
 
+    /**
+     * The exchanges of one selector, narrowed by the declared filter, in the
+     * order of the address space.
+     *
+     * <p><strong>Returns views, never entities.</strong> That is the
+     * projection bolt and not a convenience: {@link ExchangeView} withholds
+     * the body from an executing apparatus that has not claimed the exchange,
+     * and a listing built on the raw read would hand out every body in the
+     * selector to a caller that has claimed nothing — breaking a ratified bolt
+     * without touching a line of security code. There is deliberately no
+     * overload of this returning {@code List<Exchange>}.
+     *
+     * <p><strong>The order is the address space's own.</strong> Number, then
+     * sub. No second ordering is invented: the addresses are already ordered
+     * and readers already know that order, so an ordering by creation time
+     * would be a second one nobody reads and the two would disagree the first
+     * time an object was created out of sequence.
+     *
+     * <p>Addenda are excluded, for the same reason {@code read} refuses them:
+     * an addendum has no standing of its own and is not independently
+     * drawable. A listing that returned addresses the read verb refuses would
+     * be handing out addresses that do not work.
+     */
+    @Transactional
+    public List<ExchangeView> query(UUID scopeId, String selector, QueryFilter filter,
+                                    Actor actor) {
+        selectors.requireDeclared(scopeId, selector);
+
+        StringBuilder jpql = new StringBuilder("""
+            SELECT e FROM Exchange e
+            WHERE e.scopeId = :scope AND e.selector = :sel
+              AND e.addendumSuffix IS NULL
+            """);
+        // Each declared field that the caller named becomes one conjunct, and
+        // its values become the disjunction inside it. Built by appending
+        // rather than by string-formatting a predicate: the only things that
+        // reach the query text are constants from this file, and every caller
+        // value travels as a bound parameter.
+        if (!filter.statuses().isEmpty()) {
+            jpql.append("  AND e.status IN :statuses\n");
+        }
+        if (!filter.apparatuses().isEmpty()) {
+            jpql.append("  AND e.apparatus IN :apparatuses\n");
+        }
+        if (!filter.numbers().isEmpty()) {
+            jpql.append("  AND e.number IN :numbers\n");
+        }
+        jpql.append("ORDER BY e.number, e.sub");
+
+        var query = em.createQuery(jpql.toString(), Exchange.class)
+            .setParameter(P_SCOPE, scopeId)
+            .setParameter("sel", selector);
+        if (!filter.statuses().isEmpty()) {
+            // The column holds the wire name, not the enum constant: the two
+            // differ (`needs_input` against `NEEDS_INPUT`) and the wire name is
+            // the one that is stored, so it is the one that is bound.
+            query.setParameter("statuses",
+                filter.statuses().stream().map(ExchangeStatus::wireName).toList());
+        }
+        if (!filter.apparatuses().isEmpty()) {
+            query.setParameter("apparatuses", filter.apparatuses());
+        }
+        if (!filter.numbers().isEmpty()) {
+            query.setParameter("numbers", filter.numbers());
+        }
+
+        Instant now = Instant.now(clock);
+        List<ExchangeView> found = query.getResultList().stream()
+            .map(e -> ExchangeView.of(e, actor, now))
+            .toList();
+
+        LOG.debugf("query %s: %d hit(s)", selector, found.size());
+        return found;
+    }
+
+    /**
+     * Takes up the next claimable exchange of a selector, and mints its
+     * receipt.
+     *
+     * <p>This is the one writing verb besides {@code create} that acts on a
+     * truncated address, and it may because its set semantics is DECLARED and
+     * is exactly one. There is no other declarable set semantics — "all" is
+     * not one — so every other transition on a collection stays a 405.
+     *
+     * <h2>The selection, and why it is not a new ordering</h2>
+     *
+     * The next one by position within the selector: number, then sub. The
+     * address space is already ordered and that order is the one readers
+     * carry in their heads. Terminal exchanges are skipped, and so is one
+     * whose claim is still effective — a claimed exchange is not free, and a
+     * draw that returned it would be handing the same work to two executors.
+     *
+     * <p>An exchange whose claim has LAPSED is claimable again, and is
+     * reclaimed here exactly as {@link #takeup} reclaims one: in this
+     * claimant's transaction, with this claimant as the actor. That is not a
+     * new rule — it is the same rule, and writing a second one for the drawn
+     * case is how the two would come to disagree.
+     *
+     * <h2>Why the row is locked</h2>
+     *
+     * {@code FOR UPDATE SKIP LOCKED} is the whole verb. Without it two
+     * concurrent draws read the same row, both pass the status check, and both
+     * award a claim — the second silently overwriting the first, with two
+     * executors holding what each believes is an exclusive lease. With it, a
+     * row another transaction is claiming is invisible to this one, so each
+     * draw either gets an exchange nobody else is taking or gets none.
+     *
+     * @return the claimed exchange and the receipt, which is the only copy
+     * @throws DispatchException with {@code NOTHING_TO_CLAIM} when the
+     *         selector holds nothing claimable, which is a different statement
+     *         from an address that does not exist
+     */
+    @Transactional
+    public ClaimResult claimNext(UUID scopeId, String selector, Actor actor,
+                                 Duration duration) {
+        requirePositive(duration);
+        selectors.requireDeclared(scopeId, selector);
+        Instant now = Instant.now(clock);
+
+        // Native rather than JPQL: the pessimistic lock this needs is
+        // SKIP LOCKED, and JPA's LockModeType has no expression for it —
+        // PESSIMISTIC_WRITE waits for the other transaction instead of
+        // stepping over it, which would serialise every concurrent draw and
+        // hand the second caller the row the first just took.
+        List<?> ids = em.createNativeQuery("""
+                SELECT id FROM dispatch.exchange
+                WHERE scope_id = :scope
+                  AND selector = :sel
+                  AND addendum_suffix IS NULL
+                  AND (status = 'open'
+                       OR (status = 'active' AND claim_expires_at <= :now))
+                ORDER BY number, sub
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """)
+            .setParameter(P_SCOPE, scopeId)
+            .setParameter("sel", selector)
+            .setParameter("now", java.sql.Timestamp.from(now))
+            .getResultList();
+
+        if (ids.isEmpty()) {
+            throw new DispatchException(DispatchException.Reason.NOTHING_TO_CLAIM,
+                "nothing in '" + selector + "' is claimable. Every exchange there is "
+                    + "terminal, still a draft, awaiting its commissioner, or effectively "
+                    + "held by somebody else. The selector exists — this is an empty draw, "
+                    + "not a missing address.");
+        }
+
+        // Round-tripped through its text form rather than cast: the driver may
+        // hand back a UUID or the string of one depending on how the column is
+        // read, and a cast that is right today is a ClassCastException the day
+        // that changes.
+        Exchange e = em.find(Exchange.class, UUID.fromString(ids.get(0).toString()));
+        if (e.status() == ExchangeStatus.ACTIVE) {
+            reclaim(e);
+        }
+
+        e.apply(Transition.TAKEUP);
+        String receipt = Receipt.mint();
+        e.award(actor.subject(), receipt, now.plus(duration));
+        touch(e, actor.subject());
+
+        LOG.infof("claim_next %s -> %s", e.address(), e.status().wireName());
+        return new ClaimResult(e, receipt);
+    }
+
     // ----------------------------------------------------------------------
     // The verbs. One per transition.
     // ----------------------------------------------------------------------

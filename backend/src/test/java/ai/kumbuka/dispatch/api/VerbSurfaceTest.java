@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -183,10 +184,32 @@ class VerbSurfaceTest {
      */
     @Test
     void an_uncarried_verb_resolves_the_scope_before_it_refuses() {
-        assertThatThrownBy(() -> verbs.query(EXECUTOR, "probe-scope", "sprint"))
+        assertThatThrownBy(() -> verbs.validate(EXECUTOR, "probe-scope", "sprint", "164.0"))
             .isInstanceOf(SurfaceException.class)
             .extracting(e -> ((SurfaceException) e).reason())
-            .isEqualTo(SurfaceException.Reason.VERB_NOT_CARRIED);
+            .isEqualTo(SurfaceException.Reason.VERB_DEPTH_UNDECLARED);
+
+        verify(scopes).resolve("an-executor", "probe-scope");
+    }
+
+    /**
+     * A carried verb keeps the same order, and a refused filter is refused in
+     * the same place a refused verb is.
+     *
+     * <p>{@code query} used to be the uncarried verb this order was measured
+     * on. It is carried now, and the order it has to keep is unchanged: the
+     * scope is resolved before the filter is judged, so a scope the caller
+     * cannot see answers 404 whatever else is wrong with the call. A filter
+     * refusal in front of that would say "no such field" to a caller who is
+     * not entitled to know the collection exists.
+     */
+    @Test
+    void a_refused_filter_is_refused_behind_scope_visibility_too() {
+        assertThatThrownBy(() -> verbs.query(EXECUTOR, "probe-scope", "sprint",
+                Map.of("nonesuch", "x")))
+            .isInstanceOf(DispatchException.class)
+            .extracting(e -> ((DispatchException) e).reason())
+            .isEqualTo(DispatchException.Reason.FILTER_FIELD_UNKNOWN);
 
         verify(scopes).resolve("an-executor", "probe-scope");
     }

@@ -15,8 +15,13 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.EntityTag;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.core.UriBuilder;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * The REST exposition of the verb surface.
@@ -105,8 +110,11 @@ public class ExchangeResource {
 
         CustomMethod.Split at = split.get();
         if (at.method() == CustomMethod.CLAIM_NEXT) {
-            verbs.claimNext(caller.current(), scope, at.address());
-            throw unreachable(at.verb());
+            // The one transition admissible on a truncated address: its verb
+            // contract declares set semantics, and the only declarable one is
+            // exactly one.
+            return claimed(verbs.claimNext(caller.current(), scope, at.address(),
+                read(body, Payloads.ClaimRequest.class)));
         }
 
         // Every other verb acts at item depth. Depth is declared per verb and
@@ -120,15 +128,42 @@ public class ExchangeResource {
     }
 
     /**
-     * GET at collection depth: {@code query}, which this scheme does not
-     * carry.
+     * GET at collection depth: {@code query}.
+     *
+     * <p>Reading on a collection, so GET on the collection URI — the form
+     * follows from the target and the effect class rather than from the verb's
+     * name.
+     *
+     * <p>The query parameters are passed through raw and are NOT declared as
+     * {@code @QueryParam}s. Declaring them here would put the list of
+     * filterable fields in the adapter, which is a second place for it to be
+     * decided; worse, an undeclared parameter would then be silently dropped
+     * by the framework, and a silently dropped filter answers with the full
+     * set and looks exactly like a correct narrow one. The domain refuses what
+     * it does not carry, and refusing is only possible if it gets to see it.
      */
     @GET
     @Path("{selector}")
     public Response collectionGet(@PathParam("scope") String scope,
-                                  @PathParam("selector") String selector) {
-        verbs.query(caller.current(), scope, selector);
-        throw unreachable("query");
+                                  @PathParam("selector") String selector,
+                                  @Context UriInfo uri) {
+        return listing(verbs.query(caller.current(), scope, selector, filtersOf(uri)));
+    }
+
+    /**
+     * The query parameters, flattened to one value per name.
+     *
+     * <p>A repeated parameter is the first of two spellings of a disjunction,
+     * and this surface carries the other one — comma-separated values. Reading
+     * only the first occurrence would silently drop the rest, so a repeat is
+     * joined with a comma and means what the comma form means. Two ways to
+     * write one thing is a small cost; a dropped value is a wrong answer.
+     */
+    private static Map<String, String> filtersOf(UriInfo uri) {
+        Map<String, String> flat = new LinkedHashMap<>();
+        uri.getQueryParameters().forEach((name, values) ->
+            flat.put(name, String.join(",", values)));
+        return flat;
     }
 
     // ======================================================================
@@ -258,6 +293,18 @@ public class ExchangeResource {
 
     private static Response ok(VerbSurface.Result result) {
         return tagged(Response.ok(result.exchange()), result);
+    }
+
+    /**
+     * A listing, with no entity tag.
+     *
+     * <p>Deliberately untagged: the conflict token is a per-exchange value and
+     * a listing has no single one. A tag over the set would be a token callers
+     * could send back on a field write, which is a token about the wrong
+     * thing.
+     */
+    private static Response listing(VerbSurface.Listing found) {
+        return Response.ok(found).build();
     }
 
     private static Response claimed(VerbSurface.ClaimOutcome outcome) {
