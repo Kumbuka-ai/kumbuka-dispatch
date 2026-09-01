@@ -18,12 +18,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Probe 2 — the boundary is a missing GRANT, and both of its states are
  * observed.
  *
- * <p>Two boundaries, one mechanism. Outward: this service's role holds
+ * <p>Three boundaries, one mechanism. Outward: this service's role holds
  * nothing on a neighbouring service's schema. Inward: the provider's role
- * holds nothing on this service's schema. Neither is a rule in application
- * code, neither is a filter, and neither is row-level security. Each is the
- * absence of a privilege, and the enforcing artifact is a line that does not
- * exist.
+ * holds nothing on this service's schema. And inside: this service's own role
+ * cannot TRUNCATE its own table, which is the privilege ownership used to hand
+ * it implicitly and the one row-level security cannot moderate. None is a rule
+ * in application code, none is a filter, and none is row-level security. Each
+ * is the absence of a privilege, and the enforcing artifact is a line that
+ * does not exist.
  *
  * <p><strong>Why the distinction between a refusal and an empty result is the
  * whole point.</strong> An empty result means the query ran and the database
@@ -89,6 +91,83 @@ class MissingGrantProbeIT {
                 + "BYPASSRLS, so this refusal cannot be row-level security doing the work — "
                 + "it is the absent privilege, which is the only form of the guarantee that "
                 + "cannot be switched off by a configuration mistake");
+    }
+
+    /**
+     * Inward again, and against this service's OWN role: it cannot TRUNCATE
+     * its own table.
+     *
+     * <p>This is the privilege the measured defect turned on. Ownership hands
+     * a role the full ACL implicitly, and TRUNCATE is the member of it that
+     * bypasses row-level security completely — independently of every policy
+     * and of whether {@code app.tenant_id} is bound. A runtime role holding it
+     * can empty a tenant-scoped table across the tenant boundary with no part
+     * of the isolation apparatus seeing it happen.
+     *
+     * <p>The refusal is insisted on rather than an empty table: a TRUNCATE
+     * that ran and found nothing to delete looks identical in a result set and
+     * is the opposite of a boundary. And the grant half matters as much — a
+     * role that could not truncate because the table did not exist would pass
+     * the first assertion for the wrong reason.
+     *
+     * <p>The statement runs inside a transaction that is rolled back either
+     * way, so a successful TRUNCATE in the granted half does not empty the
+     * table for whatever else this suite is doing.
+     */
+    @Test
+    void the_service_role_cannot_truncate_its_own_table() throws SQLException {
+        String table = "dispatch.exchange";
+        String role = SubstrateDatabaseResource.SERVICE_ROLE;
+        String password = SubstrateDatabaseResource.SERVICE_PASSWORD;
+
+        assertThat(attemptTruncate(role, password, table))
+            .as("GREEN STATE: TRUNCATE is not among the privileges V8 grants, and no "
+                + "ownership hands it over implicitly any more. It is the one privilege "
+                + "row-level security cannot moderate, so the only place it can be stopped "
+                + "is the grant that does not exist")
+            .isInstanceOf(Refused.class);
+
+        try {
+            asAdmin("GRANT TRUNCATE ON " + table + " TO " + role);
+
+            assertThat(attemptTruncate(role, password, table))
+                .as("RED STATE, observed: with TRUNCATE granted the same role runs the same "
+                    + "statement and the database carries it out. So the refusal above was "
+                    + "the missing privilege and not a missing table or a locked one")
+                .isNotInstanceOf(Refused.class);
+        } finally {
+            asAdmin("REVOKE TRUNCATE ON " + table + " FROM " + role);
+        }
+
+        assertThat(attemptTruncate(role, password, table))
+            .as("and closed again, so the red state was that grant and nothing else")
+            .isInstanceOf(Refused.class);
+    }
+
+    /**
+     * Attempts a TRUNCATE under the given role and rolls it back regardless.
+     *
+     * <p>Separate from {@link #attempt} because a TRUNCATE has no result to
+     * read and must not be allowed to commit: folding it into the query path
+     * would mean the granted half of the probe destroys the table's contents
+     * to prove that it could.
+     */
+    private Object attemptTruncate(String role, String password, String table)
+            throws SQLException {
+        try (Connection c = DriverManager.getConnection(url(), role, password)) {
+            c.setAutoCommit(false);
+            try (Statement s = c.createStatement()) {
+                s.execute("TRUNCATE TABLE " + table);
+                return "truncated";
+            } finally {
+                c.rollback();
+            }
+        } catch (SQLException e) {
+            if ("42501".equals(e.getSQLState())) {
+                return new Refused(e.getMessage());
+            }
+            throw e;
+        }
     }
 
     /**

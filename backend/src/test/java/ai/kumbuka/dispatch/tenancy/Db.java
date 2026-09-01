@@ -85,6 +85,39 @@ final class Db {
     }
 
     /**
+     * Switches row-level security on a table, under the role that may: its
+     * OWNER, which is the migrator and no longer the service.
+     *
+     * <p>The probes that stage a red state by turning a policy off used to
+     * issue the statement on their own connection, because the service role
+     * owned its tables and an owner may {@code DISABLE} or {@code NO FORCE}
+     * them. It owns nothing now — enumerated grants carry no such right, and
+     * the statement is refused with {@code 42501}. That refusal is a property
+     * worth having and it has its own assertion; what it must not do is take
+     * the isolation measurements down with it, because those are about
+     * whether the LAYERS work and not about who may reconfigure them.
+     *
+     * <p>So the switch moves to the owner and the measurement stays where it
+     * was. Both connections are separate on purpose: a probe that measured
+     * under the same role that could reconfigure the policy would be measuring
+     * the wrong role.
+     *
+     * <p>The measuring connection is passed in and released first. Switching a
+     * policy takes ACCESS EXCLUSIVE on the table, and a probe that has just
+     * read it is holding ACCESS SHARE — from a second connection that is not a
+     * deadlock but a hang, and it would hang in the {@code finally} that puts
+     * the policy back, where it is hardest to read. Releasing here rather than
+     * at each call site is deliberate: there is no call site that may forget.
+     */
+    static void switchPolicyAsOwner(Connection measuring, String ddl) throws SQLException {
+        measuring.rollback();
+        try (Connection c = asMigrator()) {
+            exec(c, ddl);
+            c.commit();
+        }
+    }
+
+    /**
      * Insert an exchange directly, bypassing the ORM, under whatever tenant
      * the setting currently names. Used to plant rows a later read must or
      * must not see.

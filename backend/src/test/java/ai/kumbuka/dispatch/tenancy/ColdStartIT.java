@@ -100,13 +100,22 @@ class ColdStartIT {
         }
     }
 
+    /**
+     * The cold start leaves the migrator holding what it created.
+     *
+     * <p>This asserted the opposite for as long as an ownership
+     * callback normalised every relation onto the service role. That is what
+     * gave the service role the full privilege set — an owner holds the whole
+     * ACL implicitly, TRUNCATE included, and TRUNCATE bypasses row-level
+     * security entirely. The callback is deleted and V8 writes out what the
+     * runtime role may do; the entitlement itself is probed relation by
+     * relation in {@code ServiceRolePrivilegeIT}. What belongs here is the
+     * cold-start half: that a boot against an empty database leaves the
+     * ownership where it should be, with nothing having to run afterwards.
+     */
     @Test
-    void every_object_in_the_schema_belongs_to_the_service_role() throws SQLException {
+    void every_object_in_the_schema_belongs_to_the_migrator() throws SQLException {
         try (Connection c = Db.asAdmin()) {
-            // The migrator is privileged, so everything it created is its own
-            // until the ownership callback hands it over. An object left with
-            // the migrator would be one the service cannot read and one whose
-            // FORCE ROW LEVEL SECURITY binds the wrong role.
             assertThat(scalar(c, """
                 SELECT coalesce(string_agg(c.relname || ':' || pg_get_userbyid(c.relowner), ', '), '')
                 FROM pg_class c
@@ -114,24 +123,28 @@ class ColdStartIT {
                 WHERE n.nspname = 'dispatch'
                   AND c.relkind IN ('r','v','m','S','p')
                   AND pg_get_userbyid(c.relowner) <> '%s'
-                """.formatted(SubstrateDatabaseResource.SERVICE_ROLE)))
-                .as("SchemaOwnershipCallback must hand every relation in the schema to the "
-                    + "service role after migrating, including the Flyway history table")
+                """.formatted(SubstrateDatabaseResource.MIGRATOR_ROLE)))
+                .as("the migrator keeps every relation it created, the Flyway history table "
+                    + "included. A relation owned by the runtime role would carry the full "
+                    + "privilege set with no grant to show for it")
                 .isEmpty();
 
             assertThat(scalar(c, "SELECT pg_get_userbyid(nspowner) FROM pg_namespace "
                 + "WHERE nspname = 'dispatch'"))
-                .as("the schema itself is an owned object too")
-                .isEqualTo(SubstrateDatabaseResource.SERVICE_ROLE);
+                .as("the schema itself is an owned object too, and the runtime role holding "
+                    + "it would mean CREATE on it — a table it could add and then own")
+                .isEqualTo(SubstrateDatabaseResource.MIGRATOR_ROLE);
         }
     }
 
     @Test
     void the_service_reaches_its_own_table_and_reaches_nothing_else() throws SQLException {
         try (Connection c = Db.asService()) {
-            // Its own: an owner needs no grant, which is why V2 issues none.
+            // Not as its owner: by the SELECT that V8 grants it by name.
             assertThat(Db.countExchanges(c))
-                .as("the service role must reach its own table as its owner")
+                .as("the service role must reach its own table under the enumerated grant — "
+                    + "a schema nobody can read would satisfy every absence this suite "
+                    + "asserts and could not run the service")
                 .isNotNegative();
         }
     }

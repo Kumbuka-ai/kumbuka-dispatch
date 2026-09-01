@@ -56,10 +56,7 @@ class RawSqlArchitectureTest {
         TenantDatabaseBinding.class,
         // Flyway beforeEachMigrate: binds the setting for the migration's own
         // transaction, at boot, before any request is served.
-        TenantMigrationCallback.class,
-        // Flyway afterMigrate: reads pg_class and issues ALTER … OWNER. It
-        // touches catalog objects and no tenant data at all.
-        SchemaOwnershipCallback.class);
+        TenantMigrationCallback.class);
 
     private static final List<String> RAW_SQL_MARKERS = List.of(
         "createNativeQuery", ".getConnection(", ".createStatement(", ".prepareStatement(");

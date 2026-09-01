@@ -1,19 +1,14 @@
 package ai.kumbuka.dispatch.tenancy;
 
-import org.eclipse.microprofile.config.ConfigProvider;
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,64 +36,47 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * migration carrying real DML, run twice — once with the callback registered
  * and once without.
  *
+ * <p>There was a second callback in that configuration line until the
+ * ownership model changed — {@code SchemaOwnershipCallback}, which handed the schema and every
+ * relation in it to the runtime role after each run. It is deleted, and this
+ * probe registers nothing in its place: the migrator now keeps what it
+ * creates, which is what makes the DML in V5 subject to the policy in the
+ * first place and therefore what this probe rests on.
+ *
  * <h2>Why Flyway is driven directly here</h2>
  *
  * The callback list is build-time configuration, and a running application
  * cannot un-register one. Driving Flyway against a container of this test's
- * own is what makes the negative case reachable at all — and it runs the
- * SAME migration files the service ships, so the thing being witnessed is the
- * real migration set rather than a fixture that resembles it.
+ * own is what makes the negative case reachable at all — and it runs the SAME
+ * migration files the service ships, so the thing being witnessed is the real
+ * migration set rather than a fixture that resembles it.
  */
 class MigrationCallbackWitnessIT {
 
+    /**
+     * The migrating role. CREATEROLE and, critically, NOT BYPASSRLS. A
+     * privileged migrator would walk past the policy, and the negative case
+     * below would pass for the wrong reason — the DML would succeed whether
+     * the callback ran or not. It would now also be refused
+     * outright by V8, which is a different probe's business
+     * ({@link MigratorAttributeProbeIT}).
+     */
     private static final String MIGRATOR = "witness_migrator";
     private static final String MIGRATOR_PASSWORD = "test-only-witness-password";
 
-    private static PostgreSQLContainer<?> postgres;
+    private static MigrationHarness harness;
 
     @BeforeAll
     static void startDatabase() throws SQLException {
-        postgres = new PostgreSQLContainer<>(SubstrateDatabaseResource.POSTGRES_IMAGE)
-            .withDatabaseName("kumbuka")
-            .withUsername("postgres_admin")
-            .withPassword("test-only-admin-password");
-        postgres.start();
-
-        // The migrating role: CREATEROLE and, critically, NOT BYPASSRLS. A
-        // privileged migrator would walk past the policy, and the negative
-        // case below would pass for the wrong reason — the DML would succeed
-        // whether the callback ran or not.
-        try (Connection c = DriverManager.getConnection(postgres.getJdbcUrl(),
-                postgres.getUsername(), postgres.getPassword());
-             Statement s = c.createStatement()) {
-            s.execute("CREATE ROLE " + MIGRATOR + " LOGIN CREATEROLE NOSUPERUSER "
-                + "NOBYPASSRLS PASSWORD '" + MIGRATOR_PASSWORD + "'");
-        }
-    }
-
-    /**
-     * A database of this case's own.
-     *
-     * <p>Each case has to migrate from nothing. Sharing one database would let
-     * whichever ran first apply the migration set, and the second would find
-     * everything already applied, do nothing, and report success — so the
-     * negative case would pass without ever attempting the write it is about.
-     */
-    private static String freshDatabase(String name) throws SQLException {
-        try (Connection c = DriverManager.getConnection(postgres.getJdbcUrl(),
-                postgres.getUsername(), postgres.getPassword());
-             Statement s = c.createStatement()) {
-            s.execute("DROP DATABASE IF EXISTS " + name);
-            s.execute("CREATE DATABASE " + name);
-            s.execute("GRANT CREATE ON DATABASE " + name + " TO " + MIGRATOR);
-        }
-        return postgres.getJdbcUrl().replace("/kumbuka?", "/" + name + "?");
+        harness = MigrationHarness.start();
+        harness.createMigrator(MIGRATOR, MIGRATOR_PASSWORD,
+            "CREATEROLE NOSUPERUSER NOBYPASSRLS");
     }
 
     @AfterAll
     static void stopDatabase() {
-        if (postgres != null) {
-            postgres.stop();
+        if (harness != null) {
+            harness.close();
         }
     }
 
@@ -113,9 +91,9 @@ class MigrationCallbackWitnessIT {
      */
     @Test
     void without_the_callback_the_dml_migration_is_refused_by_the_policy() throws SQLException {
-        String url = freshDatabase("witness_without_callback");
+        String url = harness.freshDatabase("witness_without_callback", MIGRATOR);
 
-        assertThatThrownBy(() -> migrate(url, false))
+        assertThatThrownBy(() -> harness.migrate(url, MIGRATOR, MIGRATOR_PASSWORD))
             .as("RED STATE, observed: with the callback absent from the configuration, "
                 + "app.tenant_id is never bound, the WITH CHECK clause compares the "
                 + "incoming row against nothing, and the declaration cannot be written. "
@@ -135,11 +113,10 @@ class MigrationCallbackWitnessIT {
     @Test
     void with_the_callback_the_same_migration_applies_and_declares_the_selectors()
             throws SQLException {
-        String url = freshDatabase("witness_with_callback");
-        migrate(url, true);
+        String url = harness.freshDatabase("witness_with_callback", MIGRATOR);
+        harness.migrate(url, MIGRATOR, MIGRATOR_PASSWORD, new TenantMigrationCallback());
 
-        try (Connection c = DriverManager.getConnection(url,
-                postgres.getUsername(), postgres.getPassword());
+        try (Connection c = harness.adminConnection(url);
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery(
                  "SELECT name FROM dispatch.selector ORDER BY name")) {
@@ -152,35 +129,5 @@ class MigrationCallbackWitnessIT {
                     + "was the missing callback and not a broken migration")
                 .containsExactly("satellite", "sprint");
         }
-    }
-
-    /**
-     * Runs the service's real migration set against this test's container.
-     *
-     * @param url          the database of this case
-     * @param withCallback whether to register the tenant-binding callback, which
-     *                     is the single variable this probe changes
-     */
-    private static void migrate(String url, boolean withCallback) {
-        var config = ConfigProvider.getConfig();
-        var flyway = Flyway.configure()
-            .dataSource(url, MIGRATOR, MIGRATOR_PASSWORD)
-            .schemas("dispatch")
-            .defaultSchema("dispatch")
-            .createSchemas(true)
-            .locations("classpath:db/migration")
-            .placeholders(Map.of(
-                "dispatchTenantId", config.getValue("dispatch.tenant-id", String.class),
-                "dispatchScopeId", config.getValue("dispatch.scope-id", String.class)))
-            // The ownership callback is registered in both cases: it is not the
-            // variable under test, and without it the migrator would not hand
-            // the schema over and the run would fail for an unrelated reason.
-            .callbacks(withCallback
-                ? new org.flywaydb.core.api.callback.Callback[] {
-                    new TenantMigrationCallback(), new SchemaOwnershipCallback() }
-                : new org.flywaydb.core.api.callback.Callback[] {
-                    new SchemaOwnershipCallback() })
-            .load();
-        flyway.migrate();
     }
 }
