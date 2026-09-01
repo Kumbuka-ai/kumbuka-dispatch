@@ -124,10 +124,36 @@
             <artifactId>rest-assured</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            Puts a security identity in place for the surface probes, so a
+            verb can be exercised end to end without a Keycloak container.
+            The realm binding itself is NOT asserted this way — that is a
+            statement about a running identity provider and stays in
+            RealmBindingIT, which starts one. What this covers is the
+            capacity the surface derives from the roles, which is a statement
+            about this code.
+        -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-security</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            Black-box unit cover for the paths that reach the database, beside
+            the integration tests that exercise them against a real one. The
+            standing rule asks for both and the reason is measured: a mocked
+            test cannot see a missing GRANT, and an integration test is a poor
+            place to enumerate branch logic. Neither substitutes for the other.
+        -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

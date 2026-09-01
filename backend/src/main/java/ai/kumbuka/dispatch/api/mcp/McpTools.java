@@ -1,0 +1,187 @@
+package ai.kumbuka.dispatch.api.mcp;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * The tools the MCP exposition declares: the thirteen verbs, and nothing else.
+ *
+ * <p><strong>MCP omits and never adds.</strong> There is no tool here without
+ * a verb behind it, and today there is no declared omission either — the list
+ * is the whole verb set. If a reason to omit one ever appears, it is declared
+ * in this file and in the specification both expositions probe against, never
+ * left to be inferred from a shorter list.
+ *
+ * <p>The declaration is written out rather than derived from the REST routes.
+ * The two expositions are conformance-probed against one specification and
+ * neither is the source for the other — that is share-nothing applied to the
+ * surface. A list generated from the routes would make the probe an assertion
+ * that one copy equals itself.
+ *
+ * <h2>Two argument shapes, and the difference is not cosmetic</h2>
+ *
+ * A verb acting on an existing object takes a <strong>complete address</strong>
+ * and nothing else identifies the target. A verb that does not act on an
+ * existing object — {@code create} at a bracket — takes scope and selector as
+ * separate arguments, because an address without an id part is reserved and
+ * giving a three-part string the meaning "the objects of this scope" is what
+ * the reservation forbids.
+ */
+public final class McpTools {
+
+    private McpTools() {
+    }
+
+    /** One declared tool: its name, what it does, and what it takes. */
+    public record Tool(String name, String description, Map<String, Object> inputSchema) {
+    }
+
+    private static final String ADDRESS_DOC =
+        "The complete address of the exchange: dispatch://<scope>/<selector>/<number>.<sub>, "
+            + "with an optional single lower-case letter for an addendum.";
+
+    /**
+     * The thirteen, in the order of the item process rather than
+     * alphabetically: what brings an object into being, what reads and changes
+     * it, what commits it, what assigns the work, and what ends it.
+     */
+    public static List<Tool> declared() {
+        return List.of(
+            new Tool("create",
+                "Bring an exchange into being. Without a parent this opens a bracket; with "
+                    + "one it adds a child to that bracket. The number is allocated "
+                    + "transactionally and is never supplied by the caller.",
+                schema(
+                    required("scope", "string", "The scope name, a DNS label."),
+                    required("selector", "string", "The declared bracket name."),
+                    required("title", "string", "The exchange's title."),
+                    required("apparatus", "string", "The apparatus this exchange addresses."),
+                    required("date", "string", "The dispatch date, as ISO-8601 (YYYY-MM-DD)."),
+                    optional("parent", "string",
+                        "The bracket root to add a child to, as a complete address. Omit to "
+                            + "open a new bracket."))),
+
+            new Tool("read",
+                "One exchange by address. Writes nothing. The projection depends on the "
+                    + "actor: an executing apparatus does not receive the body of an "
+                    + "exchange it has not claimed, and the field is absent rather than "
+                    + "empty.",
+                schema(required("address", "string", ADDRESS_DOC))),
+
+            new Tool("update",
+                "Replace the handover draft. Carries a conflict token, which is the one "
+                    + "handed out with the last read; a stale token is refused rather than "
+                    + "overwritten.",
+                schema(
+                    required("address", "string", ADDRESS_DOC),
+                    required("conflict_token", "string",
+                        "The token from the last read of this exchange."),
+                    required("draft", "string", "The handover text, replaced wholesale."),
+                    optional("receipt", "string",
+                        "The receipt issued at claim. Required of an executing apparatus."),
+                    optional("metadata", "object", "Handover metadata."))),
+
+            new Tool("append",
+                "Attach an addendum to a frozen exchange. Additive and not removable "
+                    + "afterwards, which is why it is not an update.",
+                schema(
+                    required("address", "string", ADDRESS_DOC),
+                    required("title", "string", "The addendum's title."),
+                    required("apparatus", "string", "The apparatus it addresses."),
+                    required("date", "string", "Its date, as ISO-8601 (YYYY-MM-DD)."))),
+
+            new Tool("send",
+                "The author commits their own content outward. Freezes the dispatch and "
+                    + "opens it to an executor.",
+                schema(
+                    required("address", "string", ADDRESS_DOC),
+                    optional("metadata", "object",
+                        "Dispatch metadata, frozen at the same gate."))),
+
+            new Tool("accept",
+                "A second party accepts what somebody else produced: the handover is "
+                    + "ratified and frozen. Not callable by an executing apparatus — a "
+                    + "permission in the core, not an omission in this adapter.",
+                schema(required("address", "string", ADDRESS_DOC))),
+
+            new Tool("claim",
+                "Acquire a lease on a named exchange. The service mints the receipt; a "
+                    + "caller-supplied holder is refused.",
+                schema(
+                    required("address", "string", ADDRESS_DOC),
+                    required("duration", "string",
+                        "How long the claim stands, as an ISO-8601 duration such as PT1H. "
+                            + "There is no default."))),
+
+            new Tool("release",
+                "Give up a lease. The exchange returns to its pre-claim state and any "
+                    + "unratified draft is discarded with it.",
+                schema(required("address", "string", ADDRESS_DOC))),
+
+            new Tool("abandon",
+                "The executor does not deliver. Terminal. The prior state decides whether "
+                    + "this is a refusal before takeup or a failure after it; the caller "
+                    + "does not name it.",
+                schema(required("address", "string", ADDRESS_DOC))),
+
+            new Tool("block",
+                "The executor is stuck and the commissioner is due. Not terminal, and the "
+                    + "holder keeps the exchange.",
+                schema(required("address", "string", ADDRESS_DOC))),
+
+            new Tool("resume",
+                "The commissioner has answered. Back to work.",
+                schema(required("address", "string", ADDRESS_DOC))),
+
+            new Tool("close",
+                "Terminal, administrative. A bracket root refuses while a sibling is "
+                    + "still running, and names the ones that are.",
+                schema(required("address", "string", ADDRESS_DOC))),
+
+            new Tool("consume",
+                "Terminal, curated forward into a named object.",
+                schema(required("address", "string", ADDRESS_DOC))));
+    }
+
+    // ----------------------------------------------------------------------
+    // The schema shapes
+    // ----------------------------------------------------------------------
+
+    private record Field(String name, String type, String description, boolean required) {
+    }
+
+    private static Field required(String name, String type, String description) {
+        return new Field(name, type, description, true);
+    }
+
+    private static Field optional(String name, String type, String description) {
+        return new Field(name, type, description, false);
+    }
+
+    /**
+     * A JSON Schema object, with {@code additionalProperties} closed.
+     *
+     * <p>Closed rather than open, deliberately: an argument this surface does
+     * not know is one a caller believes in. Accepting and ignoring it is how a
+     * client comes to depend on a field the server never read.
+     */
+    private static Map<String, Object> schema(Field... fields) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        List<String> mandatory = new java.util.ArrayList<>();
+
+        for (Field f : fields) {
+            properties.put(f.name(), Map.of("type", f.type(), "description", f.description()));
+            if (f.required()) {
+                mandatory.add(f.name());
+            }
+        }
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.copyOf(mandatory));
+        schema.put("additionalProperties", false);
+        return Map.copyOf(schema);
+    }
+}
