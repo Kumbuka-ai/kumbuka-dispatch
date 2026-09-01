@@ -248,10 +248,13 @@ class UpgradeFromOwnedSchemaIT {
     private static List<String> heldPrivileges(Connection c, String relation)
             throws SQLException {
         List<String> held = new ArrayList<>();
-        for (String privilege : FULL_PRIVILEGE_SET) {
-            try (var st = c.prepareStatement("SELECT has_table_privilege(?, ?, ?)")) {
-                st.setString(1, SubstrateDatabaseResource.SERVICE_ROLE);
-                st.setString(2, "dispatch." + relation);
+        // One statement, seven executions. The privilege is the only thing
+        // that varies, so preparing it once is both the point of a prepared
+        // statement and what keeps the loop readable.
+        try (var st = c.prepareStatement("SELECT has_table_privilege(?, ?, ?)")) {
+            st.setString(1, SubstrateDatabaseResource.SERVICE_ROLE);
+            st.setString(2, "dispatch." + relation);
+            for (String privilege : FULL_PRIVILEGE_SET) {
                 st.setString(3, privilege);
                 try (ResultSet rs = st.executeQuery()) {
                     rs.next();
