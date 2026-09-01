@@ -7,6 +7,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
+import org.jboss.logging.Logger;
 
 /**
  * Turns the two families of typed refusal into HTTP, and keeps them apart.
@@ -38,6 +39,30 @@ import jakarta.ws.rs.ext.Provider;
 public class RefusalMapper implements ExceptionMapper<SurfaceException> {
 
     /**
+     * The one place every refusal that reaches a caller passes through.
+     *
+     * <p>Logging here rather than at the twenty-eight throw sites is not
+     * tidiness: twenty-eight sites are twenty-eight chances to do it
+     * differently, and the one that gets forgotten is the one somebody needed.
+     *
+     * <p><strong>DEBUG and not WARN, deliberately.</strong> A malformed
+     * address arrives on every client typo, and a refusal log at WARN would
+     * make this service's operational log writable by whoever calls it —
+     * flood the surface with broken addresses and you fill the log. What
+     * belongs at WARN is a statement about the deployment, and those already
+     * live where they are decided: the domain warns on a refused
+     * ratification, a refused selector and an unresolved scope, and
+     * {@link CallerActor} warns on a token whose realm roles are wrong. This
+     * line is the trace inside a verb, which is what DEBUG is for here.
+     *
+     * <p>The actor is absent, as everywhere in this service. Correlation runs
+     * through a request id; a second aggregatable record of who was refused
+     * what is how not-collecting-behavioural-data gets circumvented without
+     * anybody deciding to.
+     */
+    private static final Logger LOG = Logger.getLogger(RefusalMapper.class);
+
+    /**
      * Mapped per exception type rather than over {@code RuntimeException}.
      *
      * <p>A mapper registered for the supertype is chosen for every runtime
@@ -49,6 +74,8 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
      */
     @Override
     public Response toResponse(SurfaceException e) {
+        LOG.debugf("surface refusal: %s -> %d", e.reason().name(), e.reason().status());
+
         Response.ResponseBuilder response = Response.status(e.reason().status())
             .type(MediaType.APPLICATION_JSON)
             .entity(Payloads.Refusal.of(e.reason().name(), e.getMessage()));
@@ -67,7 +94,19 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
 
         @Override
         public Response toResponse(DispatchException e) {
-            return Response.status(statusOf(e.reason()))
+            int status = statusOf(e.reason());
+
+            // A 5xx is ours, not the caller's, and no retry of theirs fixes
+            // it. That is the one refusal class this surface raises to ERROR:
+            // everything else is a caller being told no, which is the surface
+            // working.
+            if (status >= 500) {
+                LOG.errorf("domain refusal answered %d: %s", status, e.reason().name());
+            } else {
+                LOG.debugf("domain refusal: %s -> %d", e.reason().name(), status);
+            }
+
+            return Response.status(status)
                 .type(MediaType.APPLICATION_JSON)
                 .entity(new Payloads.Refusal(e.reason().name(), e.getMessage(), e.offenders()))
                 .build();

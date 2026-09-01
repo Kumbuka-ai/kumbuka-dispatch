@@ -5,6 +5,7 @@ import ai.kumbuka.dispatch.domain.DispatchException;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
 
 /**
  * Derives the calling actor from the token, and from nothing else.
@@ -27,6 +28,23 @@ import jakarta.inject.Inject;
 @RequestScoped
 public class CallerActor {
 
+    /**
+     * The one refusal on this surface that is worth WARN, and the reason it
+     * is the exception.
+     *
+     * <p>Every other refusal here is a caller being told no, which is the
+     * surface working; those are DEBUG in {@link RefusalMapper}. This one is
+     * not about the call at all. A token that authenticated and carries no
+     * capacity — or both — is a <strong>realm misconfiguration</strong>: the
+     * roles are wrong, no caller can fix it, and nothing else will say so. The
+     * caller sees a 403 and falls silent, and the roles stay wrong.
+     *
+     * <p>Neither the subject nor the capacity is logged. Which token it was
+     * belongs to the audit log under its own rules; what the operator needs
+     * from this line is that the realm is handing out unusable tokens at all.
+     */
+    private static final Logger LOG = Logger.getLogger(CallerActor.class);
+
     @Inject SecurityIdentity identity;
 
     /**
@@ -39,6 +57,8 @@ public class CallerActor {
         boolean console = identity.hasRole(Actor.ROLE_CONSOLE);
 
         if (executor == console) {
+            LOG.warnf("a token authenticated with an unusable capacity (holds both: %s): %s",
+                executor, DispatchException.Reason.ACTOR_UNKNOWN);
             throw new DispatchException(DispatchException.Reason.ACTOR_UNKNOWN,
                 executor
                     ? ("this token carries both '" + Actor.ROLE_EXECUTOR + "' and '"
