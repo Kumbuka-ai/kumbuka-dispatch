@@ -50,6 +50,14 @@ public final class McpTools {
     private static final String ARG_SCOPE = "scope";
     private static final String ARG_SELECTOR = "selector";
 
+    private static final String SCOPE_DOC = "The scope name, a DNS label.";
+    private static final String SELECTOR_DOC = "The declared bracket name.";
+
+    /** The claim's lease, worded identically wherever a verb takes one. */
+    private static final String DURATION_DOC =
+        "How long the claim stands, as an ISO-8601 duration such as PT1H. There is no "
+            + "default.";
+
     private static final String ADDRESS_DOC =
         "The complete address of the exchange: dispatch://<scope>/<selector>/<number>.<sub>, "
             + "with an optional single lower-case letter for an addendum.";
@@ -66,8 +74,8 @@ public final class McpTools {
                     + "one it adds a child to that bracket. The number is allocated "
                     + "transactionally and is never supplied by the caller.",
                 schema(
-                    required("scope", STRING, "The scope name, a DNS label."),
-                    required("selector", STRING, "The declared bracket name."),
+                    required(ARG_SCOPE, STRING, SCOPE_DOC),
+                    required(ARG_SELECTOR, STRING, SELECTOR_DOC),
                     required("title", STRING, "The exchange's title."),
                     required("apparatus", STRING, "The apparatus this exchange addresses."),
                     required("date", STRING, "The dispatch date, as ISO-8601 (YYYY-MM-DD)."),
@@ -123,9 +131,7 @@ public final class McpTools {
                     + "caller-supplied holder is refused.",
                 schema(
                     required(ARG_ADDRESS, STRING, ADDRESS_DOC),
-                    required("duration", STRING,
-                        "How long the claim stands, as an ISO-8601 duration such as PT1H. "
-                            + "There is no default."))),
+                    required("duration", STRING, DURATION_DOC))),
 
             new Tool("release",
                 "Give up a lease. The exchange returns to its pre-claim state and any "
@@ -173,11 +179,9 @@ public final class McpTools {
                     + "again. Exactly one exchange is drawn, atomically — two concurrent "
                     + "draws never receive the same one.",
                 schema(
-                    required(ARG_SCOPE, STRING, "The scope name, a DNS label."),
-                    required(ARG_SELECTOR, STRING, "The declared bracket name."),
-                    required("duration", STRING,
-                        "How long the claim stands, as an ISO-8601 duration such as PT1H. "
-                            + "There is no default."))));
+                    required(ARG_SCOPE, STRING, SCOPE_DOC),
+                    required(ARG_SELECTOR, STRING, SELECTOR_DOC),
+                    required("duration", STRING, DURATION_DOC))));
     }
 
     /**
@@ -192,8 +196,8 @@ public final class McpTools {
      */
     private static Map<String, Object> querySchema() {
         List<Field> fields = new java.util.ArrayList<>();
-        fields.add(required(ARG_SCOPE, STRING, "The scope name, a DNS label."));
-        fields.add(required(ARG_SELECTOR, STRING, "The declared bracket name."));
+        fields.add(required(ARG_SCOPE, STRING, SCOPE_DOC));
+        fields.add(required(ARG_SELECTOR, STRING, SELECTOR_DOC));
         for (QueryFilter.Field field : QueryFilter.Field.values()) {
             fields.add(optional(field.wireName(), STRING,
                 "Narrow by " + field.wireName() + ". Comma-separated values are read as "

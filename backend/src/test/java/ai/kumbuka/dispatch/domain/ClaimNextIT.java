@@ -214,12 +214,14 @@ class ClaimNextIT {
     @Test
     void an_exchange_whose_claim_has_lapsed_is_drawable_again() {
         Exchange only = openAndSend("claimed and forgotten");
-        exchanges.takeup(SCOPE, addressOf(only), TWO, Duration.ofMillis(1));
+        exchanges.takeup(SCOPE, addressOf(only), TWO, CLAIM);
 
-        // The clock is the only thing that has to move, and nothing writes on
-        // expiry by design — so the row still names the old holder while the
-        // claim is no longer effective.
-        await(2);
+        // The lease is moved into the past rather than waited out. Nothing
+        // writes on expiry by design, so the row goes on naming the old holder
+        // while the claim stops being effective — which is exactly the state
+        // this case is about, and a wall-clock wait would reach it more slowly
+        // and less certainly.
+        lapseTheClaim(only);
 
         ExchangeService.ClaimResult drawn = exchanges.claimNext(SCOPE, SELECTOR, ONE, CLAIM);
 
@@ -331,16 +333,17 @@ class ClaimNextIT {
     }
 
     /**
-     * Waits for the wall clock to pass a lapse. The service reads
-     * {@code Clock.systemUTC()}, so there is no injectable clock to advance
-     * here and the shortest honest wait is a real one.
+     * Moves one exchange's lease into the past.
+     *
+     * <p>Staged as the container superuser, which also side-steps the tenancy
+     * policy — the row belongs to a tenant this test invented moments ago, and
+     * binding it only to age one column would be ceremony. The service reads
+     * {@code Clock.systemUTC()} and takes no injectable clock, so moving the
+     * stored expiry is the way to reach a lapsed claim without waiting for one.
      */
-    private static void await(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while waiting for a claim to lapse", e);
-        }
+    private void lapseTheClaim(Exchange e) {
+        ai.kumbuka.dispatch.platform.PlatformFixture.run(
+            "UPDATE dispatch.exchange SET claim_expires_at = now() - interval '1 hour' "
+                + "WHERE tenant_id = '" + tenant + "' AND id = '" + e.id + "'");
     }
 }
