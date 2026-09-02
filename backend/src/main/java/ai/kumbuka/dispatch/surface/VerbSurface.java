@@ -1,6 +1,5 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.api.payload.Payloads;
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.domain.Exchange;
@@ -68,9 +67,9 @@ public class VerbSurface {
     /** Opens a bracket. The collection form. */
     @Transactional
     public Result create(Actor actor, String rawScope, String rawSelector,
-                         Payloads.CreateRequest request) {
+                         VerbInput.Draft request) {
         Entry in = collection(actor, rawScope, rawSelector);
-        Payloads.CreateRequest body = required(request);
+        VerbInput.Draft body = required(request);
 
         Exchange created = exchanges.openBracket(in.scopeId(), in.selector(), body.title(),
             body.apparatus(), body.date(), actor);
@@ -82,10 +81,10 @@ public class VerbSurface {
     /** Adds a child to an open bracket. The sub-collection form. */
     @Transactional
     public Result createChild(Actor actor, String rawScope, String rawSelector, String rawId,
-                              Payloads.CreateRequest request) {
+                              VerbInput.Draft request) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
         requireBracketRoot(in.address(), "children");
-        Payloads.CreateRequest body = required(request);
+        VerbInput.Draft body = required(request);
 
         Exchange created = exchanges.addChild(in.scopeId(), in.selector(),
             in.address().number(), body.title(), body.apparatus(), body.date(), actor);
@@ -131,9 +130,9 @@ public class VerbSurface {
      */
     @Transactional
     public Result update(Actor actor, String rawScope, String rawSelector, String rawId,
-                         String conflictToken, Payloads.UpdateRequest request) {
+                         String conflictToken, VerbInput.Handover request) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
-        Payloads.UpdateRequest body = required(request);
+        VerbInput.Handover body = required(request);
         requireConflictToken(in, conflictToken);
 
         exchanges.writeHandoverDraft(in.scopeId(), in.address(), actor,
@@ -149,9 +148,9 @@ public class VerbSurface {
 
     @Transactional
     public Result append(Actor actor, String rawScope, String rawSelector, String rawId,
-                         Payloads.AppendRequest request) {
+                         VerbInput.Addendum request) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
-        Payloads.AppendRequest body = required(request);
+        VerbInput.Addendum body = required(request);
 
         Exchange addendum = exchanges.addAddendum(in.scopeId(), in.address(), body.title(),
             body.apparatus(), body.date(), actor);
@@ -166,10 +165,9 @@ public class VerbSurface {
 
     @Transactional
     public Result send(Actor actor, String rawScope, String rawSelector, String rawId,
-                       Payloads.SendRequest request) {
+                       Map<String, String> metadata) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
-        exchanges.send(in.scopeId(), in.address(), actor,
-            request == null ? null : request.metadata());
+        exchanges.send(in.scopeId(), in.address(), actor, metadata);
         return at(in, in.address());
     }
 
@@ -191,7 +189,7 @@ public class VerbSurface {
     /** Claims the exchange and returns the receipt, which is the only copy. */
     @Transactional
     public ClaimOutcome claim(Actor actor, String rawScope, String rawSelector, String rawId,
-                              Payloads.ClaimRequest request) {
+                              VerbInput.Claim request) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
         ExchangeService.ClaimResult claimed = exchanges.takeup(in.scopeId(), in.address(),
             actor, required(request).parsed());
@@ -279,10 +277,8 @@ public class VerbSurface {
         Entry in = collection(actor, rawScope, rawSelector);
         QueryFilter filter = QueryFilter.of(rawFilters);
 
-        List<Payloads.ExchangeResponse> found =
-            exchanges.query(in.scopeId(), in.selector(), filter, actor).stream()
-                .map(Payloads.ExchangeResponse::of)
-                .toList();
+        List<ExchangeView> found =
+            exchanges.query(in.scopeId(), in.selector(), filter, actor);
 
         LOG.debugf("query %s in scope %s: %d hit(s)", in.selector(), in.scopeId(), found.size());
         return new Listing(found);
@@ -302,7 +298,7 @@ public class VerbSurface {
      */
     @Transactional
     public ClaimOutcome claimNext(Actor actor, String rawScope, String rawSelector,
-                                  Payloads.ClaimRequest request) {
+                                  VerbInput.Claim request) {
         Entry in = collection(actor, rawScope, rawSelector);
         ExchangeService.ClaimResult claimed = exchanges.claimNext(in.scopeId(), in.selector(),
             actor, required(request).parsed());
@@ -392,7 +388,7 @@ public class VerbSurface {
      */
     private Result at(Entry in, ExchangeAddress address) {
         ExchangeView view = exchanges.view(in.scopeId(), address, in.actor());
-        return new Result(address, Payloads.ExchangeResponse.of(view), conflictToken(in, address));
+        return new Result(address, view, conflictToken(in, address));
     }
 
     /**
@@ -484,8 +480,16 @@ public class VerbSurface {
         }
     }
 
-    /** What a verb answers with, before either adapter dresses it. */
-    public record Result(ExchangeAddress address, Payloads.ExchangeResponse exchange,
+    /**
+     * What a verb answers with, before either adapter dresses it.
+     *
+     * <p>The view, not the wire shape. The projection that withholds a body
+     * from an unclaiming caller has already been applied — that is what makes
+     * it a view — and turning it into JSON is the adapter's act, in the
+     * adapter's own type. Carrying the wire shape here is what put the surface
+     * in a cycle with the payload package.
+     */
+    public record Result(ExchangeAddress address, ExchangeView exchange,
                          String conflictToken) {
     }
 
@@ -508,7 +512,7 @@ public class VerbSurface {
      * it is reported rather than quietly deferred: introducing paging is a
      * decision about the published contract, which is not this run's to make.
      */
-    public record Listing(List<Payloads.ExchangeResponse> exchanges) {
+    public record Listing(List<ExchangeView> exchanges) {
     }
 
     /** Everything one call needs once the first two stages have held. */

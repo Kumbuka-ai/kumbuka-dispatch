@@ -1,4 +1,4 @@
-package ai.kumbuka.dispatch.api.mcp;
+package ai.kumbuka.dispatch.adapter.mcp;
 
 import ai.kumbuka.dispatch.domain.QueryFilter;
 

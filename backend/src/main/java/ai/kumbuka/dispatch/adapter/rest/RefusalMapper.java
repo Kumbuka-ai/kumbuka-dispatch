@@ -1,6 +1,8 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.adapter.rest;
 
-import ai.kumbuka.dispatch.api.payload.Payloads;
+import ai.kumbuka.dispatch.surface.SurfaceException;
+
+import ai.kumbuka.dispatch.adapter.payload.Payloads;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;

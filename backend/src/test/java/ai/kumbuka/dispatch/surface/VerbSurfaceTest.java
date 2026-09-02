@@ -1,6 +1,5 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.api.payload.Payloads;
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.domain.Exchange;
@@ -221,7 +220,7 @@ class VerbSurfaceTest {
     @Test
     void a_field_write_without_a_token_is_refused_before_the_domain_is_called() {
         assertThatThrownBy(() -> verbs.update(EXECUTOR, "probe-scope", "sprint", "164.1",
-            null, new Payloads.UpdateRequest("a draft", "a-receipt", null)))
+            null, new VerbInput.Handover("a draft", "a-receipt", null)))
             .isInstanceOf(SurfaceException.class)
             .extracting(e -> ((SurfaceException) e).reason())
             .isEqualTo(SurfaceException.Reason.CONFLICT_TOKEN_MISSING);
@@ -232,7 +231,7 @@ class VerbSurfaceTest {
     @Test
     void a_stale_token_is_refused_before_the_domain_is_called() {
         assertThatThrownBy(() -> verbs.update(EXECUTOR, "probe-scope", "sprint", "164.1",
-            "1999-01-01T00:00:00Z", new Payloads.UpdateRequest("a draft", "a-receipt", null)))
+            "1999-01-01T00:00:00Z", new VerbInput.Handover("a draft", "a-receipt", null)))
             .isInstanceOf(SurfaceException.class)
             .extracting(e -> ((SurfaceException) e).reason())
             .isEqualTo(SurfaceException.Reason.CONFLICT_TOKEN_STALE);
@@ -253,7 +252,7 @@ class VerbSurfaceTest {
         String handed = verbs.read(EXECUTOR, "probe-scope", "sprint", "164.1").conflictToken();
 
         verbs.update(EXECUTOR, "probe-scope", "sprint", "164.1", handed,
-            new Payloads.UpdateRequest("a draft", "a-receipt", null));
+            new VerbInput.Handover("a draft", "a-receipt", null));
 
         verify(exchanges).writeHandoverDraft(eq(SCOPE), any(), eq(EXECUTOR),
             eq("a-receipt"), eq("a draft"), eq(null));
@@ -264,7 +263,7 @@ class VerbSurfaceTest {
         String handed = verbs.read(EXECUTOR, "probe-scope", "sprint", "164.1").conflictToken();
 
         verbs.update(EXECUTOR, "probe-scope", "sprint", "164.1", "\"" + handed + "\"",
-            new Payloads.UpdateRequest("a draft", "a-receipt", null));
+            new VerbInput.Handover("a draft", "a-receipt", null));
 
         verify(exchanges).writeHandoverDraft(any(), any(), any(), any(), any(), any());
     }
@@ -296,7 +295,7 @@ class VerbSurfaceTest {
     @Test
     void the_children_sub_collection_is_refused_anywhere_but_a_bracket_root() {
         assertThatThrownBy(() -> verbs.createChild(EXECUTOR, "probe-scope", "sprint", "164.1",
-            new Payloads.CreateRequest("a child", "code", LocalDate.parse("2026-09-01"), null)))
+            new VerbInput.Draft("a child", "code", LocalDate.parse("2026-09-01"), null)))
             .isInstanceOf(SurfaceException.class)
             .extracting(e -> ((SurfaceException) e).reason())
             .isEqualTo(SurfaceException.Reason.ADDRESS_MALFORMED);

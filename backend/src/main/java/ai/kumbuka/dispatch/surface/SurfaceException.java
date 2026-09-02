@@ -1,4 +1,4 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.surface;
 
 /**
  * A typed refusal the surface itself produces, as distinct from one the domain

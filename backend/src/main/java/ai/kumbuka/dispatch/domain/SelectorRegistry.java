@@ -1,9 +1,9 @@
 package ai.kumbuka.dispatch.domain;
 
+import ai.kumbuka.dispatch.repository.SelectorRepository;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
@@ -25,12 +25,9 @@ import java.util.UUID;
 @TenantBound
 public class SelectorRegistry {
 
-    /** The query parameter every lookup binds the scope to. */
-    private static final String P_SCOPE = "scope";
-
     private static final Logger LOG = Logger.getLogger(SelectorRegistry.class);
 
-    @Inject EntityManager em;
+    @Inject SelectorRepository selectors;
 
     /**
      * Refuses unless the selector is declared in this scope and not withdrawn.
@@ -66,11 +63,7 @@ public class SelectorRegistry {
 
     @Transactional
     public List<Selector> declared(UUID scopeId) {
-        return em.createQuery("""
-                SELECT s FROM Selector s WHERE s.scopeId = :scope ORDER BY s.name
-                """, Selector.class)
-            .setParameter(P_SCOPE, scopeId)
-            .getResultList();
+        return selectors.declared(scopeId);
     }
 
     /**
@@ -84,13 +77,7 @@ public class SelectorRegistry {
     @Transactional
     public Selector withdraw(UUID scopeId, String name) {
         Selector selector = requireDeclared(scopeId, name);
-        long used = em.createQuery("""
-                SELECT COUNT(e) FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel
-                """, Long.class)
-            .setParameter(P_SCOPE, scopeId)
-            .setParameter("sel", name)
-            .getSingleResult();
+        long used = selectors.exchangesUnder(scopeId, name);
 
         if (used > 0) {
             throw new DispatchException(DispatchException.Reason.SELECTOR_IN_USE,
@@ -99,18 +86,12 @@ public class SelectorRegistry {
                     + "a used one depend on the name continuing to mean what it meant.");
         }
         selector.withdrawn = Boolean.TRUE;
-        em.flush();
+        selectors.flush();
         LOG.infof("selector '%s' withdrawn", name);
         return selector;
     }
 
     private Optional<Selector> find(UUID scopeId, String name) {
-        List<Selector> found = em.createQuery("""
-                SELECT s FROM Selector s WHERE s.scopeId = :scope AND s.name = :name
-                """, Selector.class)
-            .setParameter(P_SCOPE, scopeId)
-            .setParameter("name", name)
-            .getResultList();
-        return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
+        return selectors.find(scopeId, name);
     }
 }
