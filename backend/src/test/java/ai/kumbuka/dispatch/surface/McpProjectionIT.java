@@ -259,16 +259,47 @@ class McpProjectionIT {
     @Test
     void an_uncarried_verb_is_answered_by_name_with_the_same_typed_reason() {
         Response answer = rpc("tools/call", Map.of(
-            "name", "query",
-            "arguments", Map.of("scope", SurfaceFixture.SCOPE,
-                "selector", SurfaceFixture.SELECTOR)));
+            "name", "validate",
+            "arguments", Map.of("address", SurfaceFixture.address("1.0"))));
 
         assertThat(answer.jsonPath().getBoolean("result.isError")).isTrue();
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
             .as("absent from tools/list is what 'MCP omits' means, and it is not the same "
                 + "as unknown. An unknown-tool reply would send the caller looking for a "
                 + "spelling; a category error says the act does not exist here, and why")
-            .isEqualTo("VERB_NOT_CARRIED");
+            .isEqualTo("VERB_DEPTH_UNDECLARED");
+    }
+
+    /**
+     * And a carried one is answered by doing it. The listing is a tool now,
+     * and it carries the same projection the single read does.
+     */
+    @Test
+    void the_listing_is_a_tool_and_keeps_the_projection() {
+        Response answer = rpc("tools/call", Map.of(
+            "name", "query",
+            "arguments", Map.of("scope", SurfaceFixture.SCOPE,
+                "selector", SurfaceFixture.SELECTOR)));
+
+        assertThat(answer.jsonPath().getBoolean("result.isError"))
+            .as("query is carried on both expositions now — MCP omits, and this is not "
+                + "one of the omissions")
+            .isFalse();
+    }
+
+    /** An undeclared filter field is refused here too, and names the field. */
+    @Test
+    void an_undeclared_filter_field_is_refused_on_the_tool_surface_as_well() {
+        Response answer = rpc("tools/call", Map.of(
+            "name", "query",
+            "arguments", Map.of("scope", SurfaceFixture.SCOPE,
+                "selector", SurfaceFixture.SELECTOR, "title", "anything")));
+
+        assertThat(answer.jsonPath().getBoolean("result.isError")).isTrue();
+        assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
+            .as("the filter model is the domain's, so both expositions refuse the same "
+                + "field for the same reason rather than each carrying its own list")
+            .isEqualTo("FILTER_FIELD_UNKNOWN");
     }
 
     @Test
@@ -347,9 +378,14 @@ class McpProjectionIT {
                 arguments.put("apparatus", "code");
                 arguments.put("date", "2026-09-01");
             }
-            case "query", "claim_next" -> {
+            case "query" -> {
                 arguments.put("scope", SurfaceFixture.SCOPE);
                 arguments.put("selector", SurfaceFixture.SELECTOR);
+            }
+            case "claim_next" -> {
+                arguments.put("scope", SurfaceFixture.SCOPE);
+                arguments.put("selector", SurfaceFixture.SELECTOR);
+                arguments.put("duration", "PT1H");
             }
             case "append" -> {
                 arguments.put("address", address);

@@ -341,25 +341,98 @@ class ExchangeSurfaceIT {
     }
 
     // =======================================================================
-    // The four the scheme does not carry
+    // query and claim_next, on the collection
     // =======================================================================
 
+    /**
+     * GET on the collection lists, and the filter is read from the query
+     * string.
+     */
     @Test
-    void query_is_a_typed_category_error_and_not_a_404() {
+    void query_lists_the_selector_and_narrows_by_a_declared_filter() {
+        String bracket = openBracket();
+
         get(SurfaceFixture.collection())
             .then()
-            .statusCode(422)
-            .body("reason", equalTo("VERB_NOT_CARRIED"))
-            .body("message", org.hamcrest.Matchers.containsString("query"));
+            .statusCode(200)
+            .body("exchanges.address", org.hamcrest.Matchers.hasItem(
+                org.hamcrest.Matchers.containsString(bracket)));
+
+        get(SurfaceFixture.collection() + "?status=draft")
+            .then()
+            .statusCode(200)
+            .body("exchanges.address", org.hamcrest.Matchers.hasItem(
+                org.hamcrest.Matchers.containsString(bracket)));
     }
 
+    /**
+     * An undeclared filter field is refused on the wire, and the field is
+     * named.
+     *
+     * <p>The wire half of the fail-closed rule. A framework that dropped an
+     * unknown query parameter would answer 200 with the full set — a plausible
+     * answer to a question nobody asked — so the parameters reach the domain
+     * unfiltered and the domain refuses.
+     */
     @Test
-    void claim_next_is_a_typed_category_error_on_the_collection() {
-        post(SurfaceFixture.collection() + ":claim_next", null)
+    void an_undeclared_filter_field_is_refused_on_the_wire() {
+        openBracket();
+
+        get(SurfaceFixture.collection() + "?title=anything")
             .then()
             .statusCode(422)
-            .body("reason", equalTo("VERB_NOT_CARRIED"));
+            .body("reason", equalTo("FILTER_FIELD_UNKNOWN"))
+            .body("offenders", org.hamcrest.Matchers.hasItem("title"));
     }
+
+    /**
+     * POST {@code :claim_next} on the collection draws one exchange and
+     * answers with its receipt.
+     *
+     * <p>The one write admissible on a truncated address, because its verb
+     * contract declares set semantics and the only declarable one is exactly
+     * one.
+     */
+    @Test
+    void claim_next_draws_one_exchange_from_the_collection() {
+        String bracket = openBracket();
+        post(SurfaceFixture.item(bracket) + ":send", null).then().statusCode(200);
+
+        // WHICH exchange comes back is not asserted here, and deliberately.
+        // The cases in this class share one scope and one selector, so the
+        // draw takes the position-next claimable one across everything every
+        // other case left behind — which is the verb working, not a defect.
+        // The selection order is asserted where it can be: against a tenant of
+        // its own, in the domain probe.
+        post(SurfaceFixture.collection() + ":claim_next", Map.of("duration", "PT1H"))
+            .then()
+            .statusCode(200)
+            .body("exchange.address", org.hamcrest.Matchers.containsString(
+                SurfaceFixture.SELECTOR))
+            .body("exchange.status", equalTo("active"))
+            .body("receipt", org.hamcrest.Matchers.not(org.hamcrest.Matchers.emptyString()));
+    }
+
+    /**
+     * An empty draw is a typed refusal and never a not-found.
+     *
+     * <p>Asked of the second declared selector, which no case in this class
+     * writes to. The shared one is never reliably empty, and a probe that
+     * emptied it first would be asserting about whatever the emptying loop
+     * happened to leave.
+     */
+    @Test
+    void claim_next_on_a_selector_with_nothing_claimable_refuses_typed() {
+        post("/api/" + SurfaceFixture.SCOPE + "/satellite:claim_next",
+                Map.of("duration", "PT1H"))
+            .then()
+            .statusCode(409)
+            .body("reason", equalTo("NOTHING_TO_CLAIM"));
+    }
+
+    // =======================================================================
+    // The two the scheme does not carry
+    // =======================================================================
 
     @Test
     void withdraw_names_the_console_rather_than_being_absent() {

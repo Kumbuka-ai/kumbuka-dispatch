@@ -45,10 +45,19 @@ public enum CustomMethod {
     CLOSE("close", Depth.ITEM),
     CONSUME("consume", Depth.ITEM),
 
+    /**
+     * The one transition at collection depth.
+     *
+     * <p>Admissible there because its verb contract declares set semantics,
+     * and the only declarable set semantics is exactly one. Undeclared stays
+     * fail-closed, which is why every other verb above sits at item depth and
+     * answers 405 when addressed at a collection.
+     */
+    CLAIM_NEXT("claim_next", Depth.COLLECTION),
+
     // ---- Not carried, and answered by name rather than left absent ------
     WITHDRAW("withdraw", Depth.ITEM),
-    VALIDATE("validate", Depth.ITEM),
-    CLAIM_NEXT("claim_next", Depth.COLLECTION);
+    VALIDATE("validate", Depth.ITEM);
 
     /** The address depth a verb acts at. Undeclared would mean item only. */
     public enum Depth {

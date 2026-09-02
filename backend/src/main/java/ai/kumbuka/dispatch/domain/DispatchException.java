@@ -65,7 +65,36 @@ public class DispatchException extends RuntimeException {
         /** The exchange already carries a ratified handover. */
         HANDOVER_ALREADY_RATIFIED,
         /** Metadata carried an assertion, or a URL carrying credentials. */
-        METADATA_REFUSED
+        METADATA_REFUSED,
+
+        /**
+         * A listing was narrowed by a field this scheme does not filter on.
+         *
+         * <p>Refused rather than ignored. An ignored filter answers with the
+         * full set, which looks exactly like a correct narrow answer and gives
+         * the caller nothing to notice it by — the one failure mode of a
+         * filter that is worse than an outright refusal.
+         */
+        FILTER_FIELD_UNKNOWN,
+
+        /**
+         * A declared filter field carried a value it cannot take.
+         *
+         * <p>Its own reason rather than a reuse of the one above: the caller
+         * asked for the right thing in the wrong terms, and matching it
+         * against nothing would answer "there is nothing here" to a question
+         * that was never asked.
+         */
+        FILTER_VALUE_REFUSED,
+
+        /**
+         * A draw from a set found nothing it could take.
+         *
+         * <p>Distinct from NOT_FOUND, which is about an address. This one says
+         * the address was fine and the set is empty of anything claimable
+         * right now — a caller retries the first and waits on the second.
+         */
+        NOTHING_TO_CLAIM
     }
 
     private final transient Reason reason;
