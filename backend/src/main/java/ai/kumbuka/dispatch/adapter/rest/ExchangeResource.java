@@ -1,6 +1,11 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.adapter.rest;
 
-import ai.kumbuka.dispatch.api.payload.Payloads;
+import ai.kumbuka.dispatch.surface.AddressParser;
+import ai.kumbuka.dispatch.surface.CallerActor;
+import ai.kumbuka.dispatch.surface.SurfaceException;
+import ai.kumbuka.dispatch.surface.VerbSurface;
+
+import ai.kumbuka.dispatch.adapter.payload.Payloads;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -105,7 +110,7 @@ public class ExchangeResource {
             // No colon: a plain collection address, and create is the one
             // writing verb whose set semantics is declared as exactly one.
             return created(scope, verbs.create(caller.current(), scope, segment,
-                read(body, Payloads.CreateRequest.class)));
+                Payloads.draft(read(body, Payloads.CreateRequest.class))));
         }
 
         CustomMethod.Split at = split.get();
@@ -114,7 +119,7 @@ public class ExchangeResource {
             // contract declares set semantics, and the only declarable one is
             // exactly one.
             return claimed(verbs.claimNext(caller.current(), scope, at.address(),
-                read(body, Payloads.ClaimRequest.class)));
+                Payloads.claim(read(body, Payloads.ClaimRequest.class))));
         }
 
         // Every other verb acts at item depth. Depth is declared per verb and
@@ -189,7 +194,8 @@ public class ExchangeResource {
                            @PathParam("id") String id,
                            @HeaderParam("If-Match") String ifMatch,
                            Payloads.UpdateRequest request) {
-        return ok(verbs.update(caller.current(), scope, selector, id, ifMatch, request));
+        return ok(verbs.update(caller.current(), scope, selector, id, ifMatch,
+            Payloads.handover(request)));
     }
 
     /**
@@ -236,10 +242,10 @@ public class ExchangeResource {
 
         return switch (method) {
             case SEND -> ok(verbs.send(actor, scope, selector, id,
-                read(body, Payloads.SendRequest.class)));
+                Payloads.metadata(read(body, Payloads.SendRequest.class))));
             case ACCEPT -> ok(verbs.accept(actor, scope, selector, id));
             case CLAIM -> claimed(verbs.claim(actor, scope, selector, id,
-                read(body, Payloads.ClaimRequest.class)));
+                Payloads.claim(read(body, Payloads.ClaimRequest.class))));
             case RELEASE -> ok(verbs.release(actor, scope, selector, id));
             case ABANDON -> ok(verbs.abandon(actor, scope, selector, id));
             case BLOCK -> ok(verbs.block(actor, scope, selector, id));
@@ -271,7 +277,8 @@ public class ExchangeResource {
                                 @PathParam("selector") String selector,
                                 @PathParam("id") String id,
                                 Payloads.CreateRequest request) {
-        return created(scope, verbs.createChild(caller.current(), scope, selector, id, request));
+        return created(scope, verbs.createChild(caller.current(), scope, selector, id,
+            Payloads.draft(request)));
     }
 
     /**
@@ -284,7 +291,8 @@ public class ExchangeResource {
                            @PathParam("selector") String selector,
                            @PathParam("id") String id,
                            Payloads.AppendRequest request) {
-        return created(scope, verbs.append(caller.current(), scope, selector, id, request));
+        return created(scope, verbs.append(caller.current(), scope, selector, id,
+            Payloads.addendum(request)));
     }
 
     // ======================================================================
@@ -292,7 +300,7 @@ public class ExchangeResource {
     // ======================================================================
 
     private static Response ok(VerbSurface.Result result) {
-        return tagged(Response.ok(result.exchange()), result);
+        return tagged(Response.ok(Payloads.ExchangeResponse.of(result.exchange())), result);
     }
 
     /**
@@ -304,12 +312,13 @@ public class ExchangeResource {
      * thing.
      */
     private static Response listing(VerbSurface.Listing found) {
-        return Response.ok(found).build();
+        return Response.ok(Payloads.Listing.of(found.exchanges())).build();
     }
 
     private static Response claimed(VerbSurface.ClaimOutcome outcome) {
         return tagged(Response.ok(new Payloads.ClaimResponse(
-            outcome.result().exchange(), outcome.receipt())), outcome.result());
+            Payloads.ExchangeResponse.of(outcome.result().exchange()), outcome.receipt())),
+            outcome.result());
     }
 
     /**
@@ -326,7 +335,7 @@ public class ExchangeResource {
                 .path("{selector}/{id}")
                 .build(scope, result.address().selector(),
                     AddressParser.render(result.address())))
-            .entity(result.exchange()), result);
+            .entity(Payloads.ExchangeResponse.of(result.exchange())), result);
     }
 
     private static Response tagged(Response.ResponseBuilder response, VerbSurface.Result result) {

@@ -1,6 +1,8 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.api.mcp.McpTools;
+import ai.kumbuka.dispatch.adapter.rest.CustomMethod;
+
+import ai.kumbuka.dispatch.adapter.mcp.McpTools;
 import jakarta.ws.rs.HttpMethod;
 import jakarta.ws.rs.Path;
 import org.junit.jupiter.api.Test;

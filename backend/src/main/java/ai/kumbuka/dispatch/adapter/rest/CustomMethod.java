@@ -1,4 +1,4 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.adapter.rest;
 
 import java.util.Arrays;
 import java.util.List;

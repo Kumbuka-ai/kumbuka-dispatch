@@ -1,7 +1,7 @@
 package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.api.VerbSurfaceSpecification;
-import ai.kumbuka.dispatch.api.mcp.McpTools;
+import ai.kumbuka.dispatch.surface.VerbSurfaceSpecification;
+import ai.kumbuka.dispatch.adapter.mcp.McpTools;
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;

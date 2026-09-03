@@ -1,10 +1,11 @@
-package ai.kumbuka.dispatch.api.mcp;
+package ai.kumbuka.dispatch.adapter.mcp;
 
-import ai.kumbuka.dispatch.api.AddressParser;
-import ai.kumbuka.dispatch.api.CallerActor;
-import ai.kumbuka.dispatch.api.SurfaceException;
-import ai.kumbuka.dispatch.api.VerbSurface;
-import ai.kumbuka.dispatch.api.payload.Payloads;
+import ai.kumbuka.dispatch.surface.AddressParser;
+import ai.kumbuka.dispatch.surface.CallerActor;
+import ai.kumbuka.dispatch.surface.SurfaceException;
+import ai.kumbuka.dispatch.surface.VerbInput;
+import ai.kumbuka.dispatch.surface.VerbSurface;
+import ai.kumbuka.dispatch.adapter.payload.Payloads;
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
@@ -55,7 +56,7 @@ import java.util.Map;
 @TenantBound
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-public class McpResource {
+public class McpAdapter {
 
     /** The revision of the MCP protocol this adapter speaks. */
     private static final String PROTOCOL_VERSION = "2025-06-18";
@@ -158,18 +159,18 @@ public class McpResource {
 
         return switch (tool == null ? "" : tool) {
             case "create" -> create(actor, in);
-            case "read" -> at(in, (s, l, i) -> verbs.read(actor, s, l, i)).exchange();
+            case "read" -> dressed(at(in, (s, l, i) -> verbs.read(actor, s, l, i)));
             case "update" -> update(actor, in);
             case "append" -> append(actor, in);
             case "send" -> send(actor, in);
-            case "accept" -> at(in, (s, l, i) -> verbs.accept(actor, s, l, i)).exchange();
+            case "accept" -> dressed(at(in, (s, l, i) -> verbs.accept(actor, s, l, i)));
             case "claim" -> claim(actor, in);
-            case "release" -> at(in, (s, l, i) -> verbs.release(actor, s, l, i)).exchange();
-            case "abandon" -> at(in, (s, l, i) -> verbs.abandon(actor, s, l, i)).exchange();
-            case "block" -> at(in, (s, l, i) -> verbs.block(actor, s, l, i)).exchange();
-            case "resume" -> at(in, (s, l, i) -> verbs.resume(actor, s, l, i)).exchange();
-            case "close" -> at(in, (s, l, i) -> verbs.close(actor, s, l, i)).exchange();
-            case "consume" -> at(in, (s, l, i) -> verbs.consume(actor, s, l, i)).exchange();
+            case "release" -> dressed(at(in, (s, l, i) -> verbs.release(actor, s, l, i)));
+            case "abandon" -> dressed(at(in, (s, l, i) -> verbs.abandon(actor, s, l, i)));
+            case "block" -> dressed(at(in, (s, l, i) -> verbs.block(actor, s, l, i)));
+            case "resume" -> dressed(at(in, (s, l, i) -> verbs.resume(actor, s, l, i)));
+            case "close" -> dressed(at(in, (s, l, i) -> verbs.close(actor, s, l, i)));
+            case "consume" -> dressed(at(in, (s, l, i) -> verbs.consume(actor, s, l, i)));
             case "query" -> query(actor, in);
             case "claim_next" -> claimNext(actor, in);
 
@@ -189,45 +190,45 @@ public class McpResource {
     private Object create(Actor actor, Map<String, Object> in) {
         String scope = required(in, ARG_SCOPE);
         String selector = required(in, ARG_SELECTOR);
-        Payloads.CreateRequest body = new Payloads.CreateRequest(
+        VerbInput.Draft body = new VerbInput.Draft(
             required(in, "title"), required(in, "apparatus"), date(in, "date"), null);
 
         String parent = optional(in, "parent");
         if (parent == null) {
-            return verbs.create(actor, scope, selector, body).exchange();
+            return dressed(verbs.create(actor, scope, selector, body));
         }
 
         AddressParser.Parts at = AddressParser.uri(parent);
         requireSameCollection(at, scope, selector);
-        return verbs.createChild(actor, at.scope(), at.selector(), at.id(), body).exchange();
+        return dressed(verbs.createChild(actor, at.scope(), at.selector(), at.id(), body));
     }
 
     private Object update(Actor actor, Map<String, Object> in) {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        Payloads.UpdateRequest body = new Payloads.UpdateRequest(
+        VerbInput.Handover body = new VerbInput.Handover(
             required(in, "draft"), optional(in, "receipt"), metadata(in));
-        return verbs.update(actor, at.scope(), at.selector(), at.id(),
-            required(in, "conflict_token"), body).exchange();
+        return dressed(verbs.update(actor, at.scope(), at.selector(), at.id(),
+            required(in, "conflict_token"), body));
     }
 
     private Object append(Actor actor, Map<String, Object> in) {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        return verbs.append(actor, at.scope(), at.selector(), at.id(),
-            new Payloads.AppendRequest(required(in, "title"), required(in, "apparatus"),
-                date(in, "date"))).exchange();
+        return dressed(verbs.append(actor, at.scope(), at.selector(), at.id(),
+            new VerbInput.Addendum(required(in, "title"), required(in, "apparatus"),
+                date(in, "date"))));
     }
 
     private Object send(Actor actor, Map<String, Object> in) {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        return verbs.send(actor, at.scope(), at.selector(), at.id(),
-            new Payloads.SendRequest(metadata(in))).exchange();
+        return dressed(verbs.send(actor, at.scope(), at.selector(), at.id(), metadata(in)));
     }
 
     private Object claim(Actor actor, Map<String, Object> in) {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
         VerbSurface.ClaimOutcome claimed = verbs.claim(actor, at.scope(), at.selector(),
-            at.id(), new Payloads.ClaimRequest(required(in, "duration")));
-        return new Payloads.ClaimResponse(claimed.result().exchange(), claimed.receipt());
+            at.id(), new VerbInput.Claim(required(in, "duration")));
+        return new Payloads.ClaimResponse(
+            Payloads.ExchangeResponse.of(claimed.result().exchange()), claimed.receipt());
     }
 
     /**
@@ -249,14 +250,27 @@ public class McpResource {
             }
         });
 
-        return verbs.query(actor, scope, selector, filters);
+        return Payloads.Listing.of(verbs.query(actor, scope, selector, filters).exchanges());
     }
 
     private Object claimNext(Actor actor, Map<String, Object> in) {
         VerbSurface.ClaimOutcome claimed = verbs.claimNext(actor,
             required(in, ARG_SCOPE), required(in, ARG_SELECTOR),
-            new Payloads.ClaimRequest(required(in, "duration")));
-        return new Payloads.ClaimResponse(claimed.result().exchange(), claimed.receipt());
+            new VerbInput.Claim(required(in, "duration")));
+        return new Payloads.ClaimResponse(
+            Payloads.ExchangeResponse.of(claimed.result().exchange()), claimed.receipt());
+    }
+
+    /**
+     * The wire shape of a result.
+     *
+     * <p>The surface answers with the view; turning it into JSON is this
+     * adapter's act. One helper rather than a mapping at each of the twelve
+     * call sites: twelve sites are twelve chances to serialise the view
+     * itself, which carries different keys than the published shape does.
+     */
+    private static Payloads.ExchangeResponse dressed(VerbSurface.Result result) {
+        return Payloads.ExchangeResponse.of(result.exchange());
     }
 
     /** A verb addressed at one exchange, with the address split once. */

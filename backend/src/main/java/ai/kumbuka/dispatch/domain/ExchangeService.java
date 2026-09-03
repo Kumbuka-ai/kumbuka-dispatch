@@ -1,11 +1,9 @@
 package ai.kumbuka.dispatch.domain;
 
+import ai.kumbuka.dispatch.repository.ExchangeRepository;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.LockModeType;
-import jakarta.persistence.NoResultException;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
@@ -42,9 +40,6 @@ public class ExchangeService {
     /** The last letter a suffix may take. Overflow beyond it is deferred, not wrapped. */
     private static final char LAST_SUFFIX = 'z';
 
-    /** The query parameter every lookup binds the scope to. */
-    private static final String P_SCOPE = "scope";
-
     /**
      * What this logger may say is fixed by convention and enforced by a guard:
      * address, selector, number, transition, status, typed reason, duration,
@@ -57,7 +52,7 @@ public class ExchangeService {
      */
     private static final Logger LOG = Logger.getLogger(ExchangeService.class);
 
-    @Inject EntityManager em;
+    @Inject ExchangeRepository exchanges;
     @Inject SelectorRegistry selectors;
 
     private final Clock clock;
@@ -161,33 +156,13 @@ public class ExchangeService {
     /** The addenda hanging from one exchange, in suffix order. */
     @Transactional
     public List<Exchange> addenda(UUID scopeId, ExchangeAddress base) {
-        return em.createQuery("""
-                SELECT e FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel
-                  AND e.number = :num AND e.sub = :sub
-                  AND e.addendumSuffix IS NOT NULL
-                ORDER BY e.addendumSuffix
-                """, Exchange.class)
-            .setParameter(P_SCOPE, scopeId)
-            .setParameter("sel", base.selector())
-            .setParameter("num", base.number())
-            .setParameter("sub", base.sub())
-            .getResultList();
+        return exchanges.addenda(scopeId, base);
     }
 
     /** The children of a bracket, addenda excluded. */
     @Transactional
     public List<Exchange> children(UUID scopeId, String selector, int number) {
-        return em.createQuery("""
-                SELECT e FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel AND e.number = :num
-                  AND e.sub > 0 AND e.addendumSuffix IS NULL
-                ORDER BY e.sub
-                """, Exchange.class)
-            .setParameter(P_SCOPE, scopeId)
-            .setParameter("sel", selector)
-            .setParameter("num", number)
-            .getResultList();
+        return exchanges.children(scopeId, selector, number);
     }
 
     /**
@@ -218,46 +193,8 @@ public class ExchangeService {
                                     Actor actor) {
         selectors.requireDeclared(scopeId, selector);
 
-        StringBuilder jpql = new StringBuilder("""
-            SELECT e FROM Exchange e
-            WHERE e.scopeId = :scope AND e.selector = :sel
-              AND e.addendumSuffix IS NULL
-            """);
-        // Each declared field that the caller named becomes one conjunct, and
-        // its values become the disjunction inside it. Built by appending
-        // rather than by string-formatting a predicate: the only things that
-        // reach the query text are constants from this file, and every caller
-        // value travels as a bound parameter.
-        if (!filter.statuses().isEmpty()) {
-            jpql.append("  AND e.status IN :statuses\n");
-        }
-        if (!filter.apparatuses().isEmpty()) {
-            jpql.append("  AND e.apparatus IN :apparatuses\n");
-        }
-        if (!filter.numbers().isEmpty()) {
-            jpql.append("  AND e.number IN :numbers\n");
-        }
-        jpql.append("ORDER BY e.number, e.sub");
-
-        var query = em.createQuery(jpql.toString(), Exchange.class)
-            .setParameter(P_SCOPE, scopeId)
-            .setParameter("sel", selector);
-        if (!filter.statuses().isEmpty()) {
-            // The column holds the wire name, not the enum constant: the two
-            // differ (`needs_input` against `NEEDS_INPUT`) and the wire name is
-            // the one that is stored, so it is the one that is bound.
-            query.setParameter("statuses",
-                filter.statuses().stream().map(ExchangeStatus::wireName).toList());
-        }
-        if (!filter.apparatuses().isEmpty()) {
-            query.setParameter("apparatuses", filter.apparatuses());
-        }
-        if (!filter.numbers().isEmpty()) {
-            query.setParameter("numbers", filter.numbers());
-        }
-
         Instant now = Instant.now(clock);
-        List<ExchangeView> found = query.getResultList().stream()
+        List<ExchangeView> found = exchanges.matching(scopeId, selector, filter).stream()
             .map(e -> ExchangeView.of(e, actor, now))
             .toList();
 
@@ -309,40 +246,13 @@ public class ExchangeService {
         selectors.requireDeclared(scopeId, selector);
         Instant now = Instant.now(clock);
 
-        // Native rather than JPQL: the pessimistic lock this needs is
-        // SKIP LOCKED, and JPA's LockModeType has no expression for it —
-        // PESSIMISTIC_WRITE waits for the other transaction instead of
-        // stepping over it, which would serialise every concurrent draw and
-        // hand the second caller the row the first just took.
-        List<?> ids = em.createNativeQuery("""
-                SELECT id FROM dispatch.exchange
-                WHERE scope_id = :scope
-                  AND selector = :sel
-                  AND addendum_suffix IS NULL
-                  AND (status = 'open'
-                       OR (status = 'active' AND claim_expires_at <= :now))
-                ORDER BY number, sub
-                LIMIT 1
-                FOR UPDATE SKIP LOCKED
-                """)
-            .setParameter(P_SCOPE, scopeId)
-            .setParameter("sel", selector)
-            .setParameter("now", java.sql.Timestamp.from(now))
-            .getResultList();
-
-        if (ids.isEmpty()) {
-            throw new DispatchException(DispatchException.Reason.NOTHING_TO_CLAIM,
+        Exchange e = exchanges.lockNextClaimable(scopeId, selector, now)
+            .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOTHING_TO_CLAIM,
                 "nothing in '" + selector + "' is claimable. Every exchange there is "
                     + "terminal, still a draft, awaiting its commissioner, or effectively "
                     + "held by somebody else. The selector exists — this is an empty draw, "
-                    + "not a missing address.");
-        }
+                    + "not a missing address."));
 
-        // Round-tripped through its text form rather than cast: the driver may
-        // hand back a UUID or the string of one depending on how the column is
-        // read, and a cast that is right today is a ClassCastException the day
-        // that changes.
-        Exchange e = em.find(Exchange.class, UUID.fromString(ids.get(0).toString()));
         if (e.status() == ExchangeStatus.ACTIVE) {
             reclaim(e);
         }
@@ -737,7 +647,7 @@ public class ExchangeService {
 
     private Exchange touch(Exchange e, String actor) {
         e.updatedBy = actor;
-        em.flush();
+        exchanges.flush();
         return e;
     }
 
@@ -753,38 +663,20 @@ public class ExchangeService {
      * rolled-back creation give its number back.
      */
     private int allocateNumber(UUID scopeId, String selector) {
-        NumberCircle circle;
-        try {
-            circle = em.createQuery("""
-                    SELECT c FROM NumberCircle c
-                    WHERE c.scopeId = :scope AND c.selector = :sel
-                    """, NumberCircle.class)
-                .setParameter(P_SCOPE, scopeId)
-                .setParameter("sel", selector)
-                .setLockMode(LockModeType.PESSIMISTIC_WRITE)
-                .getSingleResult();
-        } catch (NoResultException absent) {
-            throw new DispatchException(DispatchException.Reason.SELECTOR_NOT_DECLARED,
+        NumberCircle circle = exchanges.lockNumberCircle(scopeId, selector)
+            .orElseThrow(() -> new DispatchException(
+                DispatchException.Reason.SELECTOR_NOT_DECLARED,
                 "no number circle for selector '" + selector + "' in this scope. A circle "
                     + "is created with the selector's declaration, not on first use — a "
                     + "counter that springs into existence starts wherever the first "
-                    + "caller happened to be.");
-        }
+                    + "caller happened to be."));
         int allocated = circle.nextNumber;
         circle.nextNumber = allocated + 1;
         return allocated;
     }
 
     private int nextSub(UUID scopeId, String selector, int number) {
-        Integer highest = em.createQuery("""
-                SELECT MAX(e.sub) FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel AND e.number = :num
-                  AND e.addendumSuffix IS NULL
-                """, Integer.class)
-            .setParameter(P_SCOPE, scopeId)
-            .setParameter("sel", selector)
-            .setParameter("num", number)
-            .getSingleResult();
+        Integer highest = exchanges.highestSub(scopeId, selector, number);
         return highest == null ? 1 : highest + 1;
     }
 
@@ -796,17 +688,7 @@ public class ExchangeService {
      * the one thing in this design that cannot be taken back.
      */
     private String nextSuffix(UUID scopeId, ExchangeAddress base) {
-        String highest = em.createQuery("""
-                SELECT MAX(e.addendumSuffix) FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel
-                  AND e.number = :num AND e.sub = :sub
-                  AND e.addendumSuffix IS NOT NULL
-                """, String.class)
-            .setParameter(P_SCOPE, scopeId)
-            .setParameter("sel", base.selector())
-            .setParameter("num", base.number())
-            .setParameter("sub", base.sub())
-            .getSingleResult();
+        String highest = exchanges.highestSuffix(scopeId, base);
 
         if (highest == null) {
             return "a";
@@ -839,10 +721,7 @@ public class ExchangeService {
     }
 
     private Exchange insert(NewExchange spec) {
-        Exchange e = build(spec);
-        em.persist(e);
-        em.flush();
-        return e;
+        return exchanges.insert(build(spec));
     }
 
     private Exchange build(NewExchange spec) {
@@ -881,9 +760,7 @@ public class ExchangeService {
         e.apply(Transition.SEND);
         e.freezeDispatch(Instant.now(clock));
 
-        em.persist(e);
-        em.flush();
-        return e;
+        return exchanges.insert(e);
     }
 
     private Exchange require(UUID scopeId, ExchangeAddress address) {
@@ -902,27 +779,7 @@ public class ExchangeService {
      * clear than these two do.
      */
     private Optional<Exchange> find(UUID scopeId, ExchangeAddress address) {
-        var query = address.isAddendum()
-            ? em.createQuery("""
-                    SELECT e FROM Exchange e
-                    WHERE e.scopeId = :scope AND e.selector = :sel
-                      AND e.number = :num AND e.sub = :sub
-                      AND e.addendumSuffix = :suffix
-                    """, Exchange.class).setParameter("suffix", address.suffix())
-            : em.createQuery("""
-                    SELECT e FROM Exchange e
-                    WHERE e.scopeId = :scope AND e.selector = :sel
-                      AND e.number = :num AND e.sub = :sub
-                      AND e.addendumSuffix IS NULL
-                    """, Exchange.class);
-
-        List<Exchange> found = query
-            .setParameter(P_SCOPE, scopeId)
-            .setParameter("sel", address.selector())
-            .setParameter("num", address.number())
-            .setParameter("sub", address.sub())
-            .getResultList();
-        return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
+        return exchanges.find(scopeId, address);
     }
 
     private void requireBracketExists(UUID scopeId, String selector, int number) {

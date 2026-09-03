@@ -1,10 +1,9 @@
-package ai.kumbuka.dispatch.api.payload;
+package ai.kumbuka.dispatch.adapter.payload;
 
-import ai.kumbuka.dispatch.api.SurfaceException;
 import ai.kumbuka.dispatch.domain.ExchangeView;
+import ai.kumbuka.dispatch.surface.VerbInput;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -27,6 +26,45 @@ import java.util.Map;
 public final class Payloads {
 
     private Payloads() {
+    }
+
+    // ----------------------------------------------------------------------
+    // Wire shape to verb input
+    // ----------------------------------------------------------------------
+    //
+    // The translation runs in this direction and only in this direction. The
+    // adapter knows the surface; the surface does not know the adapter, which
+    // is what keeps the two out of the import cycle they were in. Every one of
+    // these passes null through untouched: a missing body is refused by the
+    // surface, after the scope has been resolved, and refusing it here would
+    // move that answer in front of a check the check order puts first.
+
+    /** The draft behind a create, or null when no body arrived. */
+    public static VerbInput.Draft draft(CreateRequest request) {
+        return request == null ? null : new VerbInput.Draft(
+            request.title(), request.apparatus(), request.date(), request.metadata());
+    }
+
+    /** The addendum behind an append, or null when no body arrived. */
+    public static VerbInput.Addendum addendum(AppendRequest request) {
+        return request == null ? null : new VerbInput.Addendum(
+            request.title(), request.apparatus(), request.date());
+    }
+
+    /** The handover behind an update, or null when no body arrived. */
+    public static VerbInput.Handover handover(UpdateRequest request) {
+        return request == null ? null : new VerbInput.Handover(
+            request.draft(), request.receipt(), request.metadata());
+    }
+
+    /** The claim behind a takeup, or null when no body arrived. */
+    public static VerbInput.Claim claim(ClaimRequest request) {
+        return request == null ? null : new VerbInput.Claim(request.duration());
+    }
+
+    /** The metadata a send freezes, or null when no body arrived. */
+    public static Map<String, String> metadata(SendRequest request) {
+        return request == null ? null : request.metadata();
     }
 
     /**
@@ -73,24 +111,13 @@ public final class Payloads {
      *
      * <p>Required rather than defaulted. A default lease length is a policy,
      * and a policy invented at the adapter is one nobody ratified.
+     *
+     * <p>The text is carried and not parsed. Parsing it here would refuse a
+     * malformed duration before the scope has been resolved, which is a
+     * different answer than the ratified check order gives; the surface parses
+     * it in its own position instead.
      */
     public record ClaimRequest(String duration) {
-
-        /** @throws SurfaceException when the value is absent or not a duration */
-        public Duration parsed() {
-            if (duration == null || duration.isBlank()) {
-                throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
-                    "a claim names how long it stands, as an ISO-8601 duration such as "
-                        + "'PT1H'. There is no default: a lease length is a policy, and one "
-                        + "invented here would be a policy nobody ratified.");
-            }
-            try {
-                return Duration.parse(duration);
-            } catch (java.time.format.DateTimeParseException e) {
-                throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
-                    "'" + duration + "' is not an ISO-8601 duration. 'PT1H', 'PT30M', 'P1D'.");
-            }
-        }
     }
 
     /**
@@ -138,6 +165,25 @@ public final class Payloads {
                 v.effectiveHolder(),
                 v.claimExpiresAt(),
                 v.body());
+        }
+    }
+
+    /**
+     * What a listing answers with.
+     *
+     * <p>An object around the list rather than the bare array, so that
+     * anything a listing later needs to say about itself — a continuation
+     * token above all — is an added key rather than a changed shape.
+     *
+     * <p>This used to be the surface's own record, serialised directly. It is
+     * a wire shape and belongs here; what the surface answers with is the list
+     * of views, and the key name is unchanged so no caller can tell.
+     */
+    public record Listing(List<ExchangeResponse> exchanges) {
+
+        /** The listing as it goes out, from the views the surface answered with. */
+        public static Listing of(List<ExchangeView> views) {
+            return new Listing(views.stream().map(ExchangeResponse::of).toList());
         }
     }
 

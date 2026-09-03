@@ -1,4 +1,6 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.surface;
+
+import ai.kumbuka.dispatch.adapter.rest.CustomMethod;
 
 import java.io.IOException;
 import java.io.InputStream;

@@ -1,4 +1,4 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;

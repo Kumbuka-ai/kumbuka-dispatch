@@ -1,4 +1,4 @@
-package ai.kumbuka.dispatch.api;
+package ai.kumbuka.dispatch.adapter.rest;
 
 import ai.kumbuka.dispatch.tenancy.TenantContext;
 import io.quarkus.security.Authenticated;
