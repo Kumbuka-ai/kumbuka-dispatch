@@ -101,8 +101,8 @@ public final class Payloads {
      * {@code dispatch_metadata}, and {@code title}, {@code apparatus} and
      * {@code date} override the same-named fields. Non-null fields are the
      * ones that change; null fields are the ones that keep. After send the
-     * write lands in the handover role: {@code draft} in {@code handover_body}
-     * and {@code metadata} in {@code handover_metadata}. {@code title},
+     * write lands in the return role: {@code draft} in {@code return_body}
+     * and {@code metadata} in {@code return_metadata}. {@code title},
      * {@code apparatus} and {@code date} are refused after send — a frozen
      * field is frozen.
      *
@@ -169,8 +169,8 @@ public final class Payloads {
         String effectiveHolder,
         Instant claimExpiresAt,
         String body,
-        String handoverBody,
-        Map<String, Object> handoverMetadata,
+        String returnBody,
+        Map<String, Object> returnMetadata,
         String conflictToken) {
 
         /**
@@ -194,8 +194,8 @@ public final class Payloads {
                 v.effectiveHolder(),
                 v.claimExpiresAt(),
                 v.body(),
-                v.handoverBody(),
-                v.handoverMetadata(),
+                v.returnBody(),
+                v.returnMetadata(),
                 v.conflictToken());
         }
     }

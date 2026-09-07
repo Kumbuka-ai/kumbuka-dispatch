@@ -61,7 +61,7 @@ public final class VerbInput {
 
     /**
      * What {@code update} carries — for the dispatch role before send, and for
-     * the handover role after it. One shape for both, because the caller does
+     * the return role after it. One shape for both, because the caller does
      * not choose which role is written: the state chooses.
      *
      * <p><strong>Before {@code send}:</strong> {@code draft} lands in {@code
@@ -71,8 +71,8 @@ public final class VerbInput {
      * property at a time. {@code receipt} is ignored — a draft has no holder.
      *
      * <p><strong>After {@code send}:</strong> {@code draft} lands in
-     * {@code handover_body} and {@code metadata} in {@code handover_metadata},
-     * exactly as the earlier handover-only shape did. {@code title},
+     * {@code return_body} and {@code metadata} in {@code return_metadata},
+     * exactly as the earlier return-only shape did. {@code title},
      * {@code apparatus} and {@code date} are refused when they arrive — a
      * frozen field is frozen. {@code receipt} is required of an executor.
      *

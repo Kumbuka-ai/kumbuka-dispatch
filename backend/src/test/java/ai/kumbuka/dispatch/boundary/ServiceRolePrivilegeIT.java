@@ -86,7 +86,7 @@ class ServiceRolePrivilegeIT {
      *
      * <p>No DELETE. The thirteen verbs are create, read, update, append, send,
      * accept, claim, release, abandon, block, resume, close and consume, and
-     * none of them deletes: {@code revert} discards an unratified handover
+     * none of them deletes: {@code revert} discards an unratified return
      * draft by nulling two columns, which is an UPDATE. No path in this
      * repository issues a DELETE against any of these tables.
      */

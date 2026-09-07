@@ -16,14 +16,16 @@ import java.util.Map;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.equalTo;
 
 /**
  * The authoring path, driven end to end over each exposition.
  *
  * <p>What is asserted is the whole author-then-executor movement in one run:
  * create, read the token, write the body (dispatch role), read it back on the
- * dispatch role, change the title, send, claim, write the handover, read it
- * back on the handover role. Both roles are written by the same verb —
+ * dispatch role, change the title, send, claim, write the return, read it
+ * back on the return role. Both roles are written by the same verb —
  * {@code update} — and the choice of role is a function of state. The role
  * that arrives on the read is the entire assertion the three defects broke.
  *
@@ -48,14 +50,14 @@ class AuthoringPathIT {
 
     @Test
     @DisplayName("authoring path over REST — create, write body, retitle, send, claim, write "
-        + "handover, read back each role")
+        + "return, read back each role")
     void the_authoring_path_over_rest() {
         new RestHarness().run();
     }
 
     @Test
     @DisplayName("authoring path over MCP — create, write body, retitle, send, claim, write "
-        + "handover, read back each role")
+        + "return, read back each role")
     void the_authoring_path_over_mcp() {
         new McpHarness().run();
     }
@@ -91,22 +93,22 @@ class AuthoringPathIT {
 
             // 3. update on a draft — the dispatch role. Writes body, and the
             //    dispatch metadata. Before this repair, this call landed the
-            //    text in handover_body and reported success — a blind write.
+            //    text in return_body and reported success — a blind write.
             update(created.id, tokenBeforeBodyWrite, Map.of(
                 "draft", "the commission text",
                 "metadata", Map.of("pr", "https://example.invalid/pr/1")));
 
-            // 4. read — the body is there, on the dispatch role. The handover
+            // 4. read — the body is there, on the dispatch role. The return
             //    role must be absent, because nothing has been written to it.
             //    That is what "the state chooses which role is written" MEANS.
             View afterBodyWrite = read(created.id);
             assertThat(afterBodyWrite.body)
                 .as("the write before send lands in the dispatch role, so the read finds it "
-                    + "on body; before this repair it landed in handover_body and the read "
+                    + "on body; before this repair it landed in return_body and the read "
                     + "found it there instead")
                 .isEqualTo("the commission text");
-            assertThat(afterBodyWrite.handoverBody)
-                .as("nothing has been written to the handover role, and NON_NULL means the "
+            assertThat(afterBodyWrite.returnBody)
+                .as("nothing has been written to the return role, and NON_NULL means the "
                     + "field is absent from the response rather than empty")
                 .isNull();
 
@@ -128,7 +130,7 @@ class AuthoringPathIT {
                 .isEqualTo("the commission text");
 
             // 6. send — the author commits the dispatch. From here on the
-            //    dispatch role is frozen and update lands in the handover role.
+            //    dispatch role is frozen and update lands in the return role.
             send(created.id);
 
             // 7. claim — the executor takes it up and mints a receipt. This
@@ -143,26 +145,42 @@ class AuthoringPathIT {
             assertThat(afterClaim.body).isEqualTo("the commission text");
             assertThat(afterClaim.status).isEqualTo("active");
 
-            // 9. update after send — the handover role. Writes handover_body
-            //    and handover_metadata. Same verb, different target row.
+            // 9. update after send — the return role. Writes return_body
+            //    and return_metadata. Same verb, different target row.
             update(created.id, afterClaim.conflictToken, Map.of(
                 "draft", "the answer text",
                 "receipt", receipt));
 
-            // 10. read — the handover role now carries the answer, and the
+            // 10. read — the return role now carries the answer, and the
             //     dispatch role still carries what the author committed. Two
             //     roles, one row, and the projection tells both.
-            View afterHandoverWrite = read(created.id);
-            assertThat(afterHandoverWrite.handoverBody)
-                .as("the write after send lands in the handover role and reads back on the "
-                    + "handover projection — the two halves the second and third defect broke")
+            View afterReturnWrite = read(created.id);
+            assertThat(afterReturnWrite.returnBody)
+                .as("the write after send lands in the return role and reads back on the "
+                    + "return projection — the two halves the second and third defect broke")
                 .isEqualTo("the answer text");
-            assertThat(afterHandoverWrite.body)
-                .as("the dispatch role survives the handover write unchanged; the row is "
+            assertThat(afterReturnWrite.body)
+                .as("the dispatch role survives the return write unchanged; the row is "
                     + "the same, the roles are separate")
                 .isEqualTo("the commission text");
-            assertThat(afterHandoverWrite.title)
+            assertThat(afterReturnWrite.title)
                 .as("and the title stays the one the author set")
+                .isEqualTo("the actual title");
+
+            // 11. update after send with a title argument — refused as FROZEN.
+            //     The dispatch fields are frozen at send; a caller that thinks
+            //     it can still rename a sent exchange learns so through a typed
+            //     refusal, not by finding the old title on a later read.
+            updateRefused(created.id, afterReturnWrite.conflictToken, Map.of(
+                "draft", "another answer",
+                "receipt", receipt,
+                "title", "a title that must not stick"),
+                "FROZEN");
+
+            View afterFrozenAttempt = read(created.id);
+            assertThat(afterFrozenAttempt.title)
+                .as("a refused write leaves the row alone — the title stays what it was "
+                    + "before the frozen attempt")
                 .isEqualTo("the actual title");
         }
 
@@ -171,6 +189,19 @@ class AuthoringPathIT {
         abstract View read(String id);
 
         abstract void update(String id, String token, Map<String, Object> body);
+
+        /**
+         * Attempts an update the surface must refuse with the named reason.
+         *
+         * <p>Written as a distinct verb rather than a flag on {@link #update}
+         * because the two answers a caller receives on refusal and on
+         * acceptance are different shapes on both expositions — the harness
+         * hides the shape, but the intent has to travel through the call site
+         * so that a passing "acceptance" test with a subtly refused body could
+         * not be reported as green.
+         */
+        abstract void updateRefused(String id, String token, Map<String, Object> body,
+                                    String expectedReason);
 
         abstract void send(String id);
 
@@ -201,7 +232,7 @@ class AuthoringPathIT {
                 response.jsonPath().getString("title"),
                 response.jsonPath().getString("status"),
                 response.jsonPath().getString("body"),
-                response.jsonPath().getString("handoverBody"),
+                response.jsonPath().getString("returnBody"),
                 response.jsonPath().getString("conflictToken"));
         }
 
@@ -212,6 +243,18 @@ class AuthoringPathIT {
                 .body(body)
                 .patch(SurfaceFixture.item(id))
                 .then().statusCode(200);
+        }
+
+        @Override
+        void updateRefused(String id, String token, Map<String, Object> body,
+                           String expectedReason) {
+            given().contentType(ContentType.JSON)
+                .header("If-Match", token)
+                .body(body)
+                .patch(SurfaceFixture.item(id))
+                .then()
+                .statusCode(anyOf(equalTo(400), equalTo(403), equalTo(409), equalTo(422)))
+                .body("reason", equalTo(expectedReason));
         }
 
         @Override
@@ -253,7 +296,7 @@ class AuthoringPathIT {
                 (String) answer.get("title"),
                 (String) answer.get("status"),
                 (String) answer.get("body"),
-                (String) answer.get("handoverBody"),
+                (String) answer.get("returnBody"),
                 (String) answer.get("conflictToken"));
         }
 
@@ -264,6 +307,23 @@ class AuthoringPathIT {
             arguments.put("conflict_token", token);
             arguments.putAll(body);
             call("update", arguments);
+        }
+
+        @Override
+        void updateRefused(String id, String token, Map<String, Object> body,
+                           String expectedReason) {
+            Map<String, Object> arguments = new LinkedHashMap<>();
+            arguments.put("address", SurfaceFixture.address(id));
+            arguments.put("conflict_token", token);
+            arguments.putAll(body);
+            Response answer = rpc("tools/call",
+                Map.of("name", "update", "arguments", arguments));
+            answer.then().statusCode(200);
+            assertThat(answer.jsonPath().getBoolean("result.isError"))
+                .as("update expected to be refused with %s", expectedReason)
+                .isTrue();
+            assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
+                .isEqualTo(expectedReason);
         }
 
         @Override
@@ -320,7 +380,7 @@ class AuthoringPathIT {
     private record Created(String id, String status) {
     }
 
-    private record View(String title, String status, String body, String handoverBody,
+    private record View(String title, String status, String body, String returnBody,
                         String conflictToken) {
     }
 }

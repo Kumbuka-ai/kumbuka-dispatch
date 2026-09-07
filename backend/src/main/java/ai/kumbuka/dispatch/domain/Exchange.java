@@ -24,7 +24,7 @@ import java.util.UUID;
  * One exchange: the commission, its answer, and the state of that exchange.
  *
  * <p><strong>Two roles, one identity.</strong> The dispatch fields and the
- * handover fields live on the same row because they are two roles of one
+ * return fields live on the same row because they are two roles of one
  * thing, not two things that reference each other. Splitting them would give
  * the exchange two places to carry a state and two rows to keep in step, and
  * the predecessor of this service did exactly that — its pair invariant then
@@ -94,10 +94,10 @@ public class Exchange {
     @Column(name = "sent_at")
     private Instant sentAt;
 
-    // --- the handover role ------------------------------------------------
+    // --- the return role ------------------------------------------------
 
-    @Column(name = "handover_body")
-    private String handoverBody;
+    @Column(name = "return_body")
+    private String returnBody;
 
     @Column(name = "ratified_at")
     private Instant ratifiedAt;
@@ -131,9 +131,9 @@ public class Exchange {
     @JdbcTypeCode(SqlTypes.JSON)
     public Map<String, Object> dispatchMetadata;
 
-    @Column(name = "handover_metadata", columnDefinition = "jsonb")
+    @Column(name = "return_metadata", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
-    public Map<String, Object> handoverMetadata;
+    public Map<String, Object> returnMetadata;
 
     // --- technical fields, server-derived ---------------------------------
 
@@ -175,8 +175,8 @@ public class Exchange {
         return sentAt;
     }
 
-    public String handoverBody() {
-        return handoverBody;
+    public String returnBody() {
+        return returnBody;
     }
 
     public Instant ratifiedAt() {
@@ -278,7 +278,7 @@ public class Exchange {
     }
 
     /**
-     * Discards an unratified handover draft.
+     * Discards an unratified return draft.
      *
      * <p>A draft that was never ratified never happened. Nobody inherits a
      * stranger's half-written text: that would be worse than overwriting it,
@@ -286,15 +286,15 @@ public class Exchange {
      */
     void discardDraft() {
         if (ratifiedAt == null) {
-            this.handoverBody = null;
-            this.handoverMetadata = null;
+            this.returnBody = null;
+            this.returnMetadata = null;
         }
     }
 
-    /** Writes or overwrites the handover draft. Wholesale — there is no append. */
-    void writeHandover(String draft, Map<String, Object> metadata) {
-        this.handoverBody = draft;
-        this.handoverMetadata = metadata;
+    /** Writes or overwrites the return draft. Wholesale — there is no append. */
+    void writeReturn(String draft, Map<String, Object> metadata) {
+        this.returnBody = draft;
+        this.returnMetadata = metadata;
     }
 
     /**
@@ -331,9 +331,9 @@ public class Exchange {
         }
     }
 
-    /** For the projection: what the handover role currently holds. */
-    public Map<String, Object> handoverMetadata() {
-        return handoverMetadata;
+    /** For the projection: what the return role currently holds. */
+    public Map<String, Object> returnMetadata() {
+        return returnMetadata;
     }
 
     /** True for the exchange the bracket is derived from. */
@@ -401,7 +401,7 @@ public class Exchange {
      * also be the writing call, and the review it is supposed to conclude
      * would have nothing to have looked at.
      */
-    void freezeHandover(Instant at) {
+    void freezeReturn(Instant at) {
         this.ratifiedAt = at;
     }
 }

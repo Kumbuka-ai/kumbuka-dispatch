@@ -62,8 +62,8 @@ public class DispatchException extends RuntimeException {
         HOLDER_NOT_ACCEPTED,
         /** A claim duration was zero or negative. */
         CLAIM_DURATION_NOT_POSITIVE,
-        /** The exchange already carries a ratified handover. */
-        HANDOVER_ALREADY_RATIFIED,
+        /** The exchange already carries a ratified return. */
+        RETURN_ALREADY_RATIFIED,
         /** Metadata carried an assertion, or a URL carrying credentials. */
         METADATA_REFUSED,
 
@@ -107,14 +107,14 @@ public class DispatchException extends RuntimeException {
         UPDATE_EMPTY,
 
         /**
-         * An update after send needs a handover draft to write.
+         * An update after send needs a return draft to write.
          *
-         * <p>After send the update verb writes the handover role, and the
-         * handover role has one text-carrying field. An update that carries
+         * <p>After send the update verb writes the return role, and the
+         * return role has one text-carrying field. An update that carries
          * only metadata has no answer to write; refusing it is more useful
          * than storing null in place of what the caller meant to say.
          */
-        HANDOVER_DRAFT_REQUIRED
+        RETURN_DRAFT_REQUIRED
     }
 
     private final transient Reason reason;

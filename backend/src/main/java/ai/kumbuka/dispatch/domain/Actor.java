@@ -37,7 +37,7 @@ public record Actor(String subject, Kind kind) {
     public enum Kind {
         /**
          * An apparatus that takes commissions up and performs them. It may
-         * claim, write a handover draft, and terminate what it holds. It may
+         * claim, write a return draft, and terminate what it holds. It may
          * not ratify, and it may not read the body of a commission it has not
          * claimed.
          */
@@ -45,7 +45,7 @@ public record Actor(String subject, Kind kind) {
         /**
          * A human-facing identity. It ratifies — that is the operator's own
          * act — and it may read a commission body without holding the claim,
-         * because operators read and edit handovers as a matter of course.
+         * because operators read and edit returns as a matter of course.
          */
         CONSOLE
     }

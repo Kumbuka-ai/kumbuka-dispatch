@@ -98,8 +98,8 @@ public final class McpTools {
             new Tool("update",
                 "Write the exchange's draft. Before send the write lands in the dispatch "
                     + "role — title, body (via draft), apparatus, date, dispatch metadata. "
-                    + "After send it lands in the handover role — handover_body (via draft) "
-                    + "and handover_metadata. The role follows the state; the caller does "
+                    + "After send it lands in the return role — return_body (via draft) "
+                    + "and return_metadata. The role follows the state; the caller does "
                     + "not choose. Carries a conflict token, which is the one handed out "
                     + "with the last read; a stale token is refused rather than overwritten.",
                 schema(
@@ -108,7 +108,7 @@ public final class McpTools {
                         "The token from the last read of this exchange."),
                     optional("draft", STRING,
                         "The text the write carries. Before send this is the dispatch body; "
-                            + "after send it is the handover text. Required after send."),
+                            + "after send it is the return text. Required after send."),
                     optional(ARG_TITLE, STRING,
                         "A new title. Accepted before send only; refused with FROZEN after."),
                     optional(ARG_APPARATUS, STRING,
@@ -121,7 +121,7 @@ public final class McpTools {
                         "The receipt issued at claim. Required of an executing apparatus "
                             + "after send; ignored before send, where there is no holder."),
                     optional("metadata", OBJECT,
-                        "Dispatch metadata before send, handover metadata after send."))),
+                        "Dispatch metadata before send, return metadata after send."))),
 
             new Tool("append",
                 "Attach an addendum to a frozen exchange. Additive and not removable "
@@ -141,7 +141,7 @@ public final class McpTools {
                         "Dispatch metadata, frozen at the same gate."))),
 
             new Tool("accept",
-                "A second party accepts what somebody else produced: the handover is "
+                "A second party accepts what somebody else produced: the return is "
                     + "ratified and frozen. Not callable by an executing apparatus — a "
                     + "permission in the core, not an omission in this adapter.",
                 schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),

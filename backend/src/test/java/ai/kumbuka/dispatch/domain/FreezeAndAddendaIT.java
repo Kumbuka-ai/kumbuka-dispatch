@@ -155,7 +155,7 @@ class FreezeAndAddendaIT {
         assertThat(first.sub)
             .as("the addendum keeps the sub of what it corrects. A regular sub-number "
                 + "would make it an ordinary child of the bracket — and an ordinary child "
-                + "carries the handover expectation and counts in the terminality check")
+                + "carries the return expectation and counts in the terminality check")
             .isEqualTo(base.sub);
         assertThat(first.address()).endsWith(".0a");
     }

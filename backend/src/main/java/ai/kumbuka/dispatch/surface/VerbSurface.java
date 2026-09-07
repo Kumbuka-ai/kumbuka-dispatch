@@ -121,7 +121,7 @@ public class VerbSurface {
      * Writes the exchange's draft, against the conflict token.
      *
      * <p>One verb, two roles: before send the write lands in the dispatch role,
-     * after send in the handover role. The caller does not choose — the state
+     * after send in the return role. The caller does not choose — the state
      * does. The choice lives in {@link ExchangeService#writeDraft} because
      * every consequence of it (which fields may be written, whether a receipt
      * is required, whether a ratified answer is rejected) is a domain rule.
@@ -178,7 +178,7 @@ public class VerbSurface {
     }
 
     /**
-     * Ratifies the handover.
+     * Ratifies the return.
      *
      * <p>The executing apparatus cannot reach this, and the refusal is the
      * core's. Nothing here substitutes an identity on the way past — that is

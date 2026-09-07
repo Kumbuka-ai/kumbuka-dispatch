@@ -21,8 +21,8 @@ import java.util.Map;
  * three bolts against the race: a loser cannot have started work, because it
  * never had anything to start from.
  *
- * <p>The handover role is carried in {@link #handoverBody()} and
- * {@link #handoverMetadata()}. The visibility rule is the mirror of the
+ * <p>The return role is carried in {@link #returnBody()} and
+ * {@link #returnMetadata()}. The visibility rule is the mirror of the
  * dispatch role's — the conservative one that the dispatch specifies: a
  * console reads what somebody wrote, and an executor reads only its own,
  * i.e. only for an exchange it effectively holds. A finding, not a decision:
@@ -62,8 +62,8 @@ public record ExchangeView(
     String effectiveHolder,
     Instant claimExpiresAt,
     String body,
-    String handoverBody,
-    Map<String, Object> handoverMetadata,
+    String returnBody,
+    Map<String, Object> returnMetadata,
     String conflictToken) {
 
     /**
@@ -85,8 +85,8 @@ public record ExchangeView(
             e.effectiveHolder(now),
             e.claimEffective(now) ? e.claimExpiresAt() : null,
             bodyFor(e, actor, now),
-            handoverBodyFor(e, actor, now),
-            handoverMetadataFor(e, actor, now),
+            returnBodyFor(e, actor, now),
+            returnMetadataFor(e, actor, now),
             e.conflictToken());
     }
 
@@ -110,7 +110,7 @@ public record ExchangeView(
     }
 
     /**
-     * The handover text, or nothing.
+     * The return text, or nothing.
      *
      * <p>Symmetric to {@link #bodyFor}. A console identity reads what somebody
      * answered because that is what a console is for. An executing apparatus
@@ -119,13 +119,13 @@ public record ExchangeView(
      * default when the visibility question is not otherwise settled: closing
      * off cross-executor reads is the smaller and reversible variant.
      */
-    private static String handoverBodyFor(Exchange e, Actor actor, Instant now) {
-        return holdsExchange(e, actor, now) ? e.handoverBody() : null;
+    private static String returnBodyFor(Exchange e, Actor actor, Instant now) {
+        return holdsExchange(e, actor, now) ? e.returnBody() : null;
     }
 
-    private static Map<String, Object> handoverMetadataFor(Exchange e, Actor actor,
+    private static Map<String, Object> returnMetadataFor(Exchange e, Actor actor,
                                                            Instant now) {
-        return holdsExchange(e, actor, now) ? e.handoverMetadata() : null;
+        return holdsExchange(e, actor, now) ? e.returnMetadata() : null;
     }
 
     private static boolean holdsExchange(Exchange e, Actor actor, Instant now) {

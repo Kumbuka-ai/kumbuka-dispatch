@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * What happens between two apparatuses while an exchange is being worked.
  *
  * <p>Showing and taking up are two verbs; the receipt is the holder; the
- * handover is a pull request the operator merges; the clock sits on the claim
+ * return is a pull request the operator merges; the clock sits on the claim
  * and writes nothing. Each of those is a decision that the obvious alternative
  * would have got wrong, and each is asserted here by what it REFUSES.
  */
@@ -137,7 +137,7 @@ class ExchangeMechanicsIT {
     }
 
     @Test
-    void a_handover_draft_needs_the_receipt() {
+    void a_return_draft_needs_the_receipt() {
         Exchange sent = openAndSend("a commission being worked");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
 
@@ -156,14 +156,14 @@ class ExchangeMechanicsIT {
 
         Exchange written = exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
             null, "an answer", null, null, claim.receipt(), null);
-        assertThat(written.handoverBody())
+        assertThat(written.returnBody())
             .as("and with the issued receipt it goes through, so the refusals were the "
                 + "receipt check and not a missing code path")
             .isEqualTo("an answer");
     }
 
     // -----------------------------------------------------------------------
-    // The handover as a pull request
+    // The return as a pull request
     // -----------------------------------------------------------------------
 
     @Test
@@ -176,11 +176,11 @@ class ExchangeMechanicsIT {
         Exchange second = exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
             null, "second attempt", null, null, claim.receipt(), null);
 
-        assertThat(second.handoverBody())
+        assertThat(second.returnBody())
             .as("rework is the normal case, not the exception. The draft is replaced "
                 + "wholesale — there is no verb that appends to one, and the intermediate "
                 + "rounds do not survive in the document. That is the deliberate trade: "
-                + "nobody needs a wrong handover text kept")
+                + "nobody needs a wrong return text kept")
             .isEqualTo("second attempt");
         assertThat(second.status())
             .as("and the exchange stays active throughout — no new object, no addendum, "
@@ -229,7 +229,7 @@ class ExchangeMechanicsIT {
     }
 
     @Test
-    void a_ratified_exchange_takes_no_further_handover() {
+    void a_ratified_exchange_takes_no_further_return() {
         Exchange sent = openAndSend("a commission already answered");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
         exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
@@ -243,13 +243,13 @@ class ExchangeMechanicsIT {
                 + "holder check passes for both — and a receipt is a bearer token that "
                 + "instances on one machine can read from a shared filesystem")
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
-                .isEqualTo(DispatchException.Reason.HANDOVER_ALREADY_RATIFIED));
+                .isEqualTo(DispatchException.Reason.RETURN_ALREADY_RATIFIED));
 
         // Same refusal for a console identity: the precondition is about state.
         assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), CONSOLE,
             null, "a third answer", null, null, null, null))
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
-                .isEqualTo(DispatchException.Reason.HANDOVER_ALREADY_RATIFIED));
+                .isEqualTo(DispatchException.Reason.RETURN_ALREADY_RATIFIED));
     }
 
     // -----------------------------------------------------------------------
@@ -393,11 +393,11 @@ class ExchangeMechanicsIT {
         assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
                 null, null, null, null, claim.receipt(),
                 Map.of("pr", "https://example.invalid/pr/1")))
-            .as("after send the handover role has one text-carrying field; metadata alone "
+            .as("after send the return role has one text-carrying field; metadata alone "
                 + "does not carry the answer, and storing null would leave a draft nobody "
                 + "wrote")
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
-                .isEqualTo(DispatchException.Reason.HANDOVER_DRAFT_REQUIRED));
+                .isEqualTo(DispatchException.Reason.RETURN_DRAFT_REQUIRED));
     }
 
     // -----------------------------------------------------------------------
