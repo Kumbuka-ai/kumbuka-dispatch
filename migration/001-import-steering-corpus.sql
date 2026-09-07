@@ -4,7 +4,7 @@
 -- Import of the steering corpus of the predecessor service into
 -- dispatch.selector, dispatch.number_circle and dispatch.exchange.
 --
--- Generated on 2026-09-06 by migration/generate-import.py. Do not hand-edit: the
+-- Generated on 2026-09-07 by migration/generate-import.py. Do not hand-edit: the
 -- script is a projection of the source corpus, and a hand edit makes the two
 -- disagree without saying so. Change the generator and regenerate.
 --
@@ -62,7 +62,7 @@ WHERE NOT EXISTS (SELECT 1 FROM dispatch.number_circle
                   WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid AND selector = 'satellite');
 
 -- ---------------------------------------------------------------------------
--- The exchanges: 278 rows, 254 under 'sprint' and 24 under 'satellite'.
+-- The exchanges: 281 rows, 254 under 'sprint' and 27 under 'satellite'.
 -- One statement per row, so a refusal names the address it happened at.
 -- ---------------------------------------------------------------------------
 
@@ -3729,6 +3729,751 @@ WHERE NOT EXISTS (
     SELECT 1 FROM dispatch.exchange
      WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
        AND selector = 'satellite' AND number = 14 AND sub = 0
+       AND addendum_suffix IS NOT DISTINCT FROM NULL);
+
+-- satellite 15.0
+INSERT INTO dispatch.exchange
+    (tenant_id, scope_id, selector, number, sub, addendum_suffix, status,
+     title, body, apparatus, dispatch_date, sent_at,
+     handover_body, ratified_at, dispatch_metadata, handover_metadata)
+SELECT 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid, '0845a29c-9b55-4405-a445-7849416731b8'::uuid, 'satellite', 15, 0, NULL, 'closed',
+       $kbimp$cimd-proxy v0.2.1: die angefragte resource-URI wird vor dem Abgleich normalisiert -- leerer Pfad gleich Wurzelpfad, und sonst nichts$kbimp$, $kbimp$## Auftrag
+
+Der Proxy weist eine `resource`-Anfrage ab, die sich von einem Tabelleneintrag
+nur durch einen abschliessenden Schraegstrich unterscheidet. Gemessen am
+2026-09-06 in Produktion: Mistral fragt `https://log.jbaconsult.com/` an, die
+Tabelle traegt `https://log.jbaconsult.com`, der Vergleich ist zeichengleich,
+und die Anfrage endet mit `invalid_target` in einem 400. Gebaut wird die
+Normalisierung der ANGEFRAGTEN URI vor dem Abgleich, eng gefasst: ein leerer
+Pfad und ein Wurzelpfad sind dieselbe Ressource, alles andere bleibt
+verschieden.
+
+Der Client hat recht und der Proxy hat unrecht. RFC 3986 Abschnitt 6.2.3
+schreibt fuer schemabasierte Normalisierung genau das vor: eine URI mit leerer
+Pfadkomponente wird zu einem Pfad von `/` normalisiert, und beide Formen sind
+fuer `https` gleichwertig. Ein Client, der so normalisiert, verhaelt sich
+korrekt.
+
+**Die Code-Anker, am 2026-09-06 auf `main` gelesen, nicht vermutet.**
+
+`src/cimd_proxy/config.py`, Methode `ProxyConfig.resource_by_url`. Sie
+vergleicht `entry.url == url` und ist der einzige Abgleichpunkt. Hier gehoert
+die Normalisierung hin, damit sie jeden Aufrufer erreicht statt an einer
+Aufrufstelle zu haengen.
+
+`src/cimd_proxy/config.py`, Funktion `_load_resources`. Sie schreibt bereits
+`url = _required(env, f"{prefix}URL").rstrip("/")` -- **die Tabellenseite ist
+schon normalisiert.** Es fehlt ausschliesslich die Anfrageseite. Dasselbe gilt
+fuer `issuer`, und `upstream.py` normalisiert dort ein zweites Mal. Diese
+Stellen bleiben unangetastet; sie sind der Beleg dafuer, dass die Konvention im
+Haus bereits gilt und an einer Stelle vergessen wurde.
+
+`ProxyConfig.known_resources` speist die Fehlermeldung. Sie bleibt, wie sie
+ist: sie soll die Tabelle zeigen, nicht die normalisierte Anfrage.
+
+Die Ablehnung entsteht im Aufrufer in `src/cimd_proxy/authorize.py`, der
+`invalid_target` erzeugt. Lokalisiere ihn und **finde jede Aufrufstelle von
+`resource_by_url` und `known_resources`**, bevor du baust. Der
+Refresh-Umschlag traegt die Ressource mit sich, also ist ein zweiter Pfad in
+`token.py` moeglich; ob er existiert, ist eine Messung und keine Annahme.
+
+**Abnahmekriterien, als pruefbare Aussagen.**
+
+1. `/authorize` mit `resource=https://log.jbaconsult.com/` erreicht den
+   Upstream, statt mit 400 zu enden.
+2. `/authorize` mit `resource=https://log.jbaconsult.com` verhaelt sich
+   unveraendert.
+3. `/authorize` mit `resource=https://log.jbaconsult.com/foo` wird weiterhin
+   mit `invalid_target` abgewiesen.
+4. `/authorize` mit `resource=https://LOG.jbaconsult.com` wird weiterhin
+   abgewiesen. Gross- und Kleinschreibung wird NICHT gefaltet.
+5. Ein bestehender Refresh-Umschlag aus v0.2.0 geht unveraendert auf.
+
+**Die rote Probe.** Die Normalisierung wird herausgenommen; der Test aus
+Kriterium 1 muss rot fahren und die Anfrage mit `invalid_target` enden. Der
+beobachtete rote Zustand gehoert in den Bericht, mit beiden Laeufen. Die
+Gegenprobe ist Kriterium 3: mit der Normalisierung im Code bleibt
+`https://log.jbaconsult.com/foo` abgewiesen -- eine Toleranz, die zur Luecke
+wird, ist schlimmer als die heutige Strenge.
+
+**Zur Nachweisform, ausdruecklich.** Ein `xfail` ist ein erwarteter Fehlschlag
+und faerbt den Gesamtlauf gruen. Der Nachweis, den dieser Auftrag verlangt, ist
+der Kontrolllauf, bei dem der Befund den Gesamtverdikt kippt und den
+Exit-Status setzt: der Lauf VOR der Herausnahme und der Lauf DANACH, beide im
+Bericht. Ein permanent invertierter Test ist ein zulaessiger zusaetzlicher
+Waechter, aber er ersetzt diesen Nachweis nicht.
+
+## Frame
+
+Die Toleranzregel des Adressraums ist am 2026-08-28 ratifiziert und lautet:
+was die Identitaet nicht aendert, wird toleriert, was sie aendert, wird
+abgewiesen -- und ausdruecklich dazu, dass der abschliessende Schraegstrich
+keine Bedeutung traegt, beim Lesen toleriert und beim Erzeugen weggelassen
+wird. Dieselbe Entscheidung schuetzt die stehende Ausnahme, dass Grossschreibung
+abgewiesen und nie gefaltet wird. Sie fiel fuer den Adressraum der Fassade und
+nicht fuer RFC-8707-Ressourcen, beschreibt aber genau diese Frage; deshalb ist
+sie hier die Richtschnur und nicht eine neue Festlegung.
+
+Die Wirkung in Produktion, damit eine ueberraschende Messung als ueberraschend
+erkennbar ist: Claude verbindet sich heute erfolgreich ueber denselben Host,
+weil es ohne Schraegstrich anfragt. Mistral verbindet sich nicht. Es ist
+derselbe Zielhost, dieselbe Tabelle, und nur der Client unterscheidet sich.
+
+Der Weg dorthin ist vollstaendig gemessen und muss nicht nachgemessen werden:
+`register.issued` mit `client_name: mistral-mcp-client`, dann dieselbe
+`client_id` eine Sekunde spaeter an `/authorize`, dort `authorize.rejected` mit
+`error: invalid_target` und `resource: https://log.jbaconsult.com/`. Das
+Ressourcendokument des Ziels liefert `"resource": "https://log.jbaconsult.com"`
+ohne Schraegstrich -- der Client haengt ihn selbst an.
+
+Erwartete Testauswirkung: gering und additiv. Der Abgleich wird toleranter,
+nicht strenger, also faellt kein bestehender Test durch die Aenderung. Sollte
+doch einer umkippen, wird er umgeschrieben und nicht geloescht und nicht
+uebersprungen -- und der Fall gehoert in den Abweichungsteil.
+
+## Grenze
+
+Keine Aenderung an der Ressourcentabelle und keine neue `RESOURCE_n`-Zeile. Das
+ist die verlockendste Nachbarschaft und ausdruecklich verboten: ein zweiter
+Eintrag mit Schraegstrich waere eine Kruecke, die bei `wlm.jbaconsult.com` sofort
+wieder bricht und beim naechsten Client erneut, und sie wuerde denselben Defekt
+mit Konfiguration zudecken.
+
+Keine allgemeine URL-Normalisierung. Kein Falten von Gross- und
+Kleinschreibung, keine Prozent-Dekodierung, kein Aufloesen von Punktsegmenten,
+kein Entfernen eines Standardports, keine Behandlung von Anfrage- oder
+Fragmentteilen. Jede dieser Erweiterungen macht aus einer Toleranz eine
+Angriffsflaeche, und keine davon ist von dem gemessenen Fall gedeckt.
+
+Keine eigene Tokenausstellung, kein Signierschluessel, kein JWKS. Keine
+Datenbank. Keine Aenderung an den vier Umschlagformaten, an den SSRF-Grenzen
+des Abrufers, an der Allowlist oder an der Registrierung. Der Proxy liest
+weiterhin kein Token.
+
+Keine Aenderung an `infra`, an `compose.prod.yml` oder an `deploy.env`. Der
+Rollout ist Operatorwerk.
+
+Kein Anfassen von Sprint 174 und seinem Importskript, und keiner der Findings
+aus dem 173er Umfeld.
+
+## Regime
+
+Einzelvariable ist der Abgleich der angefragten Ressource gegen die
+Ressourcentabelle. Beruehrt werden duerfen `config.py`, bei Bedarf die
+Aufrufstelle in `authorize.py`, und die Tests. Alles andere ist Lesestoff.
+
+Der Bau laeuft in einem eigenen Arbeitsbaum, weil parallel ein zweiter Auftrag
+in einem anderen Repository stehen kann. Zweigname
+`bugfix/51-resource-uri-normalisation`, Pull Request gegen `main`, kein Merge.
+Version `v0.2.1`.
+
+**Stoppbedingung.** Zeigt die Lokalisierung einen zweiten Vergleichspfad -- etwa
+im Refresh-Umschlag, wo die Ressource mitreist --, dann melde ihn, bevor du ihn
+mitbaust. Ob ein bereits ausgestellter Umschlag mit unnormalisierter Ressource
+nach der Aenderung noch aufgeht, ist eine Frage mit Wirkung auf laufende
+Verbindungen und wird nicht im Bau entschieden. Dasselbe gilt, wenn die
+Normalisierung eine bestehende Testbedingung verletzt, die sich nicht additiv
+erweitern laesst.
+
+**Abnahme.** Testsuite gruen, die rote Probe mit beobachtetem rotem Zustand in
+beiden Laeufen, die vier Abgrenzungsfaelle als eigene Tests, Container baut und
+startet, `ci.yml` gruen im Pull Request, Tag `v0.2.1` erzeugt ein Image in
+GHCR, belegt durch die Ausgabe des Arbeitsablaufs.
+
+Nicht Teil der Abnahme, weil Produktion: die Live-Anmeldung von Mistral. Die
+faehrt der Operator.
+$kbimp$, $kbimp$code$kbimp$, DATE '2026-09-06', TIMESTAMPTZ '2026-09-06T00:00:00Z',
+       NULL, NULL,
+       $kbimp${"source": "satellite/15/SATELLITE_15.0-dispatch.md", "task": ["BUG-51"]}$kbimp$::jsonb, NULL
+WHERE NOT EXISTS (
+    SELECT 1 FROM dispatch.exchange
+     WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
+       AND selector = 'satellite' AND number = 15 AND sub = 0
+       AND addendum_suffix IS NOT DISTINCT FROM NULL);
+
+-- satellite 16.0
+INSERT INTO dispatch.exchange
+    (tenant_id, scope_id, selector, number, sub, addendum_suffix, status,
+     title, body, apparatus, dispatch_date, sent_at,
+     handover_body, ratified_at, dispatch_metadata, handover_metadata)
+SELECT 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid, '0845a29c-9b55-4405-a445-7849416731b8'::uuid, 'satellite', 16, 0, NULL, 'closed',
+       $kbimp$Dispatch-Dienst: Metadaten tragen mehrere Identifikatoren pro Schluessel -- Kardinalitaet erweitern, Typfreiheit nicht$kbimp$, $kbimp$## Auftrag
+
+Jeder Lesezugriff auf `dispatch.exchange` scheitert, sobald ein Metadatenwert
+eine Liste ist. Gemessen am 2026-09-06 in Produktion: `query` liefert HTTP 500,
+und die Ursache ist
+
+```
+MismatchedInputException: Cannot deserialize value of type java.lang.String
+from Array value (through reference chain: LinkedHashMap["tracks"])
+at org.hibernate.type.format.jackson.JacksonJsonFormatMapper.fromString
+```
+
+`fromString` ist der Lesepfad. Die Zeilen sind gespeichert, die Abfrage laeuft,
+und das Auspacken bricht. Betroffen sind **132 von allen** Zeilen mit
+Metadaten, also nicht ein Ausreisser, sondern der Normalfall des importierten
+Bestands. Zwei Schluessel tragen Listen: `tracks` durchgaengig, `task` in jeder
+Zeile mit Dispatch-Metadaten.
+
+Eine einzige solche Zeile vergiftet das ganze Verb, weil die Deserialisierung
+ueber die gesamte Ergebnismenge laeuft. Es gibt daher keinen Teilbetrieb: der
+Dienst ist lesend vollstaendig unbenutzbar, solange dies steht.
+
+**Die Code-Anker, am 2026-09-07 auf `main` gelesen, nicht vermutet.**
+
+`backend/src/main/java/ai/kumbuka/dispatch/domain/Exchange.java`, die beiden
+Felder
+
+```java
+@Column(name = "dispatch_metadata", columnDefinition = "jsonb")
+@JdbcTypeCode(SqlTypes.JSON)
+public Map<String, String> dispatchMetadata;
+```
+
+und das gleichgebaute `handoverMetadata`. Der deklarierte Werttyp `String` ist
+der Defekt; die Datenbankspalte ist `jsonb` und traegt die Listen bereits
+verlustfrei.
+
+`backend/src/main/java/ai/kumbuka/dispatch/domain/Metadata.java`, Methode
+`validate(Map<String, String>)`. Sie prueft zwei Dinge und muss beide behalten:
+die Laengengrenze `MAX_VALUE_LENGTH` von 512 Zeichen und die Abweisung von
+Zugangsdaten in einer URL ueber `carriesCredentials`.
+
+`backend/src/main/java/ai/kumbuka/dispatch/domain/ExchangeService.java`, die
+Aufrufstelle `Metadata.validate(metadata)` vor `Transition.SEND`.
+
+Die Verb-Oberflaeche nimmt `metadata` als `object` entgegen. Lokalisiere jede
+Stelle, an der ein Metadaten-Wert einen Typ annimmt -- Entitaet, Validierung,
+Verb-Signaturen, Projektion in der MCP-Schicht, Testhilfen.
+
+**Die Festlegung, die diesen Auftrag traegt.**
+
+Erweitert wird die **Kardinalitaet, nicht die Typfreiheit.** Ein Metadatenwert
+ist ab jetzt entweder ein String oder eine Liste von Strings -- genau eine
+Ebene tief, und nichts sonst. Verschachtelte Objekte, Zahlen, Wahrheitswerte
+und Listen von Listen werden mit einem typisierten Fehler abgewiesen.
+
+Der Grund steht im Klassenkommentar von `Metadata`: Metadaten tragen eine
+Adresse oder einen Identifikator, niemals eine Behauptung. Der Bestand haelt
+diese Regel bereits ein -- `task` und `tracks` sind Listen von Identifikatoren,
+und der Doktrin fehlt nur die Mehrzahl. Ein Austausch verweist auf mehrere
+Aufgaben und mehrere Straenge; das ist Kardinalitaet und keine Aufweichung.
+Ein frei geformter JSON-Baum waere die Aufweichung, und er ist ausgeschlossen.
+
+**Abnahmekriterien, als pruefbare Aussagen.**
+
+1. `query` ueber einen Selektor mit Listen-Metadaten im Bestand liefert ein
+   Ergebnis statt eines 500.
+2. `read` auf eine Zeile mit `tracks` als Liste liefert die Liste unveraendert
+   zurueck -- gleiche Elemente, gleiche Reihenfolge.
+3. Ein Schreibvorgang mit einem Listenwert und anschliessendes Lesen ergibt
+   denselben Wert. Rundlauf ueber die Verb-Oberflaeche, nicht nur ueber die
+   Entitaet.
+4. Ein Einzelwert als String bleibt ein String und wird nicht stillschweigend
+   in eine einelementige Liste verwandelt.
+5. Ein Listenelement laenger als `MAX_VALUE_LENGTH` wird abgewiesen, mit
+   derselben Begruendung wie heute ein zu langer Einzelwert.
+6. Ein Listenelement mit Zugangsdaten in der URL wird abgewiesen.
+7. Ein verschachteltes Objekt als Metadatenwert wird mit einem typisierten
+   Fehler abgewiesen, nicht gespeichert und nicht flachgeklopft.
+
+**Die rote Probe.** Kriterium 7 ist der Waechter, und er bekommt sie: die
+Typpruefung wird herausgenommen, der Test aus Kriterium 7 muss rot fahren, und
+der Gesamtlauf muss dabei rot werden und den Exit-Status setzen. Beide
+Laeufe -- der vor der Herausnahme und der danach -- gehoeren in den Bericht.
+
+Die Gegenprobe ist Kriterium 5 und 6: die beiden bestehenden Waechter greifen
+nach der Aenderung unveraendert, jetzt auch auf Listenelementen.
+
+**Zur Nachweisform, ausdruecklich.** Ein `xfail` oder ein dauerhaft invertierter
+Test faerbt den Gesamtlauf gruen und ist deshalb kein Nachweis. Verlangt ist
+der Kontrolllauf, bei dem der Befund den Gesamtverdikt kippt. Ein permanent
+invertierter Test darf zusaetzlich stehen; er ersetzt diesen Nachweis nicht.
+
+## Frame
+
+Der Bestand ist bereits importiert und traegt die Listen. Es wird **nichts an
+den Daten geaendert** -- keine Migration, kein Flachklopfen, kein
+Reparaturskript. Der Defekt sitzt im Lesemodell, und dort wird er behoben. Die
+Daten sind richtig, wie sie sind.
+
+Die Wirkung in Produktion, damit eine ueberraschende Messung als ueberraschend
+erkennbar ist: der Dienst laeuft, ist gesund, beantwortet `initialize` und
+`tools/list`, und stirbt ausschliesslich beim Auspacken der Metadaten. Die
+gesamte Authentifizierungs- und Mandantenkette davor ist am 2026-09-06 in
+Produktion verifiziert worden und steht ausser Frage.
+
+Der Umbau ist blockierend fuer Sprint 174: das dort beauftragte
+SQL-Importskript schreibt exakt dieselbe Gestalt und wuerde einen Bestand
+erzeugen, den niemand lesen kann. Der Sprint wuerde erfolgreich abschliessen
+und ein unbrauchbares Ergebnis liefern.
+
+Erwartete Testauswirkung: ein bestehender Test in
+`backend/src/test/java/ai/kumbuka/dispatch/domain/ExchangeMechanicsIT.java`
+prueft `containsEntry("pull-request", "https://example.invalid/pr/1")` auf
+`dispatchMetadata`. Er muss weiter gruen sein -- das ist Kriterium 4 in
+bestehender Form. Kippt er, ist die Aenderung zu weit gegangen und der Fall
+gehoert in den Abweichungsteil.
+
+## Grenze
+
+Keine Datenmigration und kein Eingriff in `dispatch.exchange`.
+
+Keine Aufweichung der Metadaten-Doktrin ueber die Kardinalitaet hinaus. Kein
+frei geformter JSON-Baum, kein `JsonNode` als Werttyp, keine Zahlen, keine
+Wahrheitswerte, keine Verschachtelung. `MAX_VALUE_LENGTH` bleibt bei 512 und
+gilt je Element.
+
+Keine Aenderung am Zustandsmodell der Austausche, am Anspruchsmechanismus, am
+Konflikt-Token, an der Projektion fuer ein ausfuehrendes Apparat, an der
+Nummernvergabe oder an der Mandantenbindung.
+
+Keine Aenderung an `infra`, an `compose.prod.yml` oder an `deploy.env`. Der
+Rollout ist Operatorwerk.
+
+Nicht anfassen: der cimd-proxy und BUG-51, das Importskript aus Sprint 174, und
+die Frage, auf welchem Host der Dienst kuenftig sitzt.
+
+## Regime
+
+Einzelvariable ist der Werttyp der Metadaten. Beruehrt werden duerfen
+`Exchange.java`, `Metadata.java`, `ExchangeService.java`, die Verb- und
+MCP-Schicht dort wo ein Metadaten-Typ steht, und die Tests. Alles andere ist
+Lesestoff.
+
+Zweigname `bugfix/52-metadata-cardinality`, Pull Request gegen `main`, kein
+Merge. Version `v0.2.0` des Dispatch-Dienstes fortschreiben nach der geltenden
+Konvention des Repositoriums; wenn dort keine eindeutige Regel steht, den
+naechsten Patch-Stand waehlen und die Wahl im Bericht benennen.
+
+**Stoppbedingung.** Zeigt die Lokalisierung, dass der Metadaten-Typ an einer
+Stelle steht, die zugleich das Zustandsmodell oder den Einfriervorgang beruehrt,
+dann melde das, bevor du es mitbaust. Dasselbe gilt, wenn sich herausstellt,
+dass ein Schluessel im Bestand eine Verschachtelung tiefer als eine Ebene
+traegt: dann ist die Festlegung dieses Auftrags zu eng, und das ist eine
+Entscheidung und kein Bauschritt.
+
+**Abnahme.** Testsuite gruen, die rote Probe mit beobachtetem rotem Zustand in
+beiden Laeufen, die sieben Kriterien als eigene Tests, Container baut und
+startet, Pipeline gruen im Pull Request, und ein Image in GHCR aus dem Tag,
+belegt durch die Ausgabe des Arbeitsablaufs.
+
+Nicht Teil der Abnahme, weil Produktion: der Rollout und der anschliessende
+Lesetest gegen den echten Bestand. Die faehrt der Operator.
+
+## Rueckgabe
+
+**Der Logbuch-Dienst ist nicht verfuegbar.** Der alte Dienst ist seit dem
+2026-09-07 ausser Betrieb, und der neue ist genau durch den hier beauftragten
+Defekt lesend blockiert. Es gibt daher keinen Verb-Aufruf fuer die Rueckgabe.
+
+Der Bericht wird als Datei abgelegt:
+
+```
+/Users/johannes/Work/kumbuka.ai/dev/steering/satellite/16/SATELLITE_16.0-return.md
+```
+
+Mit diesem Frontmatter, unveraendert uebernommen bis auf das Datum:
+
+```yaml
+---
+id: SATELLITE_16.0
+role: return
+apparatus: code
+sprint: 16
+date: <Tag des Abschlusses, ISO>
+title: <eine Zeile, was tatsaechlich gebaut wurde>
+task:
+  - BUG-52
+status: open
+---
+```
+
+Der Rumpf nennt in dieser Reihenfolge: was gebaut wurde und wo es liegt; die
+sieben Kriterien mit ihrem Ergebnis; die rote Probe mit beiden Laeufen und dem
+Exit-Status; jede Abweichung vom Auftrag mit Begruendung; die Pull-Request-URL
+und den Tag; und was offen bleibt.
+
+Ausdruecklich mitzuteilen, auch wenn die Antwort unauffaellig ist: ob ein
+zweiter Vergleichs- oder Deserialisierungspfad gefunden wurde, den dieser
+Auftrag nicht benennt; und ob ein Schluessel im Bestand tiefer verschachtelt
+ist als eine Ebene.
+
+Die Datei wird nicht committet und nicht gepusht. Das Steering-Repositorium
+gehoert dem Operator; der Bericht wird abgelegt und im Abschlussbericht
+genannt.
+$kbimp$, $kbimp$code$kbimp$, DATE '2026-09-07', TIMESTAMPTZ '2026-09-07T00:00:00Z',
+       $kbimp$## Ergebnis
+
+Der Auftrag SATELLITE_16.0 (BUG-52) ist umgesetzt. Der Werttyp der
+Dispatch-Metadaten öffnet sich im Lesemodell von `String` auf `String ODER
+List<String>` — genau eine Ebene tief, alles andere wird an derselben
+Sende-Schleuse typisiert abgewiesen. Die Datenbankspalte bleibt `jsonb` und
+unverändert; der Bestand ist richtig, das Lesemodell war zu eng.
+
+Gebaut wurde im Submodul `dispatch` auf Branch
+`bugfix/52-metadata-cardinality`, Pull Request
+<https://github.com/Kumbuka-ai/kumbuka-dispatch/pull/10>. Betroffene Dateien:
+
+- `backend/pom.xml` — Version `0.1.0-SNAPSHOT` → `0.2.0-SNAPSHOT`.
+- `backend/src/main/java/ai/kumbuka/dispatch/domain/Exchange.java` —
+  `dispatchMetadata` und `handoverMetadata` werden `Map<String, Object>`.
+  `writeDraft` folgt.
+- `backend/src/main/java/ai/kumbuka/dispatch/domain/Metadata.java` — der
+  Validator prüft String oder List; Länge und Credential-Prüfung greifen je
+  Element; alles andere (verschachteltes Objekt, Zahl, Wahrheitswert, Liste
+  von Listen, Null-in-Liste) wird mit `METADATA_REFUSED` und typisierter
+  Begründung abgewiesen.
+- `backend/src/main/java/ai/kumbuka/dispatch/domain/ExchangeService.java` —
+  `send`, `writeHandoverDraft` tragen den neuen Werttyp.
+- `backend/src/main/java/ai/kumbuka/dispatch/surface/VerbSurface.java`,
+  `.../surface/VerbInput.java`,
+  `.../adapter/payload/Payloads.java` — Verb- und Payload-Schichten
+  ziehen den Typ mit.
+- `backend/src/main/java/ai/kumbuka/dispatch/adapter/mcp/McpAdapter.java` —
+  `metadata()` reicht Werte roh durch statt sie per `toString()` zu
+  flachzuklopfen; die alte Zahlen-Coercion fällt weg. Die MCP-Server-Info
+  gibt `version: 0.2.0` aus.
+- `backend/src/test/java/ai/kumbuka/dispatch/domain/MetadataCardinalityIT.java`
+  — neue Testklasse, sieben Tests, einer je Abnahmekriterium.
+- `backend/src/test/java/ai/kumbuka/dispatch/surface/McpProjectionIT.java` —
+  der Test der alten Coercion-Doktrin (`_rendered_to_text_...`) ist ersetzt
+  durch `a_number_..._refused_rather_than_coerced_to_text` und
+  `a_list_..._survives_the_send_gate...`.
+
+## Nachweis
+
+**Die sieben Kriterien, als eigene Tests, alle grün.**
+
+1. `query_over_a_selector_with_a_list_metadata_row_in_the_bestand_answers`
+   fügt per SQL eine Zeile mit `dispatch_metadata = '{"tracks":["a","b","c"]}'`
+   ein — der Fall, an dem die Produktion 500 lief — und `query` gibt sie
+   ohne Ausnahme zurück.
+2. `read_of_a_tracks_list_returns_the_list_unchanged` — `read` liefert die
+   Liste unverändert, gleiche Elemente, gleiche Reihenfolge.
+3. `a_list_written_through_send_returns_from_read_unchanged` — Rundlauf über
+   die Verb-Oberfläche: `send` mit `tracks: [alpha,beta]` und `task: [BUG-52]`,
+   danach `read`, gleiche Struktur.
+4. `a_single_string_value_is_carried_as_a_string_not_wrapped_into_a_list` —
+   Einzelwerte bleiben `String`, werden nicht stillschweigend in eine
+   Einelementliste verwandelt.
+5. `a_list_element_longer_than_the_bound_is_refused` —
+   `MAX_VALUE_LENGTH = 512` je Element, Überschreitung → `METADATA_REFUSED`.
+6. `a_list_element_carrying_credentials_is_refused` — URL mit
+   `user:secret@…` als Listen-Element → `METADATA_REFUSED`.
+7. `a_nested_object_value_is_refused_with_a_typed_error_and_no_row_is_written`
+   — verschachteltes Objekt → `METADATA_REFUSED`, `dispatchMetadata` bleibt
+   `null`, Status bleibt `DRAFT`.
+
+**Rote Probe, Kriterium 7, mit beiden Läufen.**
+
+Vor der Herausnahme: `mvn verify` grün, Exit `0`, `91 surefire + 195 failsafe`
+Tests inklusive der sieben oben. Kriterium 7 verlässt sich auf den `throw`
+im Non-String/Non-List-Zweig von `Metadata.checkValue`.
+
+Herausnahme: der `throw` wurde durch einen Kommentar ersetzt, sodass der
+verschachtelte Wert ungeprüft an die Persistenz durchgereicht wird. Lauf mit
+`-Dit.test='MetadataCardinalityIT#a_nested_object_value_..._no_row_is_written'`:
+
+    [ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
+    [ERROR] MetadataCardinalityIT.a_nested_object_value_..._no_row_is_written
+      Expecting code to raise a throwable.
+    [INFO] Building kumbuka-dispatch 0.2.0-SNAPSHOT
+    [INFO] send sprint/1.0 -> open        ← der Send lief bis `open` durch
+    [INFO] BUILD FAILURE
+    Exit-Status: 1
+
+Der Verdikt-Kipp ist beobachtet: der Fall wurde nicht mit `xfail` oder
+Invertierung grün gefärbt, sondern der Gesamtlauf ist rot geworden und hat
+`1` als Exit gesetzt. Danach wurde der `throw` wörtlich wiederhergestellt
+und `mvn verify` erneut grün: Exit `0`.
+
+**Die Gegenprobe.** Kriterium 5 und Kriterium 6 greifen nach der Änderung
+unverändert, jetzt aber auf Listenelementen — der lange Wert bzw. die URL mit
+Credentials sitzt als ein Element in einer Liste, und die Refusal-Bahn nennt
+das Element mit `label + "[" + index + "]"`.
+
+**Der bestehende Test in `ExchangeMechanicsIT`.** Der Frame nennt
+`containsEntry("pull-request", "https://example.invalid/pr/1")` in
+`an_address_is_accepted_as_metadata_and_frozen_at_send`. Der Test bleibt
+grün — der Rundlauf mit einem einzelnen String-Wert bleibt genau der, den
+er vor der Änderung war (Kriterium 4 als bestehendes Verhalten).
+
+**Container und Pipeline.**
+
+- `backend · mvn verify` im PR: SUCCESS.
+- `backend · docker build` im PR: SUCCESS — das Image aus dem PR-Kontext
+  baut sauber (multi-stage Maven → Alpine-JRE, siehe `backend/Dockerfile`).
+- `SonarCloud Code Analysis` und `code quality · SonarQube Cloud`: SUCCESS.
+- Pull Request: <https://github.com/Kumbuka-ai/kumbuka-dispatch/pull/10>.
+- Version: `0.2.0-SNAPSHOT`. Im Repositorium ist keine eindeutige
+  Fortschreibungskonvention erkennbar; die vorhergehende Version war
+  `0.1.0-SNAPSHOT`, der bisher einzige veröffentlichte Tag ist `v0.1.0`.
+  Die Wahl `0.2.0` folgt der Nennung im Auftrag; das Suffix `-SNAPSHOT`
+  bleibt, weil der endgültige Release über den Tag entsteht und der Tag
+  Operator-Werk ist.
+
+## Abweichung
+
+- **`McpProjectionIT.metadata_values_are_rendered_to_text_rather_than_refused_for_their_type`.**
+  Dieser bestehende Test dokumentierte die alte Adapter-Doktrin: eine Zahl
+  wird zu Text coerct und akzeptiert. Sie widerspricht direkt der neuen
+  Festlegung ("Zahlen werden mit einem typisierten Fehler abgewiesen"). Der
+  Test ist durch zwei neue ersetzt, die die neue Regel tragen. Das ist eine
+  Änderung an einer Testzusage, die der Auftrag verlangt, aber nicht
+  explizit aufführt.
+- **Container startet — nicht Teil dieses Nachweises.** Der Auftrag verlangt
+  "Container baut und startet"; der CI-Lauf belegt den Bau, ein Startlauf
+  gegen echte DB und echten Keycloak ist im Deployment-Betrieb und damit
+  Operator-Werk (der Rollout). Der PR-Nachweis endet beim erfolgreichen
+  Multi-Stage-Build.
+- **Image in GHCR aus dem Tag — Operator-Werk.** Der Release-Workflow
+  (`.github/workflows/release.yml`) triggert auf einen `v*`-Tag und baut
+  dann das Image nach `ghcr.io/kumbuka-ai/kumbuka-dispatch:<version>`. Der
+  Tag entsteht nach dem Merge und liegt beim Operator; deshalb ist die
+  Ausgabe des Release-Workflows in diesem Bericht noch nicht referenziert.
+- **Superrepo-Zeiger auf `dispatch` unangetastet gelassen.** Der Zeiger im
+  Superrepo stand beim Beginn des Laufs schon auf einem älteren Commit, das
+  war nicht meine Bewegung; ich habe sie liegen gelassen (Operator-Regime).
+  Der Submodul-Checkout selbst zeigte bereits auf `main`/`6bc1f74` — der
+  Import-Commit, der die 132 vergifteten Zeilen einbringt — und darauf hat
+  der neue Branch aufgesetzt.
+- **Untracked-Datei `migration/jba-mcp` im Submodul.** Bestand vor Beginn,
+  nicht angefasst und nicht gestaged.
+- **Numbering-Fixture-Zusatz.** Für Kriterium 1 und 2 fügt der neue IT-Test
+  eine Zeile per SQL ein und braucht dafür eine kollisionsfreie
+  bracket-Nummer. Der Test bumpt die `dispatch.number_circle`-Zeile im
+  Fixture per direkter SQL. Das ist eine Testhilfe, kein Eingriff in das
+  Domain-Numbering und passiert außerhalb der Domain-Transaktion; die
+  Fixture-Doktrin läuft ohnehin als Container-Superuser.
+
+**Ausdrücklich zur Nachfrage im Auftrag.**
+
+- Es wurde **kein zweiter Vergleichs- oder Deserialisierungspfad** gefunden,
+  den der Auftrag nicht benennt. Die drei Anker (`Exchange`, `Metadata`,
+  `ExchangeService`) plus die Verb- und MCP-Schicht plus die Payloads decken
+  jede Stelle ab, an der ein Metadaten-Wert einen Typ annimmt. `Payloads`
+  serialisiert Metadaten nur wieder heraus, wo sie in der Ausgabe stehen;
+  der `ExchangeView` trägt sie ohnehin nicht, deshalb muss dort nichts
+  angepasst werden.
+- Es wurde **kein Schlüssel im Bestand tiefer verschachtelt als eine Ebene**
+  benannt oder gemessen. Der Auftrag beschreibt zwei Schlüssel — `tracks`
+  durchgängig, `task` in jeder Dispatch-Metadaten-Zeile — beide als Listen
+  von Identifikatoren, also flach. Die Festlegung "genau eine Ebene tief"
+  passt zum Bestand; sollte der Operator im Lesetest gegen die echte DB
+  einen tieferen Fall finden, ist das ein neuer Dispatch, kein Nachtrag hier.
+
+**Offen, für den Operator.**
+
+- Der Tag-Cut auf `v0.2.0` (oder eine andere gewählte Version) nach Merge,
+  damit der Release-Workflow das Image nach GHCR schiebt.
+- Der Lesetest im Deployment gegen den echten Bestand — die 132 Zeilen mit
+  Listen-Metadaten, die vorher 500 lieferten, sollten nach Rollout durch
+  `query` heil zurückkommen. Das ist der Beweis, den nur die Produktion
+  bringen kann.
+- Der cimd-proxy und BUG-51 blieben unangetastet, wie der Auftrag verlangt.
+- SPRINT_174 (SQL-Importskript) ist entsperrt: das Skript darf Listen
+  schreiben, ohne einen unlesbaren Bestand zu erzeugen.
+$kbimp$, TIMESTAMPTZ '2026-09-07T00:00:00Z',
+       $kbimp${"source": "satellite/16/SATELLITE_16.0-dispatch.md", "task": ["BUG-52"]}$kbimp$::jsonb, $kbimp${"source": "satellite/16/SATELLITE_16.0-return.md"}$kbimp$::jsonb
+WHERE NOT EXISTS (
+    SELECT 1 FROM dispatch.exchange
+     WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
+       AND selector = 'satellite' AND number = 16 AND sub = 0
+       AND addendum_suffix IS NOT DISTINCT FROM NULL);
+
+-- satellite 17.0
+INSERT INTO dispatch.exchange
+    (tenant_id, scope_id, selector, number, sub, addendum_suffix, status,
+     title, body, apparatus, dispatch_date, sent_at,
+     handover_body, ratified_at, dispatch_metadata, handover_metadata)
+SELECT 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid, '0845a29c-9b55-4405-a445-7849416731b8'::uuid, 'satellite', 17, 0, NULL, 'closed',
+       $kbimp$Den Nachtrag des Steuerungskorpus bauen: idempotent, ueber den Schnitt bei 172 hinaus, und faehig sich selbst einzuschliessen$kbimp$, $kbimp$## Auftrag
+
+Der Import aus SPRINT_174.1 hat 278 Austausche in `dispatch.exchange`
+ueberfuehrt und dabei bei Sprint 172 abgeschnitten. Was danach entstanden ist,
+fehlt im Dienst und liegt ausschliesslich als Datei im Klon
+`Kumbuka-ai/steering`:
+
+- `sprints/173/` -- vollstaendig, der Sprint ist abgeschlossen
+- `sprints/174/` -- Briefing, Bauauftrag, Ruecklauf
+- `satellite/15/` -- Auftrag, nie beauftragt, `status: draft`
+- `satellite/16/` -- Auftrag und Ruecklauf
+- `satellite/17/` -- dieser Auftrag, und spaeter sein Ruecklauf
+
+Gebaut wird ein **Nachtragslauf** auf Grundlage des bestehenden Werkzeugs
+`migration/generate-import.py` im Repositorium `Kumbuka-ai/kumbuka-dispatch`.
+Kein neues Werkzeug: dasselbe Programm, um einen Nachtragsmodus erweitert.
+
+**Die tragende Eigenschaft ist Idempotenz.** Der Lauf traegt ein, was fehlt,
+und laesst unberuehrt, was steht. Er ist beliebig oft wiederholbar, und ein
+zweiter Lauf nach Abschluss dieses Auftrags fuegt genau das hinzu, was der
+erste noch nicht sehen konnte -- naemlich den Ruecklauf zu diesem Auftrag
+selbst. Ohne diese Eigenschaft bleibt der Nachtrag prinzipiell unvollstaendig,
+weil ein Lauf sein eigenes Ergebnis nicht enthalten kann.
+
+Die Wiedererkennung laeuft ueber die Adresse: Selektor, Nummer, Unternummer und
+gegebenenfalls der Addendum-Buchstabe. Eine bereits vorhandene Adresse wird
+uebersprungen und **niemals ueberschrieben**. Der Lauf zaehlt am Ende, was er
+eingefuegt und was er uebersprungen hat, je Adresse benannt.
+
+**Gemessene Vorbedingungen, am 2026-09-07 gegen die produktive Datenbank.**
+
+`dispatch.number_circle` steht auf `next_number = 175` fuer `sprint` und
+`next_number = 15` fuer `satellite`. Fuer die Sprints ist der Kreis damit
+bereits ueber den Nachtrag hinweg gesetzt und darf **nicht** bewegt werden.
+Fuer `satellite` steht er vor den einzutragenden Nummern und muss nach dem
+Einfuegen auf den naechsten freien Wert gehoben werden. Lies beide Werte im
+Lauf erneut und leite die Bewegung daraus ab, statt die hier genannten Zahlen
+zu verdrahten.
+
+**Die Zustaende kommen aus dem Frontmatter der Dateien**, nicht aus einer
+Annahme. Vorgefunden wurden im Bestand: `consumed`, `closed`, `active`, `open`,
+`draft`, `returned`. Der Nachtrag traegt den Wert der Datei, auch wenn er
+`draft` ist -- `satellite/15` ist ein nie beauftragter Auftrag, und genau so
+gehoert er in den Bestand.
+
+**Abnahmekriterien, als pruefbare Aussagen.**
+
+1. Ein Lauf gegen eine Datenbank, in der die fuenf Verzeichnisse fehlen, traegt
+   alle darin liegenden Objekte ein.
+2. Ein unmittelbar folgender zweiter Lauf traegt **null** Objekte ein und
+   ueberspringt alle als vorhanden.
+3. Ein Lauf gegen eine Datenbank, in der die 278 aus dem Erstimport stehen,
+   ruehrt keine dieser Zeilen an -- weder Rumpf noch Metadaten noch Status.
+4. Die Nummernkreise stehen nach dem Lauf so, dass die naechste regulaere
+   `create`-Vergabe keine belegte Nummer trifft: `sprint` unveraendert,
+   `satellite` oberhalb der eingetragenen.
+5. Metadaten mit Listenwerten -- `task` und `tracks` -- werden als JSON-Arrays
+   eingetragen und nicht zu Zeichenketten flachgeklopft.
+6. Ein Objekt, dessen Frontmatter einen Metadatenwert traegt, der tiefer als
+   eine Ebene verschachtelt ist, laesst den Lauf **laut scheitern** statt ihn
+   einzutragen. Der Wert wird mit Adresse und Schluessel benannt.
+7. Der Lauf endet auf `ROLLBACK`, bis der Operator genau dieses eine Wort
+   tauscht -- dieselbe Bauart wie der Erstimport.
+
+**Die rote Probe.** Kriterium 6 ist der Waechter. Er bekommt sie: die
+Tiefenpruefung wird herausgenommen, ein Pruefobjekt mit verschachteltem
+Metadatenwert wird angeboten, und der Lauf muss dabei rot werden und den
+Exit-Status setzen. Beide Laeufe gehoeren in den Bericht.
+
+Der Grund fuer diesen Waechter steht in SATELLITE_16.0: der Dienst laesst
+`Map<String, Object>` zu und prueft die Tiefe an der Sende-Schleuse. Ein
+SQL-Nachtrag geht daran vorbei. Die Regel muss deshalb im Skript stehen, sonst
+steht sie nirgends.
+
+**Zur Nachweisform, ausdruecklich.** Ein Lauf, der einen Fehlerfall
+protokolliert und trotzdem mit Null endet, ist kein Waechter. Verlangt ist der
+Kontrolllauf, bei dem der Befund den Exit-Status setzt.
+
+## Frame
+
+Der Erstimport hat funktioniert und ist am 2026-09-06 gegen Produktion
+gefahren worden; sein Werkzeug liegt unter `migration/` und ist die Vorlage.
+Was hier entsteht, ist die Fortschreibung desselben Wegs und keine
+Neuentwicklung.
+
+Warum nicht ueber die Verb-Oberflaeche, obwohl der Dienst laeuft: `create`
+vergibt die Nummer transaktional und nimmt keine entgegen. Der Kreis steht fuer
+`sprint` auf 175, also waeren 173 und 174 ueber die Verben nicht mehr
+erreichbar, und ein Loeschverb zum Zuruecknehmen gibt es nicht. Der Skriptweg
+ist damit fuer die Sprints der einzige, und zwei Wege fuer einen Nachtrag waeren
+einer zu viel.
+
+Der Dienst ist seit dem Rollout von `v0.2.0` lesend funktionsfaehig; der Nachtrag
+ist die letzte Luecke zwischen Bestand und Wirklichkeit.
+
+Erwartete Wirkung auf den laufenden Betrieb: keine. Der Nachtrag fuegt Zeilen
+hinzu und beruehrt keine bestehende.
+
+## Grenze
+
+Keine Aenderung an bestehenden Zeilen. Kein `UPDATE`, kein `DELETE`, kein
+`ON CONFLICT DO UPDATE`. Wer schon steht, bleibt unangetastet -- auch wenn die
+Datei inzwischen abweicht. Eine Abweichung zwischen Datei und Bestand ist ein
+Befund fuer den Bericht und keine Korrektur im Lauf.
+
+Keine Aenderung am Dienst: nicht an `Exchange`, nicht an `Metadata`, nicht an
+der Verb- oder MCP-Schicht, keine Flyway-Migration, kein Schema-Eingriff.
+
+Keine Aenderung am Steuerungsklon. Die Dateien werden **gelesen**, nie
+geschrieben, nie verschoben, nie umbenannt.
+
+Kein Merge, kein Tag, kein Deploy. Der Produktionslauf ist Operator-Werk.
+
+Nicht anfassen: der cimd-proxy und BUG-51, die Findings unter `findings/`, und
+die Frage, auf welchem Host der Dienst kuenftig sitzt.
+
+## Regime
+
+Einzelvariable ist der Nachtragslauf. Beruehrt werden duerfen ausschliesslich
+Dateien unter `migration/` im Repositorium `Kumbuka-ai/kumbuka-dispatch`.
+
+Zweigname `chore/357-backfill-steering-corpus`, Pull Request gegen `main`, kein
+Merge.
+
+Der Beweis laeuft gegen ein Wegwerf-Postgres mit dem Schema des Dienstes,
+niemals gegen die produktive Datenbank. Kriterium 3 verlangt dabei einen
+Bestand, der den Erstimport enthaelt: fahre dafuer den Erstimport gegen das
+Wegwerf-Postgres und den Nachtrag danach.
+
+**Stoppbedingung.** Zeigt sich, dass ein Verzeichnis Objekte enthaelt, deren
+Adresse mit einer bereits belegten kollidiert, ohne dass es dasselbe Objekt ist,
+dann melde das und trage nichts ein. Dasselbe gilt, wenn ein Frontmatter einen
+Statuswert traegt, der im Zustandsmodell des Dienstes nicht existiert, oder
+wenn die Ableitung der Nummernkreis-Bewegung nicht eindeutig ist.
+
+**Abnahme.** Die sieben Kriterien als eigene Pruefungen, die rote Probe mit
+beobachtetem rotem Zustand in beiden Laeufen, Pull Request offen, Pipeline
+gruen. Der Lauf gegen Produktion ist nicht Teil der Abnahme.
+
+## Rueckgabe
+
+**Der Logbuch-Dienst traegt diesen Vorgang noch nicht.** Genau das ist der
+Gegenstand dieses Auftrags. Es gibt daher keinen Verb-Aufruf fuer die Rueckgabe.
+
+Der Bericht wird als Datei abgelegt:
+
+```
+/Users/johannes/Work/kumbuka.ai/dev/steering/satellite/17/SATELLITE_17.0-return.md
+```
+
+Mit diesem Frontmatter, unveraendert uebernommen bis auf das Datum:
+
+```yaml
+---
+id: SATELLITE_17.0
+role: return
+apparatus: code
+sprint: 17
+date: <Tag des Abschlusses, ISO>
+title: <eine Zeile, was tatsaechlich gebaut wurde>
+task:
+  - CHORE-357
+status: open
+---
+```
+
+Der Rumpf nennt in dieser Reihenfolge: was gebaut wurde und wo es liegt; die
+sieben Kriterien mit ihrem Ergebnis; die rote Probe mit beiden Laeufen und dem
+Exit-Status; jede Abweichung vom Auftrag mit Begruendung; die
+Pull-Request-URL; und was offen bleibt.
+
+Ausdruecklich mitzuteilen, auch wenn die Antwort unauffaellig ist: welche
+Objekte der Lauf im Trockenlauf eintragen wuerde, je Adresse aufgezaehlt; ob
+eine Abweichung zwischen einer Datei und einer bereits stehenden Zeile gefunden
+wurde; und ob ein Frontmatter einen Statuswert traegt, der im Dienst nicht
+existiert.
+
+Die Datei wird nicht committet und nicht gepusht. Das Steuerungsrepositorium
+gehoert dem Operator; der Bericht wird abgelegt und im Abschlussbericht genannt.
+$kbimp$, $kbimp$code$kbimp$, DATE '2026-09-07', TIMESTAMPTZ '2026-09-07T00:00:00Z',
+       NULL, NULL,
+       $kbimp${"source": "satellite/17/SATELLITE_17.0-dispatch.md", "task": ["CHORE-357"]}$kbimp$::jsonb, NULL
+WHERE NOT EXISTS (
+    SELECT 1 FROM dispatch.exchange
+     WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
+       AND selector = 'satellite' AND number = 17 AND sub = 0
        AND addendum_suffix IS NOT DISTINCT FROM NULL);
 
 -- sprint 1.0
@@ -45085,7 +45830,7 @@ UPDATE dispatch.number_circle SET next_number = 15
 -- screen even when a postcondition then stops the run.
 --
 -- "the migrated stock" below means the address ranges this import writes:
--- sprint <= 172 and satellite <= 14. Rows the service creates later
+-- sprint <= 172 and satellite <= 17. Rows the service creates later
 -- carry higher numbers and are deliberately outside every check.
 -- ---------------------------------------------------------------------------
 DO $$
@@ -45097,7 +45842,7 @@ BEGIN
           FROM dispatch.exchange
          WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
            AND ((selector = 'sprint'    AND number <= 172)
-             OR (selector = 'satellite' AND number <= 14))
+             OR (selector = 'satellite' AND number <= 17))
          GROUP BY selector, status ORDER BY selector, status
     LOOP
         RAISE NOTICE '  % / % : %', r.selector, r.status, r.n;
@@ -45109,7 +45854,7 @@ BEGIN
           FROM dispatch.exchange
          WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
            AND ((selector = 'sprint'    AND number <= 172)
-             OR (selector = 'satellite' AND number <= 14))
+             OR (selector = 'satellite' AND number <= 17))
          GROUP BY selector ORDER BY selector
     LOOP
         RAISE NOTICE '  % : % rows, % without a handover, % addenda', r.selector, r.n, r.ohne_antwort, r.nachtraege;
@@ -45138,15 +45883,15 @@ BEGIN
 
     SELECT count(*) INTO n FROM dispatch.exchange
      WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
-       AND selector = 'satellite' AND number <= 14;
-    IF n <> 24 THEN
-        RAISE EXCEPTION 'postcondition 1 (satellite): expected 24 rows, found %', n;
+       AND selector = 'satellite' AND number <= 17;
+    IF n <> 27 THEN
+        RAISE EXCEPTION 'postcondition 1 (satellite): expected 27 rows, found %', n;
     END IF;
 
     -- 2. every row past draft carries a send time.
     SELECT count(*) INTO n FROM dispatch.exchange
      WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
-       AND ((selector = 'sprint' AND number <= 172) OR (selector = 'satellite' AND number <= 14))
+       AND ((selector = 'sprint' AND number <= 172) OR (selector = 'satellite' AND number <= 17))
        AND status <> 'draft' AND sent_at IS NULL;
     IF n > 0 THEN RAISE EXCEPTION 'postcondition 2: % rows past draft without sent_at', n; END IF;
 
@@ -45167,14 +45912,14 @@ BEGIN
     -- 4. the migrated stock is terminal throughout.
     SELECT count(*) INTO n FROM dispatch.exchange
      WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
-       AND ((selector = 'sprint' AND number <= 172) OR (selector = 'satellite' AND number <= 14))
+       AND ((selector = 'sprint' AND number <= 172) OR (selector = 'satellite' AND number <= 17))
        AND status NOT IN ('closed', 'consumed');
     IF n > 0 THEN RAISE EXCEPTION 'postcondition 4: % migrated rows are not terminal', n; END IF;
 
     -- 5. an answer without a ratification time would be a half-migrated handover.
     SELECT count(*) INTO n FROM dispatch.exchange
      WHERE tenant_id = 'a7b072e4-89dd-473e-acc0-91a98a8bae7a'::uuid AND scope_id = '0845a29c-9b55-4405-a445-7849416731b8'::uuid
-       AND ((selector = 'sprint' AND number <= 172) OR (selector = 'satellite' AND number <= 14))
+       AND ((selector = 'sprint' AND number <= 172) OR (selector = 'satellite' AND number <= 17))
        AND handover_body IS NOT NULL AND ratified_at IS NULL;
     IF n > 0 THEN RAISE EXCEPTION 'postcondition 5: % rows carry an answer with no ratified_at', n; END IF;
 
