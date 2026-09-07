@@ -88,7 +88,7 @@ class ExchangeMechanicsIT {
         Exchange sent = openAndSend("a commission with a body nobody has claimed");
 
         ExchangeView asExecutor = exchanges.view(SCOPE, at(sent), EXECUTOR);
-        assertThat(asExecutor.body())
+        assertThat(asExecutor.dispatchBody())
             .as("enough to refuse, not enough to work. This is the first of three bolts "
                 + "against the race: a loser cannot have started, because it never had "
                 + "anything to start from")
@@ -97,7 +97,7 @@ class ExchangeMechanicsIT {
             .as("but enough to decide against taking it up")
             .isEqualTo("a commission with a body nobody has claimed");
 
-        assertThat(exchanges.view(SCOPE, at(sent), CONSOLE).body())
+        assertThat(exchanges.view(SCOPE, at(sent), CONSOLE).dispatchBody())
             .as("a console identity reads it, because operators read commissions as a "
                 + "matter of course. Without this half the guarantee would just be a "
                 + "switched-off feature")
@@ -109,10 +109,10 @@ class ExchangeMechanicsIT {
         Exchange sent = openAndSend("a commission about to be claimed");
         exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
 
-        assertThat(exchanges.view(SCOPE, at(sent), EXECUTOR).body())
+        assertThat(exchanges.view(SCOPE, at(sent), EXECUTOR).dispatchBody())
             .as("taking it up is what buys the body")
             .isNotNull();
-        assertThat(exchanges.view(SCOPE, at(sent), OTHER_EXECUTOR).body())
+        assertThat(exchanges.view(SCOPE, at(sent), OTHER_EXECUTOR).dispatchBody())
             .as("and only for the holder — another executor still sees none")
             .isNull();
     }
@@ -344,7 +344,7 @@ class ExchangeMechanicsIT {
         assertThat(afterAll.title)
             .as("title is a dispatch-role property and writable before send")
             .isEqualTo("the actual title");
-        assertThat(afterAll.body)
+        assertThat(afterAll.dispatchBody)
             .as("body is what draft lands in before send")
             .isEqualTo("the body text");
         assertThat(afterAll.apparatus)

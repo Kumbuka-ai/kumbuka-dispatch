@@ -334,7 +334,7 @@ class VerbSurfaceTest {
 
     private static ExchangeView viewOf(ExchangeStatus status, String conflictToken) {
         return new ExchangeView("sprint/164.1", "sprint", 164, 1, "a commission", "code",
-            LocalDate.parse("2026-09-01"), status, null, null, null, null, null,
+            LocalDate.parse("2026-09-01"), status, null, null, null, null, null, null,
             conflictToken);
     }
 

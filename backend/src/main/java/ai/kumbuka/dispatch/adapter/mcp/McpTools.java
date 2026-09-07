@@ -97,11 +97,12 @@ public final class McpTools {
 
             new Tool("update",
                 "Write the exchange's draft. Before send the write lands in the dispatch "
-                    + "role — title, body (via draft), apparatus, date, dispatch metadata. "
-                    + "After send it lands in the return role — return_body (via draft) "
-                    + "and return_metadata. The role follows the state; the caller does "
-                    + "not choose. Carries a conflict token, which is the one handed out "
-                    + "with the last read; a stale token is refused rather than overwritten.",
+                    + "role — title, dispatch_body (via draft), apparatus, date, "
+                    + "dispatch_metadata. After send it lands in the return role — "
+                    + "return_body (via draft) and return_metadata. The role follows the "
+                    + "state; the caller does not choose. Carries a conflict token, which "
+                    + "is the one handed out with the last read; a stale token is refused "
+                    + "rather than overwritten.",
                 schema(
                     required(ARG_ADDRESS, STRING, ADDRESS_DOC),
                     required("conflict_token", STRING,

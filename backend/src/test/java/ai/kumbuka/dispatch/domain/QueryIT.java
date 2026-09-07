@@ -98,12 +98,12 @@ class QueryIT {
     void several_undeclared_fields_are_all_named_in_one_refusal() {
         assertThatThrownBy(() -> exchanges.query(SCOPE, SELECTOR,
                 QueryFilter.of(new java.util.LinkedHashMap<>(Map.of(
-                    "title", "x", "body", "y"))), CONSOLE))
+                    "title", "x", "dispatchBody", "y"))), CONSOLE))
             .isInstanceOf(DispatchException.class)
             .satisfies(thrown -> assertThat(((DispatchException) thrown).offenders())
                 .as("a caller fixing one field at a time is a caller making two round "
                     + "trips to learn what one refusal could have said")
-                .containsExactlyInAnyOrder("title", "body"));
+                .containsExactlyInAnyOrder("title", "dispatchBody"));
     }
 
     /**
@@ -231,7 +231,7 @@ class QueryIT {
             EXECUTOR);
 
         assertThat(listed).singleElement().satisfies(view -> {
-            assertThat(view.body())
+            assertThat(view.dispatchBody())
                 .as("enough to refuse and not enough to work: the title, the apparatus and "
                     + "the date decide whether to take something up, and the body is what "
                     + "taking it up buys")
@@ -250,7 +250,7 @@ class QueryIT {
 
         assertThat(exchanges.query(SCOPE, SELECTOR, QueryFilter.none(), CONSOLE))
             .singleElement()
-            .satisfies(view -> assertThat(view.body())
+            .satisfies(view -> assertThat(view.dispatchBody())
                 .as("operators read commissions as a matter of course, and the listing "
                     + "uses the same projection as the single read rather than a second "
                     + "rule of its own")
@@ -271,10 +271,10 @@ class QueryIT {
             EXECUTOR);
 
         assertThat(listed).hasSize(2);
-        assertThat(listed.get(0).body())
+        assertThat(listed.get(0).dispatchBody())
             .as("what this executor holds, it may read")
             .isNotNull();
-        assertThat(listed.get(1).body())
+        assertThat(listed.get(1).dispatchBody())
             .as("and what it does not hold, it may not — in the same answer, which is "
                 + "what makes this a per-row decision rather than a per-caller one")
             .isNull();
@@ -289,7 +289,7 @@ class QueryIT {
         assertThat(exchanges.query(SCOPE, SELECTOR, QueryFilter.none(), EXECUTOR))
             .singleElement()
             .satisfies(view -> {
-                assertThat(view.body())
+                assertThat(view.dispatchBody())
                     .as("a claim is one executor's, and a listing is not a way around it")
                     .isNull();
                 assertThat(view.effectiveHolder())

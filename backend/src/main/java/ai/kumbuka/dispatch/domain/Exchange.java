@@ -82,8 +82,8 @@ public class Exchange {
     @Column(name = "title", nullable = false)
     public String title;
 
-    @Column(name = "body", nullable = false)
-    public String body = "";
+    @Column(name = "dispatch_body", nullable = false)
+    public String dispatchBody = "";
 
     @Column(name = "apparatus", nullable = false)
     public String apparatus;
@@ -312,13 +312,13 @@ public class Exchange {
      * alone means keeping the empty string it arrived with — not returning
      * {@code null}. That is a schema property this class does not undo.
      */
-    void writeDispatch(String title, String body, String apparatus,
+    void writeDispatch(String title, String dispatchBody, String apparatus,
                        LocalDate dispatchDate, Map<String, Object> dispatchMetadata) {
         if (title != null) {
             this.title = title;
         }
-        if (body != null) {
-            this.body = body;
+        if (dispatchBody != null) {
+            this.dispatchBody = dispatchBody;
         }
         if (apparatus != null) {
             this.apparatus = apparatus;

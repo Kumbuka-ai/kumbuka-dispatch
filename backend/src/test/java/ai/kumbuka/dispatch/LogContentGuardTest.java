@@ -212,7 +212,7 @@ class LogContentGuardTest {
     void the_guard_catches_every_thing_the_convention_withholds() throws IOException {
         Findings findings = scan(forbiddenFixtureRoot());
 
-        for (String written : List.of("e.title", "e.body", "e.metadata", "receipt", "subject")) {
+        for (String written : List.of("e.title", "e.dispatchBody", "e.metadata", "receipt", "subject")) {
             assertThat(findings.offenders())
                 .as("RED STATE, observed: a log call carrying '%s' must be reported, and "
                     + "the report must name what it carries", written)

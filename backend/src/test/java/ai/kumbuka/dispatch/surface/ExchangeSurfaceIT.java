@@ -181,7 +181,7 @@ class ExchangeSurfaceIT {
         assertThat(claimed.jsonPath().getString("receipt"))
             .as("the receipt is minted by the service and returned once; it is the only copy")
             .isNotBlank();
-        assertThat(claimed.jsonPath().getString("exchange.body"))
+        assertThat(claimed.jsonPath().getString("exchange.dispatchBody"))
             .as("taking it up is what buys the body")
             .isNotNull();
     }
@@ -723,7 +723,7 @@ class ExchangeSurfaceIT {
 
     private static Map<String, Object> commission(String title) {
         return Map.of("title", title, "apparatus", "code", "date", "2026-09-01",
-            "body", "");
+            "dispatchBody", "");
     }
 
     /** Opens a bracket and returns its id part. */

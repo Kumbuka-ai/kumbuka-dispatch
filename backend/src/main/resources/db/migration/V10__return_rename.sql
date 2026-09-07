@@ -1,14 +1,16 @@
 -- ===========================================================================
--- V10: the return-role rename.
+-- V10: the role-role rename.
 --
--- The outward name of the return role is settled. `handover` is the name of
--- the OUTWARD leg — the dispatch from concept to code — and the return path
--- carried the same word by accident, from an earlier draft that did not yet
--- distinguish the two. This migration renames the columns, the constraint
--- and the freeze trigger's field references to say `return` where they used
--- to say `handover`. Not touched: the ratification verb (`accept`), the
--- ratification timestamp (`ratified_at`), and the ratified status name
--- (`returned`) — all of which name the ACT rather than the role.
+-- Names both roles by their outward names. The return role gets renamed from
+-- `handover` — `handover` is the name of the OUTWARD leg (concept → code)
+-- and the return path carried the same word by accident. And the dispatch
+-- role's carrier, `body`, gets renamed to `dispatch_body` so the two roles
+-- have symmetric names on their carrier columns: `dispatch_body` /
+-- `dispatch_metadata` next to `return_body` / `return_metadata`.
+--
+-- Not touched: the ratification verb (`accept`), the ratification timestamp
+-- (`ratified_at`), and the ratified status name (`returned`) — all of which
+-- name the ACT rather than the role.
 --
 -- Additive to the chain, and non-destructive. In PostgreSQL a RENAME COLUMN
 -- is a catalog change: no table rewrite, no data movement, no lock beyond the
@@ -18,12 +20,13 @@
 -- calling the new names.
 --
 -- The runtime role's grant is table-level (V8), so nothing under it needs
--- adjusting; there is no column-level grant on either handover column.
+-- adjusting; there is no column-level grant on any of the three columns.
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
 -- 1. The columns
 -- ---------------------------------------------------------------------------
+ALTER TABLE dispatch.exchange RENAME COLUMN body              TO dispatch_body;
 ALTER TABLE dispatch.exchange RENAME COLUMN handover_body     TO return_body;
 ALTER TABLE dispatch.exchange RENAME COLUMN handover_metadata TO return_metadata;
 
@@ -59,13 +62,13 @@ BEGIN
     END IF;
 
     IF NEW.title <> OLD.title
-       OR NEW.body <> OLD.body
+       OR NEW.dispatch_body <> OLD.dispatch_body
        OR NEW.apparatus <> OLD.apparatus
        OR NEW.dispatch_date <> OLD.dispatch_date
        OR NEW.sent_at <> OLD.sent_at THEN
         RAISE EXCEPTION
-            'exchange %.%.% is frozen: title, body, apparatus, date and sent_at cannot '
-            'change after send. Corrections attach as an addendum.',
+            'exchange %.%.% is frozen: title, dispatch_body, apparatus, date and sent_at '
+            'cannot change after send. Corrections attach as an addendum.',
             OLD.selector, OLD.number, OLD.sub
             USING ERRCODE = 'raise_exception';
     END IF;

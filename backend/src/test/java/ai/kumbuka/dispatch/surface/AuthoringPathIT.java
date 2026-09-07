@@ -102,7 +102,7 @@ class AuthoringPathIT {
             //    role must be absent, because nothing has been written to it.
             //    That is what "the state chooses which role is written" MEANS.
             View afterBodyWrite = read(created.id);
-            assertThat(afterBodyWrite.body)
+            assertThat(afterBodyWrite.dispatchBody)
                 .as("the write before send lands in the dispatch role, so the read finds it "
                     + "on body; before this repair it landed in return_body and the read "
                     + "found it there instead")
@@ -124,7 +124,7 @@ class AuthoringPathIT {
                     + "writable before send. This step is the assertion that they REACH the "
                     + "row through the surface, not just that the entity allows the write")
                 .isEqualTo("the actual title");
-            assertThat(afterTitleWrite.body)
+            assertThat(afterTitleWrite.dispatchBody)
                 .as("body was not touched in the title write; a null argument leaves its "
                     + "field alone")
                 .isEqualTo("the commission text");
@@ -142,7 +142,7 @@ class AuthoringPathIT {
             //    the projection carries the body. The token has rotated at send
             //    and claim, so a stale one from before either would be refused.
             View afterClaim = read(created.id);
-            assertThat(afterClaim.body).isEqualTo("the commission text");
+            assertThat(afterClaim.dispatchBody).isEqualTo("the commission text");
             assertThat(afterClaim.status).isEqualTo("active");
 
             // 9. update after send — the return role. Writes return_body
@@ -159,7 +159,7 @@ class AuthoringPathIT {
                 .as("the write after send lands in the return role and reads back on the "
                     + "return projection — the two halves the second and third defect broke")
                 .isEqualTo("the answer text");
-            assertThat(afterReturnWrite.body)
+            assertThat(afterReturnWrite.dispatchBody)
                 .as("the dispatch role survives the return write unchanged; the row is "
                     + "the same, the roles are separate")
                 .isEqualTo("the commission text");
@@ -231,7 +231,7 @@ class AuthoringPathIT {
             return new View(
                 response.jsonPath().getString("title"),
                 response.jsonPath().getString("status"),
-                response.jsonPath().getString("body"),
+                response.jsonPath().getString("dispatchBody"),
                 response.jsonPath().getString("returnBody"),
                 response.jsonPath().getString("conflictToken"));
         }
@@ -295,7 +295,7 @@ class AuthoringPathIT {
             return new View(
                 (String) answer.get("title"),
                 (String) answer.get("status"),
-                (String) answer.get("body"),
+                (String) answer.get("dispatchBody"),
                 (String) answer.get("returnBody"),
                 (String) answer.get("conflictToken"));
         }
@@ -380,7 +380,7 @@ class AuthoringPathIT {
     private record Created(String id, String status) {
     }
 
-    private record View(String title, String status, String body, String returnBody,
+    private record View(String title, String status, String dispatchBody, String returnBody,
                         String conflictToken) {
     }
 }
