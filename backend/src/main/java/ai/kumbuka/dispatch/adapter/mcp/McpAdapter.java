@@ -73,6 +73,11 @@ public class McpAdapter {
     private static final String KEY_NAME = "name";
     private static final String KEY_ADDRESS = "address";
 
+    /** The three the author writes into: shared by create, append and update. */
+    private static final String ARG_TITLE = "title";
+    private static final String ARG_APPARATUS = "apparatus";
+    private static final String ARG_DATE = "date";
+
     /** JSON-RPC's own codes. Protocol faults only — a refused verb is not one. */
     private static final int METHOD_NOT_FOUND = -32601;
     private static final int INVALID_PARAMS = -32602;
@@ -113,7 +118,7 @@ public class McpAdapter {
         return Map.of(
             "protocolVersion", PROTOCOL_VERSION,
             "capabilities", Map.of("tools", Map.of()),
-            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.2.0"));
+            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.3.0"));
     }
 
     /** The declared tools, in the shape MCP asks for them. */
@@ -191,7 +196,7 @@ public class McpAdapter {
         String scope = required(in, ARG_SCOPE);
         String selector = required(in, ARG_SELECTOR);
         VerbInput.Draft body = new VerbInput.Draft(
-            required(in, "title"), required(in, "apparatus"), date(in, "date"), null);
+            required(in, ARG_TITLE), required(in, ARG_APPARATUS), date(in, ARG_DATE), null);
 
         String parent = optional(in, "parent");
         if (parent == null) {
@@ -205,8 +210,9 @@ public class McpAdapter {
 
     private Object update(Actor actor, Map<String, Object> in) {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        VerbInput.Handover body = new VerbInput.Handover(
-            required(in, "draft"), optional(in, "receipt"), metadata(in));
+        VerbInput.Update body = new VerbInput.Update(
+            optional(in, ARG_TITLE), optional(in, ARG_APPARATUS), optionalDate(in, ARG_DATE),
+            optional(in, "draft"), optional(in, "receipt"), metadata(in));
         return dressed(verbs.update(actor, at.scope(), at.selector(), at.id(),
             required(in, "conflict_token"), body));
     }
@@ -214,8 +220,8 @@ public class McpAdapter {
     private Object append(Actor actor, Map<String, Object> in) {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
         return dressed(verbs.append(actor, at.scope(), at.selector(), at.id(),
-            new VerbInput.Addendum(required(in, "title"), required(in, "apparatus"),
-                date(in, "date"))));
+            new VerbInput.Addendum(required(in, ARG_TITLE), required(in, ARG_APPARATUS),
+                date(in, ARG_DATE))));
     }
 
     private Object send(Actor actor, Map<String, Object> in) {
@@ -325,6 +331,15 @@ public class McpAdapter {
 
     private static LocalDate date(Map<String, Object> in, String name) {
         String raw = required(in, name);
+        return parseDate(raw);
+    }
+
+    private static LocalDate optionalDate(Map<String, Object> in, String name) {
+        String raw = optional(in, name);
+        return raw == null || raw.isBlank() ? null : parseDate(raw);
+    }
+
+    private static LocalDate parseDate(String raw) {
         try {
             return LocalDate.parse(raw);
         } catch (DateTimeParseException e) {

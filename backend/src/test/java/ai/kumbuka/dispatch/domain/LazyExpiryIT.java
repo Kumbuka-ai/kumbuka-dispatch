@@ -147,8 +147,8 @@ class LazyExpiryIT {
     void a_draft_left_by_a_lapsed_claim_is_gone_after_the_reclaim() throws SQLException {
         Exchange sent = openAndSend("a commission abandoned mid-answer");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
-        exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR, claim.receipt(),
-            "half an answer, left behind", null);
+        exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "half an answer, left behind", null, null, claim.receipt(), null);
 
         assertThat(exchanges.read(SCOPE, at(sent)).handoverBody())
             .as("the draft is there before the claim lapses, or the assertion below "
@@ -168,8 +168,8 @@ class LazyExpiryIT {
     void revert_also_drops_the_claim_and_the_draft() {
         Exchange sent = openAndSend("a commission handed back deliberately");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
-        exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR, claim.receipt(),
-            "an answer being abandoned", null);
+        exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "an answer being abandoned", null, null, claim.receipt(), null);
 
         Exchange reverted = exchanges.revert(SCOPE, at(sent), CONSOLE);
 

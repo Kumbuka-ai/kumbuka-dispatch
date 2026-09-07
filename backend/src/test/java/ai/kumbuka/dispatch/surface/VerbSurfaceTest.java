@@ -226,23 +226,23 @@ class VerbSurfaceTest {
     @Test
     void a_field_write_without_a_token_is_refused_before_the_domain_is_called() {
         assertThatThrownBy(() -> verbs.update(EXECUTOR, "probe-scope", "sprint", "164.1",
-            null, new VerbInput.Handover("a draft", "a-receipt", null)))
+            null, new VerbInput.Update(null, null, null, "a draft", "a-receipt", null)))
             .isInstanceOf(SurfaceException.class)
             .extracting(e -> ((SurfaceException) e).reason())
             .isEqualTo(SurfaceException.Reason.CONFLICT_TOKEN_MISSING);
 
-        verify(exchanges, never()).writeHandoverDraft(any(), any(), any(), any(), any(), any());
+        verify(exchanges, never()).writeDraft(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void a_stale_token_is_refused_before_the_domain_is_called() {
         assertThatThrownBy(() -> verbs.update(EXECUTOR, "probe-scope", "sprint", "164.1",
-            "1999-01-01T00:00:00Z", new VerbInput.Handover("a draft", "a-receipt", null)))
+            "1999-01-01T00:00:00Z", new VerbInput.Update(null, null, null, "a draft", "a-receipt", null)))
             .isInstanceOf(SurfaceException.class)
             .extracting(e -> ((SurfaceException) e).reason())
             .isEqualTo(SurfaceException.Reason.CONFLICT_TOKEN_STALE);
 
-        verify(exchanges, never()).writeHandoverDraft(any(), any(), any(), any(), any(), any());
+        verify(exchanges, never()).writeDraft(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     /**
@@ -258,10 +258,10 @@ class VerbSurfaceTest {
         String handed = verbs.read(EXECUTOR, "probe-scope", "sprint", "164.1").conflictToken();
 
         verbs.update(EXECUTOR, "probe-scope", "sprint", "164.1", handed,
-            new VerbInput.Handover("a draft", "a-receipt", null));
+            new VerbInput.Update(null, null, null, "a draft", "a-receipt", null));
 
-        verify(exchanges).writeHandoverDraft(eq(SCOPE), any(), eq(EXECUTOR),
-            eq("a-receipt"), eq("a draft"), eq(null));
+        verify(exchanges).writeDraft(eq(SCOPE), any(), eq(EXECUTOR),
+            eq(null), eq("a draft"), eq(null), eq(null), eq("a-receipt"), eq(null));
     }
 
     @Test
@@ -269,9 +269,9 @@ class VerbSurfaceTest {
         String handed = verbs.read(EXECUTOR, "probe-scope", "sprint", "164.1").conflictToken();
 
         verbs.update(EXECUTOR, "probe-scope", "sprint", "164.1", "\"" + handed + "\"",
-            new VerbInput.Handover("a draft", "a-receipt", null));
+            new VerbInput.Update(null, null, null, "a draft", "a-receipt", null));
 
-        verify(exchanges).writeHandoverDraft(any(), any(), any(), any(), any(), any());
+        verify(exchanges).writeDraft(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     /**
@@ -334,7 +334,8 @@ class VerbSurfaceTest {
 
     private static ExchangeView viewOf(ExchangeStatus status, String conflictToken) {
         return new ExchangeView("sprint/164.1", "sprint", 164, 1, "a commission", "code",
-            LocalDate.parse("2026-09-01"), status, null, null, null, conflictToken);
+            LocalDate.parse("2026-09-01"), status, null, null, null, null, null,
+            conflictToken);
     }
 
     /** An entity whose only interesting field here is when it was last written. */

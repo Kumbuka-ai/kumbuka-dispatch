@@ -59,8 +59,31 @@ public final class VerbInput {
         LocalDate date) {
     }
 
-    /** A handover draft, replaced wholesale, with the receipt that authorises it. */
-    public record Handover(
+    /**
+     * What {@code update} carries — for the dispatch role before send, and for
+     * the handover role after it. One shape for both, because the caller does
+     * not choose which role is written: the state chooses.
+     *
+     * <p><strong>Before {@code send}:</strong> {@code draft} lands in {@code
+     * body}, {@code metadata} in {@code dispatch_metadata}, and {@code title},
+     * {@code apparatus} and {@code date} override the same-named fields.
+     * A null argument leaves its field alone, so the caller can change one
+     * property at a time. {@code receipt} is ignored — a draft has no holder.
+     *
+     * <p><strong>After {@code send}:</strong> {@code draft} lands in
+     * {@code handover_body} and {@code metadata} in {@code handover_metadata},
+     * exactly as the earlier handover-only shape did. {@code title},
+     * {@code apparatus} and {@code date} are refused when they arrive — a
+     * frozen field is frozen. {@code receipt} is required of an executor.
+     *
+     * <p>What has not changed: {@code create} still takes no body argument. A
+     * body on {@code create} would take the initial-draft moment away from the
+     * author.
+     */
+    public record Update(
+        String title,
+        String apparatus,
+        LocalDate date,
         String draft,
         String receipt,
         Map<String, Object> metadata) {

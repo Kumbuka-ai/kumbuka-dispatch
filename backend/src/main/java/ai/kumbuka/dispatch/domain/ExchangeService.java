@@ -379,29 +379,63 @@ public class ExchangeService {
     }
 
     /**
-     * Writes or overwrites the handover draft, while the exchange stays active.
+     * Writes the exchange's draft — dispatch role before send, handover role
+     * after. One verb, one row, and the state chooses which role it writes.
      *
-     * <p>The draft is replaced wholesale and there is no verb that appends to
-     * one. Rework is the normal case, not the exception: the operator reads,
-     * the answer does not fit, and the executor writes it again. No new
-     * object, no addendum, no reopening — and the intermediate rounds do not
-     * survive in the document, which is the deliberate trade. They land in the
-     * audit log a level down, and nobody needs a wrong handover text kept.
+     * <p><strong>Why the state chooses, not the caller.</strong> An exchange is
+     * either being authored or being answered. The freeze point separates the
+     * two, and every other question a write here has to ask — is a receipt
+     * required, may {@code title} be changed, is a ratified answer overwritten
+     * — is a function of that same point. A rollen-parameter would be a
+     * decision the caller cannot get right without also knowing {@link
+     * Exchange#frozen()}, which would leave the service checking the two
+     * answers against each other; a body-argument on {@code create} would take
+     * the initial-draft moment away from the author. The state is the one
+     * source that cannot be out of step with itself.
      *
-     * <p>Three bolts stand between a race and a corrupted answer, and they
-     * defend different axes rather than repeating each other:
+     * <h2>Before send: the dispatch role</h2>
+     *
+     * The fields the author owns — {@code title}, {@code body}, {@code
+     * apparatus}, {@code dispatchDate}, {@code dispatchMetadata} — are set
+     * from what arrives; a null argument leaves its field alone, so the caller
+     * changes one property or several. No receipt is asked for, because a
+     * draft has no holder. The bolts around the handover role are inapplicable
+     * here.
+     *
+     * <h2>After send: the handover role, wholesale</h2>
+     *
+     * The three bolts hold, and they defend different axes rather than
+     * repeating each other:
      * no body without a claim, so a loser cannot begin; only the receipt
      * holder writes, plus a console identity; and a ratified exchange takes no
      * further handover at all — a state precondition that does not depend on
      * who is asking, which is the cover for several runs sharing one service
-     * identity.
+     * identity. Rework is the normal case: the operator reads, the answer does
+     * not fit, and the executor writes it again. Intermediate rounds do not
+     * survive in the document, which is the deliberate trade; they land in the
+     * audit log a level down.
+     *
+     * <p>Dispatch fields ({@code title}, {@code apparatus}, {@code date}) that
+     * arrive here are refused typed rather than silently ignored — a caller
+     * that thinks it is renaming a frozen exchange should learn so at the write
+     * that fails, not from a later read that shows the old name.
      */
     @Transactional
-    public Exchange writeHandoverDraft(UUID scopeId, ExchangeAddress address, Actor actor,
-                                       String receipt, String draft,
-                                       Map<String, Object> metadata) {
+    public Exchange writeDraft(UUID scopeId, ExchangeAddress address, Actor actor,
+                               String title, String draft, String apparatus,
+                               LocalDate date, String receipt,
+                               Map<String, Object> metadata) {
         Exchange e = require(scopeId, address);
         Instant now = Instant.now(clock);
+
+        if (!e.frozen()) {
+            requireAtLeastOneField(title, draft, apparatus, date, metadata);
+            Metadata.validate(metadata);
+            e.writeDispatch(title, draft, apparatus, date, metadata);
+            touch(e, actor.subject());
+            LOG.infof("dispatch draft written on %s", e.address());
+            return e;
+        }
 
         // Bolt three. Deliberately first, and deliberately independent of
         // identity: two runs sharing a service identity would both pass a
@@ -413,6 +447,8 @@ public class ExchangeService {
                     + "A correction to something ratified attaches as an addendum.");
         }
 
+        refuseDispatchFieldsAfterSend(e, title, apparatus, date);
+        requireHandoverDraftPresent(draft);
         requireMayWriteHandover(e, actor, now);
         if (actor.isExecutor()) {
             // Bolt two. The subject alone is not enough: several runs can share
@@ -421,11 +457,53 @@ public class ExchangeService {
             requireReceipt(e, receipt);
         }
         Metadata.validate(metadata);
-        e.writeDraft(draft, metadata);
+        e.writeHandover(draft, metadata);
         touch(e, actor.subject());
 
         LOG.infof("handover draft written on %s", e.address());
         return e;
+    }
+
+    /**
+     * At least one dispatch field must arrive on an update before send.
+     *
+     * <p>An empty update would leave nothing changed and still rotate the
+     * conflict token, which a caller cannot distinguish from a successful
+     * one-field write it never made. The refusal is a form error rather than a
+     * silent no-op: a form that means nothing is the shape from which every
+     * "why did my next write get a stale token" question grows.
+     */
+    private static void requireAtLeastOneField(String title, String draft, String apparatus,
+                                               LocalDate date,
+                                               Map<String, Object> metadata) {
+        if (title == null && draft == null && apparatus == null
+            && date == null && metadata == null) {
+            throw new DispatchException(DispatchException.Reason.UPDATE_EMPTY,
+                "update on a draft takes at least one of title, draft, apparatus, date or "
+                    + "metadata. An empty write would rotate the conflict token and change "
+                    + "nothing, which a later reader cannot distinguish from a small write "
+                    + "that never happened.");
+        }
+    }
+
+    /** After send the dispatch fields are frozen; a caller sending them learns so. */
+    private static void refuseDispatchFieldsAfterSend(Exchange e, String title,
+                                                     String apparatus, LocalDate date) {
+        if (title != null || apparatus != null || date != null) {
+            throw new DispatchException(DispatchException.Reason.FROZEN,
+                e.address() + " was sent and its dispatch fields are frozen. update on a "
+                    + "sent exchange writes the handover role; title, apparatus and date "
+                    + "belong to the dispatch role and were fixed at send.");
+        }
+    }
+
+    /** After send an update without a handover draft has no verb to do. */
+    private static void requireHandoverDraftPresent(String draft) {
+        if (draft == null) {
+            throw new DispatchException(DispatchException.Reason.HANDOVER_DRAFT_REQUIRED,
+                "update on a sent exchange writes the handover draft, so a draft argument "
+                    + "is required. Metadata alone does not carry the answer.");
+        }
     }
 
     /**

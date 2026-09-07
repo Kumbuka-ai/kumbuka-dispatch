@@ -94,7 +94,27 @@ public class DispatchException extends RuntimeException {
          * the address was fine and the set is empty of anything claimable
          * right now — a caller retries the first and waits on the second.
          */
-        NOTHING_TO_CLAIM
+        NOTHING_TO_CLAIM,
+
+        /**
+         * An update arrived with no field set to write.
+         *
+         * <p>A form fault, not a state fault: an empty write is a call whose
+         * verb is undefined, and it is refused rather than treated as a no-op.
+         * A no-op would still rotate the conflict token, and a later reader
+         * cannot distinguish that from a real one-field write it never made.
+         */
+        UPDATE_EMPTY,
+
+        /**
+         * An update after send needs a handover draft to write.
+         *
+         * <p>After send the update verb writes the handover role, and the
+         * handover role has one text-carrying field. An update that carries
+         * only metadata has no answer to write; refusing it is more useful
+         * than storing null in place of what the caller meant to say.
+         */
+        HANDOVER_DRAFT_REQUIRED
     }
 
     private final transient Reason reason;

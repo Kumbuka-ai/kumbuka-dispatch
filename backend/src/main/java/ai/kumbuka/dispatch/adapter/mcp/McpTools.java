@@ -50,6 +50,11 @@ public final class McpTools {
     private static final String ARG_SCOPE = "scope";
     private static final String ARG_SELECTOR = "selector";
 
+    /** The three the author writes into: shared between create, append and update. */
+    private static final String ARG_TITLE = "title";
+    private static final String ARG_APPARATUS = "apparatus";
+    private static final String ARG_DATE = "date";
+
     private static final String SCOPE_DOC = "The scope name, a DNS label.";
     private static final String SELECTOR_DOC = "The declared bracket name.";
 
@@ -76,9 +81,9 @@ public final class McpTools {
                 schema(
                     required(ARG_SCOPE, STRING, SCOPE_DOC),
                     required(ARG_SELECTOR, STRING, SELECTOR_DOC),
-                    required("title", STRING, "The exchange's title."),
-                    required("apparatus", STRING, "The apparatus this exchange addresses."),
-                    required("date", STRING, "The dispatch date, as ISO-8601 (YYYY-MM-DD)."),
+                    required(ARG_TITLE, STRING, "The exchange's title."),
+                    required(ARG_APPARATUS, STRING, "The apparatus this exchange addresses."),
+                    required(ARG_DATE, STRING, "The dispatch date, as ISO-8601 (YYYY-MM-DD)."),
                     optional("parent", STRING,
                         "The bracket root to add a child to, as a complete address. Omit to "
                             + "open a new bracket."))),
@@ -91,26 +96,41 @@ public final class McpTools {
                 schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),
 
             new Tool("update",
-                "Replace the handover draft. Carries a conflict token, which is the one "
-                    + "handed out with the last read; a stale token is refused rather than "
-                    + "overwritten.",
+                "Write the exchange's draft. Before send the write lands in the dispatch "
+                    + "role — title, body (via draft), apparatus, date, dispatch metadata. "
+                    + "After send it lands in the handover role — handover_body (via draft) "
+                    + "and handover_metadata. The role follows the state; the caller does "
+                    + "not choose. Carries a conflict token, which is the one handed out "
+                    + "with the last read; a stale token is refused rather than overwritten.",
                 schema(
                     required(ARG_ADDRESS, STRING, ADDRESS_DOC),
                     required("conflict_token", STRING,
                         "The token from the last read of this exchange."),
-                    required("draft", STRING, "The handover text, replaced wholesale."),
+                    optional("draft", STRING,
+                        "The text the write carries. Before send this is the dispatch body; "
+                            + "after send it is the handover text. Required after send."),
+                    optional(ARG_TITLE, STRING,
+                        "A new title. Accepted before send only; refused with FROZEN after."),
+                    optional(ARG_APPARATUS, STRING,
+                        "A new apparatus. Accepted before send only; refused with FROZEN "
+                            + "after."),
+                    optional(ARG_DATE, STRING,
+                        "A new dispatch date. Accepted before send only; refused with FROZEN "
+                            + "after."),
                     optional("receipt", STRING,
-                        "The receipt issued at claim. Required of an executing apparatus."),
-                    optional("metadata", OBJECT, "Handover metadata."))),
+                        "The receipt issued at claim. Required of an executing apparatus "
+                            + "after send; ignored before send, where there is no holder."),
+                    optional("metadata", OBJECT,
+                        "Dispatch metadata before send, handover metadata after send."))),
 
             new Tool("append",
                 "Attach an addendum to a frozen exchange. Additive and not removable "
                     + "afterwards, which is why it is not an update.",
                 schema(
                     required(ARG_ADDRESS, STRING, ADDRESS_DOC),
-                    required("title", STRING, "The addendum's title."),
-                    required("apparatus", STRING, "The apparatus it addresses."),
-                    required("date", STRING, "Its date, as ISO-8601 (YYYY-MM-DD)."))),
+                    required(ARG_TITLE, STRING, "The addendum's title."),
+                    required(ARG_APPARATUS, STRING, "The apparatus it addresses."),
+                    required(ARG_DATE, STRING, "Its date, as ISO-8601 (YYYY-MM-DD)."))),
 
             new Tool("send",
                 "The author commits their own content outward. Freezes the dispatch and "

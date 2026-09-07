@@ -141,21 +141,21 @@ class ExchangeMechanicsIT {
         Exchange sent = openAndSend("a commission being worked");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
 
-        assertThatThrownBy(() -> exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            null, "an answer", null))
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "an answer", null, null, null, null))
             .as("the subject alone is not enough: several runs can share one service "
                 + "identity, and the receipt is what tells the run that won the award "
                 + "from one that merely looks like it")
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
                 .isEqualTo(DispatchException.Reason.CLAIM_REQUIRED));
 
-        assertThatThrownBy(() -> exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            "a-receipt-nobody-issued", "an answer", null))
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "an answer", null, null, "a-receipt-nobody-issued", null))
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
                 .isEqualTo(DispatchException.Reason.RECEIPT_MISMATCH));
 
-        Exchange written = exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            claim.receipt(), "an answer", null);
+        Exchange written = exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "an answer", null, null, claim.receipt(), null);
         assertThat(written.handoverBody())
             .as("and with the issued receipt it goes through, so the refusals were the "
                 + "receipt check and not a missing code path")
@@ -171,10 +171,10 @@ class ExchangeMechanicsIT {
         Exchange sent = openAndSend("a commission with reworked answers");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
 
-        exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR, claim.receipt(),
-            "first attempt", null);
-        Exchange second = exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            claim.receipt(), "second attempt", null);
+        exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "first attempt", null, null, claim.receipt(), null);
+        Exchange second = exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "second attempt", null, null, claim.receipt(), null);
 
         assertThat(second.handoverBody())
             .as("rework is the normal case, not the exception. The draft is replaced "
@@ -192,8 +192,8 @@ class ExchangeMechanicsIT {
     void an_executor_cannot_ratify_and_a_console_identity_can() {
         Exchange sent = openAndSend("a commission awaiting approval");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
-        exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR, claim.receipt(),
-            "the answer", null);
+        exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "the answer", null, null, claim.receipt(), null);
 
         assertThatThrownBy(() -> exchanges.ratify(SCOPE, at(sent), EXECUTOR))
             .as("ratification is the operator's own act. An executor that could approve "
@@ -232,12 +232,12 @@ class ExchangeMechanicsIT {
     void a_ratified_exchange_takes_no_further_handover() {
         Exchange sent = openAndSend("a commission already answered");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
-        exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR, claim.receipt(),
-            "the answer", null);
+        exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "the answer", null, null, claim.receipt(), null);
         exchanges.ratify(SCOPE, at(sent), CONSOLE);
 
-        assertThatThrownBy(() -> exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            claim.receipt(), "a second answer", null))
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "a second answer", null, null, claim.receipt(), null))
             .as("bolt three: a state precondition that does not depend on who is asking. "
                 + "It is the cover for several runs sharing one service identity, where a "
                 + "holder check passes for both — and a receipt is a bearer token that "
@@ -246,8 +246,8 @@ class ExchangeMechanicsIT {
                 .isEqualTo(DispatchException.Reason.HANDOVER_ALREADY_RATIFIED));
 
         // Same refusal for a console identity: the precondition is about state.
-        assertThatThrownBy(() -> exchanges.writeHandoverDraft(SCOPE, at(sent), CONSOLE,
-            null, "a third answer", null))
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), CONSOLE,
+            null, "a third answer", null, null, null, null))
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
                 .isEqualTo(DispatchException.Reason.HANDOVER_ALREADY_RATIFIED));
     }
@@ -317,6 +317,87 @@ class ExchangeMechanicsIT {
             .as("write-once, frozen at send like everything else. A pointer that changes "
                 + "is a pointer whose readers cannot tell which one they followed")
             .hasMessageContaining("write-once");
+    }
+
+    // -----------------------------------------------------------------------
+    // The update verb across the freeze
+    // -----------------------------------------------------------------------
+
+    /**
+     * Every non-null dispatch field on a draft is applied, one write per
+     * argument.
+     *
+     * <p>Written as one test so the three cases sit next to each other and
+     * cannot silently drift apart: title, apparatus and dispatch_date are the
+     * three the author owns before send, and the domain applies whichever
+     * arrive without demanding all three.
+     */
+    @Test
+    void update_before_send_writes_every_non_null_dispatch_field() {
+        Exchange draft = exchanges.openBracket(SCOPE, "sprint", "a first title", "code",
+            LocalDate.of(2026, 9, 1), CONSOLE);
+
+        Exchange afterAll = exchanges.writeDraft(SCOPE, at(draft), CONSOLE,
+            "the actual title", "the body text", "concept",
+            LocalDate.of(2026, 9, 2), null, Map.of("pr", "https://example.invalid/pr/1"));
+
+        assertThat(afterAll.title)
+            .as("title is a dispatch-role property and writable before send")
+            .isEqualTo("the actual title");
+        assertThat(afterAll.body)
+            .as("body is what draft lands in before send")
+            .isEqualTo("the body text");
+        assertThat(afterAll.apparatus)
+            .as("apparatus is a dispatch-role property and writable before send")
+            .isEqualTo("concept");
+        assertThat(afterAll.dispatchDate)
+            .as("dispatch date is a dispatch-role property and writable before send")
+            .isEqualTo(LocalDate.of(2026, 9, 2));
+        assertThat(afterAll.dispatchMetadata)
+            .as("metadata before send land in dispatch_metadata")
+            .containsEntry("pr", "https://example.invalid/pr/1");
+    }
+
+    @Test
+    void update_before_send_that_writes_nothing_is_refused() {
+        Exchange draft = exchanges.openBracket(SCOPE, "sprint", "a commission", "code",
+            LocalDate.now(), CONSOLE);
+
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(draft), CONSOLE,
+                null, null, null, null, null, null))
+            .as("an empty update rotates the conflict token and changes nothing — a later "
+                + "reader cannot distinguish that from a small write that never happened, "
+                + "so the form is refused rather than treated as a silent no-op")
+            .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
+                .isEqualTo(DispatchException.Reason.UPDATE_EMPTY));
+    }
+
+    @Test
+    void update_after_send_refuses_dispatch_fields_typed() {
+        Exchange sent = openAndSend("a title that will not change");
+
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), CONSOLE,
+                "a new title", "an answer", null, null, null, null))
+            .as("after send the dispatch role is frozen; a caller sending title, apparatus "
+                + "or date learns so through a typed FROZEN rather than by finding the old "
+                + "value on a later read")
+            .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
+                .isEqualTo(DispatchException.Reason.FROZEN));
+    }
+
+    @Test
+    void update_after_send_without_a_draft_is_refused() {
+        Exchange sent = openAndSend("a commission awaiting an answer");
+        var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
+
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+                null, null, null, null, claim.receipt(),
+                Map.of("pr", "https://example.invalid/pr/1")))
+            .as("after send the handover role has one text-carrying field; metadata alone "
+                + "does not carry the answer, and storing null would leave a draft nobody "
+                + "wrote")
+            .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
+                .isEqualTo(DispatchException.Reason.HANDOVER_DRAFT_REQUIRED));
     }
 
     // -----------------------------------------------------------------------

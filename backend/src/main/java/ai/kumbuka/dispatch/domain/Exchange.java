@@ -292,9 +292,48 @@ public class Exchange {
     }
 
     /** Writes or overwrites the handover draft. Wholesale — there is no append. */
-    void writeDraft(String draft, Map<String, Object> metadata) {
+    void writeHandover(String draft, Map<String, Object> metadata) {
         this.handoverBody = draft;
         this.handoverMetadata = metadata;
+    }
+
+    /**
+     * Writes the dispatch-role fields, one write per non-null argument.
+     *
+     * <p>A null argument leaves the stored value alone. The dispatch role is
+     * writable only before the freeze — a rule that lives in the caller
+     * ({@code ExchangeService.writeDraft}), because it depends on {@link
+     * #frozen()} rather than on which field is being written. What lives here
+     * is only "which cells does the write target": the split by role is the
+     * whole point, and writing to the wrong cells is exactly the defect this
+     * repair addresses.
+     *
+     * <p>{@code body} is a {@code NOT NULL DEFAULT ''} column, so leaving it
+     * alone means keeping the empty string it arrived with — not returning
+     * {@code null}. That is a schema property this class does not undo.
+     */
+    void writeDispatch(String title, String body, String apparatus,
+                       LocalDate dispatchDate, Map<String, Object> dispatchMetadata) {
+        if (title != null) {
+            this.title = title;
+        }
+        if (body != null) {
+            this.body = body;
+        }
+        if (apparatus != null) {
+            this.apparatus = apparatus;
+        }
+        if (dispatchDate != null) {
+            this.dispatchDate = dispatchDate;
+        }
+        if (dispatchMetadata != null) {
+            this.dispatchMetadata = dispatchMetadata;
+        }
+    }
+
+    /** For the projection: what the handover role currently holds. */
+    public Map<String, Object> handoverMetadata() {
+        return handoverMetadata;
     }
 
     /** True for the exchange the bracket is derived from. */
