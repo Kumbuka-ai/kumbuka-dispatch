@@ -16,7 +16,6 @@ import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -385,43 +384,14 @@ public class VerbSurface {
      * returned. An {@link Exchange} carries the body, so serialising one would
      * hand out exactly what the projection exists to withhold — on eleven
      * routes at once, and without anybody having decided to.
+     *
+     * <p>The token comes off the view rather than being recomputed here. It is
+     * a per-exchange state marker rather than a transport artefact and lives
+     * with the projection: one source, both expositions.
      */
     private Result at(Entry in, ExchangeAddress address) {
         ExchangeView view = exchanges.view(in.scopeId(), address, in.actor());
-        return new Result(address, view, conflictToken(in, address));
-    }
-
-    /**
-     * The exchange's last write, truncated to the resolution the column
-     * stores.
-     *
-     * <p>An untruncated nanosecond value would be handed out on the write and
-     * never match on the read back, and a token that never matches is a token
-     * that turns every second write into a 412.
-     *
-     * <p><strong>This is the one place the entity is touched, and only its
-     * timestamp is taken.</strong> It is not the verb mapping in disguise:
-     * every payload above is built from a view, and what is taken here is a
-     * field no view carries and no projection would gate — a version marker.
-     */
-    private String conflictToken(Entry in, ExchangeAddress address) {
-        // Asked BEFORE the call rather than caught after it, and the
-        // difference is not style. An addendum is not independently drawable,
-        // so the domain refuses to read one -- and that refusal is thrown out
-        // of a @Transactional method, which marks the surrounding transaction
-        // rollback-only whether or not anybody catches it. Catching it here
-        // therefore produced a 201 for an append that was then quietly rolled
-        // back: an answer naming an address that does not exist. Measured on
-        // 2026-09-01, and the reason a read-after-commit assertion is now part
-        // of the append probe.
-        if (address.isAddendum()) {
-            // No version marker for an addendum, and nothing for one to
-            // protect: it takes no field write.
-            return null;
-        }
-
-        Instant written = exchanges.read(in.scopeId(), address).updatedAt;
-        return written == null ? null : written.truncatedTo(ChronoUnit.MICROS).toString();
+        return new Result(address, view, view.conflictToken());
     }
 
     private void requireConflictToken(Entry in, String presented) {
@@ -432,13 +402,35 @@ public class VerbSurface {
                     + "across a network cannot be told from a second, different write.");
         }
 
-        String held = conflictToken(in, in.address());
+        String held = heldConflictToken(in);
         if (held == null || !held.equals(unquote(presented.trim()))) {
             throw new SurfaceException(SurfaceException.Reason.CONFLICT_TOKEN_STALE,
                 "the conflict token is not the one " + in.address() + " holds. Somebody "
                     + "else wrote it since this caller last read it, and overwriting on a "
                     + "stale token is the lost update the token exists to prevent.");
         }
+    }
+
+    /**
+     * The token this exchange currently holds, as the sperre reads it.
+     *
+     * <p>Addendum guard sits BEFORE the read: an addendum is not independently
+     * drawable, so {@code exchanges.read} refuses it — and that refusal is
+     * thrown out of a {@code @Transactional} method, which marks the
+     * surrounding transaction rollback-only whether or not anybody catches it.
+     * The guard leaves the token null instead, and the caller sees the same
+     * {@code CONFLICT_TOKEN_STALE} it would see for any other write that has
+     * no token to match against.
+     *
+     * <p>The value itself is {@link Exchange#conflictToken()}: the entity
+     * owns the formulation, so the read side and the write-check side do not
+     * carry two copies of the same rule.
+     */
+    private String heldConflictToken(Entry in) {
+        if (in.address().isAddendum()) {
+            return null;
+        }
+        return exchanges.read(in.scopeId(), in.address()).conflictToken();
     }
 
     /** Tolerates the quoted form an HTTP entity tag arrives in. */

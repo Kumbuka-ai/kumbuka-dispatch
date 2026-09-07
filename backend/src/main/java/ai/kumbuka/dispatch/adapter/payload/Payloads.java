@@ -133,6 +133,13 @@ public final class Payloads {
      * body is a field a caller reads and finds empty; a missing body is a
      * field that was never offered. The first invites a later change to
      * populate it, the second cannot be read by accident.
+     *
+     * <p>The {@link #conflictToken} travels in the body because MCP has no
+     * header the way REST has {@code ETag}, and a token carried only in the
+     * ETag is a token half of the callers cannot see. REST still hands out the
+     * same value in the ETag; that duplication is the price of one source for
+     * both expositions. Absent for an addendum, which takes no field write and
+     * has nothing for a token to protect.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ExchangeResponse(
@@ -146,7 +153,8 @@ public final class Payloads {
         String status,
         String effectiveHolder,
         Instant claimExpiresAt,
-        String body) {
+        String body,
+        String conflictToken) {
 
         /**
          * Built from the view and from nothing else.
@@ -168,7 +176,8 @@ public final class Payloads {
                 v.status().wireName(),
                 v.effectiveHolder(),
                 v.claimExpiresAt(),
-                v.body());
+                v.body(),
+                v.conflictToken());
         }
     }
 

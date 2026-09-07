@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.UUID;
 
@@ -46,6 +47,11 @@ class VerbSurfaceTest {
     private static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
     private static final UUID TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final Actor EXECUTOR = new Actor("an-executor", Actor.Kind.EXECUTOR);
+
+    /** The updated-at of {@link #anExchange()}, and the token it hands out. */
+    private static final Instant WRITTEN = Instant.parse("2026-09-01T12:00:00.123456789Z");
+    private static final String HANDED_TOKEN =
+        WRITTEN.truncatedTo(ChronoUnit.MICROS).toString();
 
     private ExchangeService exchanges;
     private ScopeDirectory scopes;
@@ -282,6 +288,12 @@ class VerbSurfaceTest {
      */
     @Test
     void an_addendum_is_never_asked_for_a_conflict_token() {
+        // For an addendum, the token is null wherever it is asked for. The
+        // view carries it as null because Exchange.conflictToken does, and the
+        // sperre never reaches exchanges.read on the addendum path — that
+        // refusal would mark the surrounding transaction rollback-only.
+        when(exchanges.view(any(), any(), any())).thenReturn(viewOf(ExchangeStatus.OPEN, null));
+
         assertThat(verbs.read(EXECUTOR, "probe-scope", "sprint", "164.0a").conflictToken())
             .isNull();
 
@@ -317,8 +329,12 @@ class VerbSurfaceTest {
     // =======================================================================
 
     private static ExchangeView viewOf(ExchangeStatus status) {
+        return viewOf(status, HANDED_TOKEN);
+    }
+
+    private static ExchangeView viewOf(ExchangeStatus status, String conflictToken) {
         return new ExchangeView("sprint/164.1", "sprint", 164, 1, "a commission", "code",
-            LocalDate.parse("2026-09-01"), status, null, null, null);
+            LocalDate.parse("2026-09-01"), status, null, null, null, conflictToken);
     }
 
     /** An entity whose only interesting field here is when it was last written. */
@@ -327,7 +343,7 @@ class VerbSurfaceTest {
         e.selector = "sprint";
         e.number = 164;
         e.sub = 1;
-        e.updatedAt = Instant.parse("2026-09-01T12:00:00.123456789Z");
+        e.updatedAt = WRITTEN;
         return e;
     }
 }

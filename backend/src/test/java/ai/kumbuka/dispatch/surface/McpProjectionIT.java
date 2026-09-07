@@ -366,8 +366,175 @@ class McpProjectionIT {
     }
 
     // =======================================================================
+    // The conflict token projection
+    //
+    // The write verb `update` declares conflict-token repetition and refuses
+    // a missing or stale one. Without a way to READ the token off the MCP
+    // surface, `update` is unreachable through it and the sperre is what
+    // makes the whole surface unusable for a body-carrying exchange rather
+    // than what it defends against. The token is exposed as a field of the
+    // shared read projection so both expositions carry it from the same
+    // source, and the sperre is NOT relaxed as part of that exposure.
+    // =======================================================================
+
+    @Test
+    void read_over_mcp_hands_out_the_conflict_token_as_a_field() {
+        String address = createThroughMcp();
+
+        Map<String, Object> read = callTool("read", Map.of("address", address));
+
+        assertThat(structured(read).get("conflictToken"))
+            .as("without the token on the wire, `update` over MCP has no source for its "
+                + "receipt argument and the sperre becomes a wall the caller cannot pass")
+            .isNotNull()
+            .asString().isNotBlank();
+    }
+
+    @Test
+    void query_over_mcp_carries_the_conflict_token_per_exchange() {
+        String address = createThroughMcp();
+
+        Map<String, Object> read = callTool("read", Map.of("address", address));
+        // The response's address is the internal selector/N.M form; the MCP
+        // tool argument is the dispatch://... form. Both name the same row.
+        String internalAddress = (String) structured(read).get("address");
+
+        Map<String, Object> listed = callTool("query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR));
+
+        Map<String, Object> found = exchanges(listed).stream()
+            .filter(e -> internalAddress.equals(e.get("address")))
+            .findFirst().orElseThrow();
+
+        assertThat(found.get("conflictToken"))
+            .as("the projection is the SAME for read and query — a single source, so a "
+                + "caller reading through one exposition and updating through the other "
+                + "does not read one token and send another")
+            .isEqualTo(structured(read).get("conflictToken"));
+    }
+
+    @Test
+    void update_over_mcp_with_the_token_from_a_prior_read_replaces_the_draft() {
+        String address = anActiveExchange();
+        String receipt = takeUpAsExecutor(address);
+        Map<String, Object> read = callTool("read", Map.of("address", address));
+        String token = (String) structured(read).get("conflictToken");
+        String internalAddress = (String) structured(read).get("address");
+
+        Map<String, Object> updated = callTool("update", Map.of(
+            "address", address, "conflict_token", token,
+            "draft", "the answer", "receipt", receipt));
+
+        assertThat(structured(updated).get("address"))
+            .as("this is the WHOLE reason for exposing the token: an update through the "
+                + "same surface that read the token can now succeed")
+            .isEqualTo(internalAddress);
+    }
+
+    @Test
+    void update_over_mcp_on_a_token_from_before_a_write_is_refused_as_stale() {
+        String address = anActiveExchange();
+        String receipt = takeUpAsExecutor(address);
+        String stale = (String) structured(callTool("read", Map.of("address", address)))
+            .get("conflictToken");
+
+        // The first write rotates the token. Any caller still holding `stale`
+        // is now holding a token from before that write.
+        callTool("update", Map.of(
+            "address", address, "conflict_token", stale,
+            "draft", "the first answer", "receipt", receipt));
+
+        Response answer = rpc("tools/call", Map.of("name", "update", "arguments", Map.of(
+            "address", address, "conflict_token", stale,
+            "draft", "the second answer", "receipt", receipt)));
+
+        assertThat(answer.jsonPath().getBoolean("result.isError"))
+            .as("visibility on the read side does NOT relax the sperre on the write side")
+            .isTrue();
+        assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
+            .isEqualTo("CONFLICT_TOKEN_STALE");
+    }
+
+    @Test
+    void update_over_mcp_refuses_a_missing_conflict_token_argument() {
+        String address = anActiveExchange();
+        String receipt = takeUpAsExecutor(address);
+
+        Response answer = rpc("tools/call", Map.of("name", "update", "arguments", Map.of(
+            "address", address, "draft", "the answer", "receipt", receipt)));
+
+        assertThat(answer.jsonPath().getBoolean("result.isError"))
+            .as("the token stays a mandatory argument; an omitted one is a form error, not "
+                + "a licence to write unguarded")
+            .isTrue();
+        assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
+            .isEqualTo("PAYLOAD_MALFORMED");
+    }
+
+    @Test
+    void update_over_mcp_refuses_a_blank_conflict_token_argument() {
+        String address = anActiveExchange();
+        String receipt = takeUpAsExecutor(address);
+
+        Response answer = rpc("tools/call", Map.of("name", "update", "arguments", Map.of(
+            "address", address, "conflict_token", "   ",
+            "draft", "the answer", "receipt", receipt)));
+
+        assertThat(answer.jsonPath().getBoolean("result.isError"))
+            .as("a blank value is not a licence either — sichtbarkeit macht den Parameter "
+                + "nicht optional")
+            .isTrue();
+        assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
+            .isEqualTo("PAYLOAD_MALFORMED");
+    }
+
+    @Test
+    void read_after_a_successful_update_returns_a_different_conflict_token() {
+        String address = anActiveExchange();
+        String receipt = takeUpAsExecutor(address);
+        String before = (String) structured(callTool("read", Map.of("address", address)))
+            .get("conflictToken");
+
+        callTool("update", Map.of(
+            "address", address, "conflict_token", before,
+            "draft", "the answer", "receipt", receipt));
+
+        String after = (String) structured(callTool("read", Map.of("address", address)))
+            .get("conflictToken");
+
+        assertThat(after)
+            .as("a token that never rotates cannot distinguish two consecutive writes; the "
+                + "monotone advance is what makes a stale value detectable")
+            .isNotNull().isNotEqualTo(before);
+    }
+
+    // =======================================================================
     // Driving the exposition
     // =======================================================================
+
+    /** An exchange sent and waiting for an executor to take it up. */
+    private String anActiveExchange() {
+        String address = createThroughMcp();
+        callTool("send", Map.of("address", address));
+        return address;
+    }
+
+    /**
+     * Switches identity to the executor and takes up the address. Returns the
+     * receipt handed out, which the update verb requires.
+     */
+    private String takeUpAsExecutor(String address) {
+        SurfaceFixture.asExecutor(identity);
+        Map<String, Object> claimed = callTool("claim",
+            Map.of("address", address, "duration", "PT1H"));
+        return (String) structured(claimed).get("receipt");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> exchanges(Map<String, Object> listing) {
+        return (List<Map<String, Object>>) structured(listing).get("exchanges");
+    }
+
 
     private String createThroughMcp() {
         Map<String, Object> created = callTool("create", Map.of(
