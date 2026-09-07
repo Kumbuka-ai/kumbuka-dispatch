@@ -22,6 +22,13 @@ import java.time.LocalDate;
  * the row still says — expiry writes nothing, so the stored value outlives the
  * claim by design, and a surface reporting it would show a free exchange as
  * taken with no error anywhere to notice it by.
+ *
+ * <p>The {@link #conflictToken} travels here because the token is a
+ * per-exchange state marker rather than a transport artefact, so the two
+ * expositions cannot be its two homes: MCP has no header the way REST has
+ * {@code ETag}, so a token carried only there is a token half of the callers
+ * cannot see. Absent for an addendum, which takes no field write and has
+ * nothing for one to protect.
  */
 public record ExchangeView(
     String address,
@@ -34,7 +41,8 @@ public record ExchangeView(
     ExchangeStatus status,
     String effectiveHolder,
     Instant claimExpiresAt,
-    String body) {
+    String body,
+    String conflictToken) {
 
     /**
      * The view for a caller, carrying the body only if the caller may have it.
@@ -54,7 +62,8 @@ public record ExchangeView(
             e.status(),
             e.effectiveHolder(now),
             e.claimEffective(now) ? e.claimExpiresAt() : null,
-            bodyFor(e, actor, now));
+            bodyFor(e, actor, now),
+            e.conflictToken());
     }
 
     /**

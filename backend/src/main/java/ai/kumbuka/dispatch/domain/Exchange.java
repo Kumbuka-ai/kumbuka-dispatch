@@ -16,6 +16,7 @@ import org.hibernate.annotations.TenantId;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.UUID;
 
@@ -184,6 +185,30 @@ public class Exchange {
 
     public boolean isAddendum() {
         return addendumSuffix != null;
+    }
+
+    /**
+     * The version marker the conflict-token sperre reads: the last write,
+     * truncated to the resolution the column stores.
+     *
+     * <p>Null for an addendum, and null before the first flush. An addendum
+     * takes no field write and has nothing for a token to protect, so returning
+     * one would be a value a caller could send back on a write that has no
+     * corresponding read to compare against. The pre-flush null keeps the
+     * getter honest: an entity built in memory has no stored last-write yet,
+     * and inventing one here would be a value that never matches on the read
+     * back.
+     *
+     * <p>An untruncated nanosecond value would be handed out on the write and
+     * never match on the read back, and a token that never matches is a token
+     * that turns every second write into a 412. The microsecond truncation
+     * mirrors what PostgreSQL stores.
+     */
+    public String conflictToken() {
+        if (addendumSuffix != null || updatedAt == null) {
+            return null;
+        }
+        return updatedAt.truncatedTo(ChronoUnit.MICROS).toString();
     }
 
     // ----------------------------------------------------------------------

@@ -104,6 +104,38 @@ class ExchangeSurfaceIT {
             .isNotBlank();
     }
 
+    /**
+     * The token also travels in the body, additively, because MCP has no
+     * header to carry it in and a single source for both expositions is the
+     * whole point. REST keeps the ETag — the pre-existing shape does not
+     * change — and gains a body field beside it.
+     */
+    @Test
+    void read_over_rest_carries_the_conflict_token_in_the_body_and_still_in_the_header() {
+        String bracket = openBracket();
+
+        Response read = get(SurfaceFixture.item(bracket));
+
+        String header = read.header("ETag");
+        String body = read.jsonPath().getString("conflictToken");
+
+        assertThat(header).as("the ETag header is unchanged").isNotBlank();
+        assertThat(body)
+            .as("the body carries the same value MCP will see; both expositions read one "
+                + "source, and REST hands out both the header and the field on the same read")
+            .isNotBlank();
+        assertThat(unquote(header))
+            .as("the body value equals the header value — one source of the token")
+            .isEqualTo(body);
+    }
+
+    private static String unquote(String etag) {
+        String value = etag.startsWith("W/") ? etag.substring(2) : etag;
+        return value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")
+            ? value.substring(1, value.length() - 1)
+            : value;
+    }
+
     @Test
     void a_well_formed_address_of_nothing_is_a_not_found_and_never_a_form_error() {
         get(SurfaceFixture.item("999999.0"))
