@@ -41,7 +41,7 @@ public class ForbiddenLogFixture {
     }
 
     public void logABody(Exchangeish e) {
-        LOG.debugf("carrying: %s", e.body);
+        LOG.debugf("carrying: %s", e.dispatchBody);
     }
 
     public void logMetadataText(Exchangeish e) {
@@ -81,7 +81,7 @@ public class ForbiddenLogFixture {
     /** Stands in for the entity, so the fixture needs no domain import. */
     public static class Exchangeish {
         public String title = "a commission's title";
-        public String body = "a commission's body";
+        public String dispatchBody = "a commission's dispatch body";
         public String metadata = "free text belonging to the caller";
 
         public String getActor() {

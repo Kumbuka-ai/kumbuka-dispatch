@@ -31,7 +31,7 @@ public enum Transition {
     BLOCK("block", EnumSet.of(ExchangeStatus.ACTIVE), ExchangeStatus.NEEDS_INPUT),
     /** The commissioner answered. */
     RESUME("resume", EnumSet.of(ExchangeStatus.NEEDS_INPUT), ExchangeStatus.ACTIVE),
-    /** Freezes the handover, in one transaction with the write of the answer. */
+    /** Freezes the return, in one transaction with the write of the answer. */
     RATIFY("ratify", EnumSet.of(ExchangeStatus.ACTIVE, ExchangeStatus.NEEDS_INPUT),
         ExchangeStatus.RETURNED),
     /** Administrative closure, with or without an answer. */

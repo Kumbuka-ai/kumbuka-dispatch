@@ -24,7 +24,7 @@ public record ExchangeAddress(String selector, int number, int sub, String suffi
             throw new DispatchException(DispatchException.Reason.ADDENDUM_MALFORMED,
                 "an addendum is addressed with a single lower-case letter, not '" + suffix
                     + "'. A regular sub-number would make it an ordinary child of the "
-                    + "bracket, and an ordinary child carries the handover expectation "
+                    + "bracket, and an ordinary child carries the return expectation "
                     + "and counts in the terminality check.");
         }
     }

@@ -108,7 +108,7 @@ public class ExchangeService {
      *
      * <p>The suffix is a letter on the exchange it corrects, never a regular
      * sub-number: a regular number would make the addendum an ordinary child
-     * of the bracket, and an ordinary child carries the handover expectation
+     * of the bracket, and an ordinary child carries the return expectation
      * and counts in the terminality check that governs whether the bracket
      * may close. The correction stays attached to what it corrects without
      * manufacturing a second exchange.
@@ -379,7 +379,7 @@ public class ExchangeService {
     }
 
     /**
-     * Writes the exchange's draft — dispatch role before send, handover role
+     * Writes the exchange's draft — dispatch role before send, return role
      * after. One verb, one row, and the state chooses which role it writes.
      *
      * <p><strong>Why the state chooses, not the caller.</strong> An exchange is
@@ -399,16 +399,16 @@ public class ExchangeService {
      * apparatus}, {@code dispatchDate}, {@code dispatchMetadata} — are set
      * from what arrives; a null argument leaves its field alone, so the caller
      * changes one property or several. No receipt is asked for, because a
-     * draft has no holder. The bolts around the handover role are inapplicable
+     * draft has no holder. The bolts around the return role are inapplicable
      * here.
      *
-     * <h2>After send: the handover role, wholesale</h2>
+     * <h2>After send: the return role, wholesale</h2>
      *
      * The three bolts hold, and they defend different axes rather than
      * repeating each other:
      * no body without a claim, so a loser cannot begin; only the receipt
      * holder writes, plus a console identity; and a ratified exchange takes no
-     * further handover at all — a state precondition that does not depend on
+     * further return at all — a state precondition that does not depend on
      * who is asking, which is the cover for several runs sharing one service
      * identity. Rework is the normal case: the operator reads, the answer does
      * not fit, and the executor writes it again. Intermediate rounds do not
@@ -442,14 +442,14 @@ public class ExchangeService {
         // holder check, and a receipt is a bearer token that instances on one
         // machine can read from a shared filesystem.
         if (e.ratifiedAt() != null) {
-            throw new DispatchException(DispatchException.Reason.HANDOVER_ALREADY_RATIFIED,
-                e.address() + " carries a ratified handover and takes no further one. "
+            throw new DispatchException(DispatchException.Reason.RETURN_ALREADY_RATIFIED,
+                e.address() + " carries a ratified return and takes no further one. "
                     + "A correction to something ratified attaches as an addendum.");
         }
 
         refuseDispatchFieldsAfterSend(e, title, apparatus, date);
-        requireHandoverDraftPresent(draft);
-        requireMayWriteHandover(e, actor, now);
+        requireReturnDraftPresent(draft);
+        requireMayWriteReturn(e, actor, now);
         if (actor.isExecutor()) {
             // Bolt two. The subject alone is not enough: several runs can share
             // one service identity, and the receipt is what distinguishes the
@@ -457,10 +457,10 @@ public class ExchangeService {
             requireReceipt(e, receipt);
         }
         Metadata.validate(metadata);
-        e.writeHandover(draft, metadata);
+        e.writeReturn(draft, metadata);
         touch(e, actor.subject());
 
-        LOG.infof("handover draft written on %s", e.address());
+        LOG.infof("return draft written on %s", e.address());
         return e;
     }
 
@@ -492,22 +492,22 @@ public class ExchangeService {
         if (title != null || apparatus != null || date != null) {
             throw new DispatchException(DispatchException.Reason.FROZEN,
                 e.address() + " was sent and its dispatch fields are frozen. update on a "
-                    + "sent exchange writes the handover role; title, apparatus and date "
+                    + "sent exchange writes the return role; title, apparatus and date "
                     + "belong to the dispatch role and were fixed at send.");
         }
     }
 
-    /** After send an update without a handover draft has no verb to do. */
-    private static void requireHandoverDraftPresent(String draft) {
+    /** After send an update without a return draft has no verb to do. */
+    private static void requireReturnDraftPresent(String draft) {
         if (draft == null) {
-            throw new DispatchException(DispatchException.Reason.HANDOVER_DRAFT_REQUIRED,
-                "update on a sent exchange writes the handover draft, so a draft argument "
+            throw new DispatchException(DispatchException.Reason.RETURN_DRAFT_REQUIRED,
+                "update on a sent exchange writes the return draft, so a draft argument "
                     + "is required. Metadata alone does not carry the answer.");
         }
     }
 
     /**
-     * Ratifies the handover that is already there, and freezes it.
+     * Ratifies the return that is already there, and freezes it.
      *
      * <p>Takes no answer text. Ratification is the operator's own act on
      * something somebody else wrote, and a signature that accepted the text
@@ -530,14 +530,14 @@ public class ExchangeService {
         }
 
         Exchange e = require(scopeId, address);
-        if (e.handoverBody() == null) {
+        if (e.returnBody() == null) {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
-                e.address() + " has no handover draft to ratify. Ratification freezes an "
+                e.address() + " has no return draft to ratify. Ratification freezes an "
                     + "answer that is already there; it does not create one.");
         }
 
         if (e.apply(Transition.RATIFY)) {
-            e.freezeHandover(Instant.now(clock));
+            e.freezeReturn(Instant.now(clock));
         }
         touch(e, actor.subject());
 
@@ -673,20 +673,20 @@ public class ExchangeService {
     }
 
     /**
-     * Who may write a handover draft: the effective receipt holder, or a
+     * Who may write a return draft: the effective receipt holder, or a
      * console identity.
      *
-     * <p>The console exception is not a loophole. Operators edit handovers as
+     * <p>The console exception is not a loophole. Operators edit returns as
      * a matter of course, and requiring them to hold the claim would mean
      * taking work away from the executor in order to correct its wording.
      */
-    private void requireMayWriteHandover(Exchange e, Actor actor, Instant now) {
+    private void requireMayWriteReturn(Exchange e, Actor actor, Instant now) {
         if (actor.isConsole()) {
             return;
         }
         if (!e.claimEffective(now)) {
             throw new DispatchException(DispatchException.Reason.CLAIM_REQUIRED,
-                e.address() + " carries no effective claim. A handover is written by "
+                e.address() + " carries no effective claim. A return is written by "
                     + "whoever holds the exchange; a lapsed claim holds nothing.");
         }
         if (!actor.subject().equals(e.effectiveHolder(now))) {

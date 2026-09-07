@@ -181,13 +181,13 @@ class ExchangeSurfaceIT {
         assertThat(claimed.jsonPath().getString("receipt"))
             .as("the receipt is minted by the service and returned once; it is the only copy")
             .isNotBlank();
-        assertThat(claimed.jsonPath().getString("exchange.body"))
+        assertThat(claimed.jsonPath().getString("exchange.dispatchBody"))
             .as("taking it up is what buys the body")
             .isNotNull();
     }
 
     @Test
-    void update_replaces_the_handover_draft_against_the_conflict_token() {
+    void update_replaces_the_return_draft_against_the_conflict_token() {
         String bracket = openBracket();
         send(bracket);
 
@@ -237,7 +237,7 @@ class ExchangeSurfaceIT {
     }
 
     @Test
-    void accept_ratifies_the_handover_the_executor_wrote() {
+    void accept_ratifies_the_return_the_executor_wrote() {
         String returned = anAnsweredExchange();
 
         SurfaceFixture.asConsole(identity);
@@ -271,7 +271,7 @@ class ExchangeSurfaceIT {
         addendum.then().statusCode(201);
         assertThat(addendum.jsonPath().getString("address"))
             .as("an addendum is a letter on what it corrects, never a regular sub-number: "
-                + "an ordinary child would carry the handover expectation and would count "
+                + "an ordinary child would carry the return expectation and would count "
                 + "in the terminality check")
             .endsWith(".0a");
 
@@ -723,7 +723,7 @@ class ExchangeSurfaceIT {
 
     private static Map<String, Object> commission(String title) {
         return Map.of("title", title, "apparatus", "code", "date", "2026-09-01",
-            "body", "");
+            "dispatchBody", "");
     }
 
     /** Opens a bracket and returns its id part. */

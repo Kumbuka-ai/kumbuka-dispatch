@@ -77,7 +77,7 @@ class SurfaceBoltsIT {
             .as("enough to refuse, not enough to work. The field does not exist on the "
                 + "answer — a field that is sometimes populated invites a caller to read "
                 + "it and invites a later change to populate it always")
-            .doesNotContainKey("body")
+            .doesNotContainKey("dispatchBody")
             .containsKey("title");
     }
 
@@ -91,13 +91,13 @@ class SurfaceBoltsIT {
 
         assertThat(given().get(SurfaceFixture.item(bracket)).jsonPath().getMap("$"))
             .as("taking it up is what buys the body")
-            .containsKey("body");
+            .containsKey("dispatchBody");
 
         SurfaceFixture.asOtherExecutor(identity);
         assertThat(given().get(SurfaceFixture.item(bracket)).jsonPath().getMap("$"))
             .as("and only for the holder — a second executor still sees none, which is "
                 + "what makes the guarantee about the claim rather than about the state")
-            .doesNotContainKey("body");
+            .doesNotContainKey("dispatchBody");
     }
 
     @Test
@@ -107,7 +107,7 @@ class SurfaceBoltsIT {
         assertThat(given().get(SurfaceFixture.item(bracket)).jsonPath().getMap("$"))
             .as("operators read commissions as a matter of course. Without this half the "
                 + "guarantee would just be a switched-off feature")
-            .containsKey("body");
+            .containsKey("dispatchBody");
     }
 
     /**
@@ -134,7 +134,7 @@ class SurfaceBoltsIT {
         assertThat(refused.jsonPath().getMap("$"))
             .as("the loser of the race is refused, and the refusal carries no more than "
                 + "the refusal")
-            .doesNotContainKey("body");
+            .doesNotContainKey("dispatchBody");
     }
 
     // =======================================================================

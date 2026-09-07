@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>That section is therefore untested by everything else in this suite,
  * while being the part of this change that touches production data. So this
  * probe reproduces the deployed state rather than describing it: it applies
- * V1..V7 — what shipped — then performs the handover the shipped code performed
+ * V1..V7 — what shipped — then performs the return the shipped code performed
  * at runtime, checks it is standing in the measured defect, and only then lets
  * V8 run.
  *
@@ -89,7 +89,7 @@ class UpgradeFromOwnedSchemaIT {
 
     /**
      * Reproduces what the deployment is standing in: v0.1.0's chain, plus the
-     * handover its ownership callback performed at runtime.
+     * return its ownership callback performed at runtime.
      *
      * @return the JDBC url of a database in that state
      */
@@ -105,13 +105,13 @@ class UpgradeFromOwnedSchemaIT {
         //    carries an owner. The history table is included exactly as the
         //    sweep included it — it lives in this schema, and that is the whole
         //    reason it travelled.
-        List<String> handover = new ArrayList<>();
-        handover.add("ALTER SCHEMA dispatch OWNER TO " + SubstrateDatabaseResource.SERVICE_ROLE);
+        List<String> steps = new ArrayList<>();
+        steps.add("ALTER SCHEMA dispatch OWNER TO " + SubstrateDatabaseResource.SERVICE_ROLE);
         for (String table : allRelations()) {
-            handover.add("ALTER TABLE dispatch." + table + " OWNER TO "
+            steps.add("ALTER TABLE dispatch." + table + " OWNER TO "
                 + SubstrateDatabaseResource.SERVICE_ROLE);
         }
-        harness.asMigrator(MIGRATOR, MIGRATOR_PASSWORD, url, handover.toArray(String[]::new));
+        harness.asMigrator(MIGRATOR, MIGRATOR_PASSWORD, url, steps.toArray(String[]::new));
 
         return url;
     }
@@ -195,7 +195,7 @@ class UpgradeFromOwnedSchemaIT {
         try (Connection c = harness.adminConnection(url)) {
             assertThat(ownerOfSchema(c))
                 .as("the migrator has the schema back. Without this step first, PostgreSQL "
-                    + "would refuse every relation handover with a message about the schema "
+                    + "would refuse every relation return with a message about the schema "
                     + "rather than about the table")
                 .isEqualTo(MIGRATOR);
 

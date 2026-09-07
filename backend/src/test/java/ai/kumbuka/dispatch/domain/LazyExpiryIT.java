@@ -150,7 +150,7 @@ class LazyExpiryIT {
         exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
             null, "half an answer, left behind", null, null, claim.receipt(), null);
 
-        assertThat(exchanges.read(SCOPE, at(sent)).handoverBody())
+        assertThat(exchanges.read(SCOPE, at(sent)).returnBody())
             .as("the draft is there before the claim lapses, or the assertion below "
                 + "would hold against an exchange that never had one")
             .isEqualTo("half an answer, left behind");
@@ -158,7 +158,7 @@ class LazyExpiryIT {
         expireTheClaim(sent.id);
         exchanges.takeup(SCOPE, at(sent), NEXT_EXECUTOR, CLAIM);
 
-        assertThat(exchanges.read(SCOPE, at(sent)).handoverBody())
+        assertThat(exchanges.read(SCOPE, at(sent)).returnBody())
             .as("hard deleted in the reclaiming transaction. Nobody inherits a stranger's "
                 + "half-written text")
             .isNull();
@@ -177,7 +177,7 @@ class LazyExpiryIT {
             .as("revert stays as the deliberate human way back")
             .isEqualTo(ExchangeStatus.OPEN);
         assertThat(reverted.effectiveHolder(Instant.now())).isNull();
-        assertThat(reverted.handoverBody())
+        assertThat(reverted.returnBody())
             .as("and the draft goes with it, for the same reason it goes on a reclaim")
             .isNull();
     }

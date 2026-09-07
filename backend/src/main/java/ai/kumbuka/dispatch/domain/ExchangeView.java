@@ -15,14 +15,15 @@ import java.util.Map;
  * later change to populate it always, whereas a field that is absent from the
  * wire cannot be read by accident.
  *
- * <p>The dispatch role is carried in {@link #body()}. A console identity reads
- * it because operators read commissions as a matter of course; an executing
- * apparatus reads it only for an exchange it effectively holds — the first of
- * three bolts against the race: a loser cannot have started work, because it
- * never had anything to start from.
+ * <p>The dispatch role is carried in {@link #dispatchBody()} and
+ * {@link #dispatchMetadata()}. A console identity reads them because operators
+ * read commissions as a matter of course; an executing apparatus reads them
+ * only for an exchange it effectively holds — the first of three bolts
+ * against the race: a loser cannot have started work, because it never had
+ * anything to start from.
  *
- * <p>The handover role is carried in {@link #handoverBody()} and
- * {@link #handoverMetadata()}. The visibility rule is the mirror of the
+ * <p>The return role is carried in {@link #returnBody()} and
+ * {@link #returnMetadata()}. The visibility rule is the mirror of the
  * dispatch role's — the conservative one that the dispatch specifies: a
  * console reads what somebody wrote, and an executor reads only its own,
  * i.e. only for an exchange it effectively holds. A finding, not a decision:
@@ -41,14 +42,13 @@ import java.util.Map;
  * cannot see. Absent for an addendum, which takes no field write and has
  * nothing for one to protect.
  *
- * <p><strong>Note on the body's schema shape.</strong> {@code body} is a
- * {@code NOT NULL DEFAULT ''} column in the database; a draft that was never
- * written carries the empty string, not a null. So a caller reads "no body
- * yet" as {@code ""} on this projection, not as an absent key. That is a
+ * <p><strong>Note on dispatchBody's schema shape.</strong> {@code dispatch_body}
+ * is a {@code NOT NULL DEFAULT ''} column in the database; a draft that was
+ * never written carries the empty string, not a null. So a caller reads "no
+ * body yet" as {@code ""} on this projection, not as an absent key. That is a
  * finding of this repair, not something this class undoes: changing the
- * schema is out of scope, and the two callers who need the distinction
- * ({@code body} pre-send vs. an answer arriving late) can read it from the
- * status.
+ * schema is out of scope, and the two callers who need the distinction can
+ * read it from the status.
  */
 public record ExchangeView(
     String address,
@@ -61,9 +61,10 @@ public record ExchangeView(
     ExchangeStatus status,
     String effectiveHolder,
     Instant claimExpiresAt,
-    String body,
-    String handoverBody,
-    Map<String, Object> handoverMetadata,
+    String dispatchBody,
+    Map<String, Object> dispatchMetadata,
+    String returnBody,
+    Map<String, Object> returnMetadata,
     String conflictToken) {
 
     /**
@@ -84,48 +85,65 @@ public record ExchangeView(
             e.status(),
             e.effectiveHolder(now),
             e.claimEffective(now) ? e.claimExpiresAt() : null,
-            bodyFor(e, actor, now),
-            handoverBodyFor(e, actor, now),
-            handoverMetadataFor(e, actor, now),
+            dispatchBodyFor(e, actor, now),
+            dispatchMetadataFor(e, actor, now),
+            returnBodyFor(e, actor, now),
+            returnMetadataFor(e, actor, now),
             e.conflictToken());
     }
 
     /**
-     * The body, or nothing.
+     * The dispatch body, or nothing.
      *
      * <p>A console identity reads it because operators read commissions as a
      * matter of course. An executing apparatus reads it only for an exchange
      * it effectively holds — which is what "enough to refuse, not enough to
      * work" means in practice: the title, the selector, the apparatus and the
-     * date are enough to decide whether to take something up, and the body is
-     * what taking it up buys.
+     * date are enough to decide whether to take something up, and the
+     * dispatch body is what taking it up buys.
      */
-    private static String bodyFor(Exchange e, Actor actor, Instant now) {
+    private static String dispatchBodyFor(Exchange e, Actor actor, Instant now) {
         if (actor.isConsole()) {
-            return e.body;
+            return e.dispatchBody;
         }
         boolean holdsIt = e.claimEffective(now)
             && actor.subject().equals(e.effectiveHolder(now));
-        return holdsIt ? e.body : null;
+        return holdsIt ? e.dispatchBody : null;
     }
 
     /**
-     * The handover text, or nothing.
+     * The dispatch metadata, or nothing. Same visibility rule as
+     * {@link #dispatchBodyFor}: console reads always, executor only when it
+     * holds the exchange.
      *
-     * <p>Symmetric to {@link #bodyFor}. A console identity reads what somebody
-     * answered because that is what a console is for. An executing apparatus
-     * reads it only for an exchange it effectively holds — its own answer,
-     * not a stranger's. That is the conservative rule the dispatch names as
-     * default when the visibility question is not otherwise settled: closing
-     * off cross-executor reads is the smaller and reversible variant.
+     * <p>Historically the projection did not carry dispatch metadata, so a
+     * caller could not read it. That was a matter of what the record declared,
+     * not of what the row held. Adding it here is the symmetric completion of
+     * the two-roles-one-row model: what each role carries, the projection
+     * exposes under the same visibility rule.
      */
-    private static String handoverBodyFor(Exchange e, Actor actor, Instant now) {
-        return holdsExchange(e, actor, now) ? e.handoverBody() : null;
+    private static Map<String, Object> dispatchMetadataFor(Exchange e, Actor actor,
+                                                           Instant now) {
+        return holdsExchange(e, actor, now) ? e.dispatchMetadata : null;
     }
 
-    private static Map<String, Object> handoverMetadataFor(Exchange e, Actor actor,
+    /**
+     * The return text, or nothing.
+     *
+     * <p>Symmetric to {@link #dispatchBodyFor}. A console identity reads what
+     * somebody answered because that is what a console is for. An executing
+     * apparatus reads it only for an exchange it effectively holds — its own
+     * answer, not a stranger's. That is the conservative rule the dispatch
+     * names as default when the visibility question is not otherwise settled:
+     * closing off cross-executor reads is the smaller and reversible variant.
+     */
+    private static String returnBodyFor(Exchange e, Actor actor, Instant now) {
+        return holdsExchange(e, actor, now) ? e.returnBody() : null;
+    }
+
+    private static Map<String, Object> returnMetadataFor(Exchange e, Actor actor,
                                                            Instant now) {
-        return holdsExchange(e, actor, now) ? e.handoverMetadata() : null;
+        return holdsExchange(e, actor, now) ? e.returnMetadata() : null;
     }
 
     private static boolean holdsExchange(Exchange e, Actor actor, Instant now) {

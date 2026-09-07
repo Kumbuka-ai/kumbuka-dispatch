@@ -184,7 +184,7 @@ public class ExchangeResource {
     }
 
     /**
-     * Writes the exchange's draft: dispatch role before send, handover role
+     * Writes the exchange's draft: dispatch role before send, return role
      * after. PATCH with {@code If-Match}; a stale token is 412. The role
      * chosen is a function of the exchange's state, not of the wire.
      */

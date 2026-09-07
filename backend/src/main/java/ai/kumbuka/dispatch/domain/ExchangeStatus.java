@@ -3,7 +3,7 @@ package ai.kumbuka.dispatch.domain;
 import java.util.Set;
 
 /**
- * The one status an exchange carries. The handover has no status machine of
+ * The one status an exchange carries. The return has no status machine of
  * its own.
  *
  * <p>Six values are the ordinary path. Three more — {@link #REJECTED},
@@ -32,7 +32,7 @@ public enum ExchangeStatus {
     OPEN("open"),
     /** Taken up. A holder holds it. */
     ACTIVE("active"),
-    /** The handover is ratified and frozen; the exchange awaits curation. */
+    /** The return is ratified and frozen; the exchange awaits curation. */
     RETURNED("returned"),
     /** Terminal, administratively closed. */
     CLOSED("closed"),

@@ -126,7 +126,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 // The call is malformed, and no scope had to be known to say so.
                 case ADDENDUM_MALFORMED, NUMBER_NOT_ACCEPTED, HOLDER_NOT_ACCEPTED,
                      CLAIM_DURATION_NOT_POSITIVE,
-                     UPDATE_EMPTY, HANDOVER_DRAFT_REQUIRED -> 400;
+                     UPDATE_EMPTY, RETURN_DRAFT_REQUIRED -> 400;
 
                 // Not this caller. Ever, or with this proof.
                 case RATIFICATION_NOT_PERMITTED, RECEIPT_MISMATCH -> 403;
@@ -141,7 +141,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 // waits on rather than re-addresses. Never 404 — that would say
                 // the selector is missing and send it looking for a typo.
                 case TRANSITION_NOT_PERMITTED, FROZEN, SIBLINGS_NON_TERMINAL, SELECTOR_IN_USE,
-                     ADDENDUM_SUFFIX_EXHAUSTED, CLAIM_REQUIRED, HANDOVER_ALREADY_RATIFIED,
+                     ADDENDUM_SUFFIX_EXHAUSTED, CLAIM_REQUIRED, RETURN_ALREADY_RATIFIED,
                      NOTHING_TO_CLAIM -> 409;
 
                 // Vocabulary: well-formed, addressed at something this scope does

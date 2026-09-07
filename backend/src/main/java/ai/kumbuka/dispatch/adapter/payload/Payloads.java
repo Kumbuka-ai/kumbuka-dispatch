@@ -101,8 +101,8 @@ public final class Payloads {
      * {@code dispatch_metadata}, and {@code title}, {@code apparatus} and
      * {@code date} override the same-named fields. Non-null fields are the
      * ones that change; null fields are the ones that keep. After send the
-     * write lands in the handover role: {@code draft} in {@code handover_body}
-     * and {@code metadata} in {@code handover_metadata}. {@code title},
+     * write lands in the return role: {@code draft} in {@code return_body}
+     * and {@code metadata} in {@code return_metadata}. {@code title},
      * {@code apparatus} and {@code date} are refused after send — a frozen
      * field is frozen.
      *
@@ -143,18 +143,22 @@ public final class Payloads {
      * What a caller sees of an exchange.
      *
      * <p><strong>Absent fields are absent, not empty.</strong> {@code NON_NULL}
-     * is what makes the withheld body a missing key rather than
-     * {@code "body": null} — and the difference is the whole guarantee. A null
-     * body is a field a caller reads and finds empty; a missing body is a
-     * field that was never offered. The first invites a later change to
+     * is what makes a withheld role a missing key rather than a nullable one.
+     * A null role is a field a caller reads and finds empty; a missing role
+     * is a field that was never offered. The first invites a later change to
      * populate it, the second cannot be read by accident.
      *
-     * <p>The {@link #conflictToken} travels in the body because MCP has no
-     * header the way REST has {@code ETag}, and a token carried only in the
-     * ETag is a token half of the callers cannot see. REST still hands out the
-     * same value in the ETag; that duplication is the price of one source for
-     * both expositions. Absent for an addendum, which takes no field write and
-     * has nothing for a token to protect.
+     * <p>The two role carriers ({@link #dispatchBody}, {@link #dispatchMetadata},
+     * {@link #returnBody}, {@link #returnMetadata}) travel here under the same
+     * visibility rule; the domain decides which are populated for this caller,
+     * and this class does no second projection.
+     *
+     * <p>The {@link #conflictToken} travels in the response body because MCP
+     * has no header the way REST has {@code ETag}, and a token carried only
+     * in the ETag is a token half of the callers cannot see. REST still hands
+     * out the same value in the ETag; that duplication is the price of one
+     * source for both expositions. Absent for an addendum, which takes no
+     * field write and has nothing for a token to protect.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ExchangeResponse(
@@ -168,9 +172,10 @@ public final class Payloads {
         String status,
         String effectiveHolder,
         Instant claimExpiresAt,
-        String body,
-        String handoverBody,
-        Map<String, Object> handoverMetadata,
+        String dispatchBody,
+        Map<String, Object> dispatchMetadata,
+        String returnBody,
+        Map<String, Object> returnMetadata,
         String conflictToken) {
 
         /**
@@ -193,9 +198,10 @@ public final class Payloads {
                 v.status().wireName(),
                 v.effectiveHolder(),
                 v.claimExpiresAt(),
-                v.body(),
-                v.handoverBody(),
-                v.handoverMetadata(),
+                v.dispatchBody(),
+                v.dispatchMetadata(),
+                v.returnBody(),
+                v.returnMetadata(),
                 v.conflictToken());
         }
     }
