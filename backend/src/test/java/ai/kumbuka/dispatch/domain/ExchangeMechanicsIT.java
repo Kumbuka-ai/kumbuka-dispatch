@@ -320,6 +320,87 @@ class ExchangeMechanicsIT {
     }
 
     // -----------------------------------------------------------------------
+    // The update verb across the freeze
+    // -----------------------------------------------------------------------
+
+    /**
+     * Every non-null dispatch field on a draft is applied, one write per
+     * argument.
+     *
+     * <p>Written as one test so the three cases sit next to each other and
+     * cannot silently drift apart: title, apparatus and dispatch_date are the
+     * three the author owns before send, and the domain applies whichever
+     * arrive without demanding all three.
+     */
+    @Test
+    void update_before_send_writes_every_non_null_dispatch_field() {
+        Exchange draft = exchanges.openBracket(SCOPE, "sprint", "a first title", "code",
+            LocalDate.of(2026, 9, 1), CONSOLE);
+
+        Exchange afterAll = exchanges.writeDraft(SCOPE, at(draft), CONSOLE,
+            "the actual title", "the body text", "concept",
+            LocalDate.of(2026, 9, 2), null, Map.of("pr", "https://example.invalid/pr/1"));
+
+        assertThat(afterAll.title)
+            .as("title is a dispatch-role property and writable before send")
+            .isEqualTo("the actual title");
+        assertThat(afterAll.body)
+            .as("body is what draft lands in before send")
+            .isEqualTo("the body text");
+        assertThat(afterAll.apparatus)
+            .as("apparatus is a dispatch-role property and writable before send")
+            .isEqualTo("concept");
+        assertThat(afterAll.dispatchDate)
+            .as("dispatch date is a dispatch-role property and writable before send")
+            .isEqualTo(LocalDate.of(2026, 9, 2));
+        assertThat(afterAll.dispatchMetadata)
+            .as("metadata before send land in dispatch_metadata")
+            .containsEntry("pr", "https://example.invalid/pr/1");
+    }
+
+    @Test
+    void update_before_send_that_writes_nothing_is_refused() {
+        Exchange draft = exchanges.openBracket(SCOPE, "sprint", "a commission", "code",
+            LocalDate.now(), CONSOLE);
+
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(draft), CONSOLE,
+                null, null, null, null, null, null))
+            .as("an empty update rotates the conflict token and changes nothing — a later "
+                + "reader cannot distinguish that from a small write that never happened, "
+                + "so the form is refused rather than treated as a silent no-op")
+            .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
+                .isEqualTo(DispatchException.Reason.UPDATE_EMPTY));
+    }
+
+    @Test
+    void update_after_send_refuses_dispatch_fields_typed() {
+        Exchange sent = openAndSend("a title that will not change");
+
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), CONSOLE,
+                "a new title", "an answer", null, null, null, null))
+            .as("after send the dispatch role is frozen; a caller sending title, apparatus "
+                + "or date learns so through a typed FROZEN rather than by finding the old "
+                + "value on a later read")
+            .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
+                .isEqualTo(DispatchException.Reason.FROZEN));
+    }
+
+    @Test
+    void update_after_send_without_a_draft_is_refused() {
+        Exchange sent = openAndSend("a commission awaiting an answer");
+        var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
+
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+                null, null, null, null, claim.receipt(),
+                Map.of("pr", "https://example.invalid/pr/1")))
+            .as("after send the handover role has one text-carrying field; metadata alone "
+                + "does not carry the answer, and storing null would leave a draft nobody "
+                + "wrote")
+            .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
+                .isEqualTo(DispatchException.Reason.HANDOVER_DRAFT_REQUIRED));
+    }
+
+    // -----------------------------------------------------------------------
     // helpers
     // -----------------------------------------------------------------------
 
