@@ -115,13 +115,24 @@ public class Exchange {
 
     // --- the caller's own field, one per role -----------------------------
 
+    /**
+     * The caller's own field for the dispatch role.
+     *
+     * <p>Values are {@code Object} rather than {@code String} because a metadata
+     * value is either a single identifier or a list of them — a bracket that
+     * references several tracks carries the same key with several addresses,
+     * and both shapes are already in the imported bestand. The type is not
+     * open: {@link Metadata#validate} refuses anything that is not a
+     * {@code String} or a {@code List<String>}. What widens here is the
+     * cardinality, and not the typefreedom.
+     */
     @Column(name = "dispatch_metadata", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
-    public Map<String, String> dispatchMetadata;
+    public Map<String, Object> dispatchMetadata;
 
     @Column(name = "handover_metadata", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
-    public Map<String, String> handoverMetadata;
+    public Map<String, Object> handoverMetadata;
 
     // --- technical fields, server-derived ---------------------------------
 
@@ -256,7 +267,7 @@ public class Exchange {
     }
 
     /** Writes or overwrites the handover draft. Wholesale — there is no append. */
-    void writeDraft(String draft, Map<String, String> metadata) {
+    void writeDraft(String draft, Map<String, Object> metadata) {
         this.handoverBody = draft;
         this.handoverMetadata = metadata;
     }

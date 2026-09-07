@@ -217,21 +217,42 @@ class McpProjectionIT {
     }
 
     /**
-     * Metadata arrives as JSON and is rendered to text before the domain sees
-     * it.
+     * Metadata arrives as JSON and is carried through unchanged. The domain's
+     * validator refuses anything that is not a String or a list of them —
+     * numbers, booleans and nested objects among them.
      *
-     * <p>The domain's metadata is string-to-string and validates what it
-     * holds. Coercing here rather than refusing a number keeps the refusal in
-     * one place: a value that must not be stored is refused by the validator
-     * that knows why, not by a type mismatch in an adapter.
+     * <p>An earlier construction of this adapter rendered every value through
+     * {@code toString} so a number would land as the identifier "5". That was
+     * an aperture in the doctrine that ate a real list value on the way in
+     * ("[a, b]") and turned a number into an accepted identifier. The refusal
+     * belongs where the shape is known.
      */
     @Test
-    void metadata_values_are_rendered_to_text_rather_than_refused_for_their_type() {
+    void a_number_as_a_metadata_value_is_refused_rather_than_coerced_to_text() {
+        String address = createThroughMcp();
+
+        Response answer = rpc("tools/call", Map.of("name", "send", "arguments", Map.of(
+            "address", address,
+            "metadata", Map.of("pr", 5))));
+
+        assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
+            .as("cardinality widens to lists, and typefreedom does not: a number is a "
+                + "different rule, and the doctrine says otherwise with a typed refusal")
+            .isEqualTo("METADATA_REFUSED");
+    }
+
+    /**
+     * A list value arrives through the adapter unchanged and is stored as a
+     * list. This is the shape that the read model refused before BUG-52: a
+     * key that carries several identifiers rather than one.
+     */
+    @Test
+    void a_list_metadata_value_survives_the_send_gate_and_is_stored_as_a_list() {
         String address = createThroughMcp();
 
         Map<String, Object> sent = callTool("send", Map.of(
             "address", address,
-            "metadata", Map.of("pr", 5, "mirror", "https://example.invalid/pull/5")));
+            "metadata", Map.of("tracks", java.util.List.of("t1", "t2"))));
 
         assertThat(structured(sent).get("status")).isEqualTo("open");
     }

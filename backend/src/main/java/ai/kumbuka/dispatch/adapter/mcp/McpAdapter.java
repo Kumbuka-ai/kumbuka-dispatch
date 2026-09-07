@@ -113,7 +113,7 @@ public class McpAdapter {
         return Map.of(
             "protocolVersion", PROTOCOL_VERSION,
             "capabilities", Map.of("tools", Map.of()),
-            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.1.0"));
+            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.2.0"));
     }
 
     /** The declared tools, in the shape MCP asks for them. */
@@ -334,21 +334,24 @@ public class McpAdapter {
     }
 
     /**
-     * Metadata, with every value rendered as text.
+     * Metadata, values carried through as they arrived.
      *
-     * <p>The domain's metadata is string-to-string and validates what it
-     * holds. Coercing here rather than refusing a number keeps the refusal in
-     * one place: a value that must not be stored is refused by the validator
-     * that knows why, not by a type mismatch in an adapter.
+     * <p>A value is a String or a list of them; the domain's validator refuses
+     * anything else with a typed refusal. This adapter deliberately does not
+     * coerce: an earlier shape flattened every value through {@code toString}
+     * and would have turned a real list into the prose "[a, b]" and a number
+     * into an accepted identifier — carrying two shapes across the boundary
+     * as a third one the caller did not send. The refusal belongs where the
+     * shape is known.
      */
-    private static Map<String, String> metadata(Map<String, Object> in) {
+    private static Map<String, Object> metadata(Map<String, Object> in) {
         Object raw = in.get("metadata");
         if (!(raw instanceof Map<?, ?> map)) {
             return null;
         }
-        Map<String, String> flattened = new LinkedHashMap<>();
-        map.forEach((k, v) -> flattened.put(String.valueOf(k), v == null ? null : v.toString()));
-        return flattened;
+        Map<String, Object> carried = new LinkedHashMap<>();
+        map.forEach((k, v) -> carried.put(String.valueOf(k), v));
+        return carried;
     }
 
     @SuppressWarnings("unchecked")

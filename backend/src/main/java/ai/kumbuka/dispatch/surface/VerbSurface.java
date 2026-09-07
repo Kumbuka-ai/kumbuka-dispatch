@@ -165,7 +165,7 @@ public class VerbSurface {
 
     @Transactional
     public Result send(Actor actor, String rawScope, String rawSelector, String rawId,
-                       Map<String, String> metadata) {
+                       Map<String, Object> metadata) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
         exchanges.send(in.scopeId(), in.address(), actor, metadata);
         return at(in, in.address());

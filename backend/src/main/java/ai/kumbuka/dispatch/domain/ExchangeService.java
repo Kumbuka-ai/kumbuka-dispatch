@@ -282,7 +282,7 @@ public class ExchangeService {
      */
     @Transactional
     public Exchange send(UUID scopeId, ExchangeAddress address, Actor actor,
-                         Map<String, String> metadata) {
+                         Map<String, Object> metadata) {
         Exchange e = require(scopeId, address);
         Metadata.validate(metadata);
         if (metadata != null) {
@@ -399,7 +399,7 @@ public class ExchangeService {
     @Transactional
     public Exchange writeHandoverDraft(UUID scopeId, ExchangeAddress address, Actor actor,
                                        String receipt, String draft,
-                                       Map<String, String> metadata) {
+                                       Map<String, Object> metadata) {
         Exchange e = require(scopeId, address);
         Instant now = Instant.now(clock);
 
