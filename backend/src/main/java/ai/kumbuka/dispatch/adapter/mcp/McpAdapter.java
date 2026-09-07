@@ -118,7 +118,7 @@ public class McpAdapter {
         return Map.of(
             "protocolVersion", PROTOCOL_VERSION,
             "capabilities", Map.of("tools", Map.of()),
-            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.4.0"));
+            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.4.1"));
     }
 
     /** The declared tools, in the shape MCP asks for them. */
@@ -164,18 +164,24 @@ public class McpAdapter {
 
         return switch (tool == null ? "" : tool) {
             case "create" -> create(actor, in);
+            // read and update are the two verbs that carry bodies: read is
+            // how a caller pulls the dispatch or the return; update is the
+            // readback the author needs to see their write landed.
             case "read" -> dressed(at(in, (s, l, i) -> verbs.read(actor, s, l, i)));
             case "update" -> update(actor, in);
             case "append" -> append(actor, in);
+            // Every transition and create/append answer compact — enough for
+            // a caller to follow up, not so much that it eats a context
+            // window on a bracket close.
             case "send" -> send(actor, in);
-            case "accept" -> dressed(at(in, (s, l, i) -> verbs.accept(actor, s, l, i)));
+            case "accept" -> dressedCompact(at(in, (s, l, i) -> verbs.accept(actor, s, l, i)));
             case "claim" -> claim(actor, in);
-            case "release" -> dressed(at(in, (s, l, i) -> verbs.release(actor, s, l, i)));
-            case "abandon" -> dressed(at(in, (s, l, i) -> verbs.abandon(actor, s, l, i)));
-            case "block" -> dressed(at(in, (s, l, i) -> verbs.block(actor, s, l, i)));
-            case "resume" -> dressed(at(in, (s, l, i) -> verbs.resume(actor, s, l, i)));
-            case "close" -> dressed(at(in, (s, l, i) -> verbs.close(actor, s, l, i)));
-            case "consume" -> dressed(at(in, (s, l, i) -> verbs.consume(actor, s, l, i)));
+            case "release" -> dressedCompact(at(in, (s, l, i) -> verbs.release(actor, s, l, i)));
+            case "abandon" -> dressedCompact(at(in, (s, l, i) -> verbs.abandon(actor, s, l, i)));
+            case "block" -> dressedCompact(at(in, (s, l, i) -> verbs.block(actor, s, l, i)));
+            case "resume" -> dressedCompact(at(in, (s, l, i) -> verbs.resume(actor, s, l, i)));
+            case "close" -> dressedCompact(at(in, (s, l, i) -> verbs.close(actor, s, l, i)));
+            case "consume" -> dressedCompact(at(in, (s, l, i) -> verbs.consume(actor, s, l, i)));
             case "query" -> query(actor, in);
             case "claim_next" -> claimNext(actor, in);
 
@@ -200,12 +206,12 @@ public class McpAdapter {
 
         String parent = optional(in, "parent");
         if (parent == null) {
-            return dressed(verbs.create(actor, scope, selector, body));
+            return dressedCompact(verbs.create(actor, scope, selector, body));
         }
 
         AddressParser.Parts at = AddressParser.uri(parent);
         requireSameCollection(at, scope, selector);
-        return dressed(verbs.createChild(actor, at.scope(), at.selector(), at.id(), body));
+        return dressedCompact(verbs.createChild(actor, at.scope(), at.selector(), at.id(), body));
     }
 
     private Object update(Actor actor, Map<String, Object> in) {
@@ -219,14 +225,14 @@ public class McpAdapter {
 
     private Object append(Actor actor, Map<String, Object> in) {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        return dressed(verbs.append(actor, at.scope(), at.selector(), at.id(),
+        return dressedCompact(verbs.append(actor, at.scope(), at.selector(), at.id(),
             new VerbInput.Addendum(required(in, ARG_TITLE), required(in, ARG_APPARATUS),
                 date(in, ARG_DATE))));
     }
 
     private Object send(Actor actor, Map<String, Object> in) {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        return dressed(verbs.send(actor, at.scope(), at.selector(), at.id(), metadata(in)));
+        return dressedCompact(verbs.send(actor, at.scope(), at.selector(), at.id(), metadata(in)));
     }
 
     private Object claim(Actor actor, Map<String, Object> in) {
@@ -234,7 +240,8 @@ public class McpAdapter {
         VerbSurface.ClaimOutcome claimed = verbs.claim(actor, at.scope(), at.selector(),
             at.id(), new VerbInput.Claim(required(in, "duration")));
         return new Payloads.ClaimResponse(
-            Payloads.ExchangeResponse.of(claimed.result().exchange()), claimed.receipt());
+            Payloads.CompactExchangeResponse.of(claimed.result().exchange()),
+            claimed.receipt());
     }
 
     /**
@@ -264,19 +271,28 @@ public class McpAdapter {
             required(in, ARG_SCOPE), required(in, ARG_SELECTOR),
             new VerbInput.Claim(required(in, "duration")));
         return new Payloads.ClaimResponse(
-            Payloads.ExchangeResponse.of(claimed.result().exchange()), claimed.receipt());
+            Payloads.CompactExchangeResponse.of(claimed.result().exchange()),
+            claimed.receipt());
     }
 
-    /**
-     * The wire shape of a result.
-     *
-     * <p>The surface answers with the view; turning it into JSON is this
-     * adapter's act. One helper rather than a mapping at each of the twelve
-     * call sites: twelve sites are twelve chances to serialise the view
-     * itself, which carries different keys than the published shape does.
-     */
+    // ======================================================================
+    // The wire shape of a result — two projections, one for each answer class
+    //
+    // `dressed` and `dressedCompact` are the MCP twin of REST's `ok` and
+    // `okCompact`. Which verb takes which is a property of the verb: `read`
+    // and `update` alone go through `dressed`; every transition, `create`,
+    // `append` and the listing take the compact shape. The choice is not a
+    // flag on the call; the compact projection is what those verbs answer.
+    // ======================================================================
+
+    /** The full projection: dispatchBody, dispatchMetadata, returnBody, returnMetadata. */
     private static Payloads.ExchangeResponse dressed(VerbSurface.Result result) {
         return Payloads.ExchangeResponse.of(result.exchange());
+    }
+
+    /** The compact projection: head fields plus the conflict token, no carriers. */
+    private static Payloads.CompactExchangeResponse dressedCompact(VerbSurface.Result result) {
+        return Payloads.CompactExchangeResponse.of(result.exchange());
     }
 
     /** A verb addressed at one exchange, with the address split once. */

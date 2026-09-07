@@ -242,17 +242,21 @@ public class ExchangeResource {
         var actor = caller.current();
 
         return switch (method) {
-            case SEND -> ok(verbs.send(actor, scope, selector, id,
+            // Transitions all answer compact: their answer is "the row is at
+            // this state now", and the body is what makes a follow-up close on
+            // a bracket with several children cost more context than the work
+            // it records.
+            case SEND -> okCompact(verbs.send(actor, scope, selector, id,
                 Payloads.metadata(read(body, Payloads.SendRequest.class))));
-            case ACCEPT -> ok(verbs.accept(actor, scope, selector, id));
+            case ACCEPT -> okCompact(verbs.accept(actor, scope, selector, id));
             case CLAIM -> claimed(verbs.claim(actor, scope, selector, id,
                 Payloads.claim(read(body, Payloads.ClaimRequest.class))));
-            case RELEASE -> ok(verbs.release(actor, scope, selector, id));
-            case ABANDON -> ok(verbs.abandon(actor, scope, selector, id));
-            case BLOCK -> ok(verbs.block(actor, scope, selector, id));
-            case RESUME -> ok(verbs.resume(actor, scope, selector, id));
-            case CLOSE -> ok(verbs.close(actor, scope, selector, id));
-            case CONSUME -> ok(verbs.consume(actor, scope, selector, id));
+            case RELEASE -> okCompact(verbs.release(actor, scope, selector, id));
+            case ABANDON -> okCompact(verbs.abandon(actor, scope, selector, id));
+            case BLOCK -> okCompact(verbs.block(actor, scope, selector, id));
+            case RESUME -> okCompact(verbs.resume(actor, scope, selector, id));
+            case CLOSE -> okCompact(verbs.close(actor, scope, selector, id));
+            case CONSUME -> okCompact(verbs.consume(actor, scope, selector, id));
 
             case WITHDRAW -> {
                 verbs.withdraw(actor, scope, selector, id);
@@ -298,10 +302,32 @@ public class ExchangeResource {
 
     // ======================================================================
     // Dressing a result in HTTP
+    //
+    // TWO SHAPES, ONE RULE
+    //
+    // `ok` and `okCompact` differ in exactly one thing: whether the two role
+    // carriers travel in the body. Both keep the conflict token — the token
+    // is what a following `update` needs, and stripping it here would put
+    // the surface back where it was before the token-projection repair.
+    //
+    // Which verb takes which shape is written at the call site rather than
+    // decided by a switch here: `read` and `update` alone use `ok` (the full
+    // shape); every transition, `create`, `append` and the listing use the
+    // compact one. That is a property of the verbs, not a flag on a call —
+    // an `?full=true` would be switched the first time somebody wanted a
+    // body from a transition, and the defect would be back.
     // ======================================================================
 
+    /** The full projection: dispatchBody, dispatchMetadata, returnBody, returnMetadata. */
     private static Response ok(VerbSurface.Result result) {
         return tagged(Response.ok(Payloads.ExchangeResponse.of(result.exchange())), result);
+    }
+
+    /** The compact projection: head fields plus the conflict token, no carriers. */
+    private static Response okCompact(VerbSurface.Result result) {
+        return tagged(
+            Response.ok(Payloads.CompactExchangeResponse.of(result.exchange())),
+            result);
     }
 
     /**
@@ -318,13 +344,16 @@ public class ExchangeResource {
 
     private static Response claimed(VerbSurface.ClaimOutcome outcome) {
         return tagged(Response.ok(new Payloads.ClaimResponse(
-            Payloads.ExchangeResponse.of(outcome.result().exchange()), outcome.receipt())),
+            Payloads.CompactExchangeResponse.of(outcome.result().exchange()),
+            outcome.receipt())),
             outcome.result());
     }
 
     /**
      * 201 with {@code Location}, built from the address rather than echoed
-     * from the request.
+     * from the request. The response body is compact: a freshly-created
+     * exchange has no dispatch body yet — carrying an empty carrier field
+     * would only fool a caller into reading it.
      *
      * <p>The canonical form is generated here and what arrived is never passed
      * through, so a tolerated trailing slash does not survive into a header
@@ -336,7 +365,7 @@ public class ExchangeResource {
                 .path("{selector}/{id}")
                 .build(scope, result.address().selector(),
                     AddressParser.render(result.address())))
-            .entity(Payloads.ExchangeResponse.of(result.exchange())), result);
+            .entity(Payloads.CompactExchangeResponse.of(result.exchange())), result);
     }
 
     private static Response tagged(Response.ResponseBuilder response, VerbSurface.Result result) {

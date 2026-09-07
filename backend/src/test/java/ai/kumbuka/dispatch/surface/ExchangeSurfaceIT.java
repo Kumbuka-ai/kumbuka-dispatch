@@ -165,7 +165,7 @@ class ExchangeSurfaceIT {
     }
 
     @Test
-    void claim_awards_the_receipt_and_the_body_arrives_with_it() {
+    void claim_awards_the_receipt_and_the_body_arrives_on_the_following_read() {
         String bracket = openBracket();
         send(bracket);
 
@@ -181,8 +181,17 @@ class ExchangeSurfaceIT {
         assertThat(claimed.jsonPath().getString("receipt"))
             .as("the receipt is minted by the service and returned once; it is the only copy")
             .isNotBlank();
-        assertThat(claimed.jsonPath().getString("exchange.dispatchBody"))
-            .as("taking it up is what buys the body")
+        assertThat(claimed.jsonPath().getMap("exchange"))
+            .as("claim answers compact: it names the row as active and hands out the "
+                + "receipt, but does not carry the body — that would eat a context window "
+                + "on every transition. The body arrives on the read that follows")
+            .doesNotContainKey("dispatchBody");
+
+        // What claim buys is the body on a following read.
+        assertThat(get(SurfaceFixture.item(bracket)).jsonPath().getString("dispatchBody"))
+            .as("taking it up is what buys the body, and a read after the claim is where "
+                + "it appears — the sichtbarkeit rule turns on the effective holder, and "
+                + "this caller now is one")
             .isNotNull();
     }
 
