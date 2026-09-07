@@ -118,7 +118,13 @@ public class VerbSurface {
     // ======================================================================
 
     /**
-     * Replaces the handover draft, against the conflict token.
+     * Writes the exchange's draft, against the conflict token.
+     *
+     * <p>One verb, two roles: before send the write lands in the dispatch role,
+     * after send in the handover role. The caller does not choose — the state
+     * does. The choice lives in {@link ExchangeService#writeDraft} because
+     * every consequence of it (which fields may be written, whether a receipt
+     * is required, whether a ratified answer is rejected) is a domain rule.
      *
      * <p>The token is checked in the same transaction as the write and is
      * <strong>not enforced atomically</strong>: the entity carries no version
@@ -129,13 +135,14 @@ public class VerbSurface {
      */
     @Transactional
     public Result update(Actor actor, String rawScope, String rawSelector, String rawId,
-                         String conflictToken, VerbInput.Handover request) {
+                         String conflictToken, VerbInput.Update request) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
-        VerbInput.Handover body = required(request);
+        VerbInput.Update body = required(request);
         requireConflictToken(in, conflictToken);
 
-        exchanges.writeHandoverDraft(in.scopeId(), in.address(), actor,
-            body.receipt(), body.draft(), body.metadata());
+        exchanges.writeDraft(in.scopeId(), in.address(), actor,
+            body.title(), body.draft(), body.apparatus(), body.date(),
+            body.receipt(), body.metadata());
 
         LOG.infof("update %s in scope %s", in.address(), in.scopeId());
         return at(in, in.address());

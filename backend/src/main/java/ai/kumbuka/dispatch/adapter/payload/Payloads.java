@@ -51,9 +51,10 @@ public final class Payloads {
             request.title(), request.apparatus(), request.date());
     }
 
-    /** The handover behind an update, or null when no body arrived. */
-    public static VerbInput.Handover handover(UpdateRequest request) {
-        return request == null ? null : new VerbInput.Handover(
+    /** The update behind a PATCH, or null when no body arrived. */
+    public static VerbInput.Update update(UpdateRequest request) {
+        return request == null ? null : new VerbInput.Update(
+            request.title(), request.apparatus(), request.date(),
             request.draft(), request.receipt(), request.metadata());
     }
 
@@ -93,14 +94,28 @@ public final class Payloads {
     }
 
     /**
-     * A handover draft, replaced wholesale.
+     * A field write against an exchange, replaced wholesale.
+     *
+     * <p>One shape for both roles. Before send the write lands in the dispatch
+     * role: {@code draft} in {@code body}, {@code metadata} in
+     * {@code dispatch_metadata}, and {@code title}, {@code apparatus} and
+     * {@code date} override the same-named fields. Non-null fields are the
+     * ones that change; null fields are the ones that keep. After send the
+     * write lands in the handover role: {@code draft} in {@code handover_body}
+     * and {@code metadata} in {@code handover_metadata}. {@code title},
+     * {@code apparatus} and {@code date} are refused after send — a frozen
+     * field is frozen.
      *
      * <p>The receipt travels in the body rather than in a header because it is
      * an argument of the act and not metadata about the request: the domain
      * refuses a write whose receipt does not match, and a value the domain
-     * checks belongs where the domain's other arguments are.
+     * checks belongs where the domain's other arguments are. Before send there
+     * is no holder and the receipt is ignored.
      */
     public record UpdateRequest(
+        String title,
+        String apparatus,
+        LocalDate date,
         String draft,
         String receipt,
         Map<String, Object> metadata) {
@@ -154,13 +169,15 @@ public final class Payloads {
         String effectiveHolder,
         Instant claimExpiresAt,
         String body,
+        String handoverBody,
+        Map<String, Object> handoverMetadata,
         String conflictToken) {
 
         /**
          * Built from the view and from nothing else.
          *
          * <p>There is no factory here that takes an exchange. The projection
-         * that decides whether the body travels lives in the domain, and a
+         * that decides whether each role travels lives in the domain, and a
          * second construction path would be a second place for it to be
          * decided — which is how a bolt becomes a convention.
          */
@@ -177,6 +194,8 @@ public final class Payloads {
                 v.effectiveHolder(),
                 v.claimExpiresAt(),
                 v.body(),
+                v.handoverBody(),
+                v.handoverMetadata(),
                 v.conflictToken());
         }
     }

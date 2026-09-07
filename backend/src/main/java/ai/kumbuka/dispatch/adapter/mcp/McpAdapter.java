@@ -113,7 +113,7 @@ public class McpAdapter {
         return Map.of(
             "protocolVersion", PROTOCOL_VERSION,
             "capabilities", Map.of("tools", Map.of()),
-            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.2.0"));
+            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.3.0"));
     }
 
     /** The declared tools, in the shape MCP asks for them. */
@@ -205,8 +205,9 @@ public class McpAdapter {
 
     private Object update(Actor actor, Map<String, Object> in) {
         AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        VerbInput.Handover body = new VerbInput.Handover(
-            required(in, "draft"), optional(in, "receipt"), metadata(in));
+        VerbInput.Update body = new VerbInput.Update(
+            optional(in, "title"), optional(in, "apparatus"), optionalDate(in, "date"),
+            optional(in, "draft"), optional(in, "receipt"), metadata(in));
         return dressed(verbs.update(actor, at.scope(), at.selector(), at.id(),
             required(in, "conflict_token"), body));
     }
@@ -325,6 +326,15 @@ public class McpAdapter {
 
     private static LocalDate date(Map<String, Object> in, String name) {
         String raw = required(in, name);
+        return parseDate(raw);
+    }
+
+    private static LocalDate optionalDate(Map<String, Object> in, String name) {
+        String raw = optional(in, name);
+        return raw == null || raw.isBlank() ? null : parseDate(raw);
+    }
+
+    private static LocalDate parseDate(String raw) {
         try {
             return LocalDate.parse(raw);
         } catch (DateTimeParseException e) {

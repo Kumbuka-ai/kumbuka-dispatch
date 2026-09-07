@@ -91,17 +91,32 @@ public final class McpTools {
                 schema(required(ARG_ADDRESS, STRING, ADDRESS_DOC))),
 
             new Tool("update",
-                "Replace the handover draft. Carries a conflict token, which is the one "
-                    + "handed out with the last read; a stale token is refused rather than "
-                    + "overwritten.",
+                "Write the exchange's draft. Before send the write lands in the dispatch "
+                    + "role — title, body (via draft), apparatus, date, dispatch metadata. "
+                    + "After send it lands in the handover role — handover_body (via draft) "
+                    + "and handover_metadata. The role follows the state; the caller does "
+                    + "not choose. Carries a conflict token, which is the one handed out "
+                    + "with the last read; a stale token is refused rather than overwritten.",
                 schema(
                     required(ARG_ADDRESS, STRING, ADDRESS_DOC),
                     required("conflict_token", STRING,
                         "The token from the last read of this exchange."),
-                    required("draft", STRING, "The handover text, replaced wholesale."),
+                    optional("draft", STRING,
+                        "The text the write carries. Before send this is the dispatch body; "
+                            + "after send it is the handover text. Required after send."),
+                    optional("title", STRING,
+                        "A new title. Accepted before send only; refused with FROZEN after."),
+                    optional("apparatus", STRING,
+                        "A new apparatus. Accepted before send only; refused with FROZEN "
+                            + "after."),
+                    optional("date", STRING,
+                        "A new dispatch date. Accepted before send only; refused with FROZEN "
+                            + "after."),
                     optional("receipt", STRING,
-                        "The receipt issued at claim. Required of an executing apparatus."),
-                    optional("metadata", OBJECT, "Handover metadata."))),
+                        "The receipt issued at claim. Required of an executing apparatus "
+                            + "after send; ignored before send, where there is no holder."),
+                    optional("metadata", OBJECT,
+                        "Dispatch metadata before send, handover metadata after send."))),
 
             new Tool("append",
                 "Attach an addendum to a frozen exchange. Additive and not removable "

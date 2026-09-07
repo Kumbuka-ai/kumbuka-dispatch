@@ -125,7 +125,8 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
             return switch (reason) {
                 // The call is malformed, and no scope had to be known to say so.
                 case ADDENDUM_MALFORMED, NUMBER_NOT_ACCEPTED, HOLDER_NOT_ACCEPTED,
-                     CLAIM_DURATION_NOT_POSITIVE -> 400;
+                     CLAIM_DURATION_NOT_POSITIVE,
+                     UPDATE_EMPTY, HANDOVER_DRAFT_REQUIRED -> 400;
 
                 // Not this caller. Ever, or with this proof.
                 case RATIFICATION_NOT_PERMITTED, RECEIPT_MISMATCH -> 403;

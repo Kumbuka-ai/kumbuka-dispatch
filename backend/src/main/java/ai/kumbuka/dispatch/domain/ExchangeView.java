@@ -2,21 +2,32 @@ package ai.kumbuka.dispatch.domain;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Map;
 
 /**
  * What a caller sees of an exchange without holding it.
  *
- * <p><strong>There is no body field.</strong> Not an empty one, not a null one
- * — the record does not declare it. That is deliberate and it is the
- * difference between a permission and a convention: a field that is sometimes
- * populated invites a caller to read it and invites a later change to populate
- * it always, whereas a field that does not exist cannot be read by accident.
+ * <p><strong>The role fields are not always present.</strong> Not empty, not
+ * null — the record declares them, and the factory either fills them or
+ * leaves them null so {@code @JsonInclude(NON_NULL)} withholds the key
+ * entirely. That is the difference between a permission and a convention: a
+ * field that is sometimes populated invites a caller to read it and invites a
+ * later change to populate it always, whereas a field that is absent from the
+ * wire cannot be read by accident.
  *
- * <p>The body is carried in {@link #body()} only when the caller is a console
- * identity, through a separate factory. An executing apparatus never receives
- * it for an exchange it has not claimed, and that is the first of three bolts
- * against the race: a loser cannot have started work, because it never had
- * anything to start from.
+ * <p>The dispatch role is carried in {@link #body()}. A console identity reads
+ * it because operators read commissions as a matter of course; an executing
+ * apparatus reads it only for an exchange it effectively holds — the first of
+ * three bolts against the race: a loser cannot have started work, because it
+ * never had anything to start from.
+ *
+ * <p>The handover role is carried in {@link #handoverBody()} and
+ * {@link #handoverMetadata()}. The visibility rule is the mirror of the
+ * dispatch role's — the conservative one that the dispatch specifies: a
+ * console reads what somebody wrote, and an executor reads only its own,
+ * i.e. only for an exchange it effectively holds. A finding, not a decision:
+ * whether an executor may read another apparatus's answer text is not
+ * settled, and settling it here would be a policy invented in the projection.
  *
  * <p>The holder is the EFFECTIVE holder. A lapsed claim reports none, whatever
  * the row still says — expiry writes nothing, so the stored value outlives the
@@ -29,6 +40,15 @@ import java.time.LocalDate;
  * {@code ETag}, so a token carried only there is a token half of the callers
  * cannot see. Absent for an addendum, which takes no field write and has
  * nothing for one to protect.
+ *
+ * <p><strong>Note on the body's schema shape.</strong> {@code body} is a
+ * {@code NOT NULL DEFAULT ''} column in the database; a draft that was never
+ * written carries the empty string, not a null. So a caller reads "no body
+ * yet" as {@code ""} on this projection, not as an absent key. That is a
+ * finding of this repair, not something this class undoes: changing the
+ * schema is out of scope, and the two callers who need the distinction
+ * ({@code body} pre-send vs. an answer arriving late) can read it from the
+ * status.
  */
 public record ExchangeView(
     String address,
@@ -42,12 +62,14 @@ public record ExchangeView(
     String effectiveHolder,
     Instant claimExpiresAt,
     String body,
+    String handoverBody,
+    Map<String, Object> handoverMetadata,
     String conflictToken) {
 
     /**
-     * The view for a caller, carrying the body only if the caller may have it.
+     * The view for a caller, carrying each role only if the caller may have it.
      *
-     * @param actor decides whether the body is included at all
+     * @param actor decides whether each role is included at all
      * @param now   the moment the claim is judged against
      */
     static ExchangeView of(Exchange e, Actor actor, Instant now) {
@@ -63,6 +85,8 @@ public record ExchangeView(
             e.effectiveHolder(now),
             e.claimEffective(now) ? e.claimExpiresAt() : null,
             bodyFor(e, actor, now),
+            handoverBodyFor(e, actor, now),
+            handoverMetadataFor(e, actor, now),
             e.conflictToken());
     }
 
@@ -83,5 +107,32 @@ public record ExchangeView(
         boolean holdsIt = e.claimEffective(now)
             && actor.subject().equals(e.effectiveHolder(now));
         return holdsIt ? e.body : null;
+    }
+
+    /**
+     * The handover text, or nothing.
+     *
+     * <p>Symmetric to {@link #bodyFor}. A console identity reads what somebody
+     * answered because that is what a console is for. An executing apparatus
+     * reads it only for an exchange it effectively holds — its own answer,
+     * not a stranger's. That is the conservative rule the dispatch names as
+     * default when the visibility question is not otherwise settled: closing
+     * off cross-executor reads is the smaller and reversible variant.
+     */
+    private static String handoverBodyFor(Exchange e, Actor actor, Instant now) {
+        return holdsExchange(e, actor, now) ? e.handoverBody() : null;
+    }
+
+    private static Map<String, Object> handoverMetadataFor(Exchange e, Actor actor,
+                                                           Instant now) {
+        return holdsExchange(e, actor, now) ? e.handoverMetadata() : null;
+    }
+
+    private static boolean holdsExchange(Exchange e, Actor actor, Instant now) {
+        if (actor.isConsole()) {
+            return true;
+        }
+        return e.claimEffective(now)
+            && actor.subject().equals(e.effectiveHolder(now));
     }
 }

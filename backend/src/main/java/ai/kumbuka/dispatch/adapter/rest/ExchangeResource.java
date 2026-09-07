@@ -184,8 +184,9 @@ public class ExchangeResource {
     }
 
     /**
-     * Replaces the handover draft. PATCH with {@code If-Match}; a stale token
-     * is 412.
+     * Writes the exchange's draft: dispatch role before send, handover role
+     * after. PATCH with {@code If-Match}; a stale token is 412. The role
+     * chosen is a function of the exchange's state, not of the wire.
      */
     @PATCH
     @Path("{selector}/{id}")
@@ -195,7 +196,7 @@ public class ExchangeResource {
                            @HeaderParam("If-Match") String ifMatch,
                            Payloads.UpdateRequest request) {
         return ok(verbs.update(caller.current(), scope, selector, id, ifMatch,
-            Payloads.handover(request)));
+            Payloads.update(request)));
     }
 
     /**

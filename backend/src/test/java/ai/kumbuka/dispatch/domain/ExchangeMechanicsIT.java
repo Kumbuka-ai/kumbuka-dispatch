@@ -141,21 +141,21 @@ class ExchangeMechanicsIT {
         Exchange sent = openAndSend("a commission being worked");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
 
-        assertThatThrownBy(() -> exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            null, "an answer", null))
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "an answer", null, null, null, null))
             .as("the subject alone is not enough: several runs can share one service "
                 + "identity, and the receipt is what tells the run that won the award "
                 + "from one that merely looks like it")
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
                 .isEqualTo(DispatchException.Reason.CLAIM_REQUIRED));
 
-        assertThatThrownBy(() -> exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            "a-receipt-nobody-issued", "an answer", null))
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "an answer", null, null, "a-receipt-nobody-issued", null))
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
                 .isEqualTo(DispatchException.Reason.RECEIPT_MISMATCH));
 
-        Exchange written = exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            claim.receipt(), "an answer", null);
+        Exchange written = exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "an answer", null, null, claim.receipt(), null);
         assertThat(written.handoverBody())
             .as("and with the issued receipt it goes through, so the refusals were the "
                 + "receipt check and not a missing code path")
@@ -171,10 +171,10 @@ class ExchangeMechanicsIT {
         Exchange sent = openAndSend("a commission with reworked answers");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
 
-        exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR, claim.receipt(),
-            "first attempt", null);
-        Exchange second = exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            claim.receipt(), "second attempt", null);
+        exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "first attempt", null, null, claim.receipt(), null);
+        Exchange second = exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "second attempt", null, null, claim.receipt(), null);
 
         assertThat(second.handoverBody())
             .as("rework is the normal case, not the exception. The draft is replaced "
@@ -192,8 +192,8 @@ class ExchangeMechanicsIT {
     void an_executor_cannot_ratify_and_a_console_identity_can() {
         Exchange sent = openAndSend("a commission awaiting approval");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
-        exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR, claim.receipt(),
-            "the answer", null);
+        exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "the answer", null, null, claim.receipt(), null);
 
         assertThatThrownBy(() -> exchanges.ratify(SCOPE, at(sent), EXECUTOR))
             .as("ratification is the operator's own act. An executor that could approve "
@@ -232,12 +232,12 @@ class ExchangeMechanicsIT {
     void a_ratified_exchange_takes_no_further_handover() {
         Exchange sent = openAndSend("a commission already answered");
         var claim = exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
-        exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR, claim.receipt(),
-            "the answer", null);
+        exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "the answer", null, null, claim.receipt(), null);
         exchanges.ratify(SCOPE, at(sent), CONSOLE);
 
-        assertThatThrownBy(() -> exchanges.writeHandoverDraft(SCOPE, at(sent), EXECUTOR,
-            claim.receipt(), "a second answer", null))
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
+            null, "a second answer", null, null, claim.receipt(), null))
             .as("bolt three: a state precondition that does not depend on who is asking. "
                 + "It is the cover for several runs sharing one service identity, where a "
                 + "holder check passes for both — and a receipt is a bearer token that "
@@ -246,8 +246,8 @@ class ExchangeMechanicsIT {
                 .isEqualTo(DispatchException.Reason.HANDOVER_ALREADY_RATIFIED));
 
         // Same refusal for a console identity: the precondition is about state.
-        assertThatThrownBy(() -> exchanges.writeHandoverDraft(SCOPE, at(sent), CONSOLE,
-            null, "a third answer", null))
+        assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), CONSOLE,
+            null, "a third answer", null, null, null, null))
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
                 .isEqualTo(DispatchException.Reason.HANDOVER_ALREADY_RATIFIED));
     }
