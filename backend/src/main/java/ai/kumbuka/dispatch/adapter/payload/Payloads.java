@@ -63,7 +63,7 @@ public final class Payloads {
     }
 
     /** The metadata a send freezes, or null when no body arrived. */
-    public static Map<String, String> metadata(SendRequest request) {
+    public static Map<String, Object> metadata(SendRequest request) {
         return request == null ? null : request.metadata();
     }
 
@@ -73,12 +73,16 @@ public final class Payloads {
      * <p>No number, and that is the point: numbers are allocated inside the
      * transaction that inserts the row, never accepted. A caller that could
      * supply one could also collide with one.
+     *
+     * <p>Metadata values are {@code Object} because a value may be a single
+     * identifier or a list of them. The type is not open; the domain's
+     * validator refuses anything else.
      */
     public record CreateRequest(
         String title,
         String apparatus,
         LocalDate date,
-        Map<String, String> metadata) {
+        Map<String, Object> metadata) {
     }
 
     /** What a caller supplies to attach an addendum to a frozen exchange. */
@@ -99,11 +103,11 @@ public final class Payloads {
     public record UpdateRequest(
         String draft,
         String receipt,
-        Map<String, String> metadata) {
+        Map<String, Object> metadata) {
     }
 
     /** Metadata frozen at the send gate, or nothing. */
-    public record SendRequest(Map<String, String> metadata) {
+    public record SendRequest(Map<String, Object> metadata) {
     }
 
     /**

@@ -38,12 +38,18 @@ public final class VerbInput {
      * <p>No number and no actor. Numbers are allocated inside the transaction
      * that inserts the row and authorship is derived from the token; a field
      * for either would be a field the server has to ignore.
+     *
+     * <p>Metadata values are {@code Object} because the domain accepts either a
+     * single identifier or a list of them. The type is not open; the domain's
+     * validator refuses anything else. The adapter must not coerce a value
+     * across shapes here — flattening a list to a string would carry a real
+     * list across the boundary as prose.
      */
     public record Draft(
         String title,
         String apparatus,
         LocalDate date,
-        Map<String, String> metadata) {
+        Map<String, Object> metadata) {
     }
 
     /** What attaches an addendum to an exchange that has already been frozen. */
@@ -57,7 +63,7 @@ public final class VerbInput {
     public record Handover(
         String draft,
         String receipt,
-        Map<String, String> metadata) {
+        Map<String, Object> metadata) {
     }
 
     /**
