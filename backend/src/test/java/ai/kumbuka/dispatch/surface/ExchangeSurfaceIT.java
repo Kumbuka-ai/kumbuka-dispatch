@@ -176,7 +176,7 @@ class ExchangeSurfaceIT {
         claimed.then()
             .statusCode(200)
             .body("exchange.status", equalTo("active"))
-            .body("exchange.effectiveHolder", equalTo(SurfaceFixture.EXECUTOR));
+            .body("exchange.effectiveHolder", equalTo("self"));
 
         assertThat(claimed.jsonPath().getString("receipt"))
             .as("the receipt is minted by the service and returned once; it is the only copy")
