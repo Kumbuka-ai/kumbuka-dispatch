@@ -115,8 +115,9 @@ class LazyExpiryIT {
         ExchangeView view = exchanges.view(SCOPE, at(sent), CONSOLE);
         assertThat(view.effectiveHolder())
             .as("the view projects it too — every read surface, not just the one that "
-                + "happened to be tested")
-            .isNull();
+                + "happened to be tested. Wire projects state, not subject: nobody, "
+                + "because the claim lapsed")
+            .isEqualTo(HolderState.NOBODY);
         assertThat(view.claimExpiresAt())
             .as("and reports no expiry for a claim that no longer stands")
             .isNull();

@@ -293,9 +293,11 @@ class QueryIT {
                     .as("a claim is one executor's, and a listing is not a way around it")
                     .isNull();
                 assertThat(view.effectiveHolder())
-                    .as("while who holds it is visible: that is what lets a caller decide "
-                        + "to wait rather than retry")
-                    .isEqualTo(OTHER.subject());
+                    .as("that somebody else holds it is visible — enough for the caller "
+                        + "to decide to wait rather than retry — but who holds it is not: "
+                        + "a name in a hundred query results is the beginning of a list "
+                        + "of who works on what, and the standing invariant forbids it")
+                    .isEqualTo(HolderState.OTHER);
             });
     }
 

@@ -1,6 +1,7 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.ExchangeView;
+import ai.kumbuka.dispatch.domain.HolderState;
 import ai.kumbuka.dispatch.surface.VerbInput;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -170,7 +171,7 @@ public final class Payloads {
         String apparatus,
         LocalDate dispatchDate,
         String status,
-        String effectiveHolder,
+        HolderState effectiveHolder,
         Instant claimExpiresAt,
         String dispatchBody,
         Map<String, Object> dispatchMetadata,
@@ -251,7 +252,7 @@ public final class Payloads {
         String apparatus,
         LocalDate dispatchDate,
         String status,
-        String effectiveHolder,
+        HolderState effectiveHolder,
         Instant claimExpiresAt,
         String conflictToken) {
 
