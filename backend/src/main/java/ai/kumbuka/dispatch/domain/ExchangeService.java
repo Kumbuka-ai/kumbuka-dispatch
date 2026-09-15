@@ -80,10 +80,10 @@ public class ExchangeService {
      *               never guesses a number and the service never accepts one.
      */
     @Transactional
-    public Exchange openBracket(UUID scopeId, String selector, String title,
+    public Exchange openBracket(UUID scopeId, String selectorName, String title,
                                 String apparatus, LocalDate date, Actor actor) {
-        selectors.requireDeclared(scopeId, selector);
-        int number = allocateNumber(scopeId, selector);
+        Selector selector = selectors.requireDeclared(scopeId, selectorName);
+        int number = allocateNumber(selector);
         return insert(new NewExchange(scopeId, selector, number, 0, null, title,
             apparatus, date, actor.subject()));
     }
@@ -94,11 +94,11 @@ public class ExchangeService {
      * circle of its own.
      */
     @Transactional
-    public Exchange addChild(UUID scopeId, String selector, int number, String title,
+    public Exchange addChild(UUID scopeId, String selectorName, int number, String title,
                              String apparatus, LocalDate date, Actor actor) {
-        selectors.requireDeclared(scopeId, selector);
-        requireBracketExists(scopeId, selector, number);
-        int sub = nextSub(scopeId, selector, number);
+        Selector selector = selectors.requireDeclared(scopeId, selectorName);
+        requireBracketExists(scopeId, selectorName, number);
+        int sub = nextSub(scopeId, selectorName, number);
         return insert(new NewExchange(scopeId, selector, number, sub, null, title,
             apparatus, date, actor.subject()));
     }
@@ -127,7 +127,8 @@ public class ExchangeService {
                     + "commitment was acquired; before that the exchange is simply edited.");
         }
         String suffix = nextSuffix(scopeId, base);
-        return insertAddendum(scopeId, base, suffix, title, apparatus, date, actor.subject());
+        return insertAddendum(new NewExchange(scopeId, corrected.selector, base.number(),
+            base.sub(), suffix, title, apparatus, date, actor.subject()));
     }
 
     // ----------------------------------------------------------------------
@@ -616,7 +617,7 @@ public class ExchangeService {
      * answer is available at the moment the check runs.
      */
     private void requireSiblingsTerminal(UUID scopeId, Exchange bracketRoot) {
-        List<String> blocking = children(scopeId, bracketRoot.selector, bracketRoot.number)
+        List<String> blocking = children(scopeId, bracketRoot.selectorName(), bracketRoot.number)
             .stream()
             .filter(child -> !child.status().terminal())
             .map(child -> child.address() + " (" + child.status().wireName() + ")")
@@ -642,7 +643,7 @@ public class ExchangeService {
      */
     private void cascadeToAddenda(UUID scopeId, Exchange base, String actor) {
         for (Exchange addendum : addenda(scopeId,
-                new ExchangeAddress(base.selector, base.number, base.sub, null))) {
+                new ExchangeAddress(base.selectorName(), base.number, base.sub, null))) {
             if (!addendum.status().terminal()) {
                 addendum.apply(Transition.CLOSE);
                 touch(addendum, actor);
@@ -740,16 +741,15 @@ public class ExchangeService {
      * collide, and doing it in the creating transaction is what makes a
      * rolled-back creation give its number back.
      */
-    private int allocateNumber(UUID scopeId, String selector) {
-        NumberCircle circle = exchanges.lockNumberCircle(scopeId, selector)
+    private int allocateNumber(Selector selector) {
+        Selector locked = exchanges.lockSelectorForNumbering(selector.id)
             .orElseThrow(() -> new DispatchException(
                 DispatchException.Reason.SELECTOR_NOT_DECLARED,
-                "no number circle for selector '" + selector + "' in this scope. A circle "
-                    + "is created with the selector's declaration, not on first use — a "
-                    + "counter that springs into existence starts wherever the first "
-                    + "caller happened to be."));
-        int allocated = circle.nextNumber;
-        circle.nextNumber = allocated + 1;
+                "selector '" + selector.name + "' is not declared in this scope. Bracket "
+                    + "names are declared before use, never by first use: a typo must not "
+                    + "silently open a namespace."));
+        int allocated = locked.nextNumber;
+        locked.nextNumber = allocated + 1;
         return allocated;
     }
 
@@ -793,7 +793,7 @@ public class ExchangeService {
      * the apparatus column. Naming them at the call site is what makes that
      * mistake visible while it is being made.
      */
-    private record NewExchange(UUID scopeId, String selector, int number, int sub,
+    private record NewExchange(UUID scopeId, Selector selector, int number, int sub,
                                String suffix, String title, String apparatus,
                                LocalDate date, String actor) {
     }
@@ -824,11 +824,8 @@ public class ExchangeService {
      * be a draft of: the correction is the commitment. The table refuses a
      * draft addendum for the same reason.
      */
-    private Exchange insertAddendum(UUID scopeId, ExchangeAddress base, String suffix,
-                                    String title, String apparatus, LocalDate date,
-                                    String actor) {
-        Exchange e = build(new NewExchange(scopeId, base.selector(), base.number(),
-            base.sub(), suffix, title, apparatus, date, actor));
+    private Exchange insertAddendum(NewExchange spec) {
+        Exchange e = build(spec);
 
         // Sent BEFORE the insert, not after it. An addendum corrects something
         // that was already frozen, so there is no moment at which it is a

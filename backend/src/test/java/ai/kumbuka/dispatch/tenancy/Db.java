@@ -125,21 +125,51 @@ final class Db {
      * <p>Going around the ORM is the point: layer 1 rewrites every statement
      * it builds, so a row planted through it could never demonstrate what
      * layer 2 does on its own.
+     *
+     * <p>A fresh selector row is inserted for each tenant on the fly,
+     * because {@code exchange.selector_id} is a foreign key onto it — a
+     * row planted without one is refused by the reference and the probe
+     * would never reach the policy behaviour it is here to measure. The
+     * scope is a random UUID (this is a tenancy probe, not a scope probe)
+     * and every planted exchange gets its own; two rows never sharing a
+     * scope keeps the probe honest to what it measures.
      */
-    static UUID insertExchange(Connection c, UUID tenant, String title) throws SQLException {
+    static long insertExchange(Connection c, UUID tenant, String title) throws SQLException {
+        UUID scopeId = UUID.randomUUID();
+        try (var st = c.prepareStatement("""
+                INSERT INTO dispatch.selector (tenant_id, scope_id, name)
+                VALUES (?::uuid, ?::uuid, 'sprint')
+                RETURNING id
+                """)) {
+            st.setString(1, tenant.toString());
+            st.setString(2, scopeId.toString());
+            try (ResultSet rs = st.executeQuery()) {
+                rs.next();
+                long selectorId = rs.getLong(1);
+                return insertExchangeUnderSelector(c, tenant, scopeId, selectorId, title);
+            }
+        }
+    }
+
+    private static long insertExchangeUnderSelector(Connection c, UUID tenant, UUID scopeId,
+                                                    long selectorId, String title)
+            throws SQLException {
         try (var st = c.prepareStatement("""
                 INSERT INTO dispatch.exchange
-                    (tenant_id, scope_id, selector, number, sub, title, apparatus, dispatch_date)
-                VALUES (?::uuid, gen_random_uuid(), 'sprint',
+                    (tenant_id, scope_id, selector_id, number, sub, title, apparatus,
+                     dispatch_date)
+                VALUES (?::uuid, ?::uuid, ?,
                         (SELECT coalesce(max(number), 0) + 1 FROM dispatch.exchange),
                         0, ?, 'code', CURRENT_DATE)
                 RETURNING id
                 """)) {
             st.setString(1, tenant.toString());
-            st.setString(2, title);
+            st.setString(2, scopeId.toString());
+            st.setLong(3, selectorId);
+            st.setString(4, title);
             try (ResultSet rs = st.executeQuery()) {
                 rs.next();
-                return UUID.fromString(rs.getString(1));
+                return rs.getLong(1);
             }
         }
     }

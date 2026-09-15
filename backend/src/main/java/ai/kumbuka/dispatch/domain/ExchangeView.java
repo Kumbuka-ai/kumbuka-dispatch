@@ -76,7 +76,7 @@ public record ExchangeView(
     static ExchangeView of(Exchange e, Actor actor, Instant now) {
         return new ExchangeView(
             e.address(),
-            e.selector,
+            e.selectorName(),
             e.number,
             e.sub,
             e.title,

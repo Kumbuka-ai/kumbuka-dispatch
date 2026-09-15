@@ -3,14 +3,13 @@ package ai.kumbuka.dispatch.repository;
 import ai.kumbuka.dispatch.domain.Exchange;
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.domain.ExchangeStatus;
-import ai.kumbuka.dispatch.domain.NumberCircle;
 import ai.kumbuka.dispatch.domain.QueryFilter;
+import ai.kumbuka.dispatch.domain.Selector;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
-import jakarta.persistence.NoResultException;
 import jakarta.transaction.Transactional;
 
 import java.time.Instant;
@@ -76,13 +75,13 @@ public class ExchangeRepository {
         var query = address.isAddendum()
             ? em.createQuery("""
                     SELECT e FROM Exchange e
-                    WHERE e.scopeId = :scope AND e.selector = :sel
+                    WHERE e.scopeId = :scope AND e.selector.name = :sel
                       AND e.number = :num AND e.sub = :sub
                       AND e.addendumSuffix = :suffix
                     """, Exchange.class).setParameter("suffix", address.suffix())
             : em.createQuery("""
                     SELECT e FROM Exchange e
-                    WHERE e.scopeId = :scope AND e.selector = :sel
+                    WHERE e.scopeId = :scope AND e.selector.name = :sel
                       AND e.number = :num AND e.sub = :sub
                       AND e.addendumSuffix IS NULL
                     """, Exchange.class);
@@ -101,7 +100,7 @@ public class ExchangeRepository {
     public List<Exchange> addenda(UUID scopeId, ExchangeAddress base) {
         return em.createQuery("""
                 SELECT e FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel
+                WHERE e.scopeId = :scope AND e.selector.name = :sel
                   AND e.number = :num AND e.sub = :sub
                   AND e.addendumSuffix IS NOT NULL
                 ORDER BY e.addendumSuffix
@@ -118,7 +117,7 @@ public class ExchangeRepository {
     public List<Exchange> children(UUID scopeId, String selector, int number) {
         return em.createQuery("""
                 SELECT e FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel AND e.number = :num
+                WHERE e.scopeId = :scope AND e.selector.name = :sel AND e.number = :num
                   AND e.sub > 0 AND e.addendumSuffix IS NULL
                 ORDER BY e.sub
                 """, Exchange.class)
@@ -147,7 +146,7 @@ public class ExchangeRepository {
     public List<Exchange> matching(UUID scopeId, String selector, QueryFilter filter) {
         StringBuilder jpql = new StringBuilder("""
             SELECT e FROM Exchange e
-            WHERE e.scopeId = :scope AND e.selector = :sel
+            WHERE e.scopeId = :scope AND e.selector.name = :sel
               AND e.addendumSuffix IS NULL
             """);
         if (!filter.statuses().isEmpty()) {
@@ -198,15 +197,16 @@ public class ExchangeRepository {
     @Transactional
     public Optional<Exchange> lockNextClaimable(UUID scopeId, String selector, Instant now) {
         List<?> ids = em.createNativeQuery("""
-                SELECT id FROM dispatch.exchange
-                WHERE scope_id = :scope
-                  AND selector = :sel
-                  AND addendum_suffix IS NULL
-                  AND (status = 'open'
-                       OR (status = 'active' AND claim_expires_at <= :now))
-                ORDER BY number, sub
+                SELECT e.id FROM dispatch.exchange e
+                JOIN dispatch.selector s ON s.id = e.selector_id
+                WHERE e.scope_id = :scope
+                  AND s.name = :sel
+                  AND e.addendum_suffix IS NULL
+                  AND (e.status = 'open'
+                       OR (e.status = 'active' AND e.claim_expires_at <= :now))
+                ORDER BY e.number, e.sub
                 LIMIT 1
-                FOR UPDATE SKIP LOCKED
+                FOR UPDATE OF e SKIP LOCKED
                 """)
             .setParameter(P_SCOPE, scopeId)
             .setParameter(P_SELECTOR, selector)
@@ -217,7 +217,7 @@ public class ExchangeRepository {
             return Optional.empty();
         }
         return Optional.ofNullable(
-            em.find(Exchange.class, UUID.fromString(ids.get(0).toString())));
+            em.find(Exchange.class, ((Number) ids.get(0)).longValue()));
     }
 
     // ----------------------------------------------------------------------
@@ -225,30 +225,29 @@ public class ExchangeRepository {
     // ----------------------------------------------------------------------
 
     /**
-     * The selector's number circle, locked for the caller's transaction, or
-     * empty when the selector has none.
+     * The selector row, locked for the caller's transaction so its
+     * {@code next_number} can be read-and-bumped atomically. Empty when no
+     * row of that id is visible under the current tenant.
      *
-     * <p>The lock is what makes two concurrent creations serialise rather than
-     * collide, and taking it in the creating transaction is what makes a
-     * rolled-back creation give its number back. The absence is returned
-     * rather than thrown for the reason given at the top of this class: what a
-     * missing circle means is a statement about selector declaration, and the
-     * domain owns that statement.
+     * <p>The lock is what makes two concurrent creations serialise rather
+     * than collide, and taking it in the creating transaction is what makes
+     * a rolled-back creation give its number back — the counter lives on
+     * this row, so a rollback of the row rolls the counter back too.
+     *
+     * <p>The absence is returned rather than thrown for the reason given at
+     * the top of this class: what a missing selector row means is a
+     * statement the domain owns.
      */
     @Transactional
-    public Optional<NumberCircle> lockNumberCircle(UUID scopeId, String selector) {
-        try {
-            return Optional.of(em.createQuery("""
-                    SELECT c FROM NumberCircle c
-                    WHERE c.scopeId = :scope AND c.selector = :sel
-                    """, NumberCircle.class)
-                .setParameter(P_SCOPE, scopeId)
-                .setParameter(P_SELECTOR, selector)
-                .setLockMode(LockModeType.PESSIMISTIC_WRITE)
-                .getSingleResult());
-        } catch (NoResultException absent) {
-            return Optional.empty();
-        }
+    public Optional<Selector> lockSelectorForNumbering(Long selectorId) {
+        return em.createQuery("""
+                SELECT s FROM Selector s WHERE s.id = :id
+                """, Selector.class)
+            .setParameter("id", selectorId)
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .getResultList()
+            .stream()
+            .findFirst();
     }
 
     /** The highest sub-number in a bracket, addenda excluded, or null when it is empty. */
@@ -256,7 +255,7 @@ public class ExchangeRepository {
     public Integer highestSub(UUID scopeId, String selector, int number) {
         return em.createQuery("""
                 SELECT MAX(e.sub) FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel AND e.number = :num
+                WHERE e.scopeId = :scope AND e.selector.name = :sel AND e.number = :num
                   AND e.addendumSuffix IS NULL
                 """, Integer.class)
             .setParameter(P_SCOPE, scopeId)
@@ -270,7 +269,7 @@ public class ExchangeRepository {
     public String highestSuffix(UUID scopeId, ExchangeAddress base) {
         return em.createQuery("""
                 SELECT MAX(e.addendumSuffix) FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel
+                WHERE e.scopeId = :scope AND e.selector.name = :sel
                   AND e.number = :num AND e.sub = :sub
                   AND e.addendumSuffix IS NOT NULL
                 """, String.class)

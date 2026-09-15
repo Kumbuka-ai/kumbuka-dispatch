@@ -92,7 +92,7 @@ class MetadataCardinalityIT {
 
     @Test
     void read_of_a_tracks_list_returns_the_list_unchanged() {
-        UUID id = insertBestandRow("with-tracks", Map.of("tracks", List.of("t1", "t2", "t3")));
+        long id = insertBestandRow("with-tracks", Map.of("tracks", List.of("t1", "t2", "t3")));
 
         Exchange read = readByRowId(id);
 
@@ -240,32 +240,55 @@ class MetadataCardinalityIT {
      * Inserts a sent exchange with the given metadata into the database, past
      * the verb surface — so the test can reason about a bestand row that
      * carries a shape the writer never had to produce.
+     *
+     * @return the row's BIGINT id (the counter allocated by the identity
+     *         column). Only useful for reading the row back through
+     *         {@link #readByRowId}; the identity outward is the address.
      */
-    private UUID insertBestandRow(String title, Map<String, Object> dispatchMetadata) {
-        UUID id = UUID.randomUUID();
-        int number = takeNextNumberOnCircle();
+    private long insertBestandRow(String title, Map<String, Object> dispatchMetadata) {
+        int number = takeNextNumberOnSelector();
         String json = jsonOf(dispatchMetadata);
 
-        PlatformFixture.run(
-            "INSERT INTO dispatch.exchange ("
-                + "id, tenant_id, scope_id, selector, number, sub, "
-                + "status, title, apparatus, dispatch_date, sent_at, dispatch_metadata) "
-                + "VALUES ('" + id + "', '" + tenant + "', '" + SCOPE + "', "
-                + "'" + SELECTOR + "', " + number + ", 0, 'open', "
-                + "'" + title.replace("'", "''") + "', 'code', CURRENT_DATE, now(), "
-                + "'" + json.replace("'", "''") + "'::jsonb)");
-        return id;
+        var config = org.eclipse.microprofile.config.ConfigProvider.getConfig();
+        try (var c = java.sql.DriverManager.getConnection(
+                config.getValue("test.db.url", String.class),
+                config.getValue("test.db.admin.username", String.class),
+                config.getValue("test.db.admin.password", String.class));
+             var stmt = c.prepareStatement(
+                 "INSERT INTO dispatch.exchange ("
+                     + "tenant_id, scope_id, selector_id, number, sub, "
+                     + "status, title, apparatus, dispatch_date, sent_at, dispatch_metadata) "
+                     + "SELECT ?, ?, s.id, ?, 0, 'open', ?, 'code', CURRENT_DATE, now(), "
+                     + "?::jsonb "
+                     + "FROM dispatch.selector s "
+                     + "WHERE s.tenant_id = ? AND s.scope_id = ? AND s.name = ? "
+                     + "RETURNING id")) {
+            stmt.setObject(1, tenant);
+            stmt.setObject(2, SCOPE);
+            stmt.setInt(3, number);
+            stmt.setString(4, title);
+            stmt.setString(5, json);
+            stmt.setObject(6, tenant);
+            stmt.setObject(7, SCOPE);
+            stmt.setString(8, SELECTOR);
+            try (var rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalStateException("insert returned no id");
+                }
+                return rs.getLong(1);
+            }
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException("could not insert bestand row", e);
+        }
     }
 
     /**
-     * Takes the next bracket number from the circle, so the inserted row does
-     * not collide with anything the domain will insert next. The write is
-     * outside the domain's transaction and it stays consistent with it.
+     * Takes the next bracket number from the selector row, so the inserted
+     * row does not collide with anything the domain will insert next. The
+     * write is outside the domain's transaction and it stays consistent
+     * with it.
      */
-    private int takeNextNumberOnCircle() {
-        // The circle is created by DomainFixture.declareSelector. Read and
-        // bump it here so a domain openBracket in the same test would not
-        // reuse the number.
+    private int takeNextNumberOnSelector() {
         int[] taken = new int[1];
         var config = org.eclipse.microprofile.config.ConfigProvider.getConfig();
         try (var c = java.sql.DriverManager.getConnection(
@@ -273,20 +296,20 @@ class MetadataCardinalityIT {
                 config.getValue("test.db.admin.username", String.class),
                 config.getValue("test.db.admin.password", String.class));
              var stmt = c.prepareStatement(
-                 "UPDATE dispatch.number_circle SET next_number = next_number + 1 "
-                     + "WHERE tenant_id = ? AND scope_id = ? AND selector = ? "
+                 "UPDATE dispatch.selector SET next_number = next_number + 1 "
+                     + "WHERE tenant_id = ? AND scope_id = ? AND name = ? "
                      + "RETURNING next_number - 1")) {
             stmt.setObject(1, tenant);
             stmt.setObject(2, SCOPE);
             stmt.setString(3, SELECTOR);
             try (var rs = stmt.executeQuery()) {
                 if (!rs.next()) {
-                    throw new IllegalStateException("no number circle for the selector");
+                    throw new IllegalStateException("no selector row for the counter");
                 }
                 taken[0] = rs.getInt(1);
             }
         } catch (java.sql.SQLException e) {
-            throw new IllegalStateException("could not bump number circle", e);
+            throw new IllegalStateException("could not bump selector counter", e);
         }
         return taken[0];
     }
@@ -296,25 +319,27 @@ class MetadataCardinalityIT {
      * address on the row. The row was inserted with the same identity, so
      * the address is derivable rather than looked up.
      */
-    private Exchange readByRowId(UUID id) {
+    private Exchange readByRowId(long id) {
         var config = org.eclipse.microprofile.config.ConfigProvider.getConfig();
         try (var c = java.sql.DriverManager.getConnection(
                 config.getValue("test.db.url", String.class),
                 config.getValue("test.db.admin.username", String.class),
                 config.getValue("test.db.admin.password", String.class));
              var stmt = c.prepareStatement(
-                 "SELECT selector, number, sub, addendum_suffix FROM dispatch.exchange "
-                     + "WHERE id = ?")) {
-            stmt.setObject(1, id);
+                 "SELECT s.name, e.number, e.sub, e.addendum_suffix "
+                     + "FROM dispatch.exchange e "
+                     + "JOIN dispatch.selector s ON s.id = e.selector_id "
+                     + "WHERE e.id = ?")) {
+            stmt.setLong(1, id);
             try (var rs = stmt.executeQuery()) {
                 if (!rs.next()) {
                     throw new IllegalStateException("row not found: " + id);
                 }
                 ExchangeAddress addr = new ExchangeAddress(
-                    rs.getString("selector"),
-                    rs.getInt("number"),
-                    rs.getInt("sub"),
-                    rs.getString("addendum_suffix"));
+                    rs.getString(1),
+                    rs.getInt(2),
+                    rs.getInt(3),
+                    rs.getString(4));
                 return exchanges.read(SCOPE, addr);
             }
         } catch (java.sql.SQLException e) {
@@ -377,6 +402,6 @@ class MetadataCardinalityIT {
     }
 
     private static ExchangeAddress at(Exchange e) {
-        return new ExchangeAddress(e.selector, e.number, e.sub, e.addendumSuffix);
+        return new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix);
     }
 }

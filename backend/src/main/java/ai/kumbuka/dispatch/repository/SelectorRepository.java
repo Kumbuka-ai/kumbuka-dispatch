@@ -59,7 +59,7 @@ public class SelectorRepository {
     public long exchangesUnder(UUID scopeId, String name) {
         return em.createQuery("""
                 SELECT COUNT(e) FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector = :sel
+                WHERE e.scopeId = :scope AND e.selector.name = :sel
                 """, Long.class)
             .setParameter(P_SCOPE, scopeId)
             .setParameter("sel", name)

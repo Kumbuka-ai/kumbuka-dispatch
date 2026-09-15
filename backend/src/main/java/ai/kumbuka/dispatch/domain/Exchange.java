@@ -4,9 +4,12 @@ import ai.kumbuka.dispatch.tenancy.StringUuidConverter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -43,9 +46,9 @@ import java.util.UUID;
 public class Exchange {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "id", nullable = false)
-    public UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id", nullable = false, updatable = false, insertable = false)
+    public Long id;
 
     @TenantId
     @Convert(converter = StringUuidConverter.class)
@@ -58,8 +61,20 @@ public class Exchange {
 
     // --- identity ---------------------------------------------------------
 
-    @Column(name = "selector", nullable = false, updatable = false)
-    public String selector;
+    /**
+     * The declared selector this exchange belongs to.
+     *
+     * <p>Fetched eagerly. The selector's name is used to render the address
+     * ({@link #address()}), to shape refusal messages ({@code apply}), and
+     * to project the outward view — enough of the row's users need the name
+     * that lazy loading would either produce an N+1 or force every caller
+     * to remember to fetch-join. The selector is a tiny row, its
+     * identifiers are indexed, and there are two selectors per deployment;
+     * the join is not a cost worth avoiding.
+     */
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "selector_id", nullable = false, updatable = false)
+    public Selector selector;
 
     @Column(name = "number", nullable = false, updatable = false)
     public Integer number;
@@ -343,8 +358,13 @@ public class Exchange {
 
     /** {@code sprint/149.2}, or {@code sprint/149.0a} for an addendum. */
     public String address() {
-        return selector + "/" + number + "." + sub
+        return selector.name + "/" + number + "." + sub
             + (addendumSuffix == null ? "" : addendumSuffix);
+    }
+
+    /** The selector's declared name. Convenience over {@code selector.name}. */
+    public String selectorName() {
+        return selector.name;
     }
 
     // ----------------------------------------------------------------------

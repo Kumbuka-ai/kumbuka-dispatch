@@ -411,6 +411,6 @@ class ExchangeMechanicsIT {
     }
 
     private static ExchangeAddress at(Exchange e) {
-        return new ExchangeAddress(e.selector, e.number, e.sub, e.addendumSuffix);
+        return new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix);
     }
 }

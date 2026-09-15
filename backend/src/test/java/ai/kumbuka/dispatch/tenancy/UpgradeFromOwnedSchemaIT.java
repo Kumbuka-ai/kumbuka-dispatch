@@ -61,8 +61,22 @@ class UpgradeFromOwnedSchemaIT {
     /** What V8 leaves a domain table with. */
     private static final List<String> ENUMERATED = List.of("SELECT", "INSERT", "UPDATE");
 
-    private static final List<String> DOMAIN_TABLES =
+    /**
+     * The tables that carried through V7 and belonged to the runtime role in
+     * the reproduced deployed state. Used to reset ownership as the shipped
+     * callback did — so `number_circle` stays here, because at V7 it existed
+     * and the runtime role owned it. It is retired only later, in V11.
+     */
+    private static final List<String> V7_DOMAIN_TABLES =
         List.of("exchange", "selector", "number_circle");
+
+    /**
+     * The tables the migrator holds after the full chain. From V11 onward
+     * `number_circle` is gone; V12 turns internal ids to BIGINT but the
+     * table set is what V11 left.
+     */
+    private static final List<String> DOMAIN_TABLES =
+        List.of("exchange", "selector");
     private static final String HISTORY_TABLE = "flyway_schema_history";
 
     /** The application-defined SQLSTATE V8 raises when it cannot take a relation back. */
@@ -234,7 +248,7 @@ class UpgradeFromOwnedSchemaIT {
     // ------------------------------------------------------------------
 
     private static List<String> allRelations() {
-        List<String> all = new ArrayList<>(DOMAIN_TABLES);
+        List<String> all = new ArrayList<>(V7_DOMAIN_TABLES);
         all.add(HISTORY_TABLE);
         return all;
     }

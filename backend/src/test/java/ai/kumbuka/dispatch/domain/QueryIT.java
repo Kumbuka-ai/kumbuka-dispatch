@@ -319,6 +319,6 @@ class QueryIT {
     }
 
     private static ExchangeAddress addressOf(Exchange e) {
-        return new ExchangeAddress(e.selector, e.number, e.sub, e.addendumSuffix);
+        return new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix);
     }
 }
