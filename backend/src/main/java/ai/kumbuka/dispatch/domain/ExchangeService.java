@@ -127,8 +127,8 @@ public class ExchangeService {
                     + "commitment was acquired; before that the exchange is simply edited.");
         }
         String suffix = nextSuffix(scopeId, base);
-        return insertAddendum(scopeId, corrected.selector, base, suffix, title, apparatus,
-            date, actor.subject());
+        return insertAddendum(new NewExchange(scopeId, corrected.selector, base.number(),
+            base.sub(), suffix, title, apparatus, date, actor.subject()));
     }
 
     // ----------------------------------------------------------------------
@@ -824,11 +824,8 @@ public class ExchangeService {
      * be a draft of: the correction is the commitment. The table refuses a
      * draft addendum for the same reason.
      */
-    private Exchange insertAddendum(UUID scopeId, Selector selector, ExchangeAddress base,
-                                    String suffix, String title, String apparatus,
-                                    LocalDate date, String actor) {
-        Exchange e = build(new NewExchange(scopeId, selector, base.number(),
-            base.sub(), suffix, title, apparatus, date, actor));
+    private Exchange insertAddendum(NewExchange spec) {
+        Exchange e = build(spec);
 
         // Sent BEFORE the insert, not after it. An addendum corrects something
         // that was already frozen, so there is no moment at which it is a
