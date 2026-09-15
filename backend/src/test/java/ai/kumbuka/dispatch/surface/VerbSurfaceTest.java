@@ -7,6 +7,7 @@ import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.domain.ExchangeService;
 import ai.kumbuka.dispatch.domain.ExchangeStatus;
 import ai.kumbuka.dispatch.domain.ExchangeView;
+import ai.kumbuka.dispatch.domain.Selector;
 import ai.kumbuka.dispatch.platform.ScopeDirectory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -341,7 +342,9 @@ class VerbSurfaceTest {
     /** An entity whose only interesting field here is when it was last written. */
     private static Exchange anExchange() {
         Exchange e = new Exchange();
-        e.selector = "sprint";
+        Selector sprint = new Selector();
+        sprint.name = "sprint";
+        e.selector = sprint;
         e.number = 164;
         e.sub = 1;
         e.updatedAt = WRITTEN;

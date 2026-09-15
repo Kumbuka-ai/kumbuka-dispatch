@@ -93,7 +93,6 @@ class ServiceRolePrivilegeIT {
     private static final Map<String, Set<String>> EXPECTED = Map.of(
         "exchange", DOMAIN_PRIVILEGES,
         "selector", DOMAIN_PRIVILEGES,
-        "number_circle", DOMAIN_PRIVILEGES,
         HISTORY_TABLE, Set.of());
 
     /**
@@ -448,7 +447,16 @@ class ServiceRolePrivilegeIT {
         return defects;
     }
 
-    /** Every relation of the schema that carries an owner, from the catalog. */
+    /**
+     * Every table-shaped relation of the schema — table, view, materialised
+     * view, partitioned table. Sequences ({@code relkind = 'S'}) are
+     * excluded: {@code has_table_privilege} refuses them, and the grants
+     * that decide whether a role may advance a sequence live in a separate
+     * ACL that {@code REVOKE ALL ON ALL SEQUENCES} (V8) already covers.
+     * From V12 on the schema carries IDENTITY sequences owned by their
+     * columns, so this filter keeps this probe describing exactly the
+     * shape of thing {@code has_table_privilege} can answer for.
+     */
     private static List<String> relationsIn(Connection c, String schema) throws SQLException {
         List<String> out = new ArrayList<>();
         try (var st = c.prepareStatement("""
@@ -456,7 +464,7 @@ class ServiceRolePrivilegeIT {
                 FROM pg_class cl
                 JOIN pg_namespace n ON n.oid = cl.relnamespace
                 WHERE n.nspname = ?
-                  AND cl.relkind IN ('r','v','m','S','p')
+                  AND cl.relkind IN ('r','v','m','p')
                 ORDER BY cl.relname
                 """)) {
             st.setString(1, schema);

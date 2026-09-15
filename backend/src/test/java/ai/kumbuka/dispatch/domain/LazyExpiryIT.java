@@ -196,12 +196,12 @@ class LazyExpiryIT {
      * the freeze trigger and the tenancy policy are not what is being
      * exercised here.
      */
-    private void expireTheClaim(UUID id) {
+    private void expireTheClaim(long id) {
         PlatformFixture.run("UPDATE dispatch.exchange "
-            + "SET claim_expires_at = now() - interval '1 hour' WHERE id = '" + id + "'");
+            + "SET claim_expires_at = now() - interval '1 hour' WHERE id = " + id);
     }
 
-    private Snapshot snapshot(UUID id) throws SQLException {
+    private Snapshot snapshot(long id) throws SQLException {
         var config = ConfigProvider.getConfig();
         try (Connection c = DriverManager.getConnection(
                 config.getValue("test.db.url", String.class),
@@ -210,7 +210,7 @@ class LazyExpiryIT {
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery(
                  "SELECT status, holder_subject, updated_by FROM dispatch.exchange "
-                     + "WHERE id = '" + id + "'")) {
+                     + "WHERE id = " + id)) {
             rs.next();
             return new Snapshot(rs.getString(1), rs.getString(2), rs.getString(3));
         }
@@ -223,7 +223,7 @@ class LazyExpiryIT {
     }
 
     private static ExchangeAddress at(Exchange e) {
-        return new ExchangeAddress(e.selector, e.number, e.sub, e.addendumSuffix);
+        return new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix);
     }
 
     private record Snapshot(String status, String holder, String updatedBy) {

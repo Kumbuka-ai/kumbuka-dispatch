@@ -143,7 +143,7 @@ class FreezeAndAddendaIT {
     @Test
     void an_addendum_takes_a_letter_and_never_a_sub_number() {
         Exchange base = openAndSend("the exchange being corrected");
-        ExchangeAddress at = new ExchangeAddress(base.selector, base.number, base.sub, null);
+        ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
 
         Exchange first = exchanges.addAddendum(SCOPE, at, "a correction", "code",
             LocalDate.now(), CONSOLE);
@@ -173,11 +173,11 @@ class FreezeAndAddendaIT {
     @Test
     void an_addendum_is_not_independently_drawable() {
         Exchange base = openAndSend("the exchange being corrected");
-        ExchangeAddress at = new ExchangeAddress(base.selector, base.number, base.sub, null);
+        ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
         exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), CONSOLE);
 
         ExchangeAddress addendumAddress =
-            new ExchangeAddress(base.selector, base.number, base.sub, "a");
+            new ExchangeAddress(base.selectorName(), base.number, base.sub, "a");
 
         assertThatThrownBy(() -> exchanges.read(SCOPE, addendumAddress))
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
@@ -195,7 +195,7 @@ class FreezeAndAddendaIT {
     void an_addendum_cannot_hang_from_a_draft() {
         Exchange draft = exchanges.openBracket(SCOPE, "sprint", "still provisional", "code",
             LocalDate.now(), CONSOLE);
-        ExchangeAddress at = new ExchangeAddress(draft.selector, draft.number, draft.sub, null);
+        ExchangeAddress at = new ExchangeAddress(draft.selectorName(), draft.number, draft.sub, null);
 
         assertThatThrownBy(() -> exchanges.addAddendum(SCOPE, at, "a correction", "code",
             LocalDate.now(), CONSOLE))
@@ -208,7 +208,7 @@ class FreezeAndAddendaIT {
     @Test
     void terminating_the_base_cascades_onto_its_addenda_in_one_transaction() {
         Exchange base = openAndSend("the exchange being corrected");
-        ExchangeAddress at = new ExchangeAddress(base.selector, base.number, base.sub, null);
+        ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
         exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), CONSOLE);
 
         assertThat(exchanges.addenda(SCOPE, at).get(0).status().terminal())
@@ -246,7 +246,7 @@ class FreezeAndAddendaIT {
         Exchange e = exchanges.openBracket(SCOPE, "sprint", title, "code",
             LocalDate.now(), CONSOLE);
         return exchanges.send(SCOPE,
-            new ExchangeAddress(e.selector, e.number, e.sub, e.addendumSuffix), CONSOLE);
+            new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix), CONSOLE);
     }
 
     /**
@@ -256,20 +256,20 @@ class FreezeAndAddendaIT {
      * statement the application never built, because that is the case the
      * table-level trigger exists for.
      */
-    private void rewriteTitle(UUID id, String title) throws SQLException {
+    private void rewriteTitle(long id, String title) throws SQLException {
         try (Connection c = serviceConnection(); Statement s = c.createStatement()) {
             s.execute("SELECT set_config('app.tenant_id', '" + tenant + "', true)");
             s.executeUpdate("UPDATE dispatch.exchange SET title = '" + title
-                + "' WHERE id = '" + id + "'");
+                + "' WHERE id = " + id);
             c.commit();
         }
     }
 
-    private String titleOf(UUID id) throws SQLException {
+    private String titleOf(long id) throws SQLException {
         try (Connection c = serviceConnection(); Statement s = c.createStatement()) {
             s.execute("SELECT set_config('app.tenant_id', '" + tenant + "', true)");
             try (var rs = s.executeQuery(
-                    "SELECT title FROM dispatch.exchange WHERE id = '" + id + "'")) {
+                    "SELECT title FROM dispatch.exchange WHERE id = " + id)) {
                 rs.next();
                 String title = rs.getString(1);
                 c.commit();

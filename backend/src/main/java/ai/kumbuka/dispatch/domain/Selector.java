@@ -21,15 +21,20 @@ import java.util.UUID;
  * aspect, a script, configuration that steers an agent. It can never be
  * renamed either, because every address ever issued depends on it; withdrawal
  * is a status, and only a never-used selector may be withdrawn.
+ *
+ * <p><strong>The identifier is internal.</strong> The row's {@code id} is a
+ * BIGINT allocated by the database; it never leaves the service. The name is
+ * what the address grammar carries, and the name is what other tables in this
+ * schema resolve against by joining on the {@code id}.
  */
 @Entity
 @Table(name = "selector", schema = "dispatch")
 public class Selector {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "id", nullable = false)
-    public UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id", nullable = false, updatable = false, insertable = false)
+    public Long id;
 
     @TenantId
     @Convert(converter = StringUuidConverter.class)
@@ -44,6 +49,18 @@ public class Selector {
 
     @Column(name = "withdrawn", nullable = false)
     public Boolean withdrawn = Boolean.FALSE;
+
+    /**
+     * The next unused bracket number for this selector.
+     *
+     * <p>Advanced under the row lock the numbering path acquires on this
+     * entity, so two concurrent creations serialise rather than collide, and
+     * a rolled-back creation gives its number back. The column carries a
+     * NOT NULL default at the table so an inserted selector adopts a legal
+     * starting value without the caller stating one.
+     */
+    @Column(name = "next_number", nullable = false)
+    public Integer nextNumber;
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     public Instant createdAt;

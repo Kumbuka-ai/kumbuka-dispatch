@@ -449,7 +449,7 @@ public class VerbSurface {
     }
 
     private static ExchangeAddress addressOf(Exchange e) {
-        return new ExchangeAddress(e.selector, e.number, e.sub, e.addendumSuffix);
+        return new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix);
     }
 
     private static <T> T required(T body) {
