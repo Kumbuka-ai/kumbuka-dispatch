@@ -54,7 +54,8 @@ class McpProjectionIT {
             .as("MCP omits and never adds, and today there is no declared omission. A tool "
                 + "with no verb behind it is an addition; a verb with no tool is an "
                 + "omission nobody declared")
-            .containsExactlyInAnyOrderElementsOf(VerbSurfaceSpecification.carriedVerbs());
+            .containsExactlyInAnyOrderElementsOf(McpTools.declared().stream()
+                .map(McpTools.Tool::name).toList());
     }
 
     @Test
@@ -95,26 +96,37 @@ class McpProjectionIT {
     }
 
     /**
-     * The four uncarried verbs are routed here too, by name.
+     * A name this surface does not carry is refused with the list of the ones
+     * it does.
      *
-     * <p>They are absent from {@code tools/list} — that is the omission — and
-     * still answered when called, because "unknown tool" would send a caller
-     * looking for a spelling instead of telling it the act does not exist.
+     * <p>This replaced an older assertion, and the thing it asserted moved
+     * rather than went away. The old one said the two uncarried verbs
+     * ({@code withdraw}, {@code validate}) were answered BY NAME rather than
+     * as an unknown tool, because "unknown tool" sends a caller looking for a
+     * spelling. Neither is addressable here any more — the assistant surface
+     * carries process verbs, and no process verb reaches either act — so the
+     * question is no longer "is this verb refused well" but "is a caller that
+     * names something this surface has not got told what it HAS got".
+     *
+     * <p>Which is the same service, and it is now given for every wrong name
+     * rather than for two of them.
      */
     @Test
-    void every_uncarried_verb_is_answered_by_name_rather_than_as_unknown() {
-        String address = createThroughMcp();
-
-        for (VerbSurfaceSpecification.Row row : VerbSurfaceSpecification.of("uncarried")) {
+    void a_name_this_surface_does_not_carry_is_refused_with_the_list_of_the_ones_it_does() {
+        for (String absent : List.of("withdraw", "validate", "send", "accept", "create")) {
             Response answer = rpc("tools/call", Map.of(
-                "name", row.verb(), "arguments", argumentsFor(row.verb(), address)));
+                "name", absent, "arguments", Map.of()));
 
             assertThat(answer.jsonPath().getBoolean("result.isError"))
-                .as("'%s' must be refused", row.verb())
+                .as("'%s' is not a call of this surface", absent)
                 .isTrue();
             assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-                .as("'%s' must be refused by name, not as an unknown tool", row.verb())
-                .isNotEqualTo("PAYLOAD_MALFORMED");
+                .isEqualTo("ARGUMENT_UNKNOWN");
+            assertThat(answer.jsonPath().getString("result.structuredContent.message"))
+                .as("a caller that named the wrong thing is told what the right ones are, "
+                    + "rather than being sent to look for a spelling")
+                .contains("dispatch_commission")
+                .contains("dispatch_take");
         }
     }
 
@@ -151,25 +163,28 @@ class McpProjectionIT {
     void creating_a_child_refuses_a_parent_that_contradicts_the_arguments() {
         String parent = createThroughMcp();
 
-        Response answer = rpc("tools/call", Map.of("name", "create", "arguments", Map.of(
-            "scope", SurfaceFixture.SCOPE, "selector", "satellite",
-            "title", "a child", "apparatus", "code", "date", "2026-09-01",
-            "parent", parent)));
+        Response answer = rpc("tools/call", Map.of(
+            "name", "dispatch_commission", "arguments", Map.of(
+                "scope", SurfaceFixture.SCOPE, "selector", "satellite",
+                "parent", parent,
+                "fields", Map.of("title", "a child", "apparatus", "code",
+                    "text", "the child's body"))));
 
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-            .isEqualTo("PAYLOAD_MALFORMED");
+            .isEqualTo("ARGUMENT_INVALID");
     }
 
     @Test
     void creating_a_child_through_mcp_numbers_it_within_its_bracket() {
         String parent = createThroughMcp();
 
-        Map<String, Object> child = callTool("create", Map.of(
+        Map<String, Object> child = callTool("dispatch_commission", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-            "title", "a child", "apparatus", "code", "date", "2026-09-01",
-            "parent", parent));
+            "parent", parent,
+            "fields", Map.of("title", "a child", "apparatus", "code",
+                "text", "the child's body")));
 
-        assertThat(structured(child).get("sub")).isEqualTo(1);
+        assertThat(field(child, "sub")).isEqualTo(1);
     }
 
     // =======================================================================
@@ -180,8 +195,8 @@ class McpProjectionIT {
     void a_verb_reached_through_mcp_performs_the_same_act() {
         String address = createThroughMcp();
 
-        Map<String, Object> sent = callTool("send", Map.of("address", address));
-        assertThat(structured(sent).get("status"))
+        Map<String, Object> sent = callTool("dispatch_read", Map.of("address", address));
+        assertThat(field(sent, "state"))
             .as("one verb, one act, two expositions. The two call the same layer, so they "
                 + "cannot drift on what a verb does or in which order it checks")
             .isEqualTo("open");
@@ -190,7 +205,7 @@ class McpProjectionIT {
     @Test
     void the_address_arrives_complete_with_its_scheme() {
         Response answer = rpc("tools/call", Map.of(
-            "name", "read",
+            "name", "dispatch_read",
             "arguments", Map.of("address", "probe-scope/sprint/1.0")));
 
         assertThat(answer.jsonPath().getBoolean("result.isError"))
@@ -198,16 +213,15 @@ class McpProjectionIT {
                 + "in the body — scheme included — and is validated here")
             .isTrue();
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-            .isEqualTo("ADDRESS_MALFORMED");
+            .isEqualTo("ARGUMENT_INVALID");
     }
 
     @Test
     void claim_returns_the_receipt_through_this_exposition_too() {
         String address = createThroughMcp();
-        callTool("send", Map.of("address", address));
 
         SurfaceFixture.asExecutor(identity);
-        Map<String, Object> claimed = callTool("claim",
+        Map<String, Object> claimed = callTool("dispatch_take",
             Map.of("address", address, "duration", "PT1H"));
 
         assertThat(structured(claimed).get("receipt"))
@@ -231,14 +245,16 @@ class McpProjectionIT {
     void a_number_as_a_metadata_value_is_refused_rather_than_coerced_to_text() {
         String address = createThroughMcp();
 
-        Response answer = rpc("tools/call", Map.of("name", "send", "arguments", Map.of(
-            "address", address,
-            "metadata", Map.of("pr", 5))));
+        Response answer = rpc("tools/call", Map.of(
+            "name", "dispatch_commission", "arguments", Map.of(
+                "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+                "fields", Map.of("title", "a probe", "apparatus", "code",
+                    "text", "its body", "metadata", Map.of("pr", 5)))));
 
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
             .as("cardinality widens to lists, and typefreedom does not: a number is a "
                 + "different rule, and the doctrine says otherwise with a typed refusal")
-            .isEqualTo("METADATA_REFUSED");
+            .isEqualTo("ARGUMENT_INVALID");
     }
 
     /**
@@ -250,11 +266,12 @@ class McpProjectionIT {
     void a_list_metadata_value_survives_the_send_gate_and_is_stored_as_a_list() {
         String address = createThroughMcp();
 
-        Map<String, Object> sent = callTool("send", Map.of(
-            "address", address,
-            "metadata", Map.of("tracks", java.util.List.of("t1", "t2"))));
+        Map<String, Object> sent = callTool("dispatch_commission", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "fields", Map.of("title", "a probe", "apparatus", "code", "text", "its body",
+                "metadata", Map.of("tracks", java.util.List.of("t1", "t2")))));
 
-        assertThat(structured(sent).get("status")).isEqualTo("open");
+        assertThat(field(sent, "state")).isEqualTo("open");
     }
 
     /**
@@ -265,12 +282,15 @@ class McpProjectionIT {
     void metadata_carrying_a_credential_is_refused_on_this_exposition_too() {
         String address = createThroughMcp();
 
-        Response answer = rpc("tools/call", Map.of("name", "send", "arguments", Map.of(
-            "address", address,
-            "metadata", Map.of("mirror", "https://user:secret@example.invalid/x"))));
+        Response answer = rpc("tools/call", Map.of(
+            "name", "dispatch_commission", "arguments", Map.of(
+                "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+                "fields", Map.of("title", "a probe", "apparatus", "code", "text", "its body",
+                    "metadata",
+                    Map.of("mirror", "https://user:secret@example.invalid/x")))));
 
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-            .isEqualTo("METADATA_REFUSED");
+            .isEqualTo("ARGUMENT_INVALID");
     }
 
     // =======================================================================
@@ -285,10 +305,14 @@ class McpProjectionIT {
 
         assertThat(answer.jsonPath().getBoolean("result.isError")).isTrue();
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-            .as("absent from tools/list is what 'MCP omits' means, and it is not the same "
-                + "as unknown. An unknown-tool reply would send the caller looking for a "
-                + "spelling; a category error says the act does not exist here, and why")
-            .isEqualTo("VERB_DEPTH_UNDECLARED");
+            .as("the older form of this assertion expected a category error naming the "
+                + "act. There is no act to name any more: validate is not a call of this "
+                + "surface, so what the caller needs is the list of the calls that are — "
+                + "which is what ARGUMENT_UNKNOWN carries")
+            .isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(answer.jsonPath().getString("result.structuredContent.message"))
+            .as("and the list travels with it, so the caller is not sent looking")
+            .contains("dispatch_read");
     }
 
     /**
@@ -298,7 +322,7 @@ class McpProjectionIT {
     @Test
     void the_listing_is_a_tool_and_keeps_the_projection() {
         Response answer = rpc("tools/call", Map.of(
-            "name", "query",
+            "name", "dispatch_query",
             "arguments", Map.of("scope", SurfaceFixture.SCOPE,
                 "selector", SurfaceFixture.SELECTOR)));
 
@@ -312,7 +336,7 @@ class McpProjectionIT {
     @Test
     void an_undeclared_filter_field_is_refused_on_the_tool_surface_as_well() {
         Response answer = rpc("tools/call", Map.of(
-            "name", "query",
+            "name", "dispatch_query",
             "arguments", Map.of("scope", SurfaceFixture.SCOPE,
                 "selector", SurfaceFixture.SELECTOR, "title", "anything")));
 
@@ -320,18 +344,26 @@ class McpProjectionIT {
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
             .as("the filter model is the domain's, so both expositions refuse the same "
                 + "field for the same reason rather than each carrying its own list")
-            .isEqualTo("FILTER_FIELD_UNKNOWN");
+            .isEqualTo("ARGUMENT_UNKNOWN");
     }
 
+    /**
+     * Withdrawal is not on this surface, and saying so names what is.
+     *
+     * <p>The older form of this test asserted that {@code withdraw} was
+     * answered by name with a typed category error — the console owns the act,
+     * and a 404 would have sent the caller looking for the object. The act is
+     * still the console's and this surface still does not offer it; what
+     * changed is that {@code withdraw} is not a name here at all, so the
+     * refusal it earns is the one every absent name earns.
+     */
     @Test
-    void withdraw_names_the_console_here_as_well() {
-        String address = createThroughMcp();
-
+    void withdrawal_is_not_a_call_of_this_surface() {
         Response answer = rpc("tools/call", Map.of(
-            "name", "withdraw", "arguments", Map.of("address", address)));
+            "name", "withdraw", "arguments", Map.of("address", createThroughMcp())));
 
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-            .isEqualTo("WITHDRAWAL_VIA_CONSOLE_ONLY");
+            .isEqualTo("ARGUMENT_UNKNOWN");
     }
 
     @Test
@@ -341,7 +373,7 @@ class McpProjectionIT {
 
         assertThat(answer.jsonPath().getBoolean("result.isError")).isTrue();
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-            .isEqualTo("PAYLOAD_MALFORMED");
+            .isEqualTo("ARGUMENT_UNKNOWN");
     }
 
     @Test
@@ -349,7 +381,8 @@ class McpProjectionIT {
         String address = createThroughMcp();
 
         Response answer = rpc("tools/call", Map.of(
-            "name", "consume", "arguments", Map.of("address", address)));
+            "name", "dispatch_curate_return", "arguments", Map.of(
+                "address", address, "fields", Map.of("into", address))));
 
         assertThat(answer.jsonPath().getString("result.error")).isNull();
         assertThat(answer.jsonPath().getBoolean("result.isError"))
@@ -381,9 +414,9 @@ class McpProjectionIT {
     void read_over_mcp_hands_out_the_conflict_token_as_a_field() {
         String address = createThroughMcp();
 
-        Map<String, Object> read = callTool("read", Map.of("address", address));
+        Map<String, Object> read = callTool("dispatch_read", Map.of("address", address));
 
-        assertThat(structured(read).get("conflictToken"))
+        assertThat(structured(read).get("conflict_token"))
             .as("without the token on the wire, `update` over MCP has no source for its "
                 + "receipt argument and the sperre becomes a wall the caller cannot pass")
             .isNotNull()
@@ -394,59 +427,62 @@ class McpProjectionIT {
     void query_over_mcp_carries_the_conflict_token_per_exchange() {
         String address = createThroughMcp();
 
-        Map<String, Object> read = callTool("read", Map.of("address", address));
+        Map<String, Object> read = callTool("dispatch_read", Map.of("address", address));
         // The response's address is the internal selector/N.M form; the MCP
         // tool argument is the dispatch://... form. Both name the same row.
         String internalAddress = (String) structured(read).get("address");
 
-        Map<String, Object> listed = callTool("query", Map.of(
+        Map<String, Object> listed = callTool("dispatch_query", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR));
 
         Map<String, Object> found = exchanges(listed).stream()
             .filter(e -> internalAddress.equals(e.get("address")))
             .findFirst().orElseThrow();
 
-        assertThat(found.get("conflictToken"))
+        assertThat(found.get("conflict_token"))
             .as("the projection is the SAME for read and query — a single source, so a "
                 + "caller reading through one exposition and updating through the other "
                 + "does not read one token and send another")
-            .isEqualTo(structured(read).get("conflictToken"));
+            .isEqualTo(structured(read).get("conflict_token"));
     }
 
+    /**
+     * The token read through this surface is accepted by a write through it.
+     *
+     * <p>The whole reason for exposing the token at all. The writer is
+     * {@code dispatch_reply_to_executor} rather than {@code update}, because
+     * {@code update} is not a call of this surface — but it is the same
+     * statement: a caller that reads the token here can write here.
+     */
     @Test
-    void update_over_mcp_with_the_token_from_a_prior_read_replaces_the_draft() {
-        String address = anActiveExchange();
-        String receipt = takeUpAsExecutor(address);
-        Map<String, Object> read = callTool("read", Map.of("address", address));
-        String token = (String) structured(read).get("conflictToken");
-        String internalAddress = (String) structured(read).get("address");
+    void a_write_with_the_token_from_a_prior_read_succeeds() {
+        String address = anAnsweredExchange();
+        SurfaceFixture.asConsole(identity);
+        String token = tokenOf(address);
 
-        Map<String, Object> updated = callTool("update", Map.of(
+        Map<String, Object> replied = callTool("dispatch_reply_to_executor", Map.of(
             "address", address, "conflict_token", token,
-            "draft", "the answer", "receipt", receipt));
+            "fields", Map.of("message", "another round, please")));
 
-        assertThat(structured(updated).get("address"))
-            .as("this is the WHOLE reason for exposing the token: an update through the "
-                + "same surface that read the token can now succeed")
-            .isEqualTo(internalAddress);
+        assertThat(structured(replied).get("address")).isEqualTo(address);
     }
 
     @Test
-    void update_over_mcp_on_a_token_from_before_a_write_is_refused_as_stale() {
-        String address = anActiveExchange();
-        String receipt = takeUpAsExecutor(address);
-        String stale = (String) structured(callTool("read", Map.of("address", address)))
-            .get("conflictToken");
+    void a_write_on_a_token_from_before_a_write_is_refused_as_stale() {
+        String address = anAnsweredExchange();
+        SurfaceFixture.asConsole(identity);
+        String stale = tokenOf(address);
 
         // The first write rotates the token. Any caller still holding `stale`
         // is now holding a token from before that write.
-        callTool("update", Map.of(
+        callTool("dispatch_reply_to_executor", Map.of(
             "address", address, "conflict_token", stale,
-            "draft", "the first answer", "receipt", receipt));
+            "fields", Map.of("message", "the first reply")));
 
-        Response answer = rpc("tools/call", Map.of("name", "update", "arguments", Map.of(
-            "address", address, "conflict_token", stale,
-            "draft", "the second answer", "receipt", receipt)));
+        Response answer = rpc("tools/call", Map.of(
+            "name", "dispatch_reply_to_executor", "arguments", Map.of(
+                "address", address, "conflict_token", stale,
+                "fields", Map.of("message", "the second reply"))));
 
         assertThat(answer.jsonPath().getBoolean("result.isError"))
             .as("visibility on the read side does NOT relax the sperre on the write side")
@@ -456,53 +492,51 @@ class McpProjectionIT {
     }
 
     @Test
-    void update_over_mcp_refuses_a_missing_conflict_token_argument() {
-        String address = anActiveExchange();
-        String receipt = takeUpAsExecutor(address);
+    void a_write_refuses_a_missing_conflict_token_argument() {
+        String address = anAnsweredExchange();
+        SurfaceFixture.asConsole(identity);
 
-        Response answer = rpc("tools/call", Map.of("name", "update", "arguments", Map.of(
-            "address", address, "draft", "the answer", "receipt", receipt)));
+        Response answer = rpc("tools/call", Map.of(
+            "name", "dispatch_reply_to_executor", "arguments", Map.of(
+                "address", address, "fields", Map.of("message", "a reply"))));
 
         assertThat(answer.jsonPath().getBoolean("result.isError"))
             .as("the token stays a mandatory argument; an omitted one is a form error, not "
                 + "a licence to write unguarded")
             .isTrue();
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-            .isEqualTo("PAYLOAD_MALFORMED");
+            .isEqualTo("ARGUMENT_MISSING");
     }
 
     @Test
-    void update_over_mcp_refuses_a_blank_conflict_token_argument() {
-        String address = anActiveExchange();
-        String receipt = takeUpAsExecutor(address);
+    void a_write_refuses_a_blank_conflict_token_argument() {
+        String address = anAnsweredExchange();
+        SurfaceFixture.asConsole(identity);
 
-        Response answer = rpc("tools/call", Map.of("name", "update", "arguments", Map.of(
-            "address", address, "conflict_token", "   ",
-            "draft", "the answer", "receipt", receipt)));
+        Response answer = rpc("tools/call", Map.of(
+            "name", "dispatch_reply_to_executor", "arguments", Map.of(
+                "address", address, "conflict_token", "   ",
+                "fields", Map.of("message", "a reply"))));
 
         assertThat(answer.jsonPath().getBoolean("result.isError"))
-            .as("a blank value is not a licence either — sichtbarkeit macht den Parameter "
-                + "nicht optional")
+            .as("a blank value is not a licence either — exposing the token on the read "
+                + "side does not make the argument optional on the write side")
             .isTrue();
         assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-            .isEqualTo("PAYLOAD_MALFORMED");
+            .isEqualTo("ARGUMENT_MISSING");
     }
 
     @Test
-    void read_after_a_successful_update_returns_a_different_conflict_token() {
-        String address = anActiveExchange();
-        String receipt = takeUpAsExecutor(address);
-        String before = (String) structured(callTool("read", Map.of("address", address)))
-            .get("conflictToken");
+    void read_after_a_successful_write_returns_a_different_conflict_token() {
+        String address = anAnsweredExchange();
+        SurfaceFixture.asConsole(identity);
+        String before = tokenOf(address);
 
-        callTool("update", Map.of(
+        callTool("dispatch_reply_to_executor", Map.of(
             "address", address, "conflict_token", before,
-            "draft", "the answer", "receipt", receipt));
+            "fields", Map.of("message", "a reply")));
 
-        String after = (String) structured(callTool("read", Map.of("address", address)))
-            .get("conflictToken");
-
-        assertThat(after)
+        assertThat(tokenOf(address))
             .as("a token that never rotates cannot distinguish two consecutive writes; the "
                 + "monotone advance is what makes a stale value detectable")
             .isNotNull().isNotEqualTo(before);
@@ -512,20 +546,49 @@ class McpProjectionIT {
     // Driving the exposition
     // =======================================================================
 
-    /** An exchange sent and waiting for an executor to take it up. */
+    /**
+     * An exchange waiting for an executor to take it up.
+     *
+     * <p>One call now, not two. Commissioning creates, writes and freezes in
+     * one transaction, so there is no draft for a probe to have to send — and
+     * no draft for a caller to be stranded in, which is the defect this whole
+     * repair started from.
+     */
     private String anActiveExchange() {
-        String address = createThroughMcp();
-        callTool("send", Map.of("address", address));
+        return createThroughMcp();
+    }
+
+    /**
+     * An exchange whose executor has delivered an answer, waiting for the
+     * commissioner.
+     *
+     * <p>The state the commissioner's own writes act from. Leaves the identity
+     * on the executor, so every caller of this switches back explicitly —
+     * which is the readable form, because whose turn it is matters in every
+     * one of these probes.
+     */
+    private String anAnsweredExchange() {
+        String address = anActiveExchange();
+        String receipt = takeUpAsExecutor(address);
+        callTool("dispatch_deliver_return", Map.of(
+            "address", address, "receipt", receipt,
+            "fields", Map.of("text", "the answer")));
         return address;
+    }
+
+    /** The conflict token of one exchange, as this caller reads it. */
+    private String tokenOf(String address) {
+        return (String) structured(callTool("dispatch_read", Map.of("address", address)))
+            .get("conflict_token");
     }
 
     /**
      * Switches identity to the executor and takes up the address. Returns the
-     * receipt handed out, which the update verb requires.
+     * receipt handed out, which the executor's text-bearing calls require.
      */
     private String takeUpAsExecutor(String address) {
         SurfaceFixture.asExecutor(identity);
-        Map<String, Object> claimed = callTool("claim",
+        Map<String, Object> claimed = callTool("dispatch_take",
             Map.of("address", address, "duration", "PT1H"));
         return (String) structured(claimed).get("receipt");
     }
@@ -536,16 +599,26 @@ class McpProjectionIT {
     }
 
 
+    /**
+     * A commission, through the assistant surface, in one call.
+     *
+     * <p>The address comes back complete and is used unchanged — which is
+     * itself part of what this file probes. Before satellite/26.6 the answer
+     * carried {@code sprint/26.2} and this helper had to rebuild the complete
+     * form from the number and the sub, which is exactly the repair a caller
+     * cannot make because nothing told it one was needed.
+     */
     private String createThroughMcp() {
-        Map<String, Object> created = callTool("create", Map.of(
+        Map<String, Object> created = callTool("dispatch_commission", Map.of(
             "scope", SurfaceFixture.SCOPE,
             "selector", SurfaceFixture.SELECTOR,
-            "title", "a commission over MCP",
-            "apparatus", "code",
-            "date", "2026-09-01"));
+            "fields", Map.of(
+                "title", "a commission over MCP",
+                "apparatus", "code",
+                "text", "the body of the commission",
+                "date", "2026-09-01")));
 
-        return SurfaceFixture.address(
-            structured(created).get("number") + "." + structured(created).get("sub"));
+        return (String) structured(created).get("address");
     }
 
     /**
@@ -559,36 +632,56 @@ class McpProjectionIT {
         Map<String, Object> arguments = new LinkedHashMap<>();
 
         switch (tool) {
-            case "create" -> {
+            case "dispatch_commission" -> {
                 arguments.put("scope", SurfaceFixture.SCOPE);
                 arguments.put("selector", SurfaceFixture.SELECTOR);
-                arguments.put("title", "a probe");
-                arguments.put("apparatus", "code");
-                arguments.put("date", "2026-09-01");
+                arguments.put("fields", Map.of("title", "a probe", "apparatus", "code",
+                    "text", "its body"));
             }
-            case "query" -> {
+            case "dispatch_query" -> {
                 arguments.put("scope", SurfaceFixture.SCOPE);
                 arguments.put("selector", SurfaceFixture.SELECTOR);
             }
-            case "claim_next" -> {
+            case "dispatch_take_next" -> {
                 arguments.put("scope", SurfaceFixture.SCOPE);
                 arguments.put("selector", SurfaceFixture.SELECTOR);
                 arguments.put("duration", "PT1H");
             }
-            case "append" -> {
+            case "dispatch_add_correction" -> {
                 arguments.put("address", address);
-                arguments.put("title", "a correction");
-                arguments.put("apparatus", "code");
-                arguments.put("date", "2026-09-01");
+                arguments.put("fields", Map.of("title", "a correction", "text", "its text"));
             }
-            case "update" -> {
+            case "dispatch_curate_return" -> {
+                arguments.put("address", address);
+                arguments.put("fields", Map.of("into", address));
+            }
+            case "dispatch_reply_to_executor" -> {
                 arguments.put("address", address);
                 arguments.put("conflict_token", "not-the-one-it-holds");
-                arguments.put("draft", "a probe");
+                arguments.put("fields", Map.of("message", "a message"));
             }
-            case "claim" -> {
+            case "dispatch_cancel" -> {
+                arguments.put("address", address);
+                arguments.put("conflict_token", "not-the-one-it-holds");
+                arguments.put("fields", Map.of("reason", "a reason"));
+            }
+            case "dispatch_take" -> {
                 arguments.put("address", address);
                 arguments.put("duration", "PT1H");
+            }
+            case "dispatch_deliver_return" -> {
+                arguments.put("address", address);
+                arguments.put("receipt", "not-the-one-it-holds");
+                arguments.put("fields", Map.of("text", "an answer"));
+            }
+            case "dispatch_ask_commissioner" -> {
+                arguments.put("address", address);
+                arguments.put("receipt", "not-the-one-it-holds");
+                arguments.put("fields", Map.of("question", "a question"));
+            }
+            case "dispatch_decline" -> {
+                arguments.put("address", address);
+                arguments.put("fields", Map.of("reason", "a reason"));
             }
             default -> arguments.put("address", address);
         }
@@ -603,10 +696,11 @@ class McpProjectionIT {
      */
     private static boolean isUnknownTool(String tool, Map<String, Object> arguments) {
         Response answer = rpc("tools/call", Map.of("name", tool, "arguments", arguments));
-        return "PAYLOAD_MALFORMED"
+        String message =
+            String.valueOf(answer.jsonPath().getString("result.structuredContent.message"));
+        return "ARGUMENT_UNKNOWN"
                 .equals(answer.jsonPath().getString("result.structuredContent.reason"))
-            && String.valueOf(answer.jsonPath().getString("result.structuredContent.message"))
-                .contains("not a tool of this server");
+            && message.contains("has no argument named " + tool);
     }
 
     /** One tool call, asserted to have succeeded, and its result. */
@@ -623,6 +717,23 @@ class McpProjectionIT {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> structured(Map<String, Object> result) {
         return (Map<String, Object>) result.get("structuredContent");
+    }
+
+    /**
+     * One member of the answer's {@code fields}.
+     *
+     * <p>A helper rather than a dotted key, because {@code structured()} hands
+     * back a {@link Map} and {@code get("fields.state")} looks for a key whose
+     * name contains a dot. It finds nothing and returns null, which reads in a
+     * failure message exactly like a field the service did not send — the most
+     * expensive kind of wrong, because it sends the reader into the production
+     * code after a defect that is in the probe.
+     */
+    @SuppressWarnings("unchecked")
+    private static Object field(Map<String, Object> result, String name) {
+        Map<String, Object> fields =
+            (Map<String, Object>) structured(result).get("fields");
+        return fields == null ? null : fields.get(name);
     }
 
     private static Response rpc(String method, Map<String, Object> params) {

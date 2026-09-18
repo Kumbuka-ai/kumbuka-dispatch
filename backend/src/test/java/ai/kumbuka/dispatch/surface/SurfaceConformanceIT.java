@@ -138,7 +138,7 @@ class SurfaceConformanceIT {
 
         assertThat(answer.statusCode()).isEqualTo(405);
         assertThat(answer.jsonPath().getString("reason"))
-            .isEqualTo("WRITE_ON_TRUNCATED_ADDRESS");
+            .isEqualTo("ARGUMENT_INVALID");
         assertThat(answer.header("Allow"))
             .as("a 405 without Allow refuses without saying what would have worked")
             .isEqualTo("GET, POST");
@@ -185,9 +185,18 @@ class SurfaceConformanceIT {
         }
 
         String reason = answer.jsonPath().getString("reason");
-        boolean unnamedVerb = "WRITE_ON_TRUNCATED_ADDRESS".equals(reason);
 
-        // The refusal row is the one form whose whole purpose IS that answer.
+        // The refusal row is recognised by its STATUS rather than by a reason
+        // code. It used to be recognised by `WRITE_ON_TRUNCATED_ADDRESS`, which
+        // is a kernel-side reason and no longer reaches a caller: since
+        // satellite/26.6 the reasons on the wire are the contract's closed set,
+        // and that set has no code for "this verb does not act at this address
+        // depth". What the row actually specifies is "405 with Allow", and
+        // that is what is checked — the stronger statement of the two, because
+        // a 405 without Allow refuses without saying what would have worked.
+        boolean unnamedVerb = answer.statusCode() == 405
+            && answer.getHeader("Allow") != null;
+
         return reason != null && (unnamedVerb == "refusal".equals(form.klass()));
     }
 
@@ -235,6 +244,6 @@ class SurfaceConformanceIT {
             .body(Map.of("title", "a commission", "apparatus", "code", "date", "2026-09-01"))
             .post(SurfaceFixture.collection());
         created.then().statusCode(201);
-        return created.jsonPath().getString("number") + ".0";
+        return created.jsonPath().getString("fields.number") + ".0";
     }
 }

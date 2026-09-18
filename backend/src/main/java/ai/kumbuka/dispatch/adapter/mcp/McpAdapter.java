@@ -1,55 +1,59 @@
 package ai.kumbuka.dispatch.adapter.mcp;
 
+import ai.kumbuka.dispatch.adapter.payload.Answers;
+import ai.kumbuka.dispatch.adapter.payload.Payloads;
+import ai.kumbuka.dispatch.surface.NextCalculator;
+import ai.kumbuka.dispatch.surface.ProcessVerb;
+import ai.kumbuka.dispatch.surface.Refused;
+import ai.kumbuka.dispatch.surface.Surface;
+import ai.kumbuka.dispatch.surface.SurfaceDeclaration;
+import ai.kumbuka.dispatch.domain.Actor;
+import ai.kumbuka.dispatch.domain.DispatchException;
+import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.CallerActor;
 import ai.kumbuka.dispatch.surface.SurfaceException;
 import ai.kumbuka.dispatch.surface.VerbInput;
 import ai.kumbuka.dispatch.surface.VerbSurface;
-import ai.kumbuka.dispatch.adapter.payload.Payloads;
-import ai.kumbuka.dispatch.domain.Actor;
-import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.jboss.logging.Logger;
 
 import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * The MCP exposition of the verb surface: a projection that omits and adds
- * nothing.
+ * The assistant surface: the fourteen process verbs of section 5, and nothing
+ * else.
  *
- * <p>It calls {@link VerbSurface} and reimplements no verb, so the two
- * expositions cannot drift on what an act does or in which order it checks.
- * What differs is only expression — JSON-RPC over one endpoint here, method
- * and path there.
+ * <p>The fifteen generic verbs are gone from here. That is the whole change and
+ * it is deliberate that no transition period carries both: a caller reading a
+ * tool list cannot be expected to work out which of two overlapping vocabularies
+ * is the one meant for it, and the pair that would confuse it most is precisely
+ * the pair that does the same thing under two names. The generic verbs are
+ * still the complete surface — over REST, where they always were.
  *
- * <h2>Why the address arrives complete, and the REST path does not</h2>
+ * <h2>What this adapter is responsible for, and what it is not</h2>
  *
- * MCP is JSON-RPC over a single endpoint: tool name and arguments necessarily
- * travel in the body, and there is no request line an address could travel in.
- * So the address arrives whole, scheme included, and this adapter validates it.
- * The REST adapter constructs the address from the path instead. The two are
- * asymmetric by nature rather than by accident, and neither is a round trip of
- * the other.
+ * It checks the form of a call against the declaration, routes it to one verb
+ * of {@link VerbSurface}, and dresses the answer or the refusal in the shape
+ * sections 3 and 4 fix. It composes nothing: every compound act is one call of
+ * the domain, which makes it atomic there rather than here.
  *
- * <h2>The four verbs the scheme does not carry are not simply missing</h2>
- *
- * They are absent from {@code tools/list}, which is what "MCP omits" means.
- * But a call naming one of them answers the same typed category error the REST
- * surface answers, rather than "unknown tool". The difference matters: unknown
- * tool says the caller mistyped, and a category error says the act does not
- * exist in this scheme and names why. Only the second one stops a caller
- * looking for the right spelling.
+ * <p>It is also where {@code next} takes MCP's vocabulary. The computation is
+ * shared; the names are this surface's. A caller told to call {@code accept}
+ * has been told to call something it cannot reach.
  */
 @Path("/mcp")
 @Authenticated
@@ -58,25 +62,28 @@ import java.util.Map;
 @Consumes(MediaType.APPLICATION_JSON)
 public class McpAdapter {
 
+    /**
+     * What this logger may say: call name, address, typed reason. Never a
+     * title, a text, metadata, a token or a receipt — the operator boundary is
+     * built as a missing GRANT, and a log shipper carrying a commission's text
+     * out of the container walks around it.
+     */
+    private static final Logger LOG = Logger.getLogger(McpAdapter.class);
+
     /** The revision of the MCP protocol this adapter speaks. */
     private static final String PROTOCOL_VERSION = "2025-06-18";
 
     private static final String JSONRPC = "2.0";
-
-    /** The envelope's version field, by name. */
     private static final String KEY_JSONRPC = "jsonrpc";
     private static final String KEY_ID = "id";
+    private static final String KEY_NAME = "name";
 
-    /** The two arguments a verb takes when it acts on no existing object. */
     private static final String ARG_SCOPE = "scope";
     private static final String ARG_SELECTOR = "selector";
-    private static final String KEY_NAME = "name";
-    private static final String KEY_ADDRESS = "address";
-
-    /** The three the author writes into: shared by create, append and update. */
-    private static final String ARG_TITLE = "title";
-    private static final String ARG_APPARATUS = "apparatus";
-    private static final String ARG_DATE = "date";
+    private static final String ARG_ADDRESS = "address";
+    private static final String ARG_DURATION = "duration";
+    private static final String ARG_RECEIPT = "receipt";
+    private static final String ARG_CONFLICT_TOKEN = "conflict_token";
 
     /** JSON-RPC's own codes. Protocol faults only — a refused verb is not one. */
     private static final int METHOD_NOT_FOUND = -32601;
@@ -94,8 +101,7 @@ public class McpAdapter {
         Object id = request.get(KEY_ID);
         String method = string(request, "method");
 
-        // A notification carries no id and takes no answer. Answering one is
-        // a protocol error on our side, not a courtesy.
+        // A notification carries no id and takes no answer.
         if (id == null) {
             return Response.accepted().build();
         }
@@ -110,18 +116,26 @@ public class McpAdapter {
         };
     }
 
-    // ======================================================================
-    // The three methods
-    // ======================================================================
+    /**
+     * The declaration, as the machine-readable artefact.
+     *
+     * <p>Served here rather than from a static file so that what is published
+     * is what the running service holds. A file in the jar can be stale
+     * against the code beside it; this cannot.
+     */
+    @GET
+    @Path("/declaration")
+    public Map<String, Object> declaration() {
+        return SurfaceDeclaration.asMap();
+    }
 
     private Map<String, Object> initialize() {
         return Map.of(
             "protocolVersion", PROTOCOL_VERSION,
             "capabilities", Map.of("tools", Map.of()),
-            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.4.1"));
+            "serverInfo", Map.of("name", "kumbuka-dispatch", "version", "0.5.0"));
     }
 
-    /** The declared tools, in the shape MCP asks for them. */
     private static List<Map<String, Object>> tools() {
         return McpTools.declared().stream()
             .map(t -> Map.<String, Object>of(
@@ -131,174 +145,223 @@ public class McpAdapter {
             .toList();
     }
 
+    // ======================================================================
+    // One call
+    // ======================================================================
+
     /**
-     * Runs one tool call.
+     * Runs one tool call, and answers a refusal as a refusal.
      *
      * <p>A refused verb comes back as {@code isError} on a successful JSON-RPC
-     * response, never as a JSON-RPC error. The distinction is the protocol's
-     * and it is worth keeping: a JSON-RPC error says the call could not be
-     * made, and every refusal in this service is a call that was made and
-     * answered.
+     * response, never as a JSON-RPC error. The protocol's distinction is worth
+     * keeping: a JSON-RPC error says the call could not be made, and every
+     * refusal in this service is a call that was made and answered.
+     *
+     * <p>The three catch clauses are not three shapes. They are three sources
+     * — this adapter's own form checks, the surface's, and the kernel's — and
+     * all of them leave through {@link #refusal}, so a caller cannot tell from
+     * the shape which layer said no. It has no business knowing.
      */
     private Map<String, Object> call(Map<String, Object> params) {
         String tool = string(params, KEY_NAME);
         Map<String, Object> arguments = arguments(params, "arguments");
 
+        ProcessVerb verb = ProcessVerb.byCall(tool);
+        if (verb == null) {
+            // Through `refusal` like every other refusal. Handing the exception
+            // itself to `content` would serialise a Java object where a caller
+            // expects the envelope, and the reason — the one part a caller
+            // matches on — would not be on the wire at all.
+            return content(refusal(Refused.argumentUnknown(String.valueOf(tool),
+                String.valueOf(tool), ProcessVerb.byCallNames())), true);
+        }
+
         try {
-            return content(invoke(tool, arguments), false);
+            return content(invoke(verb, new CallArguments(verb, arguments)), false);
+        } catch (Refused e) {
+            return content(refusal(e), true);
         } catch (SurfaceException e) {
-            return content(new Payloads.Refusal(e.reason().name(), e.getMessage(), List.of()),
-                true);
+            return content(refusal(Refusals.of(e, verb, arguments, this)), true);
         } catch (DispatchException e) {
-            return content(new Payloads.Refusal(e.reason().name(), e.getMessage(),
-                e.offenders()), true);
+            return content(refusal(Refusals.of(e, verb, arguments, this)), true);
+        } catch (RuntimeException e) {
+            // Ours, not the caller's. The reference is what makes the report
+            // actionable; the exception itself never reaches the caller,
+            // because a stack trace is both unreadable and a disclosure.
+            String reference = UUID.randomUUID().toString();
+            LOG.errorf(e, "unexpected failure on %s, reference %s", verb.call(), reference);
+            return content(refusal(Refused.unexpected(verb.call(),
+                addressOrCollection(arguments), reference)), true);
         }
     }
 
+    private static Payloads.RefusalEnvelope refusal(Refused refused) {
+        return new Payloads.RefusalEnvelope(refused.code().name(), refused.getMessage(),
+            refused.data());
+    }
+
     // ======================================================================
-    // The verbs
+    // The fourteen
     // ======================================================================
 
-    private Object invoke(String tool, Map<String, Object> in) {
+    private Object invoke(ProcessVerb verb, CallArguments in) {
         Actor actor = caller.current();
 
-        return switch (tool == null ? "" : tool) {
-            case "create" -> create(actor, in);
-            // read and update are the two verbs that carry bodies: read is
-            // how a caller pulls the dispatch or the return; update is the
-            // readback the author needs to see their write landed.
-            case "read" -> dressed(at(in, (s, l, i) -> verbs.read(actor, s, l, i)));
-            case "update" -> update(actor, in);
-            case "append" -> append(actor, in);
-            // Every transition and create/append answer compact — enough for
-            // a caller to follow up, not so much that it eats a context
-            // window on a bracket close.
-            case "send" -> send(actor, in);
-            case "accept" -> dressedCompact(at(in, (s, l, i) -> verbs.accept(actor, s, l, i)));
-            case "claim" -> claim(actor, in);
-            case "release" -> dressedCompact(at(in, (s, l, i) -> verbs.release(actor, s, l, i)));
-            case "abandon" -> dressedCompact(at(in, (s, l, i) -> verbs.abandon(actor, s, l, i)));
-            case "block" -> dressedCompact(at(in, (s, l, i) -> verbs.block(actor, s, l, i)));
-            case "resume" -> dressedCompact(at(in, (s, l, i) -> verbs.resume(actor, s, l, i)));
-            case "close" -> dressedCompact(at(in, (s, l, i) -> verbs.close(actor, s, l, i)));
-            case "consume" -> dressedCompact(at(in, (s, l, i) -> verbs.consume(actor, s, l, i)));
-            case "query" -> query(actor, in);
-            case "claim_next" -> claimNext(actor, in);
-
-            // Not in tools/list, and still answered by name: an unknown-tool
-            // reply would send the caller looking for a spelling.
-            case "withdraw" -> uncarried(() -> at(in,
-                (s, l, i) -> { verbs.withdraw(actor, s, l, i); return null; }));
-            case "validate" -> uncarried(() -> at(in,
-                (s, l, i) -> { verbs.validate(actor, s, l, i); return null; }));
-
-            default -> throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
-                "'" + tool + "' is not a tool of this server. Its tools are the verbs of "
-                    + "the dispatch scheme, and tools/list names them.");
+        return switch (verb) {
+            case COMMISSION -> commission(actor, in);
+            case ADD_CORRECTION -> addCorrection(actor, in);
+            case ACCEPT_RETURN -> at(in, (s, l, i) -> verbs.acceptReturn(actor, s, l, i));
+            case CURATE_RETURN -> curateReturn(actor, in);
+            case REPLY_TO_EXECUTOR -> replyToExecutor(actor, in);
+            case CANCEL -> cancel(actor, in);
+            case CLOSE_BRACKET -> at(in, (s, l, i) -> verbs.closeBracket(actor, s, l, i));
+            case TAKE -> take(actor, in);
+            case TAKE_NEXT -> takeNext(actor, in);
+            case DELIVER_RETURN -> deliverReturn(actor, in);
+            case ASK_COMMISSIONER -> askCommissioner(actor, in);
+            case DECLINE -> decline(actor, in);
+            case READ -> full(atResult(in, (s, l, i) -> verbs.read(actor, s, l, i)));
+            case QUERY -> query(actor, in);
         };
     }
 
-    private Object create(Actor actor, Map<String, Object> in) {
-        String scope = required(in, ARG_SCOPE);
-        String selector = required(in, ARG_SELECTOR);
-        VerbInput.Draft body = new VerbInput.Draft(
-            required(in, ARG_TITLE), required(in, ARG_APPARATUS), date(in, ARG_DATE), null);
+    private Object commission(Actor actor, CallArguments in) {
+        String scope = in.requiredTop(ARG_SCOPE);
+        String selector = in.requiredTop(ARG_SELECTOR);
 
-        String parent = optional(in, "parent");
-        if (parent == null) {
-            return dressedCompact(verbs.create(actor, scope, selector, body));
+        ExchangeAddress parent = null;
+        String rawParent = in.optionalTop("parent");
+        if (rawParent != null) {
+            AddressParser.Parts at = AddressParser.uri(rawParent);
+            requireSameCollection(at, scope, selector, ProcessVerb.COMMISSION);
+            parent = AddressParser.item(at.selector(), at.id());
         }
 
-        AddressParser.Parts at = AddressParser.uri(parent);
-        requireSameCollection(at, scope, selector);
-        return dressedCompact(verbs.createChild(actor, at.scope(), at.selector(), at.id(), body));
-    }
+        VerbInput.Commission body = new VerbInput.Commission(
+            in.requiredField("title"),
+            in.requiredField("apparatus"),
+            in.requiredField("text"),
+            in.optionalDateField("date", LocalDate.now()),
+            in.metadataField());
 
-    private Object update(Actor actor, Map<String, Object> in) {
-        AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        VerbInput.Update body = new VerbInput.Update(
-            optional(in, ARG_TITLE), optional(in, ARG_APPARATUS), optionalDate(in, ARG_DATE),
-            optional(in, "draft"), optional(in, "receipt"), metadata(in));
-        return dressed(verbs.update(actor, at.scope(), at.selector(), at.id(),
-            required(in, "conflict_token"), body));
-    }
-
-    private Object append(Actor actor, Map<String, Object> in) {
-        AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        return dressedCompact(verbs.append(actor, at.scope(), at.selector(), at.id(),
-            new VerbInput.Addendum(required(in, ARG_TITLE), required(in, ARG_APPARATUS),
-                date(in, ARG_DATE))));
-    }
-
-    private Object send(Actor actor, Map<String, Object> in) {
-        AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        return dressedCompact(verbs.send(actor, at.scope(), at.selector(), at.id(), metadata(in)));
-    }
-
-    private Object claim(Actor actor, Map<String, Object> in) {
-        AddressParser.Parts at = AddressParser.uri(required(in, KEY_ADDRESS));
-        VerbSurface.ClaimOutcome claimed = verbs.claim(actor, at.scope(), at.selector(),
-            at.id(), new VerbInput.Claim(required(in, "duration")));
-        return new Payloads.ClaimResponse(
-            Payloads.CompactExchangeResponse.of(claimed.result().exchange()),
-            claimed.receipt());
+        return compact(verbs.commission(actor, scope, selector, parent, body));
     }
 
     /**
-     * The listing, with the filter read from the tool arguments.
+     * Attaches a correction, text included, in one call.
      *
-     * <p>Every argument beyond scope and selector is a filter field, passed
-     * through raw. The adapter deliberately does not name them: the list of
-     * filterable fields is the domain's, and an adapter holding its own copy
-     * is a second place for it to be decided.
+     * <p>The answer is the CORRECTED exchange rather than the addendum. A
+     * correction has no standing of its own — it is not independently drawable
+     * and it closes with what it corrects — so answering with its address would
+     * hand the caller an address that {@code dispatch_read} refuses.
      */
-    private Object query(Actor actor, Map<String, Object> in) {
-        String scope = required(in, ARG_SCOPE);
-        String selector = required(in, ARG_SELECTOR);
-
-        Map<String, String> filters = new java.util.LinkedHashMap<>();
-        in.forEach((name, value) -> {
-            if (!ARG_SCOPE.equals(name) && !ARG_SELECTOR.equals(name) && value != null) {
-                filters.put(name, String.valueOf(value));
-            }
-        });
-
-        return Payloads.Listing.of(verbs.query(actor, scope, selector, filters).exchanges());
+    private Object addCorrection(Actor actor, CallArguments in) {
+        AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
+        return compact(verbs.addCorrection(actor, at.scope(), at.selector(), at.id(),
+            in.requiredField("title"), in.requiredField("text")));
     }
 
-    private Object claimNext(Actor actor, Map<String, Object> in) {
+    private Object curateReturn(Actor actor, CallArguments in) {
+        AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
+        AddressParser.Parts into = AddressParser.uri(in.requiredField("into"));
+        requireSameCollection(into, at.scope(), at.selector(), ProcessVerb.CURATE_RETURN);
+
+        return compact(verbs.curateReturn(actor, at.scope(), at.selector(), at.id(),
+            AddressParser.item(into.selector(), into.id())));
+    }
+
+    private Object replyToExecutor(Actor actor, CallArguments in) {
+        AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
+        return compact(verbs.replyToExecutor(actor, at.scope(), at.selector(), at.id(),
+            in.requiredTop(ARG_CONFLICT_TOKEN), in.requiredField("message")));
+    }
+
+    private Object cancel(Actor actor, CallArguments in) {
+        AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
+        return compact(verbs.cancel(actor, at.scope(), at.selector(), at.id(),
+            in.requiredTop(ARG_CONFLICT_TOKEN), in.requiredField("reason")));
+    }
+
+    private Object take(Actor actor, CallArguments in) {
+        AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
+        VerbSurface.ClaimOutcome claimed = verbs.claim(actor, at.scope(), at.selector(),
+            at.id(), new VerbInput.Claim(in.requiredTop(ARG_DURATION)));
+        return withReceipt(claimed);
+    }
+
+    private Object takeNext(Actor actor, CallArguments in) {
         VerbSurface.ClaimOutcome claimed = verbs.claimNext(actor,
-            required(in, ARG_SCOPE), required(in, ARG_SELECTOR),
-            new VerbInput.Claim(required(in, "duration")));
-        return new Payloads.ClaimResponse(
-            Payloads.CompactExchangeResponse.of(claimed.result().exchange()),
-            claimed.receipt());
+            in.requiredTop(ARG_SCOPE), in.requiredTop(ARG_SELECTOR),
+            new VerbInput.Claim(in.requiredTop(ARG_DURATION)));
+        return withReceipt(claimed);
+    }
+
+    private Object deliverReturn(Actor actor, CallArguments in) {
+        AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
+        return compact(verbs.deliverReturn(actor, at.scope(), at.selector(), at.id(),
+            in.requiredTop(ARG_RECEIPT), in.requiredField("text")));
+    }
+
+    private Object askCommissioner(Actor actor, CallArguments in) {
+        AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
+        return compact(verbs.askCommissioner(actor, at.scope(), at.selector(), at.id(),
+            in.requiredTop(ARG_RECEIPT), in.requiredField("question")));
+    }
+
+    private Object decline(Actor actor, CallArguments in) {
+        AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
+        return compact(verbs.decline(actor, at.scope(), at.selector(), at.id(),
+            in.optionalTop(ARG_RECEIPT), in.requiredField("reason")));
+    }
+
+    private Object query(Actor actor, CallArguments in) {
+        VerbSurface.Listing listing = verbs.query(actor, in.requiredTop(ARG_SCOPE),
+            in.requiredTop(ARG_SELECTOR), in.filters());
+        return Answers.listing(listing.exchanges(), Surface.MCP);
     }
 
     // ======================================================================
-    // The wire shape of a result — two projections, one for each answer class
-    //
-    // `dressed` and `dressedCompact` are the MCP twin of REST's `ok` and
-    // `okCompact`. Which verb takes which is a property of the verb: `read`
-    // and `update` alone go through `dressed`; every transition, `create`,
-    // `append` and the listing take the compact shape. The choice is not a
-    // flag on the call; the compact projection is what those verbs answer.
+    // Answers
     // ======================================================================
 
-    /** The full projection: dispatchBody, dispatchMetadata, returnBody, returnMetadata. */
-    private static Payloads.ExchangeResponse dressed(VerbSurface.Result result) {
-        return Payloads.ExchangeResponse.of(result.exchange());
+    private static Payloads.Answer full(VerbSurface.Result result) {
+        return Answers.full(result, Surface.MCP);
     }
 
-    /** The compact projection: head fields plus the conflict token, no carriers. */
-    private static Payloads.CompactExchangeResponse dressedCompact(VerbSurface.Result result) {
-        return Payloads.CompactExchangeResponse.of(result.exchange());
+    private static Payloads.Answer compact(VerbSurface.Result result) {
+        return Answers.compact(result, Surface.MCP);
+    }
+
+    /**
+     * The claim's answer: the exchange, plus the receipt.
+     *
+     * <p>The receipt is a member beside the answer rather than a field of the
+     * exchange, because it is not a property of the exchange — it is this
+     * caller's proof, issued once, and the service keeps only a hash. A field
+     * on the exchange would be a field every later read would have to withhold.
+     */
+    private static Map<String, Object> withReceipt(VerbSurface.ClaimOutcome claimed) {
+        Map<String, Object> answer = new LinkedHashMap<>();
+        Payloads.Answer exchange = compact(claimed.result());
+        answer.put("address", exchange.address());
+        answer.put("fields", exchange.fields());
+        answer.put("conflict_token", exchange.conflictToken());
+        answer.put("next", exchange.next());
+        if (exchange.waitingFor() != null) {
+            answer.put("waiting_for", exchange.waitingFor());
+        }
+        answer.put("receipt", claimed.receipt());
+        return Map.copyOf(answer);
     }
 
     /** A verb addressed at one exchange, with the address split once. */
-    private VerbSurface.Result at(Map<String, Object> in, ItemVerb verb) {
-        AddressParser.Parts parts = AddressParser.uri(required(in, KEY_ADDRESS));
+    private VerbSurface.Result atResult(CallArguments in, ItemVerb verb) {
+        AddressParser.Parts parts = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
         return verb.apply(parts.scope(), parts.selector(), parts.id());
+    }
+
+    private Object at(CallArguments in, ItemVerb verb) {
+        return compact(atResult(in, verb));
     }
 
     @FunctionalInterface
@@ -306,83 +369,78 @@ public class McpAdapter {
         VerbSurface.Result apply(String scope, String selector, String id);
     }
 
+    // ======================================================================
+    // Dressing a refusal: reading the state, so the way OUT can be named
+    // ======================================================================
+
     /**
-     * The four the scheme does not carry. Each call below throws; this exists
-     * so the switch has an expression and the compiler is not told a lie about
-     * a value that cannot be produced.
+     * Reads the exchange a refused call was addressed at, for its state and its
+     * {@code next}.
+     *
+     * <p>A second read, after the first act was refused and rolled back. That
+     * is a real cost and it is paid deliberately: a refusal that cannot say
+     * what the caller CAN do is the refusal this whole contract exists to
+     * replace, and the state at the moment of refusal is the only honest
+     * source for it.
+     *
+     * <p>Returns null when the exchange cannot be read — which is not a
+     * failure: it means the refusal was about something the caller cannot see,
+     * and a refusal about an invisible exchange carries no state by design.
      */
-    private static Object uncarried(Runnable verb) {
-        verb.run();
-        throw new IllegalStateException("an uncarried verb returned instead of refusing");
+    Situation situationOf(Map<String, Object> arguments) {
+        Object raw = arguments.get(ARG_ADDRESS);
+        if (raw == null) {
+            return null;
+        }
+        try {
+            AddressParser.Parts at = AddressParser.uri(String.valueOf(raw));
+            VerbSurface.Result result =
+                verbs.read(caller.current(), at.scope(), at.selector(), at.id());
+            return new Situation(result.exchange().address(),
+                result.exchange().status().wireName(),
+                result.exchange().status().terminal(),
+                result.next(Surface.MCP));
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** What a refusal needs to know about the exchange it is refusing on. */
+    record Situation(String address, String state, boolean terminal,
+                     List<NextCalculator.Step> next) {
+    }
+
+    String collectionOf(Map<String, Object> arguments) {
+        Object scope = arguments.get(ARG_SCOPE);
+        Object selector = arguments.get(ARG_SELECTOR);
+        if (scope == null || selector == null) {
+            return null;
+        }
+        return AddressParser.completeCollection(String.valueOf(scope),
+            String.valueOf(selector));
+    }
+
+    private String addressOrCollection(Map<String, Object> arguments) {
+        Object address = arguments.get(ARG_ADDRESS);
+        if (address != null) {
+            return String.valueOf(address);
+        }
+        String collection = collectionOf(arguments);
+        return collection == null ? "the address given" : collection;
     }
 
     // ======================================================================
     // Arguments
     // ======================================================================
 
-    private static void requireSameCollection(AddressParser.Parts parent,
-                                              String scope, String selector) {
-        if (!parent.scope().equals(scope) || !parent.selector().equals(selector)) {
-            throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
-                "the parent address names " + parent.scope() + "/" + parent.selector()
-                    + " and the arguments name " + scope + "/" + selector + ". A child "
-                    + "numbers within its bracket, so the two cannot disagree — and "
-                    + "silently preferring one of them would decide which by accident.");
+    private static void requireSameCollection(AddressParser.Parts given, String scope,
+                                              String selector, ProcessVerb verb) {
+        if (!given.scope().equals(scope) || !given.selector().equals(selector)) {
+            throw Refused.argumentInvalid(verb.call(), "parent",
+                given.scope() + "/" + given.selector(),
+                "it names a different bracket kind than the call does, and a child numbers "
+                    + "within its own bracket");
         }
-    }
-
-    private static String required(Map<String, Object> in, String name) {
-        String value = optional(in, name);
-        if (value == null || value.isBlank()) {
-            throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
-                "the argument '" + name + "' is required and did not arrive.");
-        }
-        return value;
-    }
-
-    private static String optional(Map<String, Object> in, String name) {
-        Object value = in.get(name);
-        return value == null ? null : value.toString();
-    }
-
-    private static LocalDate date(Map<String, Object> in, String name) {
-        String raw = required(in, name);
-        return parseDate(raw);
-    }
-
-    private static LocalDate optionalDate(Map<String, Object> in, String name) {
-        String raw = optional(in, name);
-        return raw == null || raw.isBlank() ? null : parseDate(raw);
-    }
-
-    private static LocalDate parseDate(String raw) {
-        try {
-            return LocalDate.parse(raw);
-        } catch (DateTimeParseException e) {
-            throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
-                "'" + raw + "' is not an ISO-8601 date. The form is YYYY-MM-DD.");
-        }
-    }
-
-    /**
-     * Metadata, values carried through as they arrived.
-     *
-     * <p>A value is a String or a list of them; the domain's validator refuses
-     * anything else with a typed refusal. This adapter deliberately does not
-     * coerce: an earlier shape flattened every value through {@code toString}
-     * and would have turned a real list into the prose "[a, b]" and a number
-     * into an accepted identifier — carrying two shapes across the boundary
-     * as a third one the caller did not send. The refusal belongs where the
-     * shape is known.
-     */
-    private static Map<String, Object> metadata(Map<String, Object> in) {
-        Object raw = in.get("metadata");
-        if (!(raw instanceof Map<?, ?> map)) {
-            return null;
-        }
-        Map<String, Object> carried = new LinkedHashMap<>();
-        map.forEach((k, v) -> carried.put(String.valueOf(k), v));
-        return carried;
     }
 
     @SuppressWarnings("unchecked")
@@ -400,13 +458,6 @@ public class McpAdapter {
     // The JSON-RPC envelope
     // ======================================================================
 
-    /**
-     * A tool result.
-     *
-     * <p>Both {@code content} and {@code structuredContent} carry the same
-     * answer, because clients read one or the other and a surface that offered
-     * only the structured half would be unreadable to half of them.
-     */
     private static Map<String, Object> content(Object payload, boolean isError) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("content", List.of(Map.of("type", "text", "text", String.valueOf(payload))));
@@ -430,4 +481,5 @@ public class McpAdapter {
         envelope.put("error", Map.of("code", code, "message", message));
         return Response.ok(envelope).build();
     }
+
 }

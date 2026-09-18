@@ -95,6 +95,35 @@ public class ExchangeRepository {
         return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
     }
 
+    /**
+     * The row behind a stored durable identity, if the caller may see it.
+     *
+     * <p>Used by one reader: the projection, to render a consumed exchange's
+     * curation target as an address. The scope is bound in the query rather
+     * than checked afterwards — a curation target in another scope must read
+     * as absent, not as a row the caller can then infer the existence of from
+     * a refusal.
+     *
+     * <p>By internal key, which is the one place in this repository that takes
+     * one. That is what a durable identity is for: the address can move, the
+     * key cannot, and a projection that looked the target up by a stored
+     * address would resolve whatever has since moved into that position.
+     */
+    @Transactional
+    public Optional<Exchange> findByIdentity(UUID scopeId, Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        List<Exchange> found = em.createQuery("""
+                SELECT e FROM Exchange e
+                WHERE e.id = :id AND e.scopeId = :scope
+                """, Exchange.class)
+            .setParameter("id", id)
+            .setParameter(P_SCOPE, scopeId)
+            .getResultList();
+        return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
+    }
+
     /** The addenda hanging from one exchange, in suffix order. */
     @Transactional
     public List<Exchange> addenda(UUID scopeId, ExchangeAddress base) {

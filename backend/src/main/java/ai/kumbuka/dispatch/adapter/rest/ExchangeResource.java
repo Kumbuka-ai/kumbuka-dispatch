@@ -5,7 +5,9 @@ import ai.kumbuka.dispatch.surface.CallerActor;
 import ai.kumbuka.dispatch.surface.SurfaceException;
 import ai.kumbuka.dispatch.surface.VerbSurface;
 
+import ai.kumbuka.dispatch.adapter.payload.Answers;
 import ai.kumbuka.dispatch.adapter.payload.Payloads;
+import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -86,6 +88,15 @@ public class ExchangeResource {
     @Inject CallerActor caller;
     @Inject ObjectMapper json;
 
+    /**
+     * What this request is calling, recorded for the refusal mapper.
+     *
+     * <p>An exception mapper is handed an exception and nothing about the
+     * request that produced it, and section 4.2 requires a refusal to name the
+     * call the caller made. So the name is recorded on the way in.
+     */
+    @Inject CallScope calling;
+
     // ======================================================================
     // The collection binding: create, and the refusal of a truncated write
     // ======================================================================
@@ -109,6 +120,7 @@ public class ExchangeResource {
         if (split.isEmpty()) {
             // No colon: a plain collection address, and create is the one
             // writing verb whose set semantics is declared as exactly one.
+            calling.calling("create", null);
             return created(scope, verbs.create(caller.current(), scope, segment,
                 Payloads.draft(read(body, Payloads.CreateRequest.class))));
         }
@@ -118,6 +130,7 @@ public class ExchangeResource {
             // The one transition admissible on a truncated address: its verb
             // contract declares set semantics, and the only declarable one is
             // exactly one.
+            calling.calling("claim_next", null);
             return claimed(verbs.claimNext(caller.current(), scope, at.address(),
                 Payloads.claim(read(body, Payloads.ClaimRequest.class))));
         }
@@ -152,6 +165,7 @@ public class ExchangeResource {
     public Response collectionGet(@PathParam("scope") String scope,
                                   @PathParam("selector") String selector,
                                   @Context UriInfo uri) {
+        calling.calling("query", null);
         return listing(verbs.query(caller.current(), scope, selector, filtersOf(uri)));
     }
 
@@ -180,6 +194,8 @@ public class ExchangeResource {
     public Response read(@PathParam("scope") String scope,
                          @PathParam("selector") String selector,
                          @PathParam("id") String id) {
+        calling.calling("read", AddressParser.complete(scope,
+            AddressParser.item(selector, id)));
         return ok(verbs.read(caller.current(), scope, selector, id));
     }
 
@@ -195,6 +211,8 @@ public class ExchangeResource {
                            @PathParam("id") String id,
                            @HeaderParam("If-Match") String ifMatch,
                            Payloads.UpdateRequest request) {
+        calling.calling("update", AddressParser.complete(scope,
+            AddressParser.item(selector, id)));
         return ok(verbs.update(caller.current(), scope, selector, id, ifMatch,
             Payloads.update(request)));
     }
@@ -227,6 +245,8 @@ public class ExchangeResource {
                     + "further id segment.",
                 ITEM_ALLOW));
 
+        calling.calling(at.method().verb(), AddressParser.complete(scope,
+            AddressParser.item(selector, at.address())));
         return dispatch(at.method(), scope, selector, at.address(), body);
     }
 
@@ -282,6 +302,7 @@ public class ExchangeResource {
                                 @PathParam("selector") String selector,
                                 @PathParam("id") String id,
                                 Payloads.CreateRequest request) {
+        calling.calling("create", null);
         return created(scope, verbs.createChild(caller.current(), scope, selector, id,
             Payloads.draft(request)));
     }
@@ -296,6 +317,8 @@ public class ExchangeResource {
                            @PathParam("selector") String selector,
                            @PathParam("id") String id,
                            Payloads.AppendRequest request) {
+        calling.calling("append", AddressParser.complete(scope,
+            AddressParser.item(selector, id)));
         return created(scope, verbs.append(caller.current(), scope, selector, id,
             Payloads.addendum(request)));
     }
@@ -318,16 +341,14 @@ public class ExchangeResource {
     // body from a transition, and the defect would be back.
     // ======================================================================
 
-    /** The full projection: dispatchBody, dispatchMetadata, returnBody, returnMetadata. */
+    /** The full projection: every field this caller may see, bodies included. */
     private static Response ok(VerbSurface.Result result) {
-        return tagged(Response.ok(Payloads.ExchangeResponse.of(result.exchange())), result);
+        return tagged(Response.ok(Answers.full(result, Surface.REST)), result);
     }
 
     /** The compact projection: head fields plus the conflict token, no carriers. */
     private static Response okCompact(VerbSurface.Result result) {
-        return tagged(
-            Response.ok(Payloads.CompactExchangeResponse.of(result.exchange())),
-            result);
+        return tagged(Response.ok(Answers.compact(result, Surface.REST)), result);
     }
 
     /**
@@ -339,13 +360,12 @@ public class ExchangeResource {
      * thing.
      */
     private static Response listing(VerbSurface.Listing found) {
-        return Response.ok(Payloads.Listing.of(found.exchanges())).build();
+        return Response.ok(Answers.listing(found.exchanges(), Surface.REST)).build();
     }
 
     private static Response claimed(VerbSurface.ClaimOutcome outcome) {
-        return tagged(Response.ok(new Payloads.ClaimResponse(
-            Payloads.CompactExchangeResponse.of(outcome.result().exchange()),
-            outcome.receipt())),
+        return tagged(Response.ok(new Payloads.ClaimAnswer(
+            Answers.compact(outcome.result(), Surface.REST), outcome.receipt())),
             outcome.result());
     }
 
@@ -365,7 +385,7 @@ public class ExchangeResource {
                 .path("{selector}/{id}")
                 .build(scope, result.address().selector(),
                     AddressParser.render(result.address())))
-            .entity(Payloads.CompactExchangeResponse.of(result.exchange())), result);
+            .entity(Answers.compact(result, Surface.REST)), result);
     }
 
     private static Response tagged(Response.ResponseBuilder response, VerbSurface.Result result) {

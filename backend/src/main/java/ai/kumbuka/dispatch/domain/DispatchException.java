@@ -107,6 +107,27 @@ public class DispatchException extends RuntimeException {
         UPDATE_EMPTY,
 
         /**
+         * There is no delivered answer to ratify.
+         *
+         * <p>Its own reason rather than a reuse of the transition refusal,
+         * because the transition IS permitted from this state — the exchange
+         * is simply carrying a question rather than an answer. A caller told
+         * "the state does not allow it" would read that as "not yet from
+         * here", when the truth is "not until the executor delivers".
+         */
+        RETURN_ABSENT,
+
+        /**
+         * A call that needs the receipt from the takeup arrived without one.
+         *
+         * <p>Split from {@link #CLAIM_REQUIRED}, which says the caller holds
+         * no claim at all. This one says the claim may well be theirs and the
+         * proof did not travel — a different thing for the caller to do about
+         * it, and the surface contract declares a separate code for each.
+         */
+        RECEIPT_ABSENT,
+
+        /**
          * An update after send needs a return draft to write.
          *
          * <p>After send the update verb writes the return role, and the

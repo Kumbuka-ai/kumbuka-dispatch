@@ -69,7 +69,8 @@ class VerbSurfaceTest {
 
         when(scopes.resolve(anyString(), anyString()))
             .thenReturn(new ScopeDirectory.ScopeAccess(SCOPE, TENANT, "probe-scope", false));
-        when(exchanges.view(any(), any(), any())).thenReturn(viewOf(ExchangeStatus.OPEN));
+        when(exchanges.view(any(), any(), any(), any()))
+            .thenReturn(viewOf(ExchangeStatus.OPEN));
         when(exchanges.read(any(), any())).thenReturn(anExchange());
     }
 
@@ -90,7 +91,8 @@ class VerbSurfaceTest {
     void the_read_verb_never_projects_the_entity_the_same_named_method_returns() {
         verbs.read(EXECUTOR, "probe-scope", "sprint", "164.1");
 
-        verify(exchanges).view(eq(SCOPE), any(ExchangeAddress.class), eq(EXECUTOR));
+        verify(exchanges).view(eq(SCOPE), anyString(), any(ExchangeAddress.class),
+            eq(EXECUTOR));
     }
 
     /**
@@ -106,7 +108,7 @@ class VerbSurfaceTest {
         verbs.close(EXECUTOR, "probe-scope", "sprint", "164.1");
 
         verify(exchanges).close(eq(SCOPE), any(), eq(EXECUTOR));
-        verify(exchanges).view(eq(SCOPE), any(), eq(EXECUTOR));
+        verify(exchanges).view(eq(SCOPE), anyString(), any(), eq(EXECUTOR));
     }
 
     // =======================================================================
@@ -115,7 +117,8 @@ class VerbSurfaceTest {
 
     @Test
     void abandon_from_open_refuses_the_commission() {
-        when(exchanges.view(any(), any(), any())).thenReturn(viewOf(ExchangeStatus.OPEN));
+        when(exchanges.view(any(), any(), any(), any()))
+            .thenReturn(viewOf(ExchangeStatus.OPEN));
 
         verbs.abandon(EXECUTOR, "probe-scope", "sprint", "164.1");
 
@@ -125,7 +128,7 @@ class VerbSurfaceTest {
 
     @Test
     void abandon_from_active_fails_the_work() {
-        when(exchanges.view(any(), any(), any())).thenReturn(viewOf(ExchangeStatus.ACTIVE));
+        when(exchanges.view(any(), any(), any(), any())).thenReturn(viewOf(ExchangeStatus.ACTIVE));
 
         verbs.abandon(EXECUTOR, "probe-scope", "sprint", "164.1");
 
@@ -143,7 +146,7 @@ class VerbSurfaceTest {
      */
     @Test
     void abandon_from_neither_state_lets_the_domain_name_what_would_have_worked() {
-        when(exchanges.view(any(), any(), any())).thenReturn(viewOf(ExchangeStatus.NEEDS_INPUT));
+        when(exchanges.view(any(), any(), any(), any())).thenReturn(viewOf(ExchangeStatus.NEEDS_INPUT));
         doThrow(new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
             "reject is permitted from OPEN")).when(exchanges).reject(any(), any(), any());
 
@@ -293,7 +296,7 @@ class VerbSurfaceTest {
         // view carries it as null because Exchange.conflictToken does, and the
         // sperre never reaches exchanges.read on the addendum path — that
         // refusal would mark the surrounding transaction rollback-only.
-        when(exchanges.view(any(), any(), any())).thenReturn(viewOf(ExchangeStatus.OPEN, null));
+        when(exchanges.view(any(), any(), any(), any())).thenReturn(viewOf(ExchangeStatus.OPEN, null));
 
         assertThat(verbs.read(EXECUTOR, "probe-scope", "sprint", "164.0a").conflictToken())
             .isNull();
@@ -334,9 +337,13 @@ class VerbSurfaceTest {
     }
 
     private static ExchangeView viewOf(ExchangeStatus status, String conflictToken) {
-        return new ExchangeView("sprint/164.1", "sprint", 164, 1, "a commission", "code",
-            LocalDate.parse("2026-09-01"), status, null, null, null, null, null, null,
-            conflictToken);
+        // The address is COMPLETE, as it is everywhere a view is built: the
+        // short form does not exist on this record any more, so a probe cannot
+        // accidentally assert the shape the repair removed.
+        return new ExchangeView("dispatch://probe-scope/sprint/164.1", "sprint", 164, 1,
+            "a commission", "code", LocalDate.parse("2026-09-01"), status, null, null,
+            null, null, null, null, conflictToken,
+            null, null, null, null, false, false, false, null);
     }
 
     /** An entity whose only interesting field here is when it was last written. */

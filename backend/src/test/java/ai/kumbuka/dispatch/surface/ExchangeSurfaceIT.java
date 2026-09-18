@@ -54,13 +54,13 @@ class ExchangeSurfaceIT {
 
         created.then()
             .statusCode(201)
-            .body("status", equalTo("draft"))
-            .body("sub", equalTo(0));
+            .body("fields.state", equalTo("draft"))
+            .body("fields.sub", equalTo(0));
 
         assertThat(created.header("Location"))
             .as("201 carries the address of what came into being, generated in canonical "
                 + "form rather than echoed from the request")
-            .endsWith(SurfaceFixture.item(created.jsonPath().getString("number") + ".0"));
+            .endsWith(SurfaceFixture.item(created.jsonPath().getString("fields.number") + ".0"));
     }
 
     @Test
@@ -69,8 +69,8 @@ class ExchangeSurfaceIT {
 
         Response child = post(SurfaceFixture.item(bracket) + "/children", commission("a child"));
 
-        child.then().statusCode(201).body("sub", equalTo(1));
-        assertThat(child.jsonPath().getInt("number"))
+        child.then().statusCode(201).body("fields.sub", equalTo(1));
+        assertThat(child.jsonPath().getInt("fields.number"))
             .as("a child numbers within its bracket instance, so it carries the bracket's "
                 + "number and its own sub")
             .isEqualTo(number(bracket));
@@ -84,7 +84,7 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(number(bracket) + ".1") + "/children", commission("a grandchild"))
             .then()
             .statusCode(400)
-            .body("reason", equalTo("ADDRESS_MALFORMED"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
     }
 
     // =======================================================================
@@ -117,7 +117,7 @@ class ExchangeSurfaceIT {
         Response read = get(SurfaceFixture.item(bracket));
 
         String header = read.header("ETag");
-        String body = read.jsonPath().getString("conflictToken");
+        String body = read.jsonPath().getString("conflict_token");
 
         assertThat(header).as("the ETag header is unchanged").isNotBlank();
         assertThat(body)
@@ -149,7 +149,7 @@ class ExchangeSurfaceIT {
         get(SurfaceFixture.item("999999"))
             .then()
             .statusCode(400)
-            .body("reason", equalTo("ADDRESS_MALFORMED"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
     }
 
     // =======================================================================
@@ -161,7 +161,7 @@ class ExchangeSurfaceIT {
         String bracket = openBracket();
 
         post(SurfaceFixture.item(bracket) + ":send", Map.of())
-            .then().statusCode(200).body("status", equalTo("open"));
+            .then().statusCode(200).body("fields.state", equalTo("open"));
     }
 
     @Test
@@ -175,8 +175,8 @@ class ExchangeSurfaceIT {
 
         claimed.then()
             .statusCode(200)
-            .body("exchange.status", equalTo("active"))
-            .body("exchange.effectiveHolder", equalTo("self"));
+            .body("exchange.fields.state", equalTo("active"))
+            .body("exchange.fields.effective_holder", equalTo("self"));
 
         assertThat(claimed.jsonPath().getString("receipt"))
             .as("the receipt is minted by the service and returned once; it is the only copy")
@@ -188,7 +188,7 @@ class ExchangeSurfaceIT {
             .doesNotContainKey("dispatchBody");
 
         // What claim buys is the body on a following read.
-        assertThat(get(SurfaceFixture.item(bracket)).jsonPath().getString("dispatchBody"))
+        assertThat(get(SurfaceFixture.item(bracket)).jsonPath().getString("fields.dispatch_text"))
             .as("taking it up is what buys the body, and a read after the claim is where "
                 + "it appears — the sichtbarkeit rule turns on the effective holder, and "
                 + "this caller now is one")
@@ -251,7 +251,7 @@ class ExchangeSurfaceIT {
 
         SurfaceFixture.asConsole(identity);
         post(SurfaceFixture.item(returned) + ":accept", null)
-            .then().statusCode(200).body("status", equalTo("returned"));
+            .then().statusCode(200).body("fields.state", equalTo("returned"));
     }
 
     @Test
@@ -262,7 +262,7 @@ class ExchangeSurfaceIT {
         claim(bracket);
 
         post(SurfaceFixture.item(bracket) + ":release", null)
-            .then().statusCode(200).body("status", equalTo("open"));
+            .then().statusCode(200).body("fields.state", equalTo("open"));
     }
 
     // =======================================================================
@@ -291,7 +291,7 @@ class ExchangeSurfaceIT {
         get(SurfaceFixture.item(number(bracket) + ".0a"))
             .then()
             .statusCode(200)
-            .body("address", equalTo(SurfaceFixture.SELECTOR + "/" + number(bracket) + ".0a"));
+            .body("address", equalTo(SELECTOR_PREFIX + number(bracket) + ".0a"));
     }
 
     @Test
@@ -302,7 +302,7 @@ class ExchangeSurfaceIT {
             Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01"))
             .then()
             .statusCode(409)
-            .body("reason", equalTo("TRANSITION_NOT_PERMITTED"));
+            .body("reason", equalTo("STATE_DOES_NOT_ALLOW"));
     }
 
     // =======================================================================
@@ -318,7 +318,7 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":abandon", null)
             .then()
             .statusCode(200)
-            .body("status", equalTo("rejected"));
+            .body("fields.state", equalTo("rejected"));
     }
 
     @Test
@@ -333,7 +333,7 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":abandon", null)
             .then()
             .statusCode(200)
-            .body("status", equalTo("failed"));
+            .body("fields.state", equalTo("failed"));
     }
 
     @Test
@@ -344,10 +344,10 @@ class ExchangeSurfaceIT {
         claim(bracket);
 
         post(SurfaceFixture.item(bracket) + ":block", null)
-            .then().statusCode(200).body("status", equalTo("needs_input"));
+            .then().statusCode(200).body("fields.state", equalTo("needs_input"));
 
         post(SurfaceFixture.item(bracket) + ":resume", null)
-            .then().statusCode(200).body("status", equalTo("active"));
+            .then().statusCode(200).body("fields.state", equalTo("active"));
     }
 
     @Test
@@ -356,7 +356,7 @@ class ExchangeSurfaceIT {
         send(bracket);
 
         post(SurfaceFixture.item(bracket) + ":close", null)
-            .then().statusCode(200).body("status", equalTo("closed"));
+            .then().statusCode(200).body("fields.state", equalTo("closed"));
     }
 
     @Test
@@ -366,7 +366,7 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(returned) + ":accept", null).then().statusCode(200);
 
         post(SurfaceFixture.item(returned) + ":consume", null)
-            .then().statusCode(200).body("status", equalTo("consumed"));
+            .then().statusCode(200).body("fields.state", equalTo("consumed"));
     }
 
     @Test
@@ -377,8 +377,17 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":close", null)
             .then()
             .statusCode(409)
-            .body("reason", equalTo("SIBLINGS_NON_TERMINAL"))
-            .body("offenders.size()", equalTo(1));
+            .body("reason", equalTo("CHILDREN_NOT_FINISHED"))
+            // Under `data` since satellite/26.6, and as structure rather than
+            // prose: each blocking child carries its complete address, the
+            // state it is in and the call that would finish it. Measured
+            // 2026-09-18, the list arrived as ["satellite/26.1 (draft)"] — a
+            // member of its own, in a form a caller has to parse back out of a
+            // sentence, with an address no call accepts.
+            .body("data.offenders.size()", equalTo(1))
+            .body("data.offenders[0].address",
+                org.hamcrest.Matchers.startsWith("dispatch://"))
+            .body("data.offenders[0].state", org.hamcrest.Matchers.notNullValue());
     }
 
     // =======================================================================
@@ -422,8 +431,12 @@ class ExchangeSurfaceIT {
         get(SurfaceFixture.collection() + "?title=anything")
             .then()
             .statusCode(422)
-            .body("reason", equalTo("FILTER_FIELD_UNKNOWN"))
-            .body("offenders", org.hamcrest.Matchers.hasItem("title"));
+            .body("reason", equalTo("ARGUMENT_UNKNOWN"))
+            // The field is named in the MESSAGE now, not in a member of its
+            // own: section 4.2 puts lists in `data` and everything else in the
+            // sentence, and a one-element list beside the message was a second
+            // place for a caller to look.
+            .body("message", org.hamcrest.Matchers.containsString("title"));
     }
 
     /**
@@ -450,7 +463,7 @@ class ExchangeSurfaceIT {
             .statusCode(200)
             .body("exchange.address", org.hamcrest.Matchers.containsString(
                 SurfaceFixture.SELECTOR))
-            .body("exchange.status", equalTo("active"))
+            .body("exchange.fields.state", equalTo("active"))
             .body("receipt", org.hamcrest.Matchers.not(org.hamcrest.Matchers.emptyString()));
     }
 
@@ -468,7 +481,7 @@ class ExchangeSurfaceIT {
                 Map.of("duration", "PT1H"))
             .then()
             .statusCode(409)
-            .body("reason", equalTo("NOTHING_TO_CLAIM"));
+            .body("reason", equalTo("NOTHING_TO_TAKE"));
     }
 
     // =======================================================================
@@ -482,7 +495,7 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":withdraw", null)
             .then()
             .statusCode(422)
-            .body("reason", equalTo("WITHDRAWAL_VIA_CONSOLE_ONLY"))
+            .body("reason", equalTo("ARGUMENT_INVALID"))
             .body("message", org.hamcrest.Matchers.containsString("console"));
     }
 
@@ -493,7 +506,7 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":validate", null)
             .then()
             .statusCode(422)
-            .body("reason", equalTo("VERB_DEPTH_UNDECLARED"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
     }
 
     // =======================================================================
@@ -506,7 +519,7 @@ class ExchangeSurfaceIT {
 
         refused.then()
             .statusCode(405)
-            .body("reason", equalTo("WRITE_ON_TRUNCATED_ADDRESS"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
 
         assertThat(refused.header("Allow"))
             .as("a 405 without Allow refuses without saying what would have worked, which "
@@ -540,7 +553,7 @@ class ExchangeSurfaceIT {
 
         refused.then()
             .statusCode(405)
-            .body("reason", equalTo("WRITE_ON_TRUNCATED_ADDRESS"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
         assertThat(refused.header("Allow")).isEqualTo("GET, PATCH, POST");
     }
 
@@ -551,7 +564,7 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":frobnicate", Map.of())
             .then()
             .statusCode(405)
-            .body("reason", equalTo("WRITE_ON_TRUNCATED_ADDRESS"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
     }
 
     // =======================================================================
@@ -565,7 +578,7 @@ class ExchangeSurfaceIT {
             .post(SurfaceFixture.collection())
             .then()
             .statusCode(400)
-            .body("reason", equalTo("PAYLOAD_MALFORMED"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
     }
 
     @Test
@@ -574,7 +587,7 @@ class ExchangeSurfaceIT {
             .post(SurfaceFixture.collection())
             .then()
             .statusCode(400)
-            .body("reason", equalTo("PAYLOAD_MALFORMED"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
     }
 
     @Test
@@ -586,8 +599,17 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":claim", Map.of())
             .then()
             .statusCode(400)
-            .body("reason", equalTo("PAYLOAD_MALFORMED"))
-            .body("message", org.hamcrest.Matchers.containsString("policy"));
+            // CLAIM_DURATION_INVALID since satellite/26.6. The contract
+            // declares a pattern naming the value and the unit, and a generic
+            // payload fault could not carry it: the caller was told its payload
+            // was malformed, which is true and says nothing about what it
+            // should correct.
+            .body("reason", equalTo("CLAIM_DURATION_INVALID"))
+            // The message is the catalogue's pattern now, not the surface's own
+            // sentence about lease policy. The policy statement still stands —
+            // there is no default duration — and it lives where the refusal is
+            // raised; what reaches the caller is the shape the contract fixes.
+            .body("message", org.hamcrest.Matchers.containsString("ISO-8601"));
     }
 
     @Test
@@ -597,7 +619,8 @@ class ExchangeSurfaceIT {
 
         SurfaceFixture.asExecutor(identity);
         post(SurfaceFixture.item(bracket) + ":claim", Map.of("duration", "one hour"))
-            .then().statusCode(400).body("reason", equalTo("PAYLOAD_MALFORMED"));
+            .then().statusCode(400)
+            .body("reason", equalTo("CLAIM_DURATION_INVALID"));
     }
 
     @Test
@@ -609,7 +632,7 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":claim", Map.of("duration", "PT0S"))
             .then()
             .statusCode(400)
-            .body("reason", equalTo("CLAIM_DURATION_NOT_POSITIVE"));
+            .body("reason", equalTo("CLAIM_DURATION_INVALID"));
     }
 
     /**
@@ -635,7 +658,7 @@ class ExchangeSurfaceIT {
             .patch(SurfaceFixture.item(bracket))
             .then()
             .statusCode(403)
-            .body("reason", equalTo("RECEIPT_MISMATCH"));
+            .body("reason", equalTo("RECEIPT_WRONG"));
     }
 
     /**
@@ -653,7 +676,7 @@ class ExchangeSurfaceIT {
             Map.of("metadata", Map.of("mirror", "https://user:secret@example.invalid/x")))
             .then()
             .statusCode(422)
-            .body("reason", equalTo("METADATA_REFUSED"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
     }
 
     @Test
@@ -662,7 +685,7 @@ class ExchangeSurfaceIT {
 
         post(SurfaceFixture.item(bracket) + ":send",
             Map.of("metadata", Map.of("pr", "https://example.invalid/pull/5")))
-            .then().statusCode(200).body("status", equalTo("open"));
+            .then().statusCode(200).body("fields.state", equalTo("open"));
     }
 
     /**
@@ -701,7 +724,7 @@ class ExchangeSurfaceIT {
         given().get("/api/no-such-scope/sprint/1.0")
             .then()
             .statusCode(404)
-            .body("reason", equalTo("SCOPE_UNRESOLVED"));
+            .body("reason", equalTo("NOT_FOUND"));
     }
 
     @Test
@@ -711,7 +734,7 @@ class ExchangeSurfaceIT {
         given().get("/api/NO-SUCH-SCOPE/sprint/1.0")
             .then()
             .statusCode(400)
-            .body("reason", equalTo("ADDRESS_MALFORMED"));
+            .body("reason", equalTo("ARGUMENT_INVALID"));
     }
 
     @Test
@@ -721,14 +744,24 @@ class ExchangeSurfaceIT {
         given().get(SurfaceFixture.item("1.0"))
             .then()
             .statusCode(403)
-            .body("reason", equalTo("ACTOR_UNKNOWN"));
+            .body("reason", equalTo("ROLE_DOES_NOT_ALLOW"));
     }
 
     // =======================================================================
     // Driving the surface
     // =======================================================================
 
-    private static final String SELECTOR_PREFIX = SurfaceFixture.SELECTOR + "/";
+    /**
+     * The prefix every address an answer carries begins with.
+     *
+     * <p>Complete since satellite/26.6: an address that leaves this service is
+     * the one a caller can put straight into its next call. The probes assert
+     * against this constant rather than against a literal so that the shape is
+     * stated once — and so a regression to the short form turns every address
+     * assertion red at the same time, which is what it deserves.
+     */
+    private static final String SELECTOR_PREFIX =
+        "dispatch://" + SurfaceFixture.SCOPE + "/" + SurfaceFixture.SELECTOR + "/";
 
     private static Map<String, Object> commission(String title) {
         return Map.of("title", title, "apparatus", "code", "date", "2026-09-01",
@@ -739,7 +772,7 @@ class ExchangeSurfaceIT {
     private String openBracket() {
         Response created = post(SurfaceFixture.collection(), commission("a commission"));
         created.then().statusCode(201);
-        return created.jsonPath().getString("number") + ".0";
+        return created.jsonPath().getString("fields.number") + ".0";
     }
 
     /** An exchange that has been sent, claimed, answered — ready for accept. */

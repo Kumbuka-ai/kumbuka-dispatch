@@ -81,7 +81,17 @@ public class SurfaceException extends RuntimeException {
         CONFLICT_TOKEN_STALE(412),
 
         /** The request body is absent or does not carry what the verb needs. */
-        PAYLOAD_MALFORMED(400);
+        PAYLOAD_MALFORMED(400),
+
+        /**
+         * A claim's duration is absent or is not a positive ISO-8601 duration.
+         *
+         * <p>Its own reason rather than a payload fault, because the surface
+         * contract declares a pattern for exactly this and could not reach it
+         * otherwise: the caller was told its payload was malformed, which is
+         * true and says nothing about which value it should correct.
+         */
+        CLAIM_DURATION_MALFORMED(400);
 
         private final int status;
 

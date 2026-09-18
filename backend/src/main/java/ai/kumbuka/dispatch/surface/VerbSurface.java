@@ -60,6 +60,127 @@ public class VerbSurface {
     @Inject ScopeDirectory scopes;
 
     // ======================================================================
+    // The process verbs
+    //
+    // Each maps onto ONE call of the domain, and the domain makes it atomic.
+    // None of them assembles a compound out of two surface calls: an act
+    // assembled here would be an act the REST surface assembles differently,
+    // and the half-done state left by a failure in the middle is exactly what
+    // a caller cannot recover from.
+    // ======================================================================
+
+    /**
+     * Commissions work: one call, and the exchange comes out open.
+     *
+     * <p>The bracket to add to arrives as a complete address and is resolved
+     * against the same scope, because a child numbers within its bracket and
+     * the two cannot disagree.
+     */
+    @Transactional
+    public Result commission(Actor actor, String rawScope, String rawSelector,
+                             ExchangeAddress parent, VerbInput.Commission request) {
+        Entry in = collection(actor, rawScope, rawSelector);
+        VerbInput.Commission body = required(request);
+
+        Exchange created = exchanges.commission(in.scopeId(), in.selector(),
+            parent == null ? null : parent.number(), body.title(), body.apparatus(),
+            body.text(), body.date(), body.metadata(), actor);
+
+        LOG.infof("commission %s in scope %s", created.address(), in.scopeId());
+        return at(in, addressOf(created));
+    }
+
+    /** Attaches a correction, text included, and answers with what it corrects. */
+    @Transactional
+    public Result addCorrection(Actor actor, String rawScope, String rawSelector,
+                                String rawId, String title, String text) {
+        Entry in = item(actor, rawScope, rawSelector, rawId);
+        exchanges.addCorrection(in.scopeId(), in.address(), title, text, actor);
+        return at(in, in.address());
+    }
+
+    /** Accepts the delivered answer and finishes the exchange. */
+    @Transactional
+    public Result acceptReturn(Actor actor, String rawScope, String rawSelector,
+                               String rawId) {
+        Entry in = item(actor, rawScope, rawSelector, rawId);
+        exchanges.acceptReturn(in.scopeId(), in.address(), actor);
+        return at(in, in.address());
+    }
+
+    /** Accepts the answer and carries it forward into a named object. */
+    @Transactional
+    public Result curateReturn(Actor actor, String rawScope, String rawSelector, String rawId,
+                               ExchangeAddress into) {
+        Entry in = item(actor, rawScope, rawSelector, rawId);
+        exchanges.curateReturn(in.scopeId(), in.address(), into, actor);
+        return at(in, in.address());
+    }
+
+    /** Sends the exchange back with a message; the holder continues. */
+    @Transactional
+    public Result replyToExecutor(Actor actor, String rawScope, String rawSelector,
+                                  String rawId, String conflictToken, String message) {
+        Entry in = item(actor, rawScope, rawSelector, rawId);
+        requireConflictToken(in, conflictToken);
+        exchanges.replyToExecutor(in.scopeId(), in.address(), actor, message);
+        return at(in, in.address());
+    }
+
+    /** Withdraws a commission that is no longer wanted. */
+    @Transactional
+    public Result cancel(Actor actor, String rawScope, String rawSelector, String rawId,
+                         String conflictToken, String reason) {
+        Entry in = item(actor, rawScope, rawSelector, rawId);
+        requireConflictToken(in, conflictToken);
+        exchanges.cancel(in.scopeId(), in.address(), actor, reason);
+        return at(in, in.address());
+    }
+
+    /**
+     * Finishes a bracket: accepts the record on its root and closes it.
+     *
+     * <p>Refuses a non-root before the domain sees it, because the refusal a
+     * caller needs here is "this is not a bracket root" and the domain's would
+     * be about the children of a bracket the address does not name.
+     */
+    @Transactional
+    public Result closeBracket(Actor actor, String rawScope, String rawSelector,
+                               String rawId) {
+        Entry in = item(actor, rawScope, rawSelector, rawId);
+        requireBracketRoot(in.address(), "closing a bracket");
+        exchanges.closeBracket(in.scopeId(), in.address(), actor);
+        return at(in, in.address());
+    }
+
+    /** Delivers the executor's answer to the commissioner. */
+    @Transactional
+    public Result deliverReturn(Actor actor, String rawScope, String rawSelector,
+                                String rawId, String receipt, String text) {
+        Entry in = item(actor, rawScope, rawSelector, rawId);
+        exchanges.deliverReturn(in.scopeId(), in.address(), actor, receipt, text);
+        return at(in, in.address());
+    }
+
+    /** Stops and asks the commissioner something the executor cannot decide. */
+    @Transactional
+    public Result askCommissioner(Actor actor, String rawScope, String rawSelector,
+                                  String rawId, String receipt, String question) {
+        Entry in = item(actor, rawScope, rawSelector, rawId);
+        exchanges.askCommissioner(in.scopeId(), in.address(), actor, receipt, question);
+        return at(in, in.address());
+    }
+
+    /** Declines the work — a refusal before takeup, a failure after it. */
+    @Transactional
+    public Result decline(Actor actor, String rawScope, String rawSelector, String rawId,
+                          String receipt, String reason) {
+        Entry in = item(actor, rawScope, rawSelector, rawId);
+        exchanges.decline(in.scopeId(), in.address(), actor, receipt, reason);
+        return at(in, in.address());
+    }
+
+    // ======================================================================
     // create — two address forms, chosen by the form
     // ======================================================================
 
@@ -220,7 +341,8 @@ public class VerbSurface {
     @Transactional
     public Result abandon(Actor actor, String rawScope, String rawSelector, String rawId) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
-        ExchangeStatus before = exchanges.view(in.scopeId(), in.address(), actor).status();
+        ExchangeStatus before =
+            exchanges.view(in.scopeId(), in.scopeSlug(), in.address(), actor).status();
 
         if (before == ExchangeStatus.ACTIVE) {
             exchanges.fail(in.scopeId(), in.address(), actor);
@@ -284,10 +406,19 @@ public class VerbSurface {
         QueryFilter filter = QueryFilter.of(rawFilters);
 
         List<ExchangeView> found =
-            exchanges.query(in.scopeId(), in.selector(), filter, actor);
+            exchanges.query(in.scopeId(), in.scopeSlug(), in.selector(), filter, actor);
+
+        // Each hit becomes a Result, so each carries its own `next`. A listing
+        // whose entries said only what they are would send a caller back for a
+        // second read of every one of them before it could act on any.
+        List<Result> entries = found.stream()
+            .map(view -> new Result(
+                new ExchangeAddress(view.selector(), view.number(), view.sub(), null),
+                view, view.conflictToken(), participationOf(actor, view)))
+            .toList();
 
         LOG.debugf("query %s in scope %s: %d hit(s)", in.selector(), in.scopeId(), found.size());
-        return new Listing(found);
+        return new Listing(entries);
     }
 
     /**
@@ -365,14 +496,14 @@ public class VerbSurface {
     private Entry collection(Actor actor, String rawScope, String rawSelector) {
         String slug = AddressParser.scope(rawScope);
         String selector = AddressParser.selector(rawSelector);
-        return new Entry(actor, resolve(actor, slug), selector, null);
+        return new Entry(actor, resolve(actor, slug), slug, selector, null);
     }
 
     /** Grammar, then scope visibility, for a complete address. */
     private Entry item(Actor actor, String rawScope, String rawSelector, String rawId) {
         String slug = AddressParser.scope(rawScope);
         ExchangeAddress address = AddressParser.item(rawSelector, rawId);
-        return new Entry(actor, resolve(actor, slug), address.selector(), address);
+        return new Entry(actor, resolve(actor, slug), slug, address.selector(), address);
     }
 
     private UUID resolve(Actor actor, String slug) {
@@ -397,8 +528,34 @@ public class VerbSurface {
      * with the projection: one source, both expositions.
      */
     private Result at(Entry in, ExchangeAddress address) {
-        ExchangeView view = exchanges.view(in.scopeId(), address, in.actor());
-        return new Result(address, view, view.conflictToken());
+        ExchangeView view = exchanges.view(in.scopeId(), in.scopeSlug(), address, in.actor());
+        return new Result(address, view, view.conflictToken(),
+            participationOf(in.actor(), view));
+    }
+
+    /**
+     * How this caller takes part in this exchange.
+     *
+     * <p>Decided here, once, from the two things that decide it: the caller's
+     * capacity and whether it effectively holds the exchange. Both adapters
+     * read the answer rather than deriving it — a second derivation is a
+     * second permission model, and the one that would be wrong is whichever
+     * adapter gets written next.
+     *
+     * <p><strong>A console identity is the commissioner of every exchange it
+     * can see.</strong> That is wider than the contract's "the commissioner",
+     * and it is where the service stands today: the exchange stores who
+     * created it, but the roles are decided from the realm role, and narrowing
+     * this to the creating subject would be a permission change nobody
+     * ratified. Reported as a finding rather than decided here.
+     */
+    private static Participation participationOf(Actor actor, ExchangeView view) {
+        if (actor.isConsole()) {
+            return Participation.COMMISSIONER;
+        }
+        return actor.subject().equals(view.effectiveHolderSubject())
+            ? Participation.HOLDER
+            : Participation.BYSTANDER;
     }
 
     private void requireConflictToken(Entry in, String presented) {
@@ -489,7 +646,29 @@ public class VerbSurface {
      * in a cycle with the payload package.
      */
     public record Result(ExchangeAddress address, ExchangeView exchange,
-                         String conflictToken) {
+                         String conflictToken, Participation participation) {
+
+        /**
+         * The situation {@code next} is computed from.
+         *
+         * <p>Assembled here rather than at each adapter, so the two surfaces
+         * answer the same question and differ only in the vocabulary they
+         * answer it in.
+         */
+        public NextCalculator.Situation situation() {
+            return new NextCalculator.Situation(exchange.status(),
+                exchange.answerDelivered(), exchange.bracketRoot(), exchange.frozen());
+        }
+
+        /** The calls open to this caller on the surface it called through. */
+        public List<NextCalculator.Step> next(Surface surface) {
+            return NextCalculator.next(surface, situation(), participation);
+        }
+
+        /** Who the exchange waits for, where the caller can do nothing. */
+        public String waitingFor(Surface surface) {
+            return NextCalculator.waitingFor(situation(), participation, next(surface));
+        }
     }
 
     /** A claim, and the receipt that is its only copy. */
@@ -511,10 +690,25 @@ public class VerbSurface {
      * it is reported rather than quietly deferred: introducing paging is a
      * decision about the published contract, which is not this run's to make.
      */
-    public record Listing(List<ExchangeView> exchanges) {
+    public record Listing(List<Result> exchanges) {
+
+        /** The views alone, for callers that only want what matched. */
+        public List<ExchangeView> views() {
+            return exchanges.stream().map(Result::exchange).toList();
+        }
     }
 
     /** Everything one call needs once the first two stages have held. */
-    private record Entry(Actor actor, UUID scopeId, String selector, ExchangeAddress address) {
+    /**
+     * Everything one call needs once the first two stages have held.
+     *
+     * <p>The slug travels beside the resolved id, and carries its weight: the
+     * id is what the domain queries on, and the slug is what every address in
+     * the answer is rendered with. Deriving the slug back from the id would be
+     * a reverse lookup of something the caller already told us, and a cache of
+     * it would be a second copy of the mapping the directory owns.
+     */
+    private record Entry(Actor actor, UUID scopeId, String scopeSlug, String selector,
+                         ExchangeAddress address) {
     }
 }

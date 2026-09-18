@@ -65,17 +65,41 @@ public record ExchangeView(
     Map<String, Object> dispatchMetadata,
     String returnBody,
     Map<String, Object> returnMetadata,
-    String conflictToken) {
+    String conflictToken,
+    String curatedInto,
+    String commissionerMessage,
+    String executorQuestion,
+    String terminationReason,
+    boolean answerDelivered,
+    boolean bracketRoot,
+    boolean frozen,
+    String effectiveHolderSubject) {
 
     /**
      * The view for a caller, carrying each role only if the caller may have it.
      *
-     * @param actor decides whether each role is included at all
-     * @param now   the moment the claim is judged against
+     * <p><strong>The address is complete.</strong> It is built from the scope
+     * slug the caller used, here, so that no projection anywhere can answer a
+     * short one — the short form does not exist in this record at all, and a
+     * caller of this factory that has no slug cannot construct a view.
+     *
+     * <p>The three booleans at the end are not fields of the exchange; they are
+     * the preconditions {@code next} reads. They travel on the view rather
+     * than being recomputed at the surface because the surface would then hold
+     * a second reading of the same row — and the one that would be wrong is
+     * the one used by whichever adapter is written next.
+     *
+     * @param actor        decides whether each role is included at all
+     * @param now          the moment the claim is judged against
+     * @param scopeSlug    the scope as the caller names it, for the address
+     * @param curatedInto  the complete address of the curation target, already
+     *                     resolved, or null
      */
-    static ExchangeView of(Exchange e, Actor actor, Instant now) {
+    static ExchangeView of(Exchange e, Actor actor, Instant now, String scopeSlug,
+                           String curatedInto) {
         return new ExchangeView(
-            e.address(),
+            new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix)
+                .complete(scopeSlug),
             e.selectorName(),
             e.number,
             e.sub,
@@ -89,7 +113,28 @@ public record ExchangeView(
             dispatchMetadataFor(e, actor, now),
             returnBodyFor(e, actor, now),
             returnMetadataFor(e, actor, now),
-            e.conflictToken());
+            e.conflictToken(),
+            curatedInto,
+            holdsExchange(e, actor, now) ? e.commissionerMessage() : null,
+            holdsExchange(e, actor, now) ? e.executorQuestion() : null,
+            e.terminationReason(),
+            e.answerDelivered(),
+            e.isBracketRoot(),
+            e.frozen(),
+            e.effectiveHolder(now));
+    }
+
+    /**
+     * Whether an executor's question is outstanding.
+     *
+     * <p>Read off the stored question rather than off the absence of an
+     * answer, because both can be present: an exchange whose answer was sent
+     * back for rework and whose executor then asked something carries a return
+     * body AND a question. Section 6 puts the answer first, and so does
+     * {@code next}.
+     */
+    public boolean questionAsked() {
+        return executorQuestion != null && !executorQuestion.isBlank();
     }
 
     /**
