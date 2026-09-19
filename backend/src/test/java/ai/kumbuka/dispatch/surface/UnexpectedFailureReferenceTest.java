@@ -42,8 +42,8 @@ class UnexpectedFailureReferenceTest {
         watched = Logger.getLogger(UnexpectedFailures.class.getName());
         handler = new Handler() {
             @Override
-            public void publish(LogRecord record) {
-                recorded.add(record);
+            public void publish(LogRecord line) {
+                recorded.add(line);
             }
 
             @Override
@@ -88,10 +88,10 @@ class UnexpectedFailureReferenceTest {
 
         assertThat(recorded)
             .as("and the same reference is in the service's log, with the failure")
-            .anySatisfy(record -> {
-                assertThat(record.getLevel()).isEqualTo(Level.SEVERE);
-                assertThat(String.valueOf(record.getMessage())).contains(reference);
-                assertThat(record.getThrown())
+            .anySatisfy(line -> {
+                assertThat(line.getLevel()).isEqualTo(Level.SEVERE);
+                assertThat(String.valueOf(line.getMessage())).contains(reference);
+                assertThat(line.getThrown())
                     .as("a reference somebody can look up and learn nothing from is a "
                         + "reference that is not doing its job")
                     .isSameAs(cause);
@@ -106,8 +106,8 @@ class UnexpectedFailureReferenceTest {
 
         String reference = String.valueOf(refused.data().get("reference"));
         assertThat(recorded)
-            .anySatisfy(record ->
-                assertThat(String.valueOf(record.getMessage())).contains(reference));
+            .anySatisfy(line ->
+                assertThat(String.valueOf(line.getMessage())).contains(reference));
     }
 
 }

@@ -474,7 +474,7 @@ public class ExchangeService {
     @Transactional
     public Exchange acceptReturn(UUID scopeId, ExchangeAddress address, Actor actor) {
         Exchange e = ratifyUnlessAlready(scopeId, address, actor);
-        return transition(scopeId, address, Transition.CLOSE, actor, e);
+        return transition(scopeId, Transition.CLOSE, actor, e);
     }
 
     /**
@@ -520,7 +520,7 @@ public class ExchangeService {
         }
 
         e.curateInto(target.id);
-        return transition(scopeId, address, Transition.CONSUME, actor, e);
+        return transition(scopeId, Transition.CONSUME, actor, e);
     }
 
     /**
@@ -541,7 +541,7 @@ public class ExchangeService {
         requireSiblingsTerminal(scopeId, root);
 
         Exchange e = ratifyUnlessAlready(scopeId, address, actor);
-        return transition(scopeId, address, Transition.CLOSE, actor, e);
+        return transition(scopeId, Transition.CLOSE, actor, e);
     }
 
     /**
@@ -559,7 +559,7 @@ public class ExchangeService {
                                   String receipt, String text) {
         Exchange e = writeDraft(scopeId, address, actor, null, text, null, null, receipt,
             null);
-        return transition(scopeId, address, Transition.BLOCK, actor, e);
+        return transition(scopeId, Transition.BLOCK, actor, e);
     }
 
     /**
@@ -580,7 +580,7 @@ public class ExchangeService {
         }
 
         e.recordExecutorQuestion(question);
-        return transition(scopeId, address, Transition.BLOCK, actor, e);
+        return transition(scopeId, Transition.BLOCK, actor, e);
     }
 
     /**
@@ -598,7 +598,7 @@ public class ExchangeService {
                                     String message) {
         Exchange e = require(scopeId, address);
         e.recordCommissionerMessage(message);
-        return transition(scopeId, address, Transition.RESUME, actor, e);
+        return transition(scopeId, Transition.RESUME, actor, e);
     }
 
     /**
@@ -620,7 +620,7 @@ public class ExchangeService {
             requireSiblingsTerminal(scopeId, e);
         }
         e.recordTerminationReason(reason);
-        return transition(scopeId, address, Transition.CLOSE, actor, e);
+        return transition(scopeId, Transition.CLOSE, actor, e);
     }
 
     /**
@@ -646,7 +646,7 @@ public class ExchangeService {
         }
 
         e.recordTerminationReason(reason);
-        return transition(scopeId, address, ending, actor, e);
+        return transition(scopeId, ending, actor, e);
     }
 
     /**
@@ -1067,7 +1067,7 @@ public class ExchangeService {
 
     private Exchange transition(UUID scopeId, ExchangeAddress address,
                                 Transition t, Actor actor) {
-        return transition(scopeId, address, t, actor, require(scopeId, address));
+        return transition(scopeId, t, actor, require(scopeId, address));
     }
 
     /**
@@ -1080,8 +1080,7 @@ public class ExchangeService {
      * write: a compound that wrote a value and then read the row afresh is a
      * compound whose reader has to know that the two are the same object.
      */
-    private Exchange transition(UUID scopeId, ExchangeAddress address,
-                                Transition t, Actor actor, Exchange e) {
+    private Exchange transition(UUID scopeId, Transition t, Actor actor, Exchange e) {
 
         // The bracket closes through the termination of its .0, and the check
         // sits AT that transition rather than beside it. Beside it is where the

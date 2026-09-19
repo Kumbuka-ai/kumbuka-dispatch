@@ -373,8 +373,7 @@ public final class NextCalculator {
      * "an executor to take it up", an active one for "the holder", and
      * anything the commissioner owes for "the commissioner".
      */
-    public static String waitingFor(Situation situation, Participation participation,
-                                    List<Step> next) {
+    public static String waitingFor(Situation situation, List<Step> next) {
         if (!next.isEmpty()) {
             return null;
         }

@@ -255,7 +255,7 @@ class McpProjectionIT {
      */
     @Test
     void a_number_as_a_metadata_value_is_refused_rather_than_coerced_to_text() {
-        String address = createThroughMcp();
+        createThroughMcp();
 
         Response answer = rpc("tools/call", Map.of(
             "name", "dispatch_commission", "arguments", Map.of(
@@ -276,7 +276,7 @@ class McpProjectionIT {
      */
     @Test
     void a_list_metadata_value_survives_the_send_gate_and_is_stored_as_a_list() {
-        String address = createThroughMcp();
+        createThroughMcp();
 
         Map<String, Object> sent = callTool("dispatch_commission", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
@@ -292,7 +292,7 @@ class McpProjectionIT {
      */
     @Test
     void metadata_carrying_a_credential_is_refused_on_this_exposition_too() {
-        String address = createThroughMcp();
+        createThroughMcp();
 
         Response answer = rpc("tools/call", Map.of(
             "name", "dispatch_commission", "arguments", Map.of(

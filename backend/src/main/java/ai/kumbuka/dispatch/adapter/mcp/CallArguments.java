@@ -11,6 +11,7 @@ import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * One tool call's arguments, checked against the declaration before anything
@@ -160,16 +161,21 @@ final class CallArguments {
      * <p>Not coerced. An earlier shape flattened every value through {@code
      * toString} and would have turned a real list into the prose "[a, b]";
      * the domain's validator knows the accepted shapes and refuses the rest.
+     *
+     * <p>Empty rather than null, because "the caller sent no metadata" and
+     * "the caller sent an empty object" are two different calls and the
+     * domain treats them differently. The conversion to the domain's own null
+     * happens at the one call site, where it is visible.
      */
     @SuppressWarnings("unchecked")
-    Map<String, Object> metadataField() {
+    Optional<Map<String, Object>> metadataField() {
         Object raw = fields.get("metadata");
         if (!(raw instanceof Map)) {
-            return null;
+            return Optional.empty();
         }
         Map<String, Object> carried = new LinkedHashMap<>();
         ((Map<Object, Object>) raw).forEach((k, v) -> carried.put(String.valueOf(k), v));
-        return carried;
+        return Optional.of(carried);
     }
 
     /** The filters of a listing: everything that is not scope or selector. */

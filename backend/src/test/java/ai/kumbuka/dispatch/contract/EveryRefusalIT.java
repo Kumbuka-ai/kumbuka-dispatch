@@ -164,7 +164,7 @@ class EveryRefusalIT {
         commissionChild(root);
 
         // NOT_FOUND — an address nothing occupies.
-        record(raised, call("dispatch_read", Map.of("address",
+        note(raised, call("dispatch_read", Map.of("address",
             "dispatch://" + SurfaceFixture.SCOPE + "/" + SurfaceFixture.SELECTOR
                 + "/99999.0")));
 
@@ -177,30 +177,30 @@ class EveryRefusalIT {
         String taken = commission();
         SurfaceFixture.asExecutor(identity);
         call("dispatch_take", Map.of("address", taken, "duration", "PT1H"));
-        record(raised, call("dispatch_take",
+        note(raised, call("dispatch_take",
             Map.of("address", taken, "duration", "PT1H")));
         SurfaceFixture.asConsole(identity);
 
         // CHILDREN_NOT_FINISHED — closing a bracket with an open child.
-        record(raised, call("dispatch_close_bracket", Map.of("address", root)));
+        note(raised, call("dispatch_close_bracket", Map.of("address", root)));
 
         // ARGUMENT_UNKNOWN — an argument no call declares.
         Map<String, Object> withExtra = new LinkedHashMap<>(commissionArguments());
         withExtra.put("no_call_declares_this", "x");
-        record(raised, call("dispatch_commission", withExtra));
+        note(raised, call("dispatch_commission", withExtra));
 
         // ARGUMENT_MISSING — a required value left out.
-        record(raised, call("dispatch_read", Map.of()));
+        note(raised, call("dispatch_read", Map.of()));
 
         // ARGUMENT_INVALID — a malformed address.
-        record(raised, call("dispatch_read", Map.of("address", "not-an-address")));
+        note(raised, call("dispatch_read", Map.of("address", "not-an-address")));
 
         // CLAIM_DURATION_INVALID — a duration that is not one.
-        record(raised, call("dispatch_take",
+        note(raised, call("dispatch_take",
             Map.of("address", open, "duration", "half an hour")));
 
         // SELECTOR_UNKNOWN — a bracket kind this scope does not declare.
-        record(raised, call("dispatch_query", Map.of(
+        note(raised, call("dispatch_query", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", "a-kind-nobody-declared")));
 
         // ARGUMENT_MISSING again, through a different door: a call that
@@ -209,7 +209,7 @@ class EveryRefusalIT {
         // first — which is why CONFLICT_TOKEN_MISSING is excluded above and
         // this line is not the provocation of it. The predecessor's comment
         // here said it was.
-        record(raised, call("dispatch_cancel", Map.of(
+        note(raised, call("dispatch_cancel", Map.of(
             "address", open, "fields", Map.of("reason", "no longer wanted"))));
 
         // CALL_NOT_AT_THIS_ADDRESS — a bracket verb at a child.
@@ -218,7 +218,7 @@ class EveryRefusalIT {
         // what does not fit is the pairing. The predecessor answered this with
         // ARGUMENT_INVALID, which sends a caller correcting an address that was
         // right.
-        record(raised, call("dispatch_close_bracket",
+        note(raised, call("dispatch_close_bracket",
             Map.of("address", firstChildOf(root))));
 
         // IDEMPOTENCY_KEY_REUSED — one key, two different commissions.
@@ -230,10 +230,10 @@ class EveryRefusalIT {
         second.put("idempotency_key", "a-key-of-my-own");
         second.put("fields", Map.of("title", "a different commission entirely",
             "apparatus", "code", "text", "with different text too"));
-        record(raised, call("dispatch_commission", second));
+        note(raised, call("dispatch_commission", second));
 
         // CONFLICT_TOKEN_STALE — a token that is not the one it holds.
-        record(raised, call("dispatch_cancel", Map.of(
+        note(raised, call("dispatch_cancel", Map.of(
             "address", open, "conflict_token", "1999-01-01T00:00:00Z",
             "fields", Map.of("reason", "no longer wanted"))));
 
@@ -241,16 +241,16 @@ class EveryRefusalIT {
         SurfaceFixture.asExecutor(identity);
         String receipt = receiptOf(call("dispatch_take",
             Map.of("address", open, "duration", "PT1H")));
-        record(raised, call("dispatch_accept_return", Map.of("address", open)));
+        note(raised, call("dispatch_accept_return", Map.of("address", open)));
 
         // RECEIPT_WRONG — a receipt that is not the one it issued.
-        record(raised, call("dispatch_deliver_return", Map.of(
+        note(raised, call("dispatch_deliver_return", Map.of(
             "address", open, "receipt", "not-the-one-it-holds",
             "fields", Map.of("text", "an answer"))));
 
         // NOT_THE_HOLDER — a second executor writing on somebody else's.
         SurfaceFixture.asOtherExecutor(identity);
-        record(raised, call("dispatch_deliver_return", Map.of(
+        note(raised, call("dispatch_deliver_return", Map.of(
             "address", open, "receipt", receipt,
             "fields", Map.of("text", "an answer"))));
 
@@ -260,7 +260,7 @@ class EveryRefusalIT {
         // the one it has been commissioning in: the refusal says "the set is
         // there and empty of anything claimable", and a set that still holds an
         // open exchange would answer with that exchange instead.
-        record(raised, call("dispatch_take_next", Map.of(
+        note(raised, call("dispatch_take_next", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", "satellite",
             "duration", "PT1H")));
 
@@ -270,13 +270,18 @@ class EveryRefusalIT {
             "address", open, "receipt", receipt,
             "fields", Map.of("question", "something I cannot decide")));
         SurfaceFixture.asConsole(identity);
-        record(raised, call("dispatch_accept_return", Map.of("address", open)));
+        note(raised, call("dispatch_accept_return", Map.of("address", open)));
 
         return raised;
     }
 
-    /** Records the reason and message of an answer, if it was a refusal. */
-    private static void record(Map<RefusalCode, String> into, Response answer) {
+    /**
+     * Records the reason and message of an answer, if it was a refusal.
+     *
+     * <p>Not named {@code record}: that is a restricted identifier, and a
+     * method that shadows one reads as a declaration to anybody skimming.
+     */
+    private static void note(Map<RefusalCode, String> into, Response answer) {
         if (!Boolean.TRUE.equals(answer.jsonPath().getBoolean("result.isError"))) {
             return;
         }

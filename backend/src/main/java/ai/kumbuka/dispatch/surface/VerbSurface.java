@@ -714,7 +714,7 @@ public class VerbSurface {
 
         /** Who the exchange waits for, where the caller can do nothing. */
         public String waitingFor(Surface surface) {
-            return NextCalculator.waitingFor(situation(), participation, next(surface));
+            return NextCalculator.waitingFor(situation(), next(surface));
         }
     }
 
@@ -745,7 +745,6 @@ public class VerbSurface {
         }
     }
 
-    /** Everything one call needs once the first two stages have held. */
     /**
      * Everything one call needs once the first two stages have held.
      *

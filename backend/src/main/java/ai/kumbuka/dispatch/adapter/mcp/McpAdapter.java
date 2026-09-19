@@ -29,7 +29,6 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.jboss.logging.Logger;
 
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -65,14 +64,6 @@ import java.util.UUID;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public class McpAdapter {
-
-    /**
-     * What this logger may say: call name, address, typed reason. Never a
-     * title, a text, metadata, a token or a receipt — the operator boundary is
-     * built as a missing GRANT, and a log shipper carrying a commission's text
-     * out of the container walks around it.
-     */
-    private static final Logger LOG = Logger.getLogger(McpAdapter.class);
 
     /** The revision of the MCP protocol this adapter speaks. */
     private static final String PROTOCOL_VERSION = "2025-06-18";
@@ -249,7 +240,7 @@ public class McpAdapter {
             in.requiredField("apparatus"),
             in.requiredField("text"),
             in.optionalDateField("date", LocalDate.now()),
-            in.metadataField());
+            in.metadataField().orElse(null));
 
         return compact(verbs.commission(actor, scope, selector, parent, body,
             IdempotencyKey.of(in.optionalTop(ARG_IDEMPOTENCY_KEY))));
