@@ -95,31 +95,31 @@ public final class ReasonCatalogue {
 
         put(declared, RefusalCode.NOT_THE_HOLDER,
             "{address} is held by someone else until {until}. Only the holder can {does}.",
-            "wait, or dispatch_read");
+            "wait, or {read}");
 
         put(declared, RefusalCode.RECEIPT_MISSING,
-            "{call} needs the receipt you received from dispatch_take for {address}.",
+            "{call} needs the receipt you received from {take} for {address}.",
             "pass the receipt from the take");
 
         put(declared, RefusalCode.RECEIPT_WRONG,
-            "{call} needs the receipt you received from dispatch_take for {address}: the "
+            "{call} needs the receipt you received from {take} for {address}: the "
                 + "receipt given is not the one issued for {address}.",
             "pass the receipt from the take");
 
         put(declared, RefusalCode.NO_ANSWER_DELIVERED,
             "{address} has no delivered answer to accept. The holder delivers with "
-                + "dispatch_deliver_return.",
+                + "{deliver}.",
             "wait for the executor");
 
         put(declared, RefusalCode.CHILDREN_NOT_FINISHED,
-            "{root} cannot be closed while {count} exchange(s) of the bracket are "
+            "{root} cannot be {ending} while {count} exchange(s) of the bracket are "
                 + "unfinished: {offenders}.",
             "the calls in each offender's next");
 
         put(declared, RefusalCode.NOTHING_TO_TAKE,
             "Nothing in {collection} can be taken up right now: every exchange is "
                 + "finished, held by someone, or waiting for its commissioner.",
-            "dispatch_query");
+            "{query}");
 
         put(declared, RefusalCode.CLAIM_DURATION_INVALID,
             "The duration {value} is not a positive ISO-8601 duration such as PT2H.",
@@ -151,6 +151,16 @@ public final class ReasonCatalogue {
             "{selector} is not a bracket kind declared in scope {scope}. Declared: "
                 + "{declared}.",
             "use a declared one");
+
+        put(declared, RefusalCode.IDEMPOTENCY_KEY_REUSED,
+            "The idempotency key {key} was used for a different {call} in scope {scope} "
+                + "within the last 24 hours.",
+            "choose a new key");
+
+        put(declared, RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "{call} cannot be made on {address}: it applies to {applies}. On {address} you "
+                + "can: {calls}.",
+            "the calls in data.next");
 
         put(declared, RefusalCode.UNEXPECTED_FAILURE,
             "{call} on {address} failed unexpectedly. This is a defect, not a rule. "
@@ -193,23 +203,45 @@ public final class ReasonCatalogue {
     }
 
     /**
-     * The message for a refusal, with its values filled in.
+     * The message for a refusal, with its step names and its values filled in.
      *
-     * <p>An unfilled placeholder throws. A caller reading {@code "{address} is
-     * held by someone else"} learns nothing and cannot tell the gap from the
+     * <p>Two fillings in one pass, and they are not the same kind of thing.
+     * The <em>step</em> names come from the surface the caller called through,
+     * per section 4.2, and no throw site supplies them; the <em>values</em>
+     * come from the throw site, which is the only place that knows them.
+     *
+     * <p>An unfilled placeholder throws. A caller reading a message with a
+     * brace left in it learns nothing and cannot tell the gap from the
      * service's ordinary prose — and the throw lands as {@code
      * UNEXPECTED_FAILURE}, which is the honest name for it.
      */
-    public static String message(RefusalCode code, Map<String, String> values) {
-        String rendered = fill(of(code).pattern(), values);
+    public static String message(RefusalCode code, Surface surface,
+                                 Map<String, String> values) {
+        String rendered = fill(inVocabularyOf(of(code).pattern(), surface), values);
         requireFilled(code, rendered);
         return rendered;
     }
 
     /** The terminal-state variant, filled the same way. */
-    public static String terminalStateMessage(Map<String, String> values) {
-        String rendered = fill(TERMINAL_STATE_PATTERN, values);
+    public static String terminalStateMessage(Surface surface,
+                                              Map<String, String> values) {
+        String rendered = fill(inVocabularyOf(TERMINAL_STATE_PATTERN, surface), values);
         requireFilled(RefusalCode.STATE_DOES_NOT_ALLOW, rendered);
+        return rendered;
+    }
+
+    /**
+     * One pattern or remedy with its step names taken from a surface.
+     *
+     * <p>Public because the declaration publishes the patterns of the
+     * assistant surface, and publishing them with a step placeholder still in
+     * them would publish a shape no caller can read.
+     */
+    public static String inVocabularyOf(String pattern, Surface surface) {
+        String rendered = pattern;
+        for (SurfaceStep step : SurfaceStep.values()) {
+            rendered = rendered.replace("{" + step.placeholder() + "}", step.on(surface));
+        }
         return rendered;
     }
 

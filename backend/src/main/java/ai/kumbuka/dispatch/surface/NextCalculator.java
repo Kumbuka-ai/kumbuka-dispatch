@@ -14,23 +14,31 @@ import java.util.Set;
  * What this caller can do with this exchange next, and what it is waiting for.
  *
  * <p><strong>One computation, two vocabularies.</strong> The question "which
- * calls succeed from here" is answered once, from {@link Transition} and the
- * caller's part in the exchange. What differs per surface is only the name each
- * answer goes by: the assistant surface says {@code dispatch_accept_return},
- * the generic surface says {@code accept} then {@code close}. Building two
- * computations would be building two answers to one question, and the first
- * time they disagreed the caller would be told it could do something it cannot.
+ * calls succeed from here" is answered once, from {@link Transition}, the
+ * contract's from-states and the caller's part in the exchange. What differs
+ * per surface is only the name each answer goes by: the assistant surface says
+ * {@code dispatch_accept_return}, the generic surface says {@code accept} then
+ * {@code close}. Building two computations would be building two answers to one
+ * question, and the first time they disagreed the caller would be told it could
+ * do something it cannot.
  *
  * <h2>The promise this class makes</h2>
  *
  * Everything listed succeeds; everything omitted is refused from state or role.
  * That is checkable, and A3 checks it by driving an exchange through every
- * state in both roles and calling both halves of the list. It is also the
- * reason the preconditions of {@link VerbStep} exist: a call whose kernel
- * transition is permitted can still be refused for a reason the state does not
- * carry — no answer to accept, a bracket root where a child was meant — and
- * listing it would break the promise in the one way a caller cannot recover
- * from, because it would have followed the list.
+ * state in every part and calling <em>each</em> listed call on a fresh copy of
+ * that state. The earlier probe called two of five and missed a listed call
+ * whose success path had never run at all — so "every listed call succeeds" is
+ * now exercised per call rather than per row.
+ *
+ * <h2>Four parts, not three</h2>
+ *
+ * Section 2 separates the candidate from the bystander, and the separation is
+ * the whole of {@code dispatch_decline}'s row: a candidate may decline an open
+ * exchange without a receipt, and a bystander may not decline anything. Folding
+ * the two together offered the call to a bystander on an {@code active}
+ * exchange — where it is refused — and withheld it from a candidate on an
+ * {@code open} one, where it succeeds.
  */
 public final class NextCalculator {
 
@@ -45,64 +53,107 @@ public final class NextCalculator {
      * The state of the exchange as the calculation needs to see it.
      *
      * <p>A value type rather than the entity, because the calculation is pure
-     * and is exercised by a unit test over all nine states times three
-     * participations without a database. The four booleans are exactly the
-     * preconditions of {@link VerbStep.Precondition} — if a fifth is ever
+     * and is exercised by a unit test over every state times every
+     * participation without a database. The booleans are exactly the
+     * preconditions of {@link VerbStep.Precondition} — if another is ever
      * needed, it appears here and the compiler finds every caller.
      *
-     * @param status          where the exchange stands
-     * @param answerDelivered whether an answer is present to be accepted
-     * @param bracketRoot     whether this is the {@code .0} of its bracket
-     * @param frozen          whether the dispatch text is committed
+     * @param status           where the exchange stands
+     * @param answerDelivered  whether an answer is present to be accepted
+     * @param bracketRoot      whether this is the {@code .0} of its bracket
+     * @param frozen           whether the dispatch text is committed
+     * @param childrenFinished whether every other exchange of the bracket is
+     *                         terminal. True at a child, where the question
+     *                         does not arise: section 6 conditions only a
+     *                         root's calls on it.
      */
     public record Situation(ExchangeStatus status, boolean answerDelivered,
-                            boolean bracketRoot, boolean frozen) {
+                            boolean bracketRoot, boolean frozen,
+                            boolean childrenFinished) {
     }
 
     /**
-     * What each process verb does to the kernel.
+     * What each process verb does to the kernel, and from where.
      *
      * <p>Compound verbs carry their steps in order and the whole list runs in
      * one transaction. {@code dispatch_accept_return} is {@code ratify} then
      * {@code close} — which is why, on this surface, {@code returned} is a
-     * state a caller never sees.
+     * state a caller reaches only through the generic surface and can still
+     * finish from here.
      */
+    /**
+     * The four states an exchange can still be acted on in.
+     *
+     * <p>Declared BEFORE {@link #STEPS}, and the order is load-bearing: static
+     * initialisers run in source order, so a set declared after the map that
+     * reads it is null while the map is being built — which produced a
+     * {@code null} from-set on every step and an {@code UNEXPECTED_FAILURE} on
+     * the first answer the service tried to give.
+     */
+    private static final Set<ExchangeStatus> UNFINISHED = EnumSet.of(
+        ExchangeStatus.OPEN, ExchangeStatus.ACTIVE, ExchangeStatus.NEEDS_INPUT,
+        ExchangeStatus.RETURNED);
+
     private static final Map<ProcessVerb, VerbStep> STEPS = steps();
 
     private static Map<ProcessVerb, VerbStep> steps() {
         Map<ProcessVerb, VerbStep> steps = new LinkedHashMap<>();
 
-        // The commissioner's.
+        // The commissioner's. From-states are section 5's own wording.
         steps.put(ProcessVerb.ADD_CORRECTION, new VerbStep(ProcessVerb.ADD_CORRECTION,
-            List.of(), List.of(VerbStep.Precondition.IS_FROZEN,
+            UNFINISHED, List.of(),
+            List.of(VerbStep.Precondition.IS_FROZEN,
                 VerbStep.Precondition.IS_NOT_TERMINAL)));
+
         steps.put(ProcessVerb.ACCEPT_RETURN, new VerbStep(ProcessVerb.ACCEPT_RETURN,
+            EnumSet.of(ExchangeStatus.NEEDS_INPUT, ExchangeStatus.RETURNED),
             List.of(Transition.RATIFY, Transition.CLOSE),
             List.of(VerbStep.Precondition.ANSWER_DELIVERED,
                 VerbStep.Precondition.IS_NOT_BRACKET_ROOT)));
+
         steps.put(ProcessVerb.CURATE_RETURN, new VerbStep(ProcessVerb.CURATE_RETURN,
+            EnumSet.of(ExchangeStatus.NEEDS_INPUT, ExchangeStatus.RETURNED),
             List.of(Transition.RATIFY, Transition.CONSUME),
             List.of(VerbStep.Precondition.ANSWER_DELIVERED,
                 VerbStep.Precondition.IS_NOT_BRACKET_ROOT)));
+
         steps.put(ProcessVerb.REPLY_TO_EXECUTOR, new VerbStep(ProcessVerb.REPLY_TO_EXECUTOR,
+            EnumSet.of(ExchangeStatus.NEEDS_INPUT),
             List.of(Transition.RESUME), List.of()));
+
         steps.put(ProcessVerb.CANCEL, new VerbStep(ProcessVerb.CANCEL,
+            EnumSet.of(ExchangeStatus.OPEN, ExchangeStatus.ACTIVE,
+                ExchangeStatus.NEEDS_INPUT),
             List.of(Transition.CLOSE),
-            List.of(VerbStep.Precondition.IS_NOT_BRACKET_ROOT)));
+            List.of(VerbStep.Precondition.BRACKET_MAY_END)));
+
         steps.put(ProcessVerb.CLOSE_BRACKET, new VerbStep(ProcessVerb.CLOSE_BRACKET,
+            EnumSet.of(ExchangeStatus.NEEDS_INPUT, ExchangeStatus.RETURNED),
             List.of(Transition.RATIFY, Transition.CLOSE),
             List.of(VerbStep.Precondition.ANSWER_DELIVERED,
-                VerbStep.Precondition.IS_BRACKET_ROOT)));
+                VerbStep.Precondition.IS_BRACKET_ROOT,
+                VerbStep.Precondition.BRACKET_MAY_END)));
 
         // The executor's.
         steps.put(ProcessVerb.TAKE, new VerbStep(ProcessVerb.TAKE,
+            EnumSet.of(ExchangeStatus.OPEN),
             List.of(Transition.TAKEUP), List.of()));
+
         steps.put(ProcessVerb.DELIVER_RETURN, new VerbStep(ProcessVerb.DELIVER_RETURN,
+            EnumSet.of(ExchangeStatus.ACTIVE),
             List.of(Transition.BLOCK), List.of()));
+
         steps.put(ProcessVerb.ASK_COMMISSIONER, new VerbStep(ProcessVerb.ASK_COMMISSIONER,
+            EnumSet.of(ExchangeStatus.ACTIVE),
             List.of(Transition.BLOCK), List.of()));
+
+        // One verb over two endings, and the part decides which. The chain is
+        // left empty because there is no single transition that covers both:
+        // `participates` reads the pair (state, part) instead, which is
+        // exactly how section 5.2 words it.
         steps.put(ProcessVerb.DECLINE, new VerbStep(ProcessVerb.DECLINE,
-            List.of(Transition.FAIL), List.of()));
+            EnumSet.of(ExchangeStatus.OPEN, ExchangeStatus.ACTIVE),
+            List.of(), List.of()));
 
         return Map.copyOf(steps);
     }
@@ -120,7 +171,7 @@ public final class NextCalculator {
         Map.entry(ProcessVerb.ACCEPT_RETURN,
             "Accepts the delivered answer and finishes the exchange."),
         Map.entry(ProcessVerb.CURATE_RETURN,
-            "Accepts the answer and carries it forward into a named object."),
+            "Accepts the answer and carries it forward into another exchange."),
         Map.entry(ProcessVerb.REPLY_TO_EXECUTOR,
             "Sends it back with a message; the holder continues."),
         Map.entry(ProcessVerb.CANCEL,
@@ -194,15 +245,15 @@ public final class NextCalculator {
     /**
      * Whether one process verb is open here.
      *
-     * <p>Three gates in order: the caller's part in the exchange, the kernel's
-     * own permission for the first transition, and the declared preconditions.
-     * All three are readable from what the answer already holds, which is what
-     * makes this computable inside the answer rather than as a second round
-     * trip.
+     * <p>Three gates in order: the caller's part in the exchange, the
+     * contract's from-states together with the kernel's own chain, and the
+     * declared preconditions. All three are readable from what the answer
+     * already holds, which is what makes this computable inside the answer
+     * rather than as a second round trip.
      */
     private static boolean open(VerbStep step, Situation situation,
                                 Participation participation) {
-        if (!participates(step.verb(), participation)) {
+        if (!participates(step.verb(), participation, situation.status())) {
             return false;
         }
         if (!step.reachableFrom(situation.status())) {
@@ -217,23 +268,24 @@ public final class NextCalculator {
     }
 
     /**
-     * Whether the caller's part in the exchange admits this verb.
+     * Whether the caller's part in the exchange admits this verb here.
      *
-     * <p>{@code dispatch_take} and {@code dispatch_decline} are declared with
-     * {@link Participation#BYSTANDER} and mean something narrower than "anyone
-     * who is not the commissioner": a caller that already holds the exchange
-     * has no take to make, and its decline is the holder's. So the holder is
-     * admitted to {@code dispatch_decline} as well — the one verb both an
-     * un-taken and a taken-up caller can make, which is exactly what section
-     * 5.2 describes ("Before you took it up this records a refusal of the
-     * commission; after, a failure to complete it").
+     * <p>{@code dispatch_decline} is the one verb two parts may make, and the
+     * state decides which: a candidate declines an exchange that is still open
+     * and the commission is refused; the holder declines the one it holds and
+     * records that it could not finish. No other pairing is admitted — a
+     * bystander declines nothing, and a candidate cannot decline an exchange
+     * somebody else is working on. That is section 5.2 read literally, and
+     * reading it any more loosely is what put the call in a bystander's {@code
+     * next} on an active exchange.
      */
-    private static boolean participates(ProcessVerb verb, Participation participation) {
+    private static boolean participates(ProcessVerb verb, Participation participation,
+                                        ExchangeStatus status) {
         if (verb == ProcessVerb.DECLINE) {
-            return participation != Participation.COMMISSIONER;
-        }
-        if (verb == ProcessVerb.TAKE) {
-            return participation == Participation.BYSTANDER;
+            return (participation == Participation.CANDIDATE
+                && status == ExchangeStatus.OPEN)
+                || (participation == Participation.HOLDER
+                && status == ExchangeStatus.ACTIVE);
         }
         return verb.role() == participation;
     }
@@ -245,6 +297,7 @@ public final class NextCalculator {
             case IS_NOT_BRACKET_ROOT -> !situation.bracketRoot();
             case IS_FROZEN -> situation.frozen();
             case IS_NOT_TERMINAL -> !situation.status().terminal();
+            case BRACKET_MAY_END -> !situation.bracketRoot() || situation.childrenFinished();
         };
     }
 
@@ -272,9 +325,20 @@ public final class NextCalculator {
             if (transition == Transition.RATIFY && !situation.answerDelivered()) {
                 continue;
             }
+            if (endsTheBracket(transition) && situation.bracketRoot()
+                && !situation.childrenFinished()) {
+                // The kernel's own gate: a root cannot end while a child is
+                // unfinished. Offering it here would offer a call this caller
+                // is then refused for a reason the list knew and did not say.
+                continue;
+            }
             offered.add(new Step(transition.verb(), GENERIC_DOES.get(transition)));
         }
         return List.copyOf(offered);
+    }
+
+    private static boolean endsTheBracket(Transition transition) {
+        return transition == Transition.CLOSE || transition == Transition.CONSUME;
     }
 
     /** Executor transitions for the holder, ratification for the commissioner. */
@@ -291,7 +355,7 @@ public final class NextCalculator {
             return participation == Participation.COMMISSIONER;
         }
         if (transition == Transition.TAKEUP || transition == Transition.REJECT) {
-            return participation == Participation.BYSTANDER;
+            return participation == Participation.CANDIDATE;
         }
         // close and consume: the commissioner's administrative end.
         return participation == Participation.COMMISSIONER;
@@ -300,9 +364,14 @@ public final class NextCalculator {
     /**
      * Who the exchange is waiting for, where the caller can do nothing.
      *
-     * <p>Null when {@code next} is non-empty: an exchange whose caller has
-     * something to do is not waiting on anybody, and saying both would leave
-     * the caller to work out which of the two answers is the real one.
+     * <p>Null when {@code next} is non-empty: section 3 makes {@code
+     * waiting_for} present "only where next is empty and the exchange is not
+     * finished", and saying both would leave the caller to work out which of
+     * the two answers is the real one.
+     *
+     * <p>The wordings are section 6's own column: an open exchange waits for
+     * "an executor to take it up", an active one for "the holder", and
+     * anything the commissioner owes for "the commissioner".
      */
     public static String waitingFor(Situation situation, Participation participation,
                                     List<Step> next) {
@@ -313,11 +382,9 @@ public final class NextCalculator {
             return "nobody: the exchange is finished";
         }
         return switch (situation.status()) {
-            case NEEDS_INPUT -> "the commissioner";
-            case OPEN, ACTIVE -> "the executor";
-            // returned: the answer is frozen and the commissioner has not
-            // finished it. A holder or a bystander waits on them.
-            case RETURNED -> "the commissioner";
+            case OPEN -> "an executor to take it up";
+            case ACTIVE -> "the holder";
+            case NEEDS_INPUT, RETURNED -> "the commissioner";
             // draft never reaches this surface; if one ever did, the honest
             // answer is that nobody is waiting because nobody can see it.
             case DRAFT -> "the commissioner";

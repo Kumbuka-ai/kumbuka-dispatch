@@ -28,11 +28,27 @@ public class CallScope {
 
     private String call;
     private String address;
+    private String scope;
+    private String selector;
 
     /** Records the verb this request is making, and the address it acts on. */
     public void calling(String call, String address) {
         this.call = call;
         this.address = address;
+    }
+
+    /**
+     * Records the collection this request names, for the refusals that are
+     * about a collection rather than an exchange.
+     *
+     * <p>Separate from {@link #calling} because a request may name a
+     * collection and no exchange — a listing, a draw — and because {@code
+     * SELECTOR_UNKNOWN} is raised precisely when the selector could not be
+     * resolved, so there is no exchange to read either of them back from.
+     */
+    public void on(String scope, String selector) {
+        this.scope = scope;
+        this.selector = selector;
     }
 
     /** The verb, or the fallback the caller can still act on. */
@@ -43,5 +59,15 @@ public class CallScope {
     /** The complete address this request acts on, or null at collection depth. */
     public String address() {
         return address;
+    }
+
+    /** The scope this request named, or the fallback. */
+    public String scope(String fallback) {
+        return scope == null || scope.isBlank() ? fallback : scope;
+    }
+
+    /** The bracket kind this request named, or the fallback. */
+    public String selector(String fallback) {
+        return selector == null || selector.isBlank() ? fallback : selector;
     }
 }

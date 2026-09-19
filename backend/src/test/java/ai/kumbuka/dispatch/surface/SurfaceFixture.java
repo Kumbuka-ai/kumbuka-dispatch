@@ -34,6 +34,16 @@ public final class SurfaceFixture {
     public static final String EXECUTOR = "probe-executor";
     public static final String OTHER_EXECUTOR = "probe-executor-2";
 
+    /**
+     * A second console identity.
+     *
+     * <p>Exists for one rule that cannot be observed with a single one: an
+     * idempotency key is remembered "per caller and per scope", so the
+     * statement that another caller's key of the same name is another key
+     * needs another caller.
+     */
+    public static final String OTHER_CONSOLE = "probe-console-2";
+
     private SurfaceFixture() {
     }
 
@@ -48,7 +58,8 @@ public final class SurfaceFixture {
      */
     public static void stage() {
         PlatformFixture.grantDirectoryAccess();
-        for (String subject : new String[] {CONSOLE, EXECUTOR, OTHER_EXECUTOR}) {
+        for (String subject : new String[] {CONSOLE, OTHER_CONSOLE, EXECUTOR,
+            OTHER_EXECUTOR}) {
             PlatformFixture.run(
                 "SELECT set_config('app.tenant_id', '"
                     + SubstrateDatabaseResource.TENANT_ID + "', false)",
@@ -63,6 +74,11 @@ public final class SurfaceFixture {
     /** Calls as a human-facing console identity. */
     public static void asConsole(TestIdentityAssociation identity) {
         as(identity, CONSOLE, Actor.ROLE_CONSOLE);
+    }
+
+    /** Calls as a second console identity, for the rules that are per caller. */
+    public static void asOtherConsole(TestIdentityAssociation identity) {
+        as(identity, OTHER_CONSOLE, Actor.ROLE_CONSOLE);
     }
 
     /** Calls as the executing apparatus. */

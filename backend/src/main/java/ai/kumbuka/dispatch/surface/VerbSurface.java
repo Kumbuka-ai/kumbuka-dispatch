@@ -7,6 +7,8 @@ import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.domain.ExchangeService;
 import ai.kumbuka.dispatch.domain.ExchangeStatus;
 import ai.kumbuka.dispatch.domain.ExchangeView;
+import ai.kumbuka.dispatch.domain.ClaimProof;
+import ai.kumbuka.dispatch.domain.IdempotencyKey;
 import ai.kumbuka.dispatch.domain.QueryFilter;
 import ai.kumbuka.dispatch.platform.ScopeDirectory;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
@@ -18,6 +20,7 @@ import org.jboss.logging.Logger;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -78,13 +81,19 @@ public class VerbSurface {
      */
     @Transactional
     public Result commission(Actor actor, String rawScope, String rawSelector,
-                             ExchangeAddress parent, VerbInput.Commission request) {
+                             ExchangeAddress parent, VerbInput.Commission request,
+                             IdempotencyKey key) {
         Entry in = collection(actor, rawScope, rawSelector);
         VerbInput.Commission body = required(request);
 
-        Exchange created = exchanges.commission(in.scopeId(), in.selector(),
+        // The key travels down rather than being honoured here. It decides
+        // whether a write happens, and that decision belongs inside the
+        // transaction that would do the writing: a check at this level would
+        // read the ledger in one transaction and commission in another, so two
+        // retries a few milliseconds apart would both find no row.
+        Exchange created = exchanges.commissionUnder(in.scopeId(), in.selector(),
             parent == null ? null : parent.number(), body.title(), body.apparatus(),
-            body.text(), body.date(), body.metadata(), actor);
+            body.text(), body.date(), body.metadata(), actor, key);
 
         LOG.infof("commission %s in scope %s", created.address(), in.scopeId());
         return at(in, addressOf(created));
@@ -93,9 +102,10 @@ public class VerbSurface {
     /** Attaches a correction, text included, and answers with what it corrects. */
     @Transactional
     public Result addCorrection(Actor actor, String rawScope, String rawSelector,
-                                String rawId, String title, String text) {
+                                String rawId, String title, String text,
+                                IdempotencyKey key) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
-        exchanges.addCorrection(in.scopeId(), in.address(), title, text, actor);
+        exchanges.addCorrectionUnder(in.scopeId(), in.address(), title, text, actor, key);
         return at(in, in.address());
     }
 
@@ -108,12 +118,28 @@ public class VerbSurface {
         return at(in, in.address());
     }
 
-    /** Accepts the answer and carries it forward into a named object. */
+    /**
+     * Accepts the answer and carries it forward into another exchange.
+     *
+     * <p><strong>The target may be in another scope and another bracket
+     * kind.</strong> Section 5.1 says so in as many words — "an exchange of
+     * this service that the caller may see, in any scope and bracket kind,
+     * other than the exchange itself" — and the predecessor narrowed it to the
+     * exchange's own collection, which is the one arrangement ADR-0014 exists
+     * to make unnecessary: a stored reference holds a durable identity, so
+     * nothing about the target's address constrains where it may live.
+     *
+     * <p>The target's scope goes through {@link #resolve} like any other, so a
+     * scope the caller may not see answers {@code NOT_FOUND} — as does a
+     * target that is not there. The two are not told apart, which is section
+     * 4.3 and not an accident of this path.
+     */
     @Transactional
     public Result curateReturn(Actor actor, String rawScope, String rawSelector, String rawId,
-                               ExchangeAddress into) {
+                               String rawTargetScope, ExchangeAddress into) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
-        exchanges.curateReturn(in.scopeId(), in.address(), into, actor);
+        UUID targetScopeId = resolve(actor, AddressParser.scope(rawTargetScope));
+        exchanges.curateReturn(in.scopeId(), in.address(), targetScopeId, into, actor);
         return at(in, in.address());
     }
 
@@ -174,9 +200,9 @@ public class VerbSurface {
     /** Declines the work — a refusal before takeup, a failure after it. */
     @Transactional
     public Result decline(Actor actor, String rawScope, String rawSelector, String rawId,
-                          String receipt, String reason) {
+                          ClaimProof proof, String reason) {
         Entry in = item(actor, rawScope, rawSelector, rawId);
-        exchanges.decline(in.scopeId(), in.address(), actor, receipt, reason);
+        exchanges.decline(in.scopeId(), in.address(), actor, proof, reason);
         return at(in, in.address());
     }
 
@@ -510,6 +536,22 @@ public class VerbSurface {
         return scopes.resolve(actor.subject(), slug).scopeId();
     }
 
+    /**
+     * The bracket kinds a scope declares, for the refusal that has to name
+     * them.
+     *
+     * <p>Behind scope visibility like everything else: a caller that may not
+     * see the scope is refused here and learns nothing about what it declares.
+     * The list itself is not a secret from a caller who may see the scope —
+     * the contract's own remedy for {@code SELECTOR_UNKNOWN} is "use a
+     * declared one", which is unactionable without it.
+     */
+    @Transactional
+    public List<String> declaredSelectors(Actor actor, String rawScope) {
+        UUID scopeId = resolve(actor, AddressParser.scope(rawScope));
+        return exchanges.declaredSelectors(scopeId);
+    }
+
     // ======================================================================
     // Answers
     // ======================================================================
@@ -553,9 +595,13 @@ public class VerbSurface {
         if (actor.isConsole()) {
             return Participation.COMMISSIONER;
         }
-        return actor.subject().equals(view.effectiveHolderSubject())
-            ? Participation.HOLDER
-            : Participation.BYSTANDER;
+        if (actor.subject().equals(view.effectiveHolderSubject())) {
+            return Participation.HOLDER;
+        }
+        // Candidate at an open exchange, bystander everywhere else. Section 2
+        // draws the line by the exchange's state and by nothing the caller
+        // carries, so it is drawn once, in Participation itself.
+        return Participation.of(view.status());
     }
 
     private void requireConflictToken(Entry in, String presented) {
@@ -628,7 +674,7 @@ public class VerbSurface {
      */
     private static void requireBracketRoot(ExchangeAddress address, String subCollection) {
         if (address.sub() != 0 || address.isAddendum()) {
-            throw new SurfaceException(SurfaceException.Reason.ADDRESS_MALFORMED,
+            throw new SurfaceException(SurfaceException.Reason.CALL_NOT_AT_THIS_ADDRESS,
                 "the '" + subCollection + "' sub-collection exists at a bracket root — "
                     + "'<number>.0' — and " + address + " is not one. A child numbers "
                     + "within the bracket instance, so addressing it anywhere else would "
@@ -657,7 +703,8 @@ public class VerbSurface {
          */
         public NextCalculator.Situation situation() {
             return new NextCalculator.Situation(exchange.status(),
-                exchange.answerDelivered(), exchange.bracketRoot(), exchange.frozen());
+                exchange.answerDelivered(), exchange.bracketRoot(), exchange.frozen(),
+                exchange.childrenFinished());
         }
 
         /** The calls open to this caller on the surface it called through. */

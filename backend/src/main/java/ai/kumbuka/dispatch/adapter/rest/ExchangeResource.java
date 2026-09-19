@@ -121,6 +121,7 @@ public class ExchangeResource {
             // No colon: a plain collection address, and create is the one
             // writing verb whose set semantics is declared as exactly one.
             calling.calling("create", null);
+            calling.on(scope, segment);
             return created(scope, verbs.create(caller.current(), scope, segment,
                 Payloads.draft(read(body, Payloads.CreateRequest.class))));
         }
@@ -131,6 +132,7 @@ public class ExchangeResource {
             // contract declares set semantics, and the only declarable one is
             // exactly one.
             calling.calling("claim_next", null);
+            calling.on(scope, at.address());
             return claimed(verbs.claimNext(caller.current(), scope, at.address(),
                 Payloads.claim(read(body, Payloads.ClaimRequest.class))));
         }
@@ -166,6 +168,7 @@ public class ExchangeResource {
                                   @PathParam("selector") String selector,
                                   @Context UriInfo uri) {
         calling.calling("query", null);
+        calling.on(scope, selector);
         return listing(verbs.query(caller.current(), scope, selector, filtersOf(uri)));
     }
 
@@ -196,6 +199,7 @@ public class ExchangeResource {
                          @PathParam("id") String id) {
         calling.calling("read", AddressParser.complete(scope,
             AddressParser.item(selector, id)));
+        calling.on(scope, selector);
         return ok(verbs.read(caller.current(), scope, selector, id));
     }
 
@@ -213,6 +217,7 @@ public class ExchangeResource {
                            Payloads.UpdateRequest request) {
         calling.calling("update", AddressParser.complete(scope,
             AddressParser.item(selector, id)));
+        calling.on(scope, selector);
         return ok(verbs.update(caller.current(), scope, selector, id, ifMatch,
             Payloads.update(request)));
     }
@@ -247,6 +252,7 @@ public class ExchangeResource {
 
         calling.calling(at.method().verb(), AddressParser.complete(scope,
             AddressParser.item(selector, at.address())));
+        calling.on(scope, selector);
         return dispatch(at.method(), scope, selector, at.address(), body);
     }
 
@@ -303,6 +309,7 @@ public class ExchangeResource {
                                 @PathParam("id") String id,
                                 Payloads.CreateRequest request) {
         calling.calling("create", null);
+        calling.on(scope, selector);
         return created(scope, verbs.createChild(caller.current(), scope, selector, id,
             Payloads.draft(request)));
     }
@@ -319,6 +326,7 @@ public class ExchangeResource {
                            Payloads.AppendRequest request) {
         calling.calling("append", AddressParser.complete(scope,
             AddressParser.item(selector, id)));
+        calling.on(scope, selector);
         return created(scope, verbs.append(caller.current(), scope, selector, id,
             Payloads.addendum(request)));
     }

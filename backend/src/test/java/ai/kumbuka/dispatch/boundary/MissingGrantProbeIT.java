@@ -117,10 +117,18 @@ class MissingGrantProbeIT {
     @Test
     void the_service_role_cannot_truncate_its_own_table() throws SQLException {
         String table = "dispatch.exchange";
+        // Every table that references it, because PostgreSQL refuses to
+        // truncate a table another one has a foreign key into unless both are
+        // named. V14's ledger is such a table, and without it here the granted
+        // half of this probe would fail on the FOREIGN KEY rather than run —
+        // which would read as "the grant did not work" and is the opposite of
+        // what the probe is measuring. The grant is still the only variable:
+        // both halves name the same pair of tables.
+        String referencing = "dispatch.idempotency_key";
         String role = SubstrateDatabaseResource.SERVICE_ROLE;
         String password = SubstrateDatabaseResource.SERVICE_PASSWORD;
 
-        assertThat(attemptTruncate(role, password, table))
+        assertThat(attemptTruncate(role, password, table + ", " + referencing))
             .as("GREEN STATE: TRUNCATE is not among the privileges V8 grants, and no "
                 + "ownership hands it over implicitly any more. It is the one privilege "
                 + "row-level security cannot moderate, so the only place it can be stopped "
@@ -128,18 +136,18 @@ class MissingGrantProbeIT {
             .isInstanceOf(Refused.class);
 
         try {
-            asAdmin("GRANT TRUNCATE ON " + table + " TO " + role);
+            asAdmin("GRANT TRUNCATE ON " + table + ", " + referencing + " TO " + role);
 
-            assertThat(attemptTruncate(role, password, table))
+            assertThat(attemptTruncate(role, password, table + ", " + referencing))
                 .as("RED STATE, observed: with TRUNCATE granted the same role runs the same "
                     + "statement and the database carries it out. So the refusal above was "
                     + "the missing privilege and not a missing table or a locked one")
                 .isNotInstanceOf(Refused.class);
         } finally {
-            asAdmin("REVOKE TRUNCATE ON " + table + " FROM " + role);
+            asAdmin("REVOKE TRUNCATE ON " + table + ", " + referencing + " FROM " + role);
         }
 
-        assertThat(attemptTruncate(role, password, table))
+        assertThat(attemptTruncate(role, password, table + ", " + referencing))
             .as("and closed again, so the red state was that grant and nothing else")
             .isInstanceOf(Refused.class);
     }

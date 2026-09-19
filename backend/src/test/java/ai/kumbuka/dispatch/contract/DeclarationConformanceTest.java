@@ -233,10 +233,19 @@ class DeclarationConformanceTest {
      */
     private static final Map<String, String> ALIASES = Map.ofEntries(
         Map.entry("n", "count"),
-        Map.entry("role", "participation"),
+        // The contract names two distinct parts in one sentence — the part the
+        // call belongs to, and the part the caller actually has. They are two
+        // values and the catalogue keeps two placeholders for them; a single
+        // alias for both would let a pattern satisfy this probe while telling
+        // every caller it is a bystander, which is the finding that put the
+        // second one here.
+        Map.entry("required part", "role"),
+        Map.entry("your part", "participation"),
         Map.entry("what the call does", "does"),
         Map.entry("what it is", "what"),
-        Map.entry("time", "until"),
+        Map.entry("claim expiry", "until"),
+        Map.entry("what it applies to", "applies"),
+        Map.entry("closed / cancelled", "ending"),
         Map.entry("ref", "reference"),
         Map.entry("scope", "collection"),
         Map.entry("selector", "collection"),

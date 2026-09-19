@@ -83,8 +83,12 @@ class ExchangeSurfaceIT {
 
         post(SurfaceFixture.item(number(bracket) + ".1") + "/children", commission("a grandchild"))
             .then()
-            .statusCode(400)
-            .body("reason", equalTo("ARGUMENT_INVALID"));
+            // 409 and CALL_NOT_AT_THIS_ADDRESS: the address is well formed and
+            // names a real exchange, and the sub-collection is what does not
+            // exist at it. A 400 about a bad argument sent the caller checking
+            // an address that was right.
+            .statusCode(409)
+            .body("reason", equalTo("CALL_NOT_AT_THIS_ADDRESS"));
     }
 
     // =======================================================================
@@ -506,7 +510,11 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":validate", null)
             .then()
             .statusCode(422)
-            .body("reason", equalTo("ARGUMENT_INVALID"));
+            // CALL_NOT_AT_THIS_ADDRESS and no longer ARGUMENT_INVALID: the
+            // contract declares a code for a verb at an address depth it does
+            // not have, so the stand-in is retired. The address the caller
+            // wrote was well formed and named something real.
+            .body("reason", equalTo("CALL_NOT_AT_THIS_ADDRESS"));
     }
 
     // =======================================================================
@@ -519,7 +527,7 @@ class ExchangeSurfaceIT {
 
         refused.then()
             .statusCode(405)
-            .body("reason", equalTo("ARGUMENT_INVALID"));
+            .body("reason", equalTo("CALL_NOT_AT_THIS_ADDRESS"));
 
         assertThat(refused.header("Allow"))
             .as("a 405 without Allow refuses without saying what would have worked, which "
@@ -553,7 +561,7 @@ class ExchangeSurfaceIT {
 
         refused.then()
             .statusCode(405)
-            .body("reason", equalTo("ARGUMENT_INVALID"));
+            .body("reason", equalTo("CALL_NOT_AT_THIS_ADDRESS"));
         assertThat(refused.header("Allow")).isEqualTo("GET, PATCH, POST");
     }
 
@@ -564,7 +572,7 @@ class ExchangeSurfaceIT {
         post(SurfaceFixture.item(bracket) + ":frobnicate", Map.of())
             .then()
             .statusCode(405)
-            .body("reason", equalTo("ARGUMENT_INVALID"));
+            .body("reason", equalTo("CALL_NOT_AT_THIS_ADDRESS"));
     }
 
     // =======================================================================

@@ -93,6 +93,12 @@ class ServiceRolePrivilegeIT {
     private static final Map<String, Set<String>> EXPECTED = Map.of(
         "exchange", DOMAIN_PRIVILEGES,
         "selector", DOMAIN_PRIVILEGES,
+        // The idempotency ledger (V14). The same three and no DELETE: an entry
+        // past its 24-hour window is overwritten in place by the next call
+        // under that key, which is an UPDATE. This is the check F-note-grant
+        // is named after — a new relation that nobody granted is a 500 on the
+        // first call that touches it, and mocked tests stay green through it.
+        "idempotency_key", DOMAIN_PRIVILEGES,
         HISTORY_TABLE, Set.of());
 
     /**

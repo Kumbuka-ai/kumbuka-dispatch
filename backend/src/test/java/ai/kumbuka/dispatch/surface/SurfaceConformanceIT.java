@@ -138,7 +138,10 @@ class SurfaceConformanceIT {
 
         assertThat(answer.statusCode()).isEqualTo(405);
         assertThat(answer.jsonPath().getString("reason"))
-            .isEqualTo("ARGUMENT_INVALID");
+            // The contract declares CALL_NOT_AT_THIS_ADDRESS for a verb at an
+            // address depth it does not have; ARGUMENT_INVALID was the
+            // stand-in used while it did not, and it is retired.
+            .isEqualTo("CALL_NOT_AT_THIS_ADDRESS");
         assertThat(answer.header("Allow"))
             .as("a 405 without Allow refuses without saying what would have worked")
             .isEqualTo("GET, POST");

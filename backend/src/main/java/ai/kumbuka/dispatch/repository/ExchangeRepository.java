@@ -109,6 +109,29 @@ public class ExchangeRepository {
      * key cannot, and a projection that looked the target up by a stored
      * address would resolve whatever has since moved into that position.
      */
+    /**
+     * The exchange with this durable identity, in whatever scope of this
+     * tenant holds it.
+     *
+     * <p>Scope-free on purpose, and tenant-bound all the same: the {@code
+     * @TenantId} filter and the row-level policy both still apply, so this
+     * reaches no further than the caller's own tenant. It exists because a
+     * curated answer's target may be in another scope (section 5.1) and the
+     * projection that renders its address has only the identity to go on.
+     */
+    @Transactional
+    public Optional<Exchange> findByIdentityAnywhere(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        List<Exchange> found = em.createQuery("""
+                SELECT e FROM Exchange e WHERE e.id = :id
+                """, Exchange.class)
+            .setParameter("id", id)
+            .getResultList();
+        return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
+    }
+
     @Transactional
     public Optional<Exchange> findByIdentity(UUID scopeId, Long id) {
         if (id == null) {

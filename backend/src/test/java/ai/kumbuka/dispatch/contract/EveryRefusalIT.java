@@ -73,21 +73,19 @@ class EveryRefusalIT {
         // rather than the surface. Its shape is asserted where it is built.
         RefusalCode.UNEXPECTED_FAILURE,
 
-        // The next two are unreachable ON THIS SURFACE, and the reason is
-        // structural rather than an oversight. Both `receipt` and
-        // `conflict_token` are declared as REQUIRED arguments of the calls that
-        // take them, so the closed-schema check refuses an omission as
-        // ARGUMENT_MISSING before the surface ever looks at the value. The two
-        // codes are reachable over REST, where the receipt travels in an
-        // optional body field and the token in an optional header — and they
-        // are provoked there, by GenericSurfaceFormIT's own refusal probes.
+        // The next two are unreachable ON THIS SURFACE, and section 4.4 now
+        // says so in as many words: "On the assistant surface the receipt and
+        // the conflict token are required arguments wherever a call takes
+        // them, so their absence is answered as ARGUMENT_MISSING;
+        // RECEIPT_MISSING and CONFLICT_TOKEN_MISSING are raised on the generic
+        // surface only." The closed-schema check refuses the omission before
+        // the surface looks at the value.
         //
-        // Which of the two codes is right for a required argument left out is a
-        // question the contract does not settle: section 4.4 declares both
-        // ARGUMENT_MISSING and the two specific ones, and an omitted required
-        // argument satisfies the description of either. The build answers with
-        // the more specific fault the caller can act on — "you left out an
-        // argument, here is what it is" — and reports the ambiguity.
+        // They ARE provoked, over REST, by
+        // GenericSurfaceFormIT.the_two_codes_this_surface_alone_can_raise —
+        // which is a probe that exists. The predecessor's comment here named
+        // probes that did not, and a comment asserting coverage is the one
+        // kind of comment that makes a gap invisible.
         RefusalCode.RECEIPT_MISSING,
         RefusalCode.CONFLICT_TOKEN_MISSING);
 
@@ -205,9 +203,34 @@ class EveryRefusalIT {
         record(raised, call("dispatch_query", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", "a-kind-nobody-declared")));
 
-        // CONFLICT_TOKEN_MISSING — a call that repeats the token, without one.
+        // ARGUMENT_MISSING again, through a different door: a call that
+        // repeats the conflict token, with the token left out. On this surface
+        // the token is a REQUIRED argument, so the closed-schema check answers
+        // first — which is why CONFLICT_TOKEN_MISSING is excluded above and
+        // this line is not the provocation of it. The predecessor's comment
+        // here said it was.
         record(raised, call("dispatch_cancel", Map.of(
             "address", open, "fields", Map.of("reason", "no longer wanted"))));
+
+        // CALL_NOT_AT_THIS_ADDRESS — a bracket verb at a child.
+        //
+        // The address is well formed and names something the caller can see;
+        // what does not fit is the pairing. The predecessor answered this with
+        // ARGUMENT_INVALID, which sends a caller correcting an address that was
+        // right.
+        record(raised, call("dispatch_close_bracket",
+            Map.of("address", firstChildOf(root))));
+
+        // IDEMPOTENCY_KEY_REUSED — one key, two different commissions.
+        Map<String, Object> first = new LinkedHashMap<>(commissionArguments());
+        first.put("idempotency_key", "a-key-of-my-own");
+        call("dispatch_commission", first);
+
+        Map<String, Object> second = new LinkedHashMap<>(commissionArguments());
+        second.put("idempotency_key", "a-key-of-my-own");
+        second.put("fields", Map.of("title", "a different commission entirely",
+            "apparatus", "code", "text", "with different text too"));
+        record(raised, call("dispatch_commission", second));
 
         // CONFLICT_TOKEN_STALE — a token that is not the one it holds.
         record(raised, call("dispatch_cancel", Map.of(
@@ -281,11 +304,26 @@ class EveryRefusalIT {
             .jsonPath().getString("result.structuredContent.address");
     }
 
-    private void commissionChild(String parent) {
+    private String commissionChild(String parent) {
         Map<String, Object> arguments = new LinkedHashMap<>(commissionArguments());
         arguments.put("parent", parent);
-        call("dispatch_commission", arguments);
+        return call("dispatch_commission", arguments)
+            .jsonPath().getString("result.structuredContent.address");
     }
+
+    /** The child this probe put under a bracket, for the verb that is not for one. */
+    private String firstChildOf(String root) {
+        return childOf.computeIfAbsent(root, this::commissionChild);
+    }
+
+    /**
+     * The children this probe has commissioned, by bracket root.
+     *
+     * <p>Remembered rather than re-commissioned: {@code provokeAll} runs twice
+     * in this class, and a second child under the same root would change what
+     * CHILDREN_NOT_FINISHED counts.
+     */
+    private final Map<String, String> childOf = new LinkedHashMap<>();
 
     private static String receiptOf(Response answer) {
         return answer.jsonPath().getString("result.structuredContent.receipt");

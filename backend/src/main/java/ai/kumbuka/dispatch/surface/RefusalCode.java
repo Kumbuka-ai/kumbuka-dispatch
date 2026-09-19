@@ -76,6 +76,27 @@ public enum RefusalCode {
     SELECTOR_UNKNOWN,
 
     /**
+     * The same idempotency key was used for a different call.
+     *
+     * <p>A key means "this is the call I already made". Answering a caller
+     * that reused one with different arguments as though it were that call
+     * would silently discard the second call's content; refusing it is the
+     * only answer that cannot lose a write.
+     */
+    IDEMPOTENCY_KEY_REUSED,
+
+    /**
+     * The call exists on this surface and not at this address depth.
+     *
+     * <p>{@code dispatch_close_bracket} at a child, {@code dispatch_take} at a
+     * collection. Distinct from {@link #ARGUMENT_INVALID}, which the
+     * predecessor used here: the address is well formed and names something
+     * real, and what is wrong is the pairing of the call with it. A caller
+     * told its address is invalid goes looking for a typo it does not have.
+     */
+    CALL_NOT_AT_THIS_ADDRESS,
+
+    /**
      * A defect on our side, reported as one.
      *
      * <p>The only code whose message says the rule was not the problem. It

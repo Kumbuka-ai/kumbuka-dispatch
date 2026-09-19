@@ -19,6 +19,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -148,122 +149,243 @@ class ProcessSurfaceIT {
     }
 
     // =======================================================================
-    // A3 — next is exactly what succeeds
+    // A3 — next is exactly what succeeds, read from the contract's own table
     // =======================================================================
 
     /**
-     * An exchange through every state, read in both roles, with {@code next}
-     * checked against the contract's table and then EXERCISED.
+     * One row of section 6, made real: an exchange in that state, read by a
+     * caller taking that part.
      *
-     * <p>The exercise is the part that matters. A list that agrees with a table
-     * is two documents agreeing; a list whose every entry succeeds and whose
-     * every omission is refused is the promise the contract actually makes.
+     * <p>The builder returns a fresh exchange every time it is called, which is
+     * what lets the second half of A3 exercise each listed call on its own copy
+     * of the state. Calling them all on one exchange would mean the first one
+     * that ends it makes the rest untestable — which is how the predecessor
+     * came to assert five calls and exercise two.
+     *
+     * @param state   the row's first column
+     * @param caller  the row's second column, as this probe names the part
+     * @param build   produces the exchange in that state and returns its address
+     * @param become  puts the identity into the part the row describes
+     * @param root    whether the exchange built is a bracket root
+     * @param childrenFinished whether every child of that bracket is terminal
+     */
+    private record Situation(String state, String caller, Supplier<String> build,
+                             Runnable become, boolean root, boolean childrenFinished) {
+    }
+
+    /**
+     * Every row of section 6 this service can put a caller into, and the rows
+     * it cannot.
+     *
+     * <p><strong>The unreachable rows are named rather than skipped.</strong>
+     * Section 2 separates the candidate from the bystander, and this service
+     * decides the commissioner from the realm role — so every identity that can
+     * see an open exchange is either a console identity (commissioner) or an
+     * executor (candidate), and no caller is a bystander at an OPEN exchange.
+     * The row exists in the contract and cannot be exercised here; that is a
+     * finding about the open point in section 8, not a gap in the probe, and
+     * {@link #the_contract_rows_this_service_cannot_reach_are_exactly_these}
+     * goes red if the set ever changes.
+     */
+    private List<Situation> situations() {
+        return List.of(
+            new Situation("open", "commissioner",
+                this::commissionChildOfAFreshBracket, this::asCommissioner, false, true),
+            new Situation("open", "candidate",
+                this::commissionChildOfAFreshBracket, this::asCandidate, false, true),
+
+            new Situation("active", "holder",
+                this::anActiveChild, this::asCandidate, false, true),
+            new Situation("active", "commissioner",
+                this::anActiveChild, this::asCommissioner, false, true),
+            new Situation("active", "candidate or bystander",
+                this::anActiveChild, this::asOtherExecutor, false, true),
+
+            new Situation("needs_input, answer delivered", "commissioner",
+                this::aChildWithAnAnswer, this::asCommissioner, false, true),
+            new Situation("needs_input, question asked", "commissioner",
+                this::aChildWithAQuestion, this::asCommissioner, false, true),
+            new Situation("needs_input", "holder, candidate or bystander",
+                this::aChildWithAnAnswer, this::asCandidate, false, true),
+
+            new Situation("any terminal", "anyone",
+                this::aClosedChild, this::asCommissioner, false, true));
+    }
+
+    /**
+     * Every {@code next} the service answers with is the list its row names.
+     *
+     * <p>The expectation is read from {@link Contract#nextTable()} — the copied
+     * contract document — and never from the service, its declaration or this
+     * file. The predecessor asserted hardcoded literals while calling
+     * {@code Contract.nextTable()} only to check it was non-empty, so the
+     * document it named as its source could have changed under it without one
+     * assertion moving.
      */
     @Test
-    void next_lists_exactly_the_calls_that_succeed() {
+    void next_is_the_list_the_contract_s_table_names() {
         List<Contract.Row> table = Contract.nextTable();
         assertThat(table).as("the contract's section 6 table must be readable").isNotEmpty();
 
-        // open, as the commissioner — on a CHILD, not on a bracket root.
-        //
-        // The contract says two things about a root here and they disagree.
-        // Section 6 lists `dispatch_cancel` for every open exchange the
-        // commissioner sees; section 5 declares cancel "Not for a bracket root;
-        // a bracket is finished with dispatch_close_bracket". The build follows
-        // section 5, because that is where the verb is defined and because the
-        // alternative would let a cancel walk past the bracket's own gate — so
-        // the row is exercised where both sections agree, on a child.
-        //
-        // The consequence is reported rather than papered over: an open bracket
-        // root has `dispatch_add_correction` and nothing else, and no way to
-        // end at all until its own record is delivered. That is a gap in the
-        // contract, not in this build, and it is named in the return.
-        String root = commission();
-        String open = commissionChildOf(root);
+        for (Situation situation : situations()) {
+            Contract.Row row = rowFor(table, situation);
+            String address = situation.build().get();
+            situation.become().run();
 
-        assertThat(callsIn(read(open)))
-            .as("open, commissioner: the contract lists add_correction and cancel")
-            .containsExactlyInAnyOrder("dispatch_add_correction", "dispatch_cancel");
-        assertThat(waitingFor(read(open)))
-            .as("the contract says two things here and they disagree. Section 3: "
-                + "waiting_for names who the exchange waits for WHERE NEXT IS EMPTY and "
-                + "the exchange is not finished. Section 6's table puts 'the executor' in "
-                + "the waiting_for column of the same row whose next column lists two "
-                + "calls. The build follows section 3, because that is the normative "
-                + "description of the answer's shape and because naming both leaves the "
-                + "caller to decide which of the two is the real answer — which is the "
-                + "situation this contract exists to end. Reported in the return.")
-            .isNull();
+            List<String> expected = situation.root()
+                ? row.atRoot(situation.childrenFinished())
+                : row.atChild();
 
-        assertThat(callsIn(read(root)))
-            .as("and on a root, cancel is absent — section 5 excludes it, and a call this "
-                + "list offered would be refused for a reason the list does not know")
-            .containsExactly("dispatch_add_correction");
+            assertThat(callsIn(read(address)))
+                .as("section 6, row '%s' / '%s': next is read from the contract's table "
+                    + "and is what the service must offer", situation.state(),
+                    situation.caller())
+                .containsExactlyInAnyOrderElementsOf(expected);
 
-        // open, as an executor that holds nothing.
-        SurfaceFixture.asExecutor(identity);
-        assertThat(callsIn(read(open)))
-            .as("open, anyone else: the one call is the take")
-            .containsExactly("dispatch_take");
+            assertThat(waitingFor(read(address)))
+                .as("section 3: waiting_for is present only where next is empty")
+                .satisfies(waiting -> {
+                    if (expected.isEmpty()) {
+                        assertThat(waiting).isNotNull();
+                    } else {
+                        assertThat(waiting).isNull();
+                    }
+                });
+        }
+    }
 
-        // active, as the holder.
-        String receipt = receiptOf(call("dispatch_take",
-            Map.of("address", open, "duration", "PT1H")));
-        assertThat(callsIn(read(open)))
-            .as("active, holder: deliver, ask, decline")
-            .containsExactlyInAnyOrder("dispatch_deliver_return",
-                "dispatch_ask_commissioner", "dispatch_decline");
+    /**
+     * Every call {@code next} lists succeeds — each on its own fresh copy of
+     * the state.
+     *
+     * <p>This is the half of A3 that the list's promise actually rests on, and
+     * it is the one the predecessor left mostly unexercised: in the row with
+     * five listed calls it made two of them, and one of the three it skipped
+     * was {@code dispatch_curate_return}, whose success path had never run at
+     * all — the finding that made the new reference column and its query
+     * untested.
+     *
+     * <p>A fresh exchange per call, because several of the listed calls are
+     * terminal: made on one exchange, the first would take the rest out of the
+     * state the row is about.
+     */
+    @Test
+    void every_call_next_lists_succeeds_on_a_fresh_copy_of_its_state() {
+        List<Contract.Row> table = Contract.nextTable();
 
-        // active, as the commissioner.
-        SurfaceFixture.asConsole(identity);
-        assertThat(callsIn(read(open)))
-            .as("active, commissioner: correct or cancel")
-            .containsExactlyInAnyOrder("dispatch_add_correction", "dispatch_cancel");
+        for (Situation situation : situations()) {
+            Contract.Row row = rowFor(table, situation);
+            List<String> listed = situation.root()
+                ? row.atRoot(situation.childrenFinished())
+                : row.atChild();
 
-        // needs_input with an answer delivered, as the commissioner.
-        SurfaceFixture.asExecutor(identity);
-        call("dispatch_deliver_return", Map.of(
-            "address", open, "receipt", receipt, "fields", Map.of("text", "the answer")));
+            for (String call : listed) {
+                String address = situation.build().get();
+                situation.become().run();
 
-        assertThat(callsIn(read(open)))
-            .as("needs_input, holder: nothing; the commissioner is due")
-            .isEmpty();
-        assertThat(waitingFor(read(open))).isEqualTo("the commissioner");
+                Response answer = call(call, argumentsThatWouldWork(call, address));
 
-        SurfaceFixture.asConsole(identity);
-        assertThat(callsIn(read(open)))
-            .as("needs_input with an answer, commissioner: accept, curate or reply — and "
-                + "the two that section 6 omits from this row. The omission is the "
-                + "contract's third internal disagreement: section 3 defines next as "
-                + "EXACTLY the calls that succeed, and section 5 puts needs_input in "
-                + "cancel's from-states and places no state condition on add_correction "
-                + "at all. Both succeed here, so both are listed; leaving them out would "
-                + "make the list smaller than the definition requires. Reported in the "
-                + "return.")
-            .contains("dispatch_accept_return", "dispatch_curate_return",
-                "dispatch_reply_to_executor")
-            .containsExactlyInAnyOrder("dispatch_accept_return", "dispatch_curate_return",
-                "dispatch_reply_to_executor", "dispatch_add_correction", "dispatch_cancel");
+                assertThat(isError(answer))
+                    .as("section 3: every call next lists succeeds for this caller. "
+                        + "Row '%s' / '%s' lists %s, and it was refused: %s",
+                        situation.state(), situation.caller(), call, message(answer))
+                    .isFalse();
+            }
+        }
+    }
 
-        // Every listed call succeeds. Checked on the one that finishes the
-        // exchange last, so the other two are still callable when tested.
-        assertThat(isError(call("dispatch_reply_to_executor", Map.of(
-            "address", open, "conflict_token", tokenOf(read(open)),
-            "fields", Map.of("message", "another round, please")))))
-            .as("a listed call must succeed — that is the promise the list makes")
-            .isFalse();
+    /**
+     * The rows of section 6 this service cannot put a caller into.
+     *
+     * <p>Stated as an assertion rather than left as a silence. Two rows name a
+     * bystander at an exchange that is open or returned, and in this service
+     * every identity that can see one is either the commissioner or a
+     * candidate — a consequence of "every console identity may act as
+     * commissioner", which section 8 records as open. When that narrows, this
+     * probe goes red and the rows become exercisable.
+     */
+    @Test
+    void the_contract_rows_this_service_cannot_reach_are_exactly_these() {
+        List<String> reachable = situations().stream()
+            .map(s -> s.state() + " / " + s.caller())
+            .toList();
 
-        // Terminal: nothing, and nobody is waiting.
-        SurfaceFixture.asExecutor(identity);
-        call("dispatch_deliver_return", Map.of(
-            "address", open, "receipt", receipt, "fields", Map.of("text", "the answer, again")));
-        SurfaceFixture.asConsole(identity);
-        call("dispatch_accept_return", Map.of("address", open));
+        List<String> unreachable = Contract.nextTable().stream()
+            .map(r -> r.state() + " / " + r.caller())
+            .filter(name -> !reachable.contains(name))
+            .toList();
 
-        assertThat(callsIn(read(open))).as("a finished exchange offers nothing").isEmpty();
-        assertThat(waitingFor(read(open)))
-            .as("and says so rather than leaving the caller to infer it")
-            .isEqualTo("nobody: the exchange is finished");
+        assertThat(unreachable)
+            .as("a row this probe cannot reach is reported, never skipped: a silent "
+                + "omission reads as coverage")
+            .containsExactlyInAnyOrder(
+                "open / bystander",
+                "returned / commissioner",
+                "returned / anyone else");
+    }
+
+    /**
+     * Arguments that make one call succeed against the exchange at
+     * {@code address}.
+     *
+     * <p>Different from {@link #plausibleArgumentsFor}, which builds a call
+     * that is right in every respect EXCEPT the one thing A2 is testing. These
+     * have to actually work, so they carry the live conflict token and the
+     * live receipt rather than the string "any".
+     */
+    private Map<String, Object> argumentsThatWouldWork(String call, String address) {
+        return switch (call) {
+            case "dispatch_add_correction" -> Map.of("address", address,
+                "fields", Map.of("title", "a correction", "text", "its text"));
+            case "dispatch_accept_return", "dispatch_close_bracket" ->
+                Map.of("address", address);
+            case "dispatch_curate_return" -> Map.of("address", address,
+                "fields", Map.of("into", aCuratableTarget()));
+            case "dispatch_reply_to_executor" -> Map.of("address", address,
+                "conflict_token", tokenOf(read(address)),
+                "fields", Map.of("message", "another round, please"));
+            case "dispatch_cancel" -> Map.of("address", address,
+                "conflict_token", tokenOf(read(address)),
+                "fields", Map.of("reason", "no longer wanted"));
+            case "dispatch_take" -> Map.of("address", address, "duration", "PT1H");
+            case "dispatch_deliver_return" -> Map.of("address", address,
+                "receipt", receiptHeld, "fields", Map.of("text", "the answer"));
+            case "dispatch_ask_commissioner" -> Map.of("address", address,
+                "receipt", receiptHeld, "fields", Map.of("question", "which of the two?"));
+            case "dispatch_decline" -> declineArguments(address);
+            default -> throw new IllegalStateException(
+                call + " is listed in the contract's table and this probe does not know "
+                    + "how to make it succeed. A call the probe cannot exercise is a call "
+                    + "the promise is not checked for.");
+        };
+    }
+
+    /**
+     * A decline carries the receipt only where the caller holds the exchange.
+     *
+     * <p>Section 5.2's two cases in one call: a candidate declines an open
+     * exchange without one, and the holder declines the exchange it holds with
+     * it. Sending the receipt in the first case would be sending an argument
+     * the caller does not have.
+     */
+    private Map<String, Object> declineArguments(String address) {
+        if (receiptHeld == null) {
+            return Map.of("address", address, "fields", Map.of("reason", "not this one"));
+        }
+        return Map.of("address", address, "receipt", receiptHeld,
+            "fields", Map.of("reason", "cannot finish it"));
+    }
+
+    /** The row of the table this situation is about. */
+    private static Contract.Row rowFor(List<Contract.Row> table, Situation situation) {
+        return table.stream()
+            .filter(r -> r.state().equals(situation.state())
+                && r.caller().equals(situation.caller()))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException(
+                "the contract's table has no row '" + situation.state() + "' / '"
+                    + situation.caller() + "'. The table changed and this probe did not, "
+                    + "which is the probe going quiet rather than red."));
     }
 
     /**
@@ -304,7 +426,7 @@ class ProcessSurfaceIT {
     @Test
     void every_address_the_service_emitted_is_accepted_unchanged() {
         String root = commission();
-        commissionChild(root);
+        commissionChildOf(root);
         read(root);
         list();
         call("dispatch_close_bracket", Map.of("address", root));
@@ -427,10 +549,6 @@ class ProcessSurfaceIT {
         return addressOf(call("dispatch_commission", commissionArguments()));
     }
 
-    private void commissionChild(String parent) {
-        commissionChildOf(parent);
-    }
-
     /** A child of the named bracket, and its complete address. */
     private String commissionChildOf(String parent) {
         Map<String, Object> arguments = new LinkedHashMap<>(commissionArguments());
@@ -506,5 +624,86 @@ class ProcessSurfaceIT {
 
     private static String waitingFor(Response answer) {
         return answer.jsonPath().getString("result.structuredContent.waiting_for");
+    }
+
+    // =======================================================================
+    // Building one row's state
+    // =======================================================================
+
+    /**
+     * The receipt of the exchange the current situation was built around, or
+     * null where nobody took it up.
+     *
+     * <p>Held as state of the probe rather than threaded through, because the
+     * calls that need it are chosen from the contract's table at a point where
+     * the take has already happened. Null is the honest value for a situation
+     * with no claim in it, and {@link #declineArguments} reads it as exactly
+     * that.
+     */
+    private String receiptHeld;
+
+    private void asCommissioner() {
+        SurfaceFixture.asConsole(identity);
+    }
+
+    private void asCandidate() {
+        SurfaceFixture.asExecutor(identity);
+    }
+
+    private void asOtherExecutor() {
+        SurfaceFixture.asOtherExecutor(identity);
+    }
+
+    /** A child of a fresh bracket, open, with nobody holding it. */
+    private String commissionChildOfAFreshBracket() {
+        asCommissioner();
+        receiptHeld = null;
+        return commissionChildOf(commission());
+    }
+
+    /** The same child, taken up by the executor. */
+    private String anActiveChild() {
+        String address = commissionChildOfAFreshBracket();
+        asCandidate();
+        receiptHeld = receiptOf(call("dispatch_take",
+            Map.of("address", address, "duration", "PT1H")));
+        return address;
+    }
+
+    /** The same child again, with an answer delivered on it. */
+    private String aChildWithAnAnswer() {
+        String address = anActiveChild();
+        call("dispatch_deliver_return", Map.of("address", address,
+            "receipt", receiptHeld, "fields", Map.of("text", "the answer")));
+        return address;
+    }
+
+    /** And with a question asked on it instead. */
+    private String aChildWithAQuestion() {
+        String address = anActiveChild();
+        call("dispatch_ask_commissioner", Map.of("address", address,
+            "receipt", receiptHeld, "fields", Map.of("question", "which of the two?")));
+        return address;
+    }
+
+    /** Finished: an answer delivered and accepted. */
+    private String aClosedChild() {
+        String address = aChildWithAnAnswer();
+        asCommissioner();
+        call("dispatch_accept_return", Map.of("address", address));
+        return address;
+    }
+
+    /**
+     * An exchange a curation can be carried into.
+     *
+     * <p>A fresh bracket root, and deliberately not the exchange's own bracket
+     * root: the contract admits any exchange the caller may see, and using a
+     * sibling here would leave the cross-bracket case — which is the one the
+     * predecessor refused outright — unexercised by this probe as well.
+     */
+    private String aCuratableTarget() {
+        asCommissioner();
+        return commission();
     }
 }

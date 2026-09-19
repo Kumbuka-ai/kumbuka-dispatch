@@ -314,7 +314,12 @@ class VerbSurfaceTest {
             new VerbInput.Draft("a child", "code", LocalDate.parse("2026-09-01"), null)))
             .isInstanceOf(SurfaceException.class)
             .extracting(e -> ((SurfaceException) e).reason())
-            .isEqualTo(SurfaceException.Reason.ADDRESS_MALFORMED);
+            // Not ADDRESS_MALFORMED any more: the address obeys the production
+            // and names something real, and what does not fit is the pairing of
+            // the verb with it. The contract declares CALL_NOT_AT_THIS_ADDRESS
+            // for exactly that, and a form refusal sent the caller correcting a
+            // spelling that was right.
+            .isEqualTo(SurfaceException.Reason.CALL_NOT_AT_THIS_ADDRESS);
 
         verify(exchanges, never()).addChild(any(), any(), org.mockito.ArgumentMatchers.anyInt(),
             any(), any(), any(), any());
@@ -343,7 +348,7 @@ class VerbSurfaceTest {
         return new ExchangeView("dispatch://probe-scope/sprint/164.1", "sprint", 164, 1,
             "a commission", "code", LocalDate.parse("2026-09-01"), status, null, null,
             null, null, null, null, conflictToken,
-            null, null, null, null, false, false, false, null);
+            null, null, null, null, false, false, false, true, null);
     }
 
     /** An entity whose only interesting field here is when it was last written. */

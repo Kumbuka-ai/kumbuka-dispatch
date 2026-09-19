@@ -3,16 +3,20 @@ package ai.kumbuka.dispatch.adapter.mcp;
 import ai.kumbuka.dispatch.adapter.payload.Answers;
 import ai.kumbuka.dispatch.adapter.payload.Payloads;
 import ai.kumbuka.dispatch.surface.NextCalculator;
+import ai.kumbuka.dispatch.surface.Participation;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Refused;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.SurfaceDeclaration;
 import ai.kumbuka.dispatch.domain.Actor;
+import ai.kumbuka.dispatch.domain.ClaimProof;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
+import ai.kumbuka.dispatch.domain.IdempotencyKey;
 import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.CallerActor;
 import ai.kumbuka.dispatch.surface.SurfaceException;
+import ai.kumbuka.dispatch.surface.UnexpectedFailures;
 import ai.kumbuka.dispatch.surface.VerbInput;
 import ai.kumbuka.dispatch.surface.VerbSurface;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
@@ -84,6 +88,7 @@ public class McpAdapter {
     private static final String ARG_DURATION = "duration";
     private static final String ARG_RECEIPT = "receipt";
     private static final String ARG_CONFLICT_TOKEN = "conflict_token";
+    private static final String ARG_IDEMPOTENCY_KEY = "idempotency_key";
 
     /** JSON-RPC's own codes. Protocol faults only — a refused verb is not one. */
     private static final int METHOD_NOT_FOUND = -32601;
@@ -172,8 +177,9 @@ public class McpAdapter {
             // itself to `content` would serialise a Java object where a caller
             // expects the envelope, and the reason — the one part a caller
             // matches on — would not be on the wire at all.
-            return content(refusal(Refused.argumentUnknown(String.valueOf(tool),
-                String.valueOf(tool), ProcessVerb.byCallNames())), true);
+            return content(refusal(Refused.argumentUnknown(Surface.MCP,
+                String.valueOf(tool), String.valueOf(tool),
+                ProcessVerb.byCallNames())), true);
         }
 
         try {
@@ -188,10 +194,8 @@ public class McpAdapter {
             // Ours, not the caller's. The reference is what makes the report
             // actionable; the exception itself never reaches the caller,
             // because a stack trace is both unreadable and a disclosure.
-            String reference = UUID.randomUUID().toString();
-            LOG.errorf(e, "unexpected failure on %s, reference %s", verb.call(), reference);
-            return content(refusal(Refused.unexpected(verb.call(),
-                addressOrCollection(arguments), reference)), true);
+            return content(refusal(UnexpectedFailures.refuse(Surface.MCP, verb.call(),
+                addressOrCollection(arguments), e)), true);
         }
     }
 
@@ -244,7 +248,8 @@ public class McpAdapter {
             in.optionalDateField("date", LocalDate.now()),
             in.metadataField());
 
-        return compact(verbs.commission(actor, scope, selector, parent, body));
+        return compact(verbs.commission(actor, scope, selector, parent, body,
+            IdempotencyKey.of(in.optionalTop(ARG_IDEMPOTENCY_KEY))));
     }
 
     /**
@@ -258,16 +263,23 @@ public class McpAdapter {
     private Object addCorrection(Actor actor, CallArguments in) {
         AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
         return compact(verbs.addCorrection(actor, at.scope(), at.selector(), at.id(),
-            in.requiredField("title"), in.requiredField("text")));
+            in.requiredField("title"), in.requiredField("text"),
+            IdempotencyKey.of(in.optionalTop(ARG_IDEMPOTENCY_KEY))));
     }
 
     private Object curateReturn(Actor actor, CallArguments in) {
         AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
         AddressParser.Parts into = AddressParser.uri(in.requiredField("into"));
-        requireSameCollection(into, at.scope(), at.selector(), ProcessVerb.CURATE_RETURN);
 
+        // No same-collection check. Section 5.1 admits any exchange of this
+        // service the caller may see, in any scope and bracket kind; the
+        // predecessor narrowed it to the exchange's own collection and refused
+        // the rest under an argument name — `parent` — this call does not
+        // declare. The one target that is refused is the exchange itself, and
+        // the kernel refuses that, because only the kernel knows the identity
+        // behind each address.
         return compact(verbs.curateReturn(actor, at.scope(), at.selector(), at.id(),
-            AddressParser.item(into.selector(), into.id())));
+            into.scope(), AddressParser.item(into.selector(), into.id())));
     }
 
     private Object replyToExecutor(Actor actor, CallArguments in) {
@@ -311,7 +323,7 @@ public class McpAdapter {
     private Object decline(Actor actor, CallArguments in) {
         AddressParser.Parts at = AddressParser.uri(in.requiredTop(ARG_ADDRESS));
         return compact(verbs.decline(actor, at.scope(), at.selector(), at.id(),
-            in.optionalTop(ARG_RECEIPT), in.requiredField("reason")));
+            ClaimProof.of(in.optionalTop(ARG_RECEIPT)), in.requiredField("reason")));
     }
 
     private Object query(Actor actor, CallArguments in) {
@@ -399,15 +411,45 @@ public class McpAdapter {
             return new Situation(result.exchange().address(),
                 result.exchange().status().wireName(),
                 result.exchange().status().terminal(),
+                result.participation(),
+                result.exchange().claimExpiresAt(),
+                result.exchange().bracketRoot(),
                 result.next(Surface.MCP));
         } catch (RuntimeException e) {
             return null;
         }
     }
 
-    /** What a refusal needs to know about the exchange it is refusing on. */
+    /**
+     * What a refusal needs to know about the exchange it is refusing on.
+     *
+     * <p>The participation and the claim's expiry travel with it because two
+     * of the contract's patterns name them: {@code ROLE_DOES_NOT_ALLOW} states
+     * the caller's actual part, and {@code NOT_THE_HOLDER} names the instant
+     * the claim lapses. Both were filled with stand-ins before — "bystander"
+     * for every caller, "its claim lapses" for every time — which is the
+     * pattern with its value taken out.
+     */
     record Situation(String address, String state, boolean terminal,
-                     List<NextCalculator.Step> next) {
+                     Participation participation, java.time.Instant claimExpiresAt,
+                     boolean bracketRoot, List<NextCalculator.Step> next) {
+    }
+
+    /** The selectors a scope declares, for the refusal that has to name them. */
+    List<String> declaredSelectorsIn(Map<String, Object> arguments) {
+        Object scope = arguments.get(ARG_SCOPE);
+        if (scope == null) {
+            return List.of();
+        }
+        try {
+            return verbs.declaredSelectors(caller.current(), String.valueOf(scope));
+        } catch (RuntimeException e) {
+            // A scope the caller may not see declares nothing it may know
+            // about. An empty list here is not a gap: it is the same answer
+            // the caller would get for a scope that does not exist, which is
+            // section 4.3's rule reaching one level further in.
+            return List.of();
+        }
     }
 
     String collectionOf(Map<String, Object> arguments) {
@@ -433,10 +475,18 @@ public class McpAdapter {
     // Arguments
     // ======================================================================
 
+    /**
+     * A parent must be in the collection the child is being created in.
+     *
+     * <p>Only {@code parent} goes through this, and the name in the refusal is
+     * therefore always the argument the caller actually sent. A curation's
+     * {@code into} does NOT: its target is chosen by identity and may be
+     * anywhere the caller can see.
+     */
     private static void requireSameCollection(AddressParser.Parts given, String scope,
                                               String selector, ProcessVerb verb) {
         if (!given.scope().equals(scope) || !given.selector().equals(selector)) {
-            throw Refused.argumentInvalid(verb.call(), "parent",
+            throw Refused.argumentInvalid(Surface.MCP, verb.call(), "parent",
                 given.scope() + "/" + given.selector(),
                 "it names a different bracket kind than the call does, and a child numbers "
                     + "within its own bracket");

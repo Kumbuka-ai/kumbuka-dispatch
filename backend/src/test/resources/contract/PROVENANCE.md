@@ -2,10 +2,10 @@
 
 `assistant-surface.md` is a **verbatim copy** of
 
-    platform-specs @ 28317c8
+    platform-specs @ e74dabbb1dd0c43129a1034e50d5bf9a6f2086fb
     docs/concepts/concept-dispatch-assistant-surface-and-process-verbs.md
 
-taken on 2026-09-18 for sub-sprint satellite/26.6.
+taken on 2026-09-19 on 2026-09-19.
 
 ## Why a copy and not a reference
 
@@ -24,11 +24,27 @@ edited in the same commit by the same hand. A copy that is *stale* turns the
 probe red and somebody looks; an expectation written next to the code it checks
 is green forever and says nothing.
 
+## The commit is the whole claim this file makes
+
+A provenance note whose hash is wrong is worse than no note: it names a text
+nobody compared the copy against, and every probe that reads the copy inherits
+that false anchor. Measured in review on 2026-09-19 — the note said `28317c8` while
+the copy was the later `c4940b4`, and the two differ in exactly the section
+(4.3) the copy exists to pin. So the hash above is the FULL commit id, and
+re-copying this file means re-writing that line in the same act.
+
+The check that keeps the two together is `ContractCopyProvenanceTest`: it reads
+the commit id out of this file and refuses a copy whose checksum does not match
+the one recorded below.
+
+    sha256(assistant-surface.md) = cd334dcbceb68dc8ae2af17abc754bf036efd5dd73816f89b4ed7b5678084602
+
 ## What to do when the contract changes
 
-Re-copy this file, run the probes, and fix what goes red. In that order — the
-contract is the source, and a probe that is made to pass by editing this copy
-has been made to pass by editing the specification.
+Re-copy this file, re-write the commit id and the checksum above, run the
+probes, and fix what goes red. In that order — the contract is the source, and
+a probe that is made to pass by editing this copy has been made to pass by
+editing the specification.
 
 ## What must not be done
 

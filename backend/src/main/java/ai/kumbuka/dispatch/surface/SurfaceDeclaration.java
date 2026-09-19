@@ -100,13 +100,25 @@ public final class SurfaceDeclaration {
         return List.copyOf(arguments);
     }
 
+    /**
+     * The reasons, with their patterns read in this surface's vocabulary.
+     *
+     * <p>The catalogue holds the patterns surface-neutrally — a step where a
+     * call name goes, per section 4.2 — because the same pattern words a
+     * refusal on both surfaces. This declaration describes the ASSISTANT
+     * surface, so it publishes them filled: a consumer reading {@code "the
+     * holder delivers with {deliver}"} would have to know a convention nobody
+     * published to make sense of it.
+     */
     private static List<Map<String, Object>> reasonsAsMaps() {
         List<Map<String, Object>> reasons = new ArrayList<>();
         for (ReasonCatalogue.Reason reason : ReasonCatalogue.declared()) {
             Map<String, Object> declared = new LinkedHashMap<>();
             declared.put("reason", reason.code().name());
-            declared.put("message_pattern", reason.pattern());
-            declared.put("remedy", reason.remedy());
+            declared.put("message_pattern",
+                ReasonCatalogue.inVocabularyOf(reason.pattern(), Surface.MCP));
+            declared.put("remedy",
+                ReasonCatalogue.inVocabularyOf(reason.remedy(), Surface.MCP));
             reasons.add(Map.copyOf(declared));
         }
         return List.copyOf(reasons);
@@ -115,10 +127,17 @@ public final class SurfaceDeclaration {
     /**
      * Refuses a declaration that cannot be served, at start-up.
      *
-     * <p>Three checks, and each one names a way the surface would be broken in
+     * <p>Four checks, and each one names a way the surface would be broken in
      * production without anybody noticing until a caller hit it: a reason with
-     * no pattern cannot be worded, a call with no arguments cannot be schema'd,
-     * and a duplicate call name makes the tool list ambiguous.
+     * no pattern cannot be worded, a duplicate call name makes the tool list
+     * ambiguous, a call with no description is a call an assistant with no
+     * skill cannot use, and an argument with no description leaves {@code
+     * ARGUMENT_MISSING} with nothing to say the value is.
+     *
+     * <p>The fourth was named here and not implemented until 2026-09-19 —
+     * the javadoc said three checks ran and two did. A description of a check
+     * is not a check; {@code SurfaceDeclarationGuardTest} now observes each of
+     * the four refusing.
      */
     public static void requireServable() {
         requireServable(ReasonCatalogue.byCode());
@@ -153,6 +172,46 @@ public final class SurfaceDeclaration {
                     verb.call() + " is declared without a description. The description is "
                         + "the contract's normative text and is the only thing a caller "
                         + "with no skill has to go on.");
+            }
+
+            requireDescribedArguments(verb.call(), verb.arguments());
+        }
+    }
+
+    /**
+     * Refuses a call whose arguments cannot be explained to a caller.
+     *
+     * <p>An argument's description is not documentation: it is the {@code
+     * what} of the {@code ARGUMENT_MISSING} pattern, so an argument declared
+     * without one produces the refusal "dispatch_commission needs title: ."
+     * — a sentence that stops exactly where the caller needed it to start.
+     *
+     * <p>A call with no arguments at all is refused for the neighbouring
+     * reason: its input schema would be an empty closed object, and the check
+     * that refuses an undeclared argument would have nothing to compare
+     * against.
+     *
+     * <p>Takes the call's name and its arguments rather than the enum
+     * constant, for the reason {@link ReasonCatalogue#requireComplete(Map)}
+     * takes a map: the real declaration is a constant that cannot be made
+     * broken at runtime, so a check that only ever saw it could never be
+     * OBSERVED refusing. A guard nobody has watched fail is a description of a
+     * guard.
+     */
+    public static void requireDescribedArguments(String call, List<Argument> arguments) {
+        if (arguments.isEmpty()) {
+            throw new IllegalStateException(
+                call + " is declared with no arguments. Its input schema would be an "
+                    + "empty closed object, and the check that names an undeclared "
+                    + "argument would have no declaration to name instead.");
+        }
+        for (Argument argument : arguments) {
+            if (argument.description() == null || argument.description().isBlank()) {
+                throw new IllegalStateException(
+                    call + " declares '" + argument.name() + "' without a description. "
+                        + "The description is what an ARGUMENT_MISSING refusal says the "
+                        + "value IS, and without it the refusal stops where the caller "
+                        + "needed it to start.");
             }
         }
     }

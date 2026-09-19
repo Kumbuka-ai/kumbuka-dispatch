@@ -11,6 +11,7 @@ import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.CallerActor;
 import ai.kumbuka.dispatch.surface.SurfaceException;
+import ai.kumbuka.dispatch.surface.UnexpectedFailures;
 import ai.kumbuka.dispatch.surface.VerbSurface;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.HttpHeaders;
@@ -20,11 +21,11 @@ import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
 import org.jboss.logging.Logger;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Turns the two families of typed refusal into HTTP, in the shape section 4
@@ -89,21 +90,39 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
         String address = calling.address() == null ? "the address given" : calling.address();
 
         Refused refused = switch (e.reason()) {
+            // Every `why` below is this file's own sentence. The surface's
+            // messages name their own vocabulary and can carry a short-form
+            // address, and section 4.4 makes ARGUMENT_INVALID's `why` "a
+            // sentence of the pattern's own, never a kernel sentence".
             case ADDRESS_MALFORMED, PAYLOAD_MALFORMED ->
-                Refused.argumentInvalid(call, "address", address, e.getMessage());
+                Refused.argumentInvalid(Surface.REST, call, "address", address,
+                    "an address names a selector, a number and a sub-position under a "
+                        + "scope this caller may see");
             case CLAIM_DURATION_MALFORMED ->
-                Refused.claimDurationInvalid(call, "the one given");
+                Refused.claimDurationInvalid(Surface.REST, call, "the one given");
             case CONFLICT_TOKEN_MISSING ->
-                Refused.conflictToken(RefusalCode.CONFLICT_TOKEN_MISSING, call, address);
+                Refused.conflictToken(Surface.REST, RefusalCode.CONFLICT_TOKEN_MISSING,
+                    call, address);
             case CONFLICT_TOKEN_STALE ->
-                Refused.conflictToken(RefusalCode.CONFLICT_TOKEN_STALE, call, address);
-            // The acts this scheme withholds. They are real refusals here —
-            // unlike on the assistant surface, where no process verb reaches
-            // them — so they keep their own sentence and are told as a state
-            // the surface does not offer rather than as a defect.
-            case VERB_NOT_CARRIED, VERB_DEPTH_UNDECLARED, WITHDRAWAL_VIA_CONSOLE_ONLY,
-                 WRITE_ON_TRUNCATED_ADDRESS ->
-                Refused.argumentInvalid(call, "verb", call, e.getMessage());
+                Refused.conflictToken(Surface.REST, RefusalCode.CONFLICT_TOKEN_STALE,
+                    call, address);
+            // A verb at an address depth it does not have now carries the code
+            // the contract declares for it, rather than borrowing the one for
+            // a bad argument — the address was fine and the pairing was not.
+            case VERB_DEPTH_UNDECLARED, WRITE_ON_TRUNCATED_ADDRESS,
+                 CALL_NOT_AT_THIS_ADDRESS ->
+                Refused.callNotAtThisAddress(Surface.REST, call, address,
+                    "an address depth this verb declares", "not read", List.of());
+            // The two this scheme withholds. Real refusals here, unlike on the
+            // assistant surface where no verb reaches them.
+            case WITHDRAWAL_VIA_CONSOLE_ONLY ->
+                Refused.argumentInvalid(Surface.REST, call, "verb", call,
+                    "withdrawal is a ratchet and is restorable only through the console, "
+                        + "so the act has an address and this scheme is not it");
+            case VERB_NOT_CARRIED ->
+                Refused.argumentInvalid(Surface.REST, call, "verb", call,
+                    "this scheme does not carry it, and a verb it does not carry is "
+                        + "refused rather than quietly absent");
         };
 
         Response.ResponseBuilder response = Response.status(e.reason().status())
@@ -167,8 +186,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 return Refused.notFound();
             }
             if (code == RefusalCode.UNEXPECTED_FAILURE) {
-                return Refused.unexpected(call, named(address),
-                    UUID.randomUUID().toString());
+                return UnexpectedFailures.refuse(Surface.REST, call, named(address), e);
             }
 
             // The form faults, before any attempt to read a state. Several of
@@ -177,8 +195,22 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
             // nothing and the refusal would fall through to something about an
             // exchange the caller never named.
             if (code == RefusalCode.ARGUMENT_UNKNOWN) {
-                return Refused.argumentUnknown(call, subjectOf(e),
+                return Refused.argumentUnknown(Surface.REST, call, subjectOf(e),
                     List.of("see " + AddressParser.SCHEME + "'s declaration"));
+            }
+            if (code == RefusalCode.SELECTOR_UNKNOWN) {
+                // Named on this surface too. The predecessor put the words
+                // "the one given" where the selector goes, "this scope" where
+                // the scope goes and an empty list where the remedy goes —
+                // three values removed from one sentence, and the sentence
+                // still ends by telling the caller to use a declared one.
+                return Refused.selectorUnknown(Surface.REST, call,
+                    calling.selector("the one given"), calling.scope("this scope"),
+                    declaredSelectors());
+            }
+            if (code == RefusalCode.IDEMPOTENCY_KEY_REUSED) {
+                return Refused.idempotencyKeyReused(Surface.REST, call, "the one given",
+                    calling.scope("this scope"));
             }
 
             Situation situation = situationOf(address);
@@ -194,17 +226,18 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
             }
 
             return switch (code) {
-                case STATE_DOES_NOT_ALLOW -> Refused.ofState(call, situation.address(),
-                    situation.state(), situation.terminal(), situation.next());
-                case ROLE_DOES_NOT_ALLOW -> Refused.ofRole(call, situation.address(),
-                    "commissioner", Participation.BYSTANDER, situation.state(),
+                case STATE_DOES_NOT_ALLOW -> Refused.ofState(Surface.REST, call,
+                    situation.address(), situation.state(), situation.terminal(),
                     situation.next());
-                case NOT_THE_HOLDER -> Refused.notTheHolder(call, situation.address(),
-                    "its claim lapses", "make that call on it", situation.state(),
-                    situation.next());
-                case RECEIPT_MISSING, RECEIPT_WRONG -> Refused.receipt(code, call,
-                    situation.address(), situation.state(), situation.next());
-                case NO_ANSWER_DELIVERED -> Refused.noAnswerDelivered(call,
+                case ROLE_DOES_NOT_ALLOW -> Refused.ofRole(Surface.REST, call,
+                    situation.address(), "commissioner", situation.participation(),
+                    situation.state(), situation.next());
+                case NOT_THE_HOLDER -> Refused.notTheHolder(Surface.REST, call,
+                    situation.address(), lapsesAt(situation), "make that call on it",
+                    situation.state(), situation.next());
+                case RECEIPT_MISSING, RECEIPT_WRONG -> Refused.receipt(Surface.REST, code,
+                    call, situation.address(), situation.state(), situation.next());
+                case NO_ANSWER_DELIVERED -> Refused.noAnswerDelivered(Surface.REST, call,
                     situation.address(), situation.state(), situation.next());
                 default -> withoutState(code, call, situation.address(), e);
             };
@@ -224,33 +257,93 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
         private static Refused withoutState(RefusalCode code, String call, String address,
                                             DispatchException e) {
             return switch (code) {
-                case ROLE_DOES_NOT_ALLOW -> Refused.ofRole(call, address, "commissioner",
-                    Participation.BYSTANDER, "not visible to you", List.of());
-                case NOT_THE_HOLDER -> Refused.notTheHolder(call, address,
+                case ROLE_DOES_NOT_ALLOW -> Refused.ofRole(Surface.REST, call, address,
+                    "commissioner", Participation.BYSTANDER, "not visible to you",
+                    List.of());
+                case NOT_THE_HOLDER -> Refused.notTheHolder(Surface.REST, call, address,
                     "its claim lapses", "make that call on it", "not visible to you",
                     List.of());
-                case RECEIPT_MISSING, RECEIPT_WRONG -> Refused.receipt(code, call, address,
-                    "not visible to you", List.of());
-                case STATE_DOES_NOT_ALLOW -> Refused.ofState(call, address,
+                case RECEIPT_MISSING, RECEIPT_WRONG -> Refused.receipt(Surface.REST, code,
+                    call, address, "not visible to you", List.of());
+                case STATE_DOES_NOT_ALLOW -> Refused.ofState(Surface.REST, call, address,
                     "not visible to you", false, List.of());
-                case NO_ANSWER_DELIVERED -> Refused.noAnswerDelivered(call, address,
-                    "not visible to you", List.of());
-                case NOTHING_TO_TAKE -> Refused.nothingToTake(call, address);
-                case CLAIM_DURATION_INVALID -> Refused.claimDurationInvalid(call,
-                    "the duration given");
-                case SELECTOR_UNKNOWN -> Refused.selectorUnknown(call, "the one given",
-                    "this scope", List.of());
-                case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(call, "the one given",
-                    List.of("see the service's declaration"));
-                case ARGUMENT_MISSING -> Refused.argumentMissing(call, "a required value",
-                    e.getMessage());
-                case ARGUMENT_INVALID -> Refused.argumentInvalid(call, "a value given",
-                    "the one sent", e.getMessage());
-                default -> Refused.unexpected(call, address, UUID.randomUUID().toString());
+                case NO_ANSWER_DELIVERED -> Refused.noAnswerDelivered(Surface.REST, call,
+                    address, "not visible to you", List.of());
+                case NOTHING_TO_TAKE -> Refused.nothingToTake(Surface.REST, call, address);
+                case CLAIM_DURATION_INVALID -> Refused.claimDurationInvalid(Surface.REST,
+                    call, "the duration given");
+                case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(Surface.REST, call,
+                    "the one given", List.of("see the service's declaration"));
+                case ARGUMENT_MISSING -> Refused.argumentMissing(Surface.REST, call,
+                    "a required value", "a value this call cannot run without");
+                case ARGUMENT_INVALID -> argumentInvalid(call, e);
+                default -> UnexpectedFailures.refuse(Surface.REST, call, address, e);
             };
         }
 
-        /** The blocking children, re-read so each carries a complete address. */
+        /**
+         * An argument fault, worded here and never by the kernel.
+         *
+         * <p>The mirror of the assistant surface's branch and it exists for
+         * the same measured reason: the kernel's sentences carry short-form
+         * addresses, and this is the one refusal whose pattern takes free
+         * text. Passing {@code e.getMessage()} through was the path by which
+         * {@code sprint/26.1} reached a caller the contract promises only
+         * complete addresses to.
+         */
+        private static Refused argumentInvalid(String call, DispatchException e) {
+            return switch (e.reason()) {
+                case CURATION_TARGET_SELF -> Refused.argumentInvalid(Surface.REST, call,
+                    "into", "the exchange's own address",
+                    "a curation carries an answer forward INTO another exchange, so the "
+                        + "target cannot be the exchange being curated");
+                case METADATA_REFUSED -> Refused.argumentInvalid(Surface.REST, call,
+                    "metadata", "the object given",
+                    "metadata carries the caller's own keys and takes no assertion and "
+                        + "no URL carrying credentials");
+                default -> Refused.argumentInvalid(Surface.REST, call, "a value given",
+                    "the one sent", "it is not a value this call takes");
+            };
+        }
+
+        /**
+         * When the claim lapses, as an ISO-8601 instant.
+         *
+         * <p>The contract's pattern names a time; the predecessor wrote the
+         * phrase "its claim lapses" on both surfaces, which is the sentence
+         * with its one piece of information removed.
+         */
+        private static String lapsesAt(Situation situation) {
+            Instant expiry = situation.claimExpiresAt();
+            return expiry == null ? "its claim lapses" : expiry.toString();
+        }
+
+        /** The bracket kinds this scope declares, or none it may know about. */
+        private List<String> declaredSelectors() {
+            String scope = calling.scope(null);
+            if (scope == null) {
+                return List.of();
+            }
+            try {
+                return verbs.declaredSelectors(caller.current(), scope);
+            } catch (RuntimeException e) {
+                // A scope the caller may not see declares nothing it may know
+                // about, which is section 4.3's rule reaching one level in.
+                return List.of();
+            }
+        }
+
+        /**
+         * The blocking children, re-read so each carries a complete address
+         * AND the calls that would finish it.
+         *
+         * <p>Each child is re-read here, exactly as the assistant surface
+         * re-reads them. The predecessor wrote an empty list into every
+         * offender's {@code next} on this surface, so the remedy section 4.4
+         * names for this refusal — "the calls in each offender's next" —
+         * pointed at nothing, on the one surface where a caller has no other
+         * way to find out what is blocking it.
+         */
         private Refused children(DispatchException e, String call, String root,
                                  Situation situation) {
             List<Map<String, Object>> offenders = new ArrayList<>();
@@ -258,14 +351,17 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 String bare = shortForm.contains(" ")
                     ? shortForm.substring(0, shortForm.indexOf(' '))
                     : shortForm;
+                String complete = completeSiblingOf(root, bare);
+                Situation child = situationOf(complete);
 
                 Map<String, Object> named = new LinkedHashMap<>();
-                named.put("address", completeSiblingOf(root, bare));
-                named.put("state", stateIn(shortForm));
-                named.put("next", List.of());
+                named.put("address", child == null ? complete : child.address());
+                named.put("state", child == null ? stateIn(shortForm) : child.state());
+                named.put("next", child == null ? List.of() : child.next());
                 offenders.add(Map.copyOf(named));
             }
-            return Refused.childrenNotFinished(call, root, offenders,
+            return Refused.childrenNotFinished(Surface.REST, call, root, ending(call),
+                offenders,
                 situation == null ? "unknown" : situation.state(),
                 situation == null ? List.of() : situation.next());
         }
@@ -288,6 +384,8 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 return new Situation(result.exchange().address(),
                     result.exchange().status().wireName(),
                     result.exchange().status().terminal(),
+                    result.participation(),
+                    result.exchange().claimExpiresAt(),
                     result.next(Surface.REST));
             } catch (RuntimeException e) {
                 return null;
@@ -295,7 +393,21 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
         }
 
         private record Situation(String address, String state, boolean terminal,
+                                 Participation participation,
+                                 Instant claimExpiresAt,
                                  List<NextCalculator.Step> next) {
+        }
+
+        /**
+         * Which ending the caller attempted, for the contract's
+         * {@code <closed / cancelled>}.
+         *
+         * <p>On the generic surface both endings are the same verb — {@code
+         * close} — so the sentence says "closed" and does not guess at an
+         * intent this surface has no way to carry.
+         */
+        private static String ending(String call) {
+            return call.contains("cancel") ? "cancelled" : "closed";
         }
 
         private static String named(String address) {
@@ -366,7 +478,12 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 // Vocabulary: well-formed, addressed at something this scope
                 // does not have, or carrying content the scope refuses.
                 case SELECTOR_NOT_DECLARED, SELECTOR_WITHDRAWN, ADDENDUM_NOT_DRAWABLE,
-                     METADATA_REFUSED, FILTER_FIELD_UNKNOWN, FILTER_VALUE_REFUSED -> 422;
+                     METADATA_REFUSED, FILTER_FIELD_UNKNOWN, FILTER_VALUE_REFUSED,
+                     CURATION_TARGET_SELF -> 422;
+
+                // The key was already spent on a different call. 409: the
+                // caller can resolve it, by choosing another key.
+                case IDEMPOTENCY_KEY_REUSED -> 409;
 
                 // Ours, not the caller's: the session contract was not bound.
                 case SESSION_NOT_BOUND -> 500;
@@ -402,7 +519,11 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                      RECEIPT_WRONG -> 403;
                 case NOT_FOUND -> 404;
                 case STATE_DOES_NOT_ALLOW, CHILDREN_NOT_FINISHED, NO_ANSWER_DELIVERED,
-                     NOTHING_TO_TAKE -> 409;
+                     NOTHING_TO_TAKE, IDEMPOTENCY_KEY_REUSED -> 409;
+                // The verb is real and does not apply here. 405 and not 404:
+                // the address resolved, and a 404 would send the caller
+                // looking for the object rather than for the right call.
+                case CALL_NOT_AT_THIS_ADDRESS -> 405;
                 case CONFLICT_TOKEN_MISSING -> 428;
                 case CONFLICT_TOKEN_STALE -> 412;
                 case SELECTOR_UNKNOWN -> 422;

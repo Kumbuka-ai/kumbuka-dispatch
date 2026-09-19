@@ -71,7 +71,12 @@ public final class ReasonMapping {
             // was written, so none of them carries a state.
             case NUMBER_NOT_ACCEPTED, HOLDER_NOT_ACCEPTED -> RefusalCode.ARGUMENT_UNKNOWN;
             case ADDENDUM_MALFORMED, ADDENDUM_SUFFIX_EXHAUSTED, METADATA_REFUSED,
-                 FILTER_VALUE_REFUSED -> RefusalCode.ARGUMENT_INVALID;
+                 FILTER_VALUE_REFUSED, CURATION_TARGET_SELF ->
+                RefusalCode.ARGUMENT_INVALID;
+
+            // The key that says "the call I already made" and was given to a
+            // different one.
+            case IDEMPOTENCY_KEY_REUSED -> RefusalCode.IDEMPOTENCY_KEY_REUSED;
             case FILTER_FIELD_UNKNOWN -> RefusalCode.ARGUMENT_UNKNOWN;
             case UPDATE_EMPTY, RETURN_DRAFT_REQUIRED -> RefusalCode.ARGUMENT_MISSING;
 

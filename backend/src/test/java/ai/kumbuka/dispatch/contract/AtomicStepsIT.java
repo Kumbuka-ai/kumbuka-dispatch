@@ -178,7 +178,7 @@ class AtomicStepsIT {
         deliverOn(e);
 
         ExchangeAddress nowhere = ExchangeAddress.bracket(SELECTOR, 99999);
-        assertThatThrownBy(() -> exchanges.curateReturn(SCOPE, addressOf(e), nowhere, CONSOLE))
+        assertThatThrownBy(() -> exchanges.curateReturn(SCOPE, addressOf(e), SCOPE, nowhere, CONSOLE))
             .isInstanceOf(DispatchException.class);
 
         Exchange after = readBack(addressOf(e));

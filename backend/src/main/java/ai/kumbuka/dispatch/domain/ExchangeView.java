@@ -73,6 +73,7 @@ public record ExchangeView(
     boolean answerDelivered,
     boolean bracketRoot,
     boolean frozen,
+    boolean childrenFinished,
     String effectiveHolderSubject) {
 
     /**
@@ -83,20 +84,26 @@ public record ExchangeView(
      * short one — the short form does not exist in this record at all, and a
      * caller of this factory that has no slug cannot construct a view.
      *
-     * <p>The three booleans at the end are not fields of the exchange; they are
+     * <p>The four booleans at the end are not fields of the exchange; they are
      * the preconditions {@code next} reads. They travel on the view rather
      * than being recomputed at the surface because the surface would then hold
      * a second reading of the same row — and the one that would be wrong is
      * the one used by whichever adapter is written next.
      *
-     * @param actor        decides whether each role is included at all
-     * @param now          the moment the claim is judged against
-     * @param scopeSlug    the scope as the caller names it, for the address
-     * @param curatedInto  the complete address of the curation target, already
-     *                     resolved, or null
+     * @param actor            decides whether each role is included at all
+     * @param now              the moment the claim is judged against
+     * @param scopeSlug        the scope as the caller names it, for the address
+     * @param curatedInto      the complete address of the curation target,
+     *                         already resolved, or null
+     * @param childrenFinished whether every exchange of the bracket is
+     *                         terminal. Supplied rather than derived here,
+     *                         because it is a fact about the bracket and this
+     *                         factory sees one row — a projection that could
+     *                         query would be a second service. True at a
+     *                         child, where section 6 asks nothing about it.
      */
     static ExchangeView of(Exchange e, Actor actor, Instant now, String scopeSlug,
-                           String curatedInto) {
+                           String curatedInto, boolean childrenFinished) {
         return new ExchangeView(
             new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix)
                 .complete(scopeSlug),
@@ -121,6 +128,7 @@ public record ExchangeView(
             e.answerDelivered(),
             e.isBracketRoot(),
             e.frozen(),
+            childrenFinished,
             e.effectiveHolder(now));
     }
 

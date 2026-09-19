@@ -148,6 +148,101 @@ class GenericSurfaceFormIT {
             .isNull();
     }
 
+
+    /**
+     * The two codes only this surface can raise, raised.
+     *
+     * <p>Section 4.4: "On the assistant surface the receipt and the conflict
+     * token are required arguments wherever a call takes them, so their absence
+     * is answered as {@code ARGUMENT_MISSING}; {@code RECEIPT_MISSING} and
+     * {@code CONFLICT_TOKEN_MISSING} are raised on the generic surface only,
+     * where both are optional in form."
+     *
+     * <p>This probe is the reason {@code EveryRefusalIT} may exclude the two:
+     * it names this test, and Before 2026-09-19 it named a probe that did
+     * not exist — a comment asserting coverage, which is the one kind of
+     * comment that makes a gap invisible. A code declared in the catalogue and
+     * raised by nothing is a published promise nothing keeps, and the exclusion
+     * is only honest while the coverage is somewhere.
+     */
+    @Test
+    void the_two_codes_this_surface_alone_can_raise() {
+        String id = openAndRead();
+
+        // CONFLICT_TOKEN_MISSING — a field write with no If-Match. On REST the
+        // token travels in an optional header, so the surface sees the absence
+        // itself rather than a schema check answering first.
+        Response noToken = given().contentType(ContentType.JSON).accept(ContentType.JSON)
+            .body(Map.of("title", "a new title"))
+            .patch(SurfaceFixture.item(id));
+
+        assertThat(noToken.jsonPath().getString("reason"))
+            .as("a write that repeats the conflict token and carries none is refused for "
+                + "the absence, and told so specifically enough to fix")
+            .isEqualTo("CONFLICT_TOKEN_MISSING");
+        assertThat(noToken.jsonPath().getString("message"))
+            .as("and the message names this surface's call, never a process verb")
+            .doesNotContain("dispatch_");
+
+        // RECEIPT_MISSING — the holder writing its answer without the receipt.
+        // The claim is real and the proof did not travel, which is a different
+        // thing from holding no claim at all.
+        SurfaceFixture.asExecutor(identity);
+        Response claimed = post(SurfaceFixture.item(id) + ":claim",
+            Map.of("duration", "PT1H"));
+        claimed.then().statusCode(200);
+
+        String token = get(SurfaceFixture.item(id)).jsonPath().getString("conflict_token");
+        Response noReceipt = given().contentType(ContentType.JSON).accept(ContentType.JSON)
+            .header("If-Match", token)
+            .body(Map.of("draft", "the answer"))
+            .patch(SurfaceFixture.item(id));
+
+        assertThat(noReceipt.jsonPath().getString("reason"))
+            .as("writing the return role needs the receipt the claim issued, and its "
+                + "absence has its own code on the surface where it is optional in form")
+            .isEqualTo("RECEIPT_MISSING");
+        assertThat(noReceipt.jsonPath().getString("message"))
+            .as("the step is named in THIS surface's vocabulary: section 4.2 has the "
+                + "pattern name a step and the surface fill in its own call for it")
+            .doesNotContain("dispatch_take");
+    }
+
+    /**
+     * A blocking child on this surface carries the calls that would finish it.
+     *
+     * <p>Section 4.4 gives {@code CHILDREN_NOT_FINISHED} the remedy "the calls
+     * in each offender's next". Before 2026-09-19 this surface wrote an
+     * empty list into every offender, so the remedy pointed at nothing on the
+     * one surface where a caller has no second way to find out what is blocking
+     * it.
+     */
+    @Test
+    void a_blocking_child_carries_its_own_next_here_too() {
+        String root = openAndRead();
+        post(SurfaceFixture.item(root) + "/children", Map.of(
+            "title", "a child", "apparatus", "code", "date", "2026-09-01"))
+            .then().statusCode(201);
+
+        Response refused = post(SurfaceFixture.item(root) + ":close", Map.of());
+
+        assertThat(refused.jsonPath().getString("reason"))
+            .isEqualTo("CHILDREN_NOT_FINISHED");
+        assertThat(refused.jsonPath().getList("data.offenders"))
+            .as("the blockers travel as structure under data, never as prose")
+            .isNotEmpty();
+        assertThat(refused.jsonPath().getList("data.offenders[0].next"))
+            .as("and each one carries what would finish it, computed for this caller on "
+                + "this surface")
+            .isNotEmpty();
+        assertThat(refused.jsonPath().getString("data.offenders[0].address"))
+            .as("with a complete address, so the caller can act on it unchanged")
+            .startsWith("dispatch://");
+        assertThat(refused.jsonPath().getList("data.offenders[0].next.call"))
+            .as("REST verbs, because this is a REST caller")
+            .noneMatch(call -> String.valueOf(call).startsWith("dispatch_"));
+    }
+
     // =======================================================================
     // Driving the surface
     // =======================================================================

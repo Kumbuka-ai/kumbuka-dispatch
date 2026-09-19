@@ -1,6 +1,7 @@
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.repository.ExchangeRepository;
+import ai.kumbuka.dispatch.repository.ScopeAccessRepository;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -54,6 +55,8 @@ public class ExchangeService {
 
     @Inject ExchangeRepository exchanges;
     @Inject SelectorRegistry selectors;
+    @Inject IdempotencyService keys;
+    @Inject ScopeAccessRepository scopes;
 
     private final Clock clock;
 
@@ -186,10 +189,38 @@ public class ExchangeService {
         return require(scopeId, address);
     }
 
+    /**
+     * The address of an exchange known only by its durable identity.
+     *
+     * <p>What the idempotency ledger stores and the surface needs back: an
+     * identity is what survives a renumbering (ADR-0014), and an address is
+     * what a caller can act on. Empty where the identity names nothing in this
+     * scope, which a repeat under a key from another scope would.
+     */
+    @Transactional
+    public Optional<ExchangeAddress> addressOfIdentity(UUID scopeId, Long id) {
+        return exchanges.findByIdentity(scopeId, id)
+            .map(e -> new ExchangeAddress(e.selectorName(), e.number, e.sub,
+                e.addendumSuffix));
+    }
+
     /** The addenda hanging from one exchange, in suffix order. */
     @Transactional
     public List<Exchange> addenda(UUID scopeId, ExchangeAddress base) {
         return exchanges.addenda(scopeId, base);
+    }
+
+    /**
+     * The names of the bracket kinds this scope declares.
+     *
+     * <p>Read for one refusal only — {@code SELECTOR_UNKNOWN}, whose pattern
+     * names them and whose remedy is unactionable without them. Names alone
+     * and not the rows: a refusal has no business carrying a selector's
+     * status, its counter or when it was declared.
+     */
+    @Transactional
+    public List<String> declaredSelectors(UUID scopeId) {
+        return selectors.declared(scopeId).stream().map(s -> s.name).toList();
     }
 
     /** The children of a bracket, addenda excluded. */
@@ -329,7 +360,40 @@ public class ExchangeService {
     public Exchange commission(UUID scopeId, String selectorName, Integer parentNumber,
                                String title, String apparatus, String text, LocalDate date,
                                Map<String, Object> metadata, Actor actor) {
+        return commissionUnder(scopeId, selectorName, parentNumber, title, apparatus, text,
+            date, metadata, actor, IdempotencyKey.NONE);
+    }
+
+    /**
+     * The same, under a key the caller chose so that a retry does not
+     * commission twice.
+     *
+     * <p>Two entry points and one body, because the key is optional on the
+     * wire and an overload is how an optional argument stays out of every call
+     * site that does not use one. The rule itself lives in {@link
+     * IdempotencyService} and is applied HERE rather than at the surface: it
+     * decides whether a write happens, and it has to decide that inside the
+     * transaction that would do the writing. A surface-side check would read
+     * the ledger in one transaction and commission in another, so two retries
+     * a few milliseconds apart would both find no row.
+     */
+    @Transactional
+    public Exchange commissionUnder(UUID scopeId, String selectorName, Integer parentNumber,
+                                    String title, String apparatus, String text,
+                                    LocalDate date, Map<String, Object> metadata,
+                                    Actor actor, IdempotencyKey key) {
         Metadata.validate(metadata);
+
+        String digest = IdempotencyService.digestOf(java.util.Arrays.asList(selectorName,
+            parentNumber == null ? null : String.valueOf(parentNumber), title, apparatus,
+            text, date == null ? null : date.toString(), String.valueOf(metadata)));
+
+        Optional<Exchange> already = keys.firstAnswerFor(scopeId, actor, key,
+            "dispatch_commission", digest)
+            .flatMap(id -> exchanges.findByIdentity(scopeId, id));
+        if (already.isPresent()) {
+            return already.get();
+        }
 
         Exchange e = parentNumber == null
             ? openBracket(scopeId, selectorName, title, apparatus, date, actor)
@@ -339,6 +403,7 @@ public class ExchangeService {
         e.apply(Transition.SEND);
         e.freezeDispatch(Instant.now(clock));
         touch(e, actor.subject());
+        keys.remember(scopeId, actor, key, "dispatch_commission", digest, e);
 
         LOG.infof("commission %s -> %s", e.address(), e.status().wireName());
         return e;
@@ -362,9 +427,36 @@ public class ExchangeService {
     @Transactional
     public Exchange addCorrection(UUID scopeId, ExchangeAddress address, String title,
                                   String text, Actor actor) {
+        return addCorrectionUnder(scopeId, address, title, text, actor,
+            IdempotencyKey.NONE);
+    }
+
+    /**
+     * The same, under a key the caller chose so that a retry does not correct
+     * twice.
+     *
+     * <p>A correction cannot be removed and closes together with what it
+     * corrects, so a duplicate is permanent — which makes this the call where
+     * an accepted-and-discarded key costs most.
+     */
+    @Transactional
+    public Exchange addCorrectionUnder(UUID scopeId, ExchangeAddress address, String title,
+                                       String text, Actor actor, IdempotencyKey key) {
         Exchange corrected = require(scopeId, address);
+
+        String digest = IdempotencyService.digestOf(
+            java.util.Arrays.asList(address.toString(), title, text));
+
+        Optional<Exchange> already = keys.firstAnswerFor(scopeId, actor, key,
+            "dispatch_add_correction", digest)
+            .flatMap(id -> exchanges.findByIdentity(scopeId, id));
+        if (already.isPresent()) {
+            return already.get();
+        }
+
         Exchange addendum = addAddendum(scopeId, address, title, corrected.apparatus,
             LocalDate.now(clock), actor, text);
+        keys.remember(scopeId, actor, key, "dispatch_add_correction", digest, corrected);
 
         LOG.infof("add_correction %s", addendum.address());
         return corrected;
@@ -381,8 +473,30 @@ public class ExchangeService {
      */
     @Transactional
     public Exchange acceptReturn(UUID scopeId, ExchangeAddress address, Actor actor) {
-        Exchange e = ratify(scopeId, address, actor);
+        Exchange e = ratifyUnlessAlready(scopeId, address, actor);
         return transition(scopeId, address, Transition.CLOSE, actor, e);
+    }
+
+    /**
+     * Ratifies the answer, unless it has already been ratified.
+     *
+     * <p>{@code returned} is reachable through the generic surface, and
+     * section 5 declares the three accepting verbs from it as well as from
+     * {@code needs_input}. From {@code returned} the ratification is the step
+     * that has already happened, so the act is what remains of the chain —
+     * ratifying again would be refused by the kernel with {@code
+     * RETURN_ALREADY_RATIFIED}, on an exchange whose {@code next} had just
+     * offered the call.
+     *
+     * <p>This is not the surface deciding a kernel rule. It is the same
+     * reading {@link VerbStep} makes of the chain, in the one place that
+     * executes it: a compound verb may skip a prefix that is done, and may
+     * never skip a step in the middle.
+     */
+    private Exchange ratifyUnlessAlready(UUID scopeId, ExchangeAddress address,
+                                         Actor actor) {
+        Exchange e = require(scopeId, address);
+        return e.status() == ExchangeStatus.RETURNED ? e : ratify(scopeId, address, actor);
     }
 
     /**
@@ -395,16 +509,14 @@ public class ExchangeService {
      * consuming the exchange into nothing.
      */
     @Transactional
-    public Exchange curateReturn(UUID scopeId, ExchangeAddress address,
+    public Exchange curateReturn(UUID scopeId, ExchangeAddress address, UUID targetScopeId,
                                  ExchangeAddress into, Actor actor) {
-        Exchange target = require(scopeId, into);
-        Exchange e = ratify(scopeId, address, actor);
+        Exchange target = require(targetScopeId, into);
+        Exchange e = ratifyUnlessAlready(scopeId, address, actor);
 
         if (target.id != null && target.id.equals(e.id)) {
-            throw new DispatchException(DispatchException.Reason.FILTER_VALUE_REFUSED,
-                e.address() + " cannot be curated into itself. The target of a curation is "
-                    + "the object the answer is carried INTO — usually the record of the "
-                    + "bracket this exchange belongs to.");
+            throw new DispatchException(DispatchException.Reason.CURATION_TARGET_SELF,
+                "an exchange cannot be curated into itself");
         }
 
         e.curateInto(target.id);
@@ -428,7 +540,7 @@ public class ExchangeService {
         Exchange root = require(scopeId, address);
         requireSiblingsTerminal(scopeId, root);
 
-        Exchange e = ratify(scopeId, address, actor);
+        Exchange e = ratifyUnlessAlready(scopeId, address, actor);
         return transition(scopeId, address, Transition.CLOSE, actor, e);
     }
 
@@ -492,11 +604,21 @@ public class ExchangeService {
     /**
      * Withdraws a commission: records the reason and closes, in one
      * transaction.
+     *
+     * <p>On a bracket root this ends the bracket without a record, and the
+     * children are checked first — the same check {@link #closeBracket} makes,
+     * for the same reason. Section 5 admits cancel on a root "only when every
+     * child is terminal"; without the check here the kernel's own gate at the
+     * CLOSE would still catch it, but the refusal would arrive after the
+     * reason had been written onto the exchange.
      */
     @Transactional
     public Exchange cancel(UUID scopeId, ExchangeAddress address, Actor actor,
                            String reason) {
         Exchange e = require(scopeId, address);
+        if (e.isBracketRoot()) {
+            requireSiblingsTerminal(scopeId, e);
+        }
         e.recordTerminationReason(reason);
         return transition(scopeId, address, Transition.CLOSE, actor, e);
     }
@@ -513,18 +635,37 @@ public class ExchangeService {
      */
     @Transactional
     public Exchange decline(UUID scopeId, ExchangeAddress address, Actor actor,
-                            String receipt, String reason) {
+                            ClaimProof proof, String reason) {
         Exchange e = require(scopeId, address);
         Transition ending = e.status() == ExchangeStatus.ACTIVE
             ? Transition.FAIL
             : Transition.REJECT;
 
         if (ending == Transition.FAIL && actor.isExecutor()) {
-            requireReceipt(e, receipt);
+            requireHeld(e, proof);
         }
 
         e.recordTerminationReason(reason);
         return transition(scopeId, address, ending, actor, e);
+    }
+
+    /**
+     * The receipt of a caller that says it holds the exchange.
+     *
+     * <p>A switch over {@link ClaimProof} rather than a null check, so the
+     * absent case is a case the compiler knows about. It is also the only
+     * place the two are told apart: a decline with no receipt on an ACTIVE
+     * exchange is a caller claiming an ending that is not its to record.
+     */
+    private void requireHeld(Exchange e, ClaimProof proof) {
+        switch (proof) {
+            case ClaimProof.Presented presented -> requireReceipt(e, presented.receipt());
+            case ClaimProof.NotTakenUp ignored -> throw new DispatchException(
+                DispatchException.Reason.RECEIPT_ABSENT,
+                "declining an exchange that is being worked on records a failure to "
+                    + "complete it, and only its holder can record that. The receipt is "
+                    + "the proof, and none arrived.");
+        }
     }
 
     // ----------------------------------------------------------------------
@@ -594,11 +735,75 @@ public class ExchangeService {
      */
     private ExchangeView project(Exchange e, Actor actor, UUID scopeId, String scopeSlug,
                                  Instant now) {
-        String curatedInto = exchanges.findByIdentity(scopeId, e.curatedIntoId())
-            .map(target -> new ExchangeAddress(target.selectorName(), target.number,
-                target.sub, target.addendumSuffix).complete(scopeSlug))
+        return ExchangeView.of(e, actor, now, scopeSlug,
+            curatedIntoAddress(e, scopeId, scopeSlug), bracketMayEnd(scopeId, e));
+    }
+
+    /**
+     * The complete address of a curated answer's target, or nothing.
+     *
+     * <p>Looked up tenant-wide rather than in the curated exchange's own
+     * scope. Section 5.1 admits a target "in any scope and bracket kind", and
+     * a lookup bound to this exchange's scope would answer null for every
+     * cross-scope curation — a stored reference the answer silently omits,
+     * which is worse than refusing the curation outright.
+     *
+     * <p>The target's own scope slug is what renders the address, and it comes
+     * from the subject-filtered directory view. So a caller that may not see
+     * the target's scope gets no slug and therefore no address — the same
+     * answer it would get for a target that is not there, which is section
+     * 4.3's rule reaching into a field.
+     */
+    private String curatedIntoAddress(Exchange e, UUID scopeId, String scopeSlug) {
+        if (e.curatedIntoId() == null) {
+            return null;
+        }
+        return exchanges.findByIdentityAnywhere(e.curatedIntoId())
+            .flatMap(target -> slugOfTargetScope(target, scopeId, scopeSlug)
+                .map(slug -> new ExchangeAddress(target.selectorName(), target.number,
+                    target.sub, target.addendumSuffix).complete(slug)))
             .orElse(null);
-        return ExchangeView.of(e, actor, now, scopeSlug, curatedInto);
+    }
+
+    /**
+     * The target's scope as the caller names it.
+     *
+     * <p>A target in the exchange's own scope is rendered with the slug the
+     * caller used to get here, and costs no lookup: the caller named that
+     * scope a moment ago, and asking the directory for a name it just supplied
+     * would be a query to learn something already known.
+     *
+     * <p>A target in another scope needs the directory, and the directory
+     * answers for the bound subject — so a caller that may not see the target's
+     * scope gets no slug and therefore no address, which is the same answer it
+     * would get for a target that is not there.
+     */
+    private Optional<String> slugOfTargetScope(Exchange target, UUID scopeId,
+                                               String scopeSlug) {
+        if (target.scopeId == null || target.scopeId.equals(scopeId)) {
+            return Optional.of(scopeSlug);
+        }
+        return scopes.slugOf(target.scopeId);
+    }
+
+    /**
+     * Whether the bracket this exchange roots can be ended.
+     *
+     * <p>The same question {@link #requireSiblingsTerminal} asks at the
+     * transition, asked one turn earlier so that {@code next} can withhold the
+     * calls it would refuse. Two readings of one rule, and they cannot drift
+     * because both run the same predicate over the same rows — what would
+     * drift is a list that guessed.
+     *
+     * <p>Costs a query at a bracket root and none anywhere else: a child's
+     * calls do not depend on its siblings, so the common read pays nothing.
+     */
+    private boolean bracketMayEnd(UUID scopeId, Exchange e) {
+        if (!e.isBracketRoot()) {
+            return true;
+        }
+        return children(scopeId, e.selectorName(), e.number).stream()
+            .allMatch(child -> child.status().terminal());
     }
 
     /**

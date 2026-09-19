@@ -88,6 +88,27 @@ public class DispatchException extends RuntimeException {
         FILTER_VALUE_REFUSED,
 
         /**
+         * A curation named the exchange being curated as its own target.
+         *
+         * <p>Its own reason rather than a reuse of a filter refusal, which is
+         * what it borrowed before. A surface has to word this one specifically
+         * — the contract makes it {@code ARGUMENT_INVALID} on {@code into} —
+         * and a reason shared with three other faults cannot be worded
+         * specifically without reading the kernel's sentence, which is the one
+         * thing a message may not do.
+         */
+        CURATION_TARGET_SELF,
+
+        /**
+         * The same idempotency key was presented for a different call.
+         *
+         * <p>The key says "this is the call I already made". Answering with
+         * the first call's answer would discard this call's content silently,
+         * so the only answer that cannot lose a write is a refusal.
+         */
+        IDEMPOTENCY_KEY_REUSED,
+
+        /**
          * A draw from a set found nothing it could take.
          *
          * <p>Distinct from NOT_FOUND, which is about an address. This one says

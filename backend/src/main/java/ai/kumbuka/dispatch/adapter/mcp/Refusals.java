@@ -6,9 +6,12 @@ import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.RefusalCode;
 import ai.kumbuka.dispatch.surface.ReasonMapping;
 import ai.kumbuka.dispatch.surface.Refused;
+import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.surface.SurfaceException;
+import ai.kumbuka.dispatch.surface.UnexpectedFailures;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,15 +28,22 @@ import java.util.Map;
  * the caller made, {@code draft} is not a state this surface has, and "what
  * reaches active" is the way in where the caller needed the way out.
  *
- * <p>So the kernel's message is <strong>discarded</strong>, not decorated. Only
- * its typed reason survives, mapped by {@link ReasonMapping}, and the sentence
- * is written fresh from the catalogue's pattern with the caller's own call name
- * and the state it can see.
+ * <p>So the kernel's message is <strong>discarded</strong>, not decorated, and
+ * that now holds for the argument faults too. Measured in review on 2026-09-19: the
+ * {@code ARGUMENT_INVALID} and {@code ARGUMENT_MISSING} branches passed {@code
+ * e.getMessage()} through as the pattern's {@code why}, and kernel sentences
+ * carry short-form addresses — so the one refusal that takes free text was the
+ * one path by which {@code sprint/26.1} reached a caller that the contract
+ * promises only complete addresses to. Every {@code why} below is a sentence of
+ * this file's own.
  */
 final class Refusals {
 
     private Refusals() {
     }
+
+    /** This adapter's surface. Named once, so no branch can answer for another. */
+    private static final Surface SURFACE = Surface.MCP;
 
     /** A kernel refusal, in the caller's vocabulary. */
     static Refused of(DispatchException e, ProcessVerb verb, Map<String, Object> arguments,
@@ -48,21 +58,30 @@ final class Refusals {
         }
         if (code == RefusalCode.NOTHING_TO_TAKE) {
             String collection = adapter.collectionOf(arguments);
-            return Refused.nothingToTake(verb.call(),
+            return Refused.nothingToTake(SURFACE, verb.call(),
                 collection == null ? "this bracket kind" : collection);
         }
         if (code == RefusalCode.CLAIM_DURATION_INVALID) {
-            return Refused.claimDurationInvalid(verb.call(),
+            return Refused.claimDurationInvalid(SURFACE, verb.call(),
                 String.valueOf(arguments.get("duration")));
         }
         if (code == RefusalCode.SELECTOR_UNKNOWN) {
-            return Refused.selectorUnknown(verb.call(),
+            // The declared selectors, named. The contract's remedy is "use a
+            // declared one" and the predecessor passed an empty list, so every
+            // such refusal rendered "Declared: none" and told the caller to
+            // pick from nothing.
+            return Refused.selectorUnknown(SURFACE, verb.call(),
                 String.valueOf(arguments.get("selector")),
-                String.valueOf(arguments.get("scope")), List.of());
+                String.valueOf(arguments.get("scope")),
+                adapter.declaredSelectorsIn(arguments));
+        }
+        if (code == RefusalCode.IDEMPOTENCY_KEY_REUSED) {
+            return Refused.idempotencyKeyReused(SURFACE, verb.call(),
+                String.valueOf(arguments.get("idempotency_key")),
+                String.valueOf(arguments.get("scope")));
         }
         if (code == RefusalCode.UNEXPECTED_FAILURE) {
-            return Refused.unexpected(verb.call(), addressIn(arguments),
-                java.util.UUID.randomUUID().toString());
+            return UnexpectedFailures.refuse(SURFACE, verb.call(), addressIn(arguments), e);
         }
 
         // The form faults, BEFORE any attempt to read a state. They carry none
@@ -71,11 +90,11 @@ final class Refusals {
         // the refusal would fall through to NOT_FOUND. That would tell a
         // caller whose metadata was refused that its scope does not exist.
         if (code == RefusalCode.ARGUMENT_INVALID) {
-            return Refused.argumentInvalid(verb.call(), "fields", "the values given",
-                e.getMessage());
+            return argumentInvalid(e, verb);
         }
         if (code == RefusalCode.ARGUMENT_MISSING) {
-            return Refused.argumentMissing(verb.call(), "fields", e.getMessage());
+            return Refused.argumentMissing(SURFACE, verb.call(), "fields",
+                "the values this call writes");
         }
         if (code == RefusalCode.ARGUMENT_UNKNOWN) {
             // The kernel names what it refused in its offenders list — the
@@ -85,11 +104,43 @@ final class Refusals {
             String named = e.offenders().isEmpty()
                 ? firstUnknown(verb, arguments)
                 : String.join(", ", e.offenders());
-            return Refused.argumentUnknown(verb.call(), named, verb.argumentNames());
+            return Refused.argumentUnknown(SURFACE, verb.call(), named,
+                verb.argumentNames());
         }
 
         McpAdapter.Situation situation = adapter.situationOf(arguments);
-        return dressed(code, verb, situation, arguments);
+        return dressed(code, verb, situation, arguments, e);
+    }
+
+    /**
+     * An argument fault, worded here and never by the kernel.
+     *
+     * <p>The kernel's typed reason says which argument was wrong; the sentence
+     * that explains it is this file's. Each branch names the argument the
+     * caller actually sent, which is what makes the refusal correctable — the
+     * predecessor answered every one of them with the name {@code fields}.
+     */
+    private static Refused argumentInvalid(DispatchException e, ProcessVerb verb) {
+        return switch (e.reason()) {
+            case CURATION_TARGET_SELF -> Refused.argumentInvalid(SURFACE, verb.call(),
+                "into", "the exchange's own address",
+                "a curation carries an answer forward INTO another exchange, so the "
+                    + "target cannot be the exchange being curated");
+            case METADATA_REFUSED -> Refused.argumentInvalid(SURFACE, verb.call(),
+                "metadata", "the object given",
+                "metadata carries the caller's own keys and takes no assertion and no "
+                    + "URL carrying credentials");
+            case ADDENDUM_MALFORMED -> Refused.argumentInvalid(SURFACE, verb.call(),
+                "address", "the address given",
+                "a correction is attached to an exchange, and the address given names a "
+                    + "correction rather than one");
+            case ADDENDUM_SUFFIX_EXHAUSTED -> Refused.argumentInvalid(SURFACE, verb.call(),
+                "address", "the address given",
+                "this exchange already carries every correction its address space "
+                    + "admits");
+            default -> Refused.argumentInvalid(SURFACE, verb.call(), "fields",
+                "the values given", "one of them is not a value this call takes");
+        };
     }
 
     /** A surface refusal — grammar, tokens, and the acts this scheme withholds. */
@@ -100,23 +151,49 @@ final class Refusals {
             // NOT_FOUND: nothing was looked up, and answering "nothing is
             // visible there" would tell a caller with a typo to go looking for
             // a permission problem.
-            case ADDRESS_MALFORMED, PAYLOAD_MALFORMED -> Refused.argumentInvalid(verb.call(),
-                "address", addressIn(arguments), e.getMessage());
+            case ADDRESS_MALFORMED, PAYLOAD_MALFORMED -> Refused.argumentInvalid(SURFACE,
+                verb.call(), "address", addressIn(arguments),
+                "an address is written dispatch://<scope>/<selector>/<number>.<sub>");
 
-            case CLAIM_DURATION_MALFORMED -> Refused.claimDurationInvalid(verb.call(),
-                String.valueOf(arguments.get("duration")));
+            case CLAIM_DURATION_MALFORMED -> Refused.claimDurationInvalid(SURFACE,
+                verb.call(), String.valueOf(arguments.get("duration")));
 
-            case CONFLICT_TOKEN_MISSING -> Refused.conflictToken(
+            case CONFLICT_TOKEN_MISSING -> Refused.conflictToken(SURFACE,
                 RefusalCode.CONFLICT_TOKEN_MISSING, verb.call(), addressIn(arguments));
-            case CONFLICT_TOKEN_STALE -> Refused.conflictToken(
+            case CONFLICT_TOKEN_STALE -> Refused.conflictToken(SURFACE,
                 RefusalCode.CONFLICT_TOKEN_STALE, verb.call(), addressIn(arguments));
 
-            // The three the generic scheme withholds. They are unreachable from
+            // A verb that exists on this surface and not at this depth. Its own
+            // code since the contract declared one: the predecessor pressed
+            // ARGUMENT_INVALID into service and sent a caller correcting an
+            // address that was right.
+            case VERB_DEPTH_UNDECLARED, WRITE_ON_TRUNCATED_ADDRESS,
+                 CALL_NOT_AT_THIS_ADDRESS -> notAtThisAddress(verb, arguments, adapter);
+
+            // The two the generic scheme withholds. They are unreachable from
             // this surface — no process verb maps onto them — so reaching one
             // is a defect in the routing rather than a rule the caller broke.
-            case VERB_NOT_CARRIED, VERB_DEPTH_UNDECLARED, WITHDRAWAL_VIA_CONSOLE_ONLY,
-                 WRITE_ON_TRUNCATED_ADDRESS -> Refused.unexpected(verb.call(),
-                addressIn(arguments), java.util.UUID.randomUUID().toString());
+            case VERB_NOT_CARRIED, WITHDRAWAL_VIA_CONSOLE_ONLY -> UnexpectedFailures.refuse(
+                SURFACE, verb.call(), addressIn(arguments), e);
+        };
+    }
+
+    /** The call is real here and does not apply at the address given. */
+    private static Refused notAtThisAddress(ProcessVerb verb, Map<String, Object> arguments,
+                                            McpAdapter adapter) {
+        McpAdapter.Situation situation = adapter.situationOf(arguments);
+        return Refused.callNotAtThisAddress(SURFACE, verb.call(), addressIn(arguments),
+            appliesTo(verb),
+            situation == null ? "not visible to you" : situation.state(),
+            situation == null ? List.of() : situation.next());
+    }
+
+    /** What each verb addresses, for the refusal that says it is elsewhere. */
+    private static String appliesTo(ProcessVerb verb) {
+        return switch (verb) {
+            case CLOSE_BRACKET -> "a bracket root, the .0 of its bracket";
+            case QUERY, TAKE_NEXT -> "a bracket kind in a scope, not a single exchange";
+            default -> "one exchange, at its complete address";
         };
     }
 
@@ -130,7 +207,7 @@ final class Refusals {
      */
     private static Refused dressed(RefusalCode code, ProcessVerb verb,
                                    McpAdapter.Situation situation,
-                                   Map<String, Object> arguments) {
+                                   Map<String, Object> arguments, DispatchException e) {
         if (code == RefusalCode.ROLE_DOES_NOT_ALLOW && situation == null) {
             // A token carrying neither capacity can read nothing, so there is
             // no situation to dress — and NOT_FOUND would be the wrong answer
@@ -138,7 +215,7 @@ final class Refusals {
             // authenticated and its call was refused for who it is, which is
             // something it can act on by presenting a different token;
             // "nothing is visible there" sends it looking for a typo.
-            return Refused.ofRole(verb.call(), addressIn(arguments), "commissioner",
+            return Refused.ofRole(SURFACE, verb.call(), addressIn(arguments), "commissioner",
                 Participation.BYSTANDER, "not visible to you", List.of());
         }
         if (situation == null) {
@@ -148,37 +225,60 @@ final class Refusals {
         List<NextCalculator.Step> next = situation.next();
 
         return switch (code) {
-            case STATE_DOES_NOT_ALLOW -> Refused.ofState(verb.call(), situation.address(),
-                situation.state(), situation.terminal(), next);
+            case STATE_DOES_NOT_ALLOW -> Refused.ofState(SURFACE, verb.call(),
+                situation.address(), situation.state(), situation.terminal(), next);
 
-            case ROLE_DOES_NOT_ALLOW -> Refused.ofRole(verb.call(), situation.address(),
-                verb.role() == null ? "commissioner"
-                    : verb.role().name().toLowerCase(java.util.Locale.ROOT),
-                Participation.BYSTANDER, situation.state(), next);
+            // The caller's ACTUAL part, from the same computation `next` uses.
+            // The predecessor hardcoded BYSTANDER and told a holder it took no
+            // part in the exchange it was holding.
+            case ROLE_DOES_NOT_ALLOW -> Refused.ofRole(SURFACE, verb.call(),
+                situation.address(), requiredPart(verb), situation.participation(),
+                situation.state(), next);
 
-            case NOT_THE_HOLDER -> Refused.notTheHolder(verb.call(), situation.address(),
-                "its claim lapses", describe(verb), situation.state(), next);
+            case NOT_THE_HOLDER -> Refused.notTheHolder(SURFACE, verb.call(),
+                situation.address(), lapsesAt(situation), describe(verb),
+                situation.state(), next);
 
-            case RECEIPT_MISSING, RECEIPT_WRONG -> Refused.receipt(code, verb.call(),
+            case RECEIPT_MISSING, RECEIPT_WRONG -> Refused.receipt(SURFACE, code,
+                verb.call(), situation.address(), situation.state(), next);
+
+            case NO_ANSWER_DELIVERED -> Refused.noAnswerDelivered(SURFACE, verb.call(),
                 situation.address(), situation.state(), next);
 
-            case NO_ANSWER_DELIVERED -> Refused.noAnswerDelivered(verb.call(),
-                situation.address(), situation.state(), next);
-
-            case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(verb.call(),
+            case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(SURFACE, verb.call(),
                 firstUnknown(verb, arguments), verb.argumentNames());
-            case ARGUMENT_MISSING -> Refused.argumentMissing(verb.call(), "fields",
+            case ARGUMENT_MISSING -> Refused.argumentMissing(SURFACE, verb.call(), "fields",
                 "the values this call writes");
-            case ARGUMENT_INVALID -> Refused.argumentInvalid(verb.call(), "fields",
-                "the values given", "the service refused one of them");
+            case ARGUMENT_INVALID -> argumentInvalid(e, verb);
 
             // Every remaining code is raised directly, never mapped here. A
             // switch with no default is what makes that checkable.
             case NOT_FOUND, CHILDREN_NOT_FINISHED, NOTHING_TO_TAKE, CLAIM_DURATION_INVALID,
                  CONFLICT_TOKEN_MISSING, CONFLICT_TOKEN_STALE, SELECTOR_UNKNOWN,
-                 UNEXPECTED_FAILURE -> Refused.unexpected(verb.call(), situation.address(),
-                java.util.UUID.randomUUID().toString());
+                 IDEMPOTENCY_KEY_REUSED, CALL_NOT_AT_THIS_ADDRESS,
+                 UNEXPECTED_FAILURE -> UnexpectedFailures.refuse(SURFACE, verb.call(),
+                situation.address(), e);
         };
+    }
+
+    /** The part section 5 reserves this call for. */
+    private static String requiredPart(ProcessVerb verb) {
+        return verb.role() == null
+            ? "commissioner"
+            : verb.role().wireName();
+    }
+
+    /**
+     * When the claim lapses, as an ISO-8601 instant.
+     *
+     * <p>The contract's pattern names a time and this is the value for it. The
+     * predecessor wrote "its claim lapses", which is the sentence with its one
+     * piece of information removed — a caller cannot decide whether to wait or
+     * to do something else without knowing how long the wait is.
+     */
+    private static String lapsesAt(McpAdapter.Situation situation) {
+        Instant expiry = situation.claimExpiresAt();
+        return expiry == null ? "its claim lapses" : expiry.toString();
     }
 
     /**
@@ -215,9 +315,20 @@ final class Refusals {
         }
 
         McpAdapter.Situation situation = adapter.situationOf(arguments);
-        return Refused.childrenNotFinished(verb.call(), root, offenders,
-            situation == null ? "unknown" : situation.state(),
+        return Refused.childrenNotFinished(SURFACE, verb.call(), root, ending(verb),
+            offenders, situation == null ? "unknown" : situation.state(),
             situation == null ? List.of() : situation.next());
+    }
+
+    /**
+     * Which ending the caller attempted, for the contract's
+     * {@code <closed / cancelled>}.
+     *
+     * <p>The refusal is raised for two different acts and describing one as
+     * the other tells the caller about a call it did not make.
+     */
+    private static String ending(ProcessVerb verb) {
+        return verb == ProcessVerb.CANCEL ? "cancelled" : "closed";
     }
 
     /**

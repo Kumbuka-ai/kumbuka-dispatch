@@ -25,7 +25,7 @@ import java.util.Map;
  * in section 4.4. Where the document's shape changes, this throws rather than
  * silently finding nothing — a probe that expected nothing would pass.
  */
-final class Contract {
+public final class Contract {
 
     private static final String RESOURCE = "/contract/assistant-surface.md";
 
@@ -33,7 +33,7 @@ final class Contract {
     }
 
     /** The whole document, as it was copied. */
-    static String text() {
+    public static String text() {
         try (InputStream in = Contract.class.getResourceAsStream(RESOURCE)) {
             if (in == null) {
                 throw new IllegalStateException(
@@ -56,7 +56,7 @@ final class Contract {
      * Markdown is not part of the text — and a probe that compared line breaks
      * would go red on a re-wrap that changed nothing.
      */
-    static Map<String, String> describedCalls() {
+    public static Map<String, String> describedCalls() {
         Map<String, String> described = new LinkedHashMap<>();
         List<String> lines = List.of(text().split("\n", -1));
 
@@ -106,7 +106,7 @@ final class Contract {
      * inline-code span, plus the slash-separated pairs the table writes as one
      * row ({@code RECEIPT_MISSING / RECEIPT_WRONG}).
      */
-    static List<String> declaredReasons() {
+    public static List<String> declaredReasons() {
         List<String> reasons = new ArrayList<>();
         boolean inTable = false;
 
@@ -148,7 +148,7 @@ final class Contract {
      * ({@code <call>}) and the service fills braces ({@code {call}}). Comparing
      * characters would be comparing two notations for one thing.
      */
-    static String patternOf(String reason) {
+    public static String patternOf(String reason) {
         boolean inTable = false;
         for (String line : text().split("\n", -1)) {
             String trimmed = line.trim();
@@ -180,7 +180,7 @@ final class Contract {
      * derived from the service's own transition table would agree with the
      * service by construction.
      */
-    static List<Row> nextTable() {
+    public static List<Row> nextTable() {
         List<Row> rows = new ArrayList<>();
         boolean inTable = false;
 
@@ -201,7 +201,7 @@ final class Contract {
             if (cells.length < 5) {
                 continue;
             }
-            rows.add(new Row(clean(cells[1]), clean(cells[2]), calls(cells[3]),
+            rows.add(new Row(clean(cells[1]), clean(cells[2]), cells[3].trim(),
                 clean(cells[4])));
         }
 
@@ -212,17 +212,116 @@ final class Contract {
         return List.copyOf(rows);
     }
 
-    /** One row of the {@code next} table. */
-    record Row(String state, String caller, List<String> calls, String waitingFor) {
+    /**
+     * One row of the {@code next} table, with its third cell kept as written.
+     *
+     * <p>The cell is prose around a list, and the prose carries two conditions
+     * the probe has to honour: a call the row offers only on a bracket root,
+     * and a call the row offers only while every child of the bracket is
+     * terminal. Extracting the call names and discarding the rest — which is
+     * what the predecessor did — throws away exactly the part that decides
+     * which of the four cases a given exchange is in.
+     *
+     * @param cell the third column, verbatim, backticks and all
+     */
+    public record Row(String state, String caller, String cell, String waitingFor) {
+
+        /** Every call the cell names, in the order it names them. */
+        List<String> calls() {
+            return callsIn(cell);
+        }
+
+        /**
+         * What the row offers on an ordinary exchange — one that is not a
+         * bracket root.
+         *
+         * <p>The part before the row's {@code -- on a root:} clause, which is
+         * where the contract writes the root's deviation. A call carrying only
+         * a {@code (root: ...)} parenthetical is still offered here: the
+         * parenthetical narrows the ROOT case and says nothing about a child.
+         */
+        List<String> atChild() {
+            return callsIn(beforeRootClause());
+        }
+
+        /**
+         * What the row offers on a bracket root.
+         *
+         * <p>Three readings of the contract's own wording, in order: the
+         * child's list is the starting point; {@code instead of the first two}
+         * removes them; and every call the root clause names is added. Then
+         * each call that the cell qualifies with "only if every child is
+         * terminal" survives only when they are.
+         *
+         * @param childrenFinished whether every exchange of the bracket is
+         *                         terminal
+         */
+        List<String> atRoot(boolean childrenFinished) {
+            List<String> offered = new ArrayList<>(atChild());
+            String rootClause = afterRootClause();
+
+            if (rootClause.contains("instead of the first two")) {
+                offered = new ArrayList<>(offered.subList(Math.min(2, offered.size()),
+                    offered.size()));
+            }
+            for (String call : callsIn(rootClause)) {
+                if (!offered.contains(call)) {
+                    offered.add(call);
+                }
+            }
+            if (!childrenFinished) {
+                offered.removeIf(call -> conditionedOnChildren(call));
+            }
+            return List.copyOf(offered);
+        }
+
+        /** Whether this row says nothing is open to the caller. */
+        boolean offersNothing() {
+            return calls().isEmpty();
+        }
+
+        private String beforeRootClause() {
+            int at = cell.indexOf("-- on a root:");
+            return at < 0 ? cell : cell.substring(0, at);
+        }
+
+        private String afterRootClause() {
+            int at = cell.indexOf("-- on a root:");
+            return at < 0 ? "" : cell.substring(at);
+        }
+
+        /**
+         * Whether the cell makes this call conditional on the bracket's
+         * children.
+         *
+         * <p>The condition is written directly after the call it qualifies —
+         * as a parenthetical or as a trailing clause — so the text between one
+         * call and the next is the text that belongs to it. Reading the whole
+         * cell instead would make every call of a row conditional as soon as
+         * one of them was.
+         */
+        private boolean conditionedOnChildren(String call) {
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("`" + call + "`(.*?)(?=`dispatch_|$)", java.util.regex.Pattern.DOTALL)
+                .matcher(cell);
+            while (m.find()) {
+                if (m.group(1).contains("every child is terminal")) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
-    /** The call names in a cell, ignoring the parenthetical about bracket roots. */
-    private static List<String> calls(String cell) {
+    /** The call names in a stretch of the table's prose, in order. */
+    private static List<String> callsIn(String text) {
         List<String> found = new ArrayList<>();
         java.util.regex.Matcher m =
-            java.util.regex.Pattern.compile("`(dispatch_[a-z_]+)`").matcher(cell);
+            java.util.regex.Pattern.compile("`(dispatch_[a-z_]+)`").matcher(text);
         while (m.find()) {
-            found.add(m.group(1));
+            if (!found.contains(m.group(1))) {
+                found.add(m.group(1));
+            }
         }
         return List.copyOf(found);
     }

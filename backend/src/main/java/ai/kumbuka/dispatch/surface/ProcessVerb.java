@@ -63,7 +63,7 @@ public enum ProcessVerb {
     ADD_CORRECTION("dispatch_add_correction",
         "Attach a correction to a commissioned exchange whose text is frozen. The "
             + "correction is shown with the exchange, cannot be removed, and closes "
-            + "together with it.",
+            + "together with it. Not possible once the exchange is finished.",
         Participation.COMMISSIONER,
         List.of(
             Argument.top("address", "string", true, "the complete address of the exchange"),
@@ -82,14 +82,16 @@ public enum ProcessVerb {
             "the complete address of the exchange"))),
 
     CURATE_RETURN("dispatch_curate_return",
-        "Accept the delivered answer and finish the exchange by carrying it forward into a "
-            + "named object, for example the record of the bracket it belongs to. The "
-            + "target is stored with the exchange.",
+        "Accept the delivered answer and finish the exchange by carrying it forward into "
+            + "another exchange you can see, for example the record of the bracket it "
+            + "belongs to. The target is stored with the exchange.",
         Participation.COMMISSIONER,
         List.of(
             Argument.top("address", "string", true, "the complete address of the exchange"),
             Argument.field("into", "string", true,
-                "the complete address of the object the answer is carried into"))),
+                "the complete address of the exchange the answer is carried into: any "
+                    + "exchange of this service you can see, in any scope and bracket "
+                    + "kind, other than this one"))),
 
     REPLY_TO_EXECUTOR("dispatch_reply_to_executor",
         "Answer the executor: either a question it asked, or a delivered answer that needs "
@@ -104,8 +106,8 @@ public enum ProcessVerb {
 
     CANCEL("dispatch_cancel",
         "Withdraw a commission that is no longer wanted. The exchange is closed without an "
-            + "accepted answer. Not for a bracket root; a bracket is finished with "
-            + "dispatch_close_bracket.",
+            + "accepted answer. On a bracket root this ends the bracket without a record, "
+            + "and is refused while any exchange of the bracket is unfinished.",
         Participation.COMMISSIONER,
         List.of(
             Argument.top("address", "string", true, "the complete address of the exchange"),
@@ -128,7 +130,7 @@ public enum ProcessVerb {
     TAKE("dispatch_take",
         "Take up an open exchange to work on it. Returns a receipt that later calls on "
             + "this exchange need; keep it. The claim lasts for `duration`.",
-        Participation.BYSTANDER,
+        Participation.CANDIDATE,
         List.of(
             Argument.top("address", "string", true, "the complete address of the exchange"),
             Argument.top("duration", "string", true,
@@ -137,7 +139,7 @@ public enum ProcessVerb {
     TAKE_NEXT("dispatch_take_next",
         "Take up the next open exchange of a bracket kind, in address order. Returns the "
             + "exchange and the receipt.",
-        Participation.BYSTANDER,
+        Participation.CANDIDATE,
         List.of(
             Argument.top("scope", "string", true, "the scope name, a DNS label"),
             Argument.top("selector", "string", true, "the declared bracket kind"),
@@ -166,9 +168,11 @@ public enum ProcessVerb {
             Argument.field("question", "string", true, "what you cannot decide"))),
 
     DECLINE("dispatch_decline",
-        "Decline the work. Before you took it up this records a refusal of the commission; "
-            + "after, a failure to complete it. The reason is stored. Final.",
-        Participation.BYSTANDER,
+        "Decline the work. On an open exchange, any executor who could take it up may "
+            + "decline it, and the commission is refused. On an exchange you hold, it "
+            + "records that you could not complete it, and needs your receipt. The reason "
+            + "is stored. Final.",
+        Participation.CANDIDATE,
         List.of(
             Argument.top("address", "string", true, "the complete address of the exchange"),
             Argument.top("receipt", "string", false,
@@ -218,14 +222,15 @@ public enum ProcessVerb {
     }
 
     /**
-     * Who may make this call, or null where both roles may.
+     * The part that may make this call, or null where every part may.
      *
-     * <p>{@link Participation#BYSTANDER} on {@code dispatch_take} and {@code
-     * dispatch_decline} is not a looser rule than {@code HOLDER} — it says the
-     * caller must NOT already hold the exchange, which is the precondition
-     * those two have. {@code dispatch_decline} takes both, and reads its case
-     * from whether a receipt arrived; that is the one place the contract
-     * leaves open (section 8) and it is followed rather than settled here.
+     * <p>{@link Participation#CANDIDATE} on the two takes and on {@code
+     * dispatch_decline} is section 2's own part and not a looser {@code
+     * HOLDER}: a candidate is an executor at an exchange that is still open,
+     * which is exactly the precondition those three carry on the open side.
+     * {@code dispatch_decline} additionally admits the holder, on an {@code
+     * active} exchange and with its receipt — one call over two parts, which
+     * {@link NextCalculator} reads from the state rather than from this field.
      */
     public Participation role() {
         return role;

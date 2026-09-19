@@ -45,17 +45,28 @@ class McpProjectionIT {
     // The declaration
     // =======================================================================
 
+    /**
+     * The served tool list is the contract's list of calls, and not the
+     * endpoint's own.
+     *
+     * <p><strong>The expectation comes from the contract document</strong>,
+     * read out of the copy under {@code contract/assistant-surface.md}. The
+     * predecessor compared the endpoint against {@code McpTools.declared()} —
+     * which is precisely what the endpoint serialises, so it asserted that the
+     * endpoint returns what the endpoint returns. It would have stayed green
+     * through a tool added, removed or renamed on both sides at once, which is
+     * the only way this check can fail in practice.
+     */
     @Test
-    void tools_list_declares_exactly_the_carried_verbs() {
-        List<String> declared = rpc("tools/list", Map.of())
+    void tools_list_declares_exactly_the_calls_the_contract_names() {
+        List<String> served = rpc("tools/list", Map.of())
             .jsonPath().getList("result.tools.name");
 
-        assertThat(declared)
-            .as("MCP omits and never adds, and today there is no declared omission. A tool "
-                + "with no verb behind it is an addition; a verb with no tool is an "
-                + "omission nobody declared")
-            .containsExactlyInAnyOrderElementsOf(McpTools.declared().stream()
-                .map(McpTools.Tool::name).toList());
+        assertThat(served)
+            .as("section 5 is the list of calls this surface carries. MCP omits and never "
+                + "adds: a tool with no entry in the contract is an addition, and a "
+                + "contract entry with no tool is an omission nobody declared")
+            .containsExactlyInAnyOrderElementsOf(ai.kumbuka.dispatch.contract.Contract.describedCalls().keySet());
     }
 
     @Test

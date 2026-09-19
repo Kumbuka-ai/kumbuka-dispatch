@@ -3,6 +3,7 @@ package ai.kumbuka.dispatch.adapter.mcp;
 import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Refused;
+import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.domain.QueryFilter;
 
 import java.time.LocalDate;
@@ -58,7 +59,7 @@ final class CallArguments {
             return Map.of();
         }
         if (!(nested instanceof Map)) {
-            throw Refused.argumentInvalid(verb.call(), "fields", String.valueOf(nested),
+            throw Refused.argumentInvalid(Surface.MCP, verb.call(), "fields", String.valueOf(nested),
                 "it carries the values this call writes and is an object");
         }
         return (Map<String, Object>) nested;
@@ -88,7 +89,7 @@ final class CallArguments {
 
         for (String name : top.keySet()) {
             if (!declared.contains(name)) {
-                throw Refused.argumentUnknown(verb.call(), name, declared);
+                throw Refused.argumentUnknown(Surface.MCP, verb.call(), name, declared);
             }
         }
     }
@@ -98,7 +99,7 @@ final class CallArguments {
         List<String> declared = verb.fieldArguments().stream().map(Argument::name).toList();
         for (String name : fields.keySet()) {
             if (!declared.contains(name)) {
-                throw Refused.argumentUnknown(verb.call(), name,
+                throw Refused.argumentUnknown(Surface.MCP, verb.call(), name,
                     declared.isEmpty() ? List.of("none: this call writes nothing") : declared);
             }
         }
@@ -144,7 +145,7 @@ final class CallArguments {
         try {
             return LocalDate.parse(raw);
         } catch (DateTimeParseException e) {
-            throw Refused.argumentInvalid(verb.call(), name, raw,
+            throw Refused.argumentInvalid(Surface.MCP, verb.call(), name, raw,
                 "a date is written YYYY-MM-DD");
         }
     }
@@ -181,7 +182,7 @@ final class CallArguments {
     private String require(String name, String value) {
         if (value == null || value.isBlank()) {
             Argument declared = verb.argument(name);
-            throw Refused.argumentMissing(verb.call(), name,
+            throw Refused.argumentMissing(Surface.MCP, verb.call(), name,
                 declared == null ? "an argument of this call" : declared.description());
         }
         return value;
