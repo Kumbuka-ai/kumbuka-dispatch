@@ -112,7 +112,7 @@ class LazyExpiryIT {
                 + "gap between these two lines is the failure this exists to prevent")
             .isNull();
 
-        ExchangeView view = exchanges.view(SCOPE, at(sent), CONSOLE);
+        ExchangeView view = exchanges.view(SCOPE, "probe-scope", at(sent), CONSOLE);
         assertThat(view.effectiveHolder())
             .as("the view projects it too — every read surface, not just the one that "
                 + "happened to be tested. Wire projects state, not subject: nobody, "

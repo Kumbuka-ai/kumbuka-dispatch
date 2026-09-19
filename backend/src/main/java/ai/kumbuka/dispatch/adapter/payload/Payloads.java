@@ -321,4 +321,82 @@ public final class Payloads {
             return new Refusal(reason, message, List.of());
         }
     }
+
+    /**
+     * The refusal of section 4.1: a reason, a message that explains itself,
+     * and the data a caller acts on.
+     *
+     * <p>{@code data} is {@code NON_NULL}, which is what keeps {@code
+     * NOT_FOUND} byte-identical across its three causes: it carries none, and
+     * an empty {@code data: {}} would be a key the other refusals have and
+     * this one would have to keep having, forever, in exactly the same shape.
+     *
+     * <p>Lists travel inside {@code data} and never beside it. The measured
+     * surface put the blocking children under a member of their own, which is
+     * a second place a caller has to look and a shape that cannot grow a
+     * second list without inventing a third member.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record RefusalEnvelope(String reason, String message, Map<String, Object> data) {
+    }
+
+    /**
+     * The answer of section 3: what was addressed, what it holds, what to do
+     * next.
+     *
+     * <p>Four members and a fifth that is usually null. {@code address} is the
+     * complete URI; {@code fields} is the exchange as this caller may see it;
+     * {@code conflict_token} is the marker a later write repeats; {@code next}
+     * lists the calls that succeed from here; {@code waiting_for} names who the
+     * exchange waits on when there is nothing for the caller to do.
+     *
+     * <p><strong>{@code next} and {@code waiting_for} are never both
+     * populated.</strong> An exchange whose caller has something to do is not
+     * waiting on anybody, and saying both would leave the caller to decide
+     * which of the two answers is the real one — which is the situation this
+     * whole contract exists to end.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Answer(
+        String address,
+        Map<String, Object> fields,
+        /**
+         * Named on the wire as the contract names it.
+         *
+         * <p>Section 3 writes {@code conflict_token} and {@code waiting_for},
+         * and the record's own camel case would go out as {@code conflictToken}
+         * — a second spelling of a published member, which a caller reading
+         * the contract would look for and not find. The annotation is the
+         * whole of the difference: the Java name stays Java's.
+         */
+        @com.fasterxml.jackson.annotation.JsonProperty("conflict_token")
+        String conflictToken,
+        List<Map<String, String>> next,
+        @com.fasterxml.jackson.annotation.JsonProperty("waiting_for")
+        String waitingFor) {
+    }
+
+    /**
+     * A listing: every entry carrying the same two members every answer does.
+     *
+     * <p>A caller that lists and then acts must not have to read each hit
+     * again to find out what it can do with it. That is the whole of REQ-0152
+     * applied to a collection, and it is why an entry here is not the compact
+     * exchange shape with a list bolted on but the same {@link Answer} the
+     * single read returns.
+     */
+    public record AnswerListing(List<Answer> exchanges) {
+    }
+
+    /**
+     * A take: the answer, plus the receipt.
+     *
+     * <p>The receipt sits beside the exchange and not inside its {@code fields},
+     * because it is not a property of the exchange. It is this caller's proof,
+     * issued once, and the service keeps only a hash — a field on the exchange
+     * would be a field every later read has to withhold, which is a permission
+     * question invented by a wire shape.
+     */
+    public record ClaimAnswer(Answer exchange, String receipt) {
+    }
 }

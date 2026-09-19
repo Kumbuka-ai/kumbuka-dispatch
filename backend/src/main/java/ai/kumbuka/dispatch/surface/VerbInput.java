@@ -52,6 +52,24 @@ public final class VerbInput {
         Map<String, Object> metadata) {
     }
 
+    /**
+     * What commissions work: the text included.
+     *
+     * <p>Deliberately NOT {@link Draft} with a field added. A draft is what
+     * {@code create} takes, and {@code create} takes no text on purpose — the
+     * initial-draft moment belongs to the author. A commission is the opposite
+     * act: it is create, write and freeze together, so the text is not
+     * optional here and there is no moment at which the exchange exists
+     * without it.
+     */
+    public record Commission(
+        String title,
+        String apparatus,
+        String text,
+        LocalDate date,
+        Map<String, Object> metadata) {
+    }
+
     /** What attaches an addendum to an exchange that has already been frozen. */
     public record Addendum(
         String title,
@@ -103,7 +121,8 @@ public final class VerbInput {
         /** @throws SurfaceException when the value is absent or not a duration */
         public Duration parsed() {
             if (duration == null || duration.isBlank()) {
-                throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
+                throw new SurfaceException(
+                    SurfaceException.Reason.CLAIM_DURATION_MALFORMED,
                     "a claim names how long it stands, as an ISO-8601 duration such as "
                         + "'PT1H'. There is no default: a lease length is a policy, and one "
                         + "invented here would be a policy nobody ratified.");
@@ -111,7 +130,8 @@ public final class VerbInput {
             try {
                 return Duration.parse(duration);
             } catch (java.time.format.DateTimeParseException e) {
-                throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
+                throw new SurfaceException(
+                    SurfaceException.Reason.CLAIM_DURATION_MALFORMED,
                     "'" + duration + "' is not an ISO-8601 duration. 'PT1H', 'PT30M', 'P1D'.");
             }
         }

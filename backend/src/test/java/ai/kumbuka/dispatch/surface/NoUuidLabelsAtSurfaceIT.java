@@ -80,7 +80,7 @@ class NoUuidLabelsAtSurfaceIT {
         created.then().statusCode(201);
         assertNoUuid("create", created);
 
-        String bracket = created.jsonPath().getString("number") + ".0";
+        String bracket = created.jsonPath().getString("fields.number") + ".0";
 
         // read on a draft
         Response draftRead = get(SurfaceFixture.item(bracket));

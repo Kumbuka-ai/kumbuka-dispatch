@@ -167,19 +167,63 @@ class VerbSurfaceConformanceTest {
     // The MCP projection
     // =======================================================================
 
+    /**
+     * The assistant surface carries the process verbs and no generic verb name.
+     *
+     * <p><strong>This assertion replaced an older one, and the older one was
+     * about a surface that no longer exists.</strong> It read "the MCP tool
+     * list is the carried verb set exactly" — true while both expositions
+     * carried the same fifteen generic verbs, and false since satellite/26.6
+     * put the process verbs of the contract's section 5 on this one. The
+     * replacement is not a weakening: what the old test guarded was that the
+     * two expositions could not drift silently, and drifting silently is now
+     * impossible for a different and stronger reason — the tool list is
+     * GENERATED from the declaration, and the declaration is checked against
+     * the contract document by {@code DeclarationConformanceTest}.
+     *
+     * <p>What is left for this test is the half that generation cannot give:
+     * that no generic verb name leaked onto the assistant surface. A tool
+     * called {@code accept} here would be a kernel name in a caller's hands,
+     * which is exactly what the repair removed.
+     */
     @Test
-    void the_mcp_exposition_declares_exactly_the_carried_verbs() {
-        Set<String> carried = VerbSurfaceSpecification.carriedVerbs();
+    void the_mcp_exposition_carries_no_generic_verb_name() {
+        Set<String> generic = VerbSurfaceSpecification.carriedVerbs();
 
         Set<String> declared = McpTools.declared().stream()
             .map(McpTools.Tool::name)
             .collect(Collectors.toCollection(LinkedHashSet::new));
 
         assertThat(declared)
-            .as("MCP omits and never adds, and today there is no declared omission — so the "
-                + "tool list is the carried verb set exactly. A tool with no verb behind it "
-                + "would be an addition, and a verb with no tool would be an omission "
-                + "nobody declared")
+            .as("the assistant surface speaks process verbs. A generic name here is a "
+                + "kernel name in a caller's hands — measured on 2026-09-18, that is how "
+                + "a caller was told its exchange 'cannot takeup'")
+            .doesNotContainAnyElementsOf(generic);
+
+        assertThat(declared)
+            .as("every tool on this surface is prefixed, because a tool list is flat and "
+                + "shared with other services' tools")
+            .allMatch(name -> name.startsWith("dispatch_"));
+    }
+
+    /**
+     * The generic verbs are still all there — over REST.
+     *
+     * <p>The other half of the sentence above, and the one that makes it a
+     * projection rather than a replacement: nothing was removed from the
+     * service, only from one exposition of it. A verb that vanished from both
+     * would be an act nobody can reach any more.
+     */
+    @Test
+    void every_generic_verb_still_has_its_rest_form() {
+        Set<String> carried = VerbSurfaceSpecification.carriedVerbs();
+        Set<String> routed = VerbSurfaceSpecification.of("carried").stream()
+            .map(VerbSurfaceSpecification.Row::verb)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        assertThat(routed)
+            .as("REST is the complete surface and stays it: the process verbs are an "
+                + "assistant-facing projection, not a narrowing of what the service does")
             .containsExactlyInAnyOrderElementsOf(carried);
     }
 

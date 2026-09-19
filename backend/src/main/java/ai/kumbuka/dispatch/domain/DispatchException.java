@@ -88,6 +88,27 @@ public class DispatchException extends RuntimeException {
         FILTER_VALUE_REFUSED,
 
         /**
+         * A curation named the exchange being curated as its own target.
+         *
+         * <p>Its own reason rather than a reuse of a filter refusal, which is
+         * what it borrowed before. A surface has to word this one specifically
+         * — the contract makes it {@code ARGUMENT_INVALID} on {@code into} —
+         * and a reason shared with three other faults cannot be worded
+         * specifically without reading the kernel's sentence, which is the one
+         * thing a message may not do.
+         */
+        CURATION_TARGET_SELF,
+
+        /**
+         * The same idempotency key was presented for a different call.
+         *
+         * <p>The key says "this is the call I already made". Answering with
+         * the first call's answer would discard this call's content silently,
+         * so the only answer that cannot lose a write is a refusal.
+         */
+        IDEMPOTENCY_KEY_REUSED,
+
+        /**
          * A draw from a set found nothing it could take.
          *
          * <p>Distinct from NOT_FOUND, which is about an address. This one says
@@ -105,6 +126,27 @@ public class DispatchException extends RuntimeException {
          * cannot distinguish that from a real one-field write it never made.
          */
         UPDATE_EMPTY,
+
+        /**
+         * There is no delivered answer to ratify.
+         *
+         * <p>Its own reason rather than a reuse of the transition refusal,
+         * because the transition IS permitted from this state — the exchange
+         * is simply carrying a question rather than an answer. A caller told
+         * "the state does not allow it" would read that as "not yet from
+         * here", when the truth is "not until the executor delivers".
+         */
+        RETURN_ABSENT,
+
+        /**
+         * A call that needs the receipt from the takeup arrived without one.
+         *
+         * <p>Split from {@link #CLAIM_REQUIRED}, which says the caller holds
+         * no claim at all. This one says the claim may well be theirs and the
+         * proof did not travel — a different thing for the caller to do about
+         * it, and the surface contract declares a separate code for each.
+         */
+        RECEIPT_ABSENT,
 
         /**
          * An update after send needs a return draft to write.

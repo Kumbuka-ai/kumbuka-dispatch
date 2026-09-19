@@ -64,11 +64,94 @@ class CompactAnswerIT {
         new RestHarness().run();
     }
 
+    /**
+     * The same rule over the assistant surface, on the sequence it has.
+     *
+     * <p>This replaced a probe that drove the generic sequence over MCP. Four
+     * of its steps have no process verb — there is no draft to write into, no
+     * send to make, and no release to give a lease back — so driving it here
+     * would mean asserting that a path exists which satellite/26.6 removed.
+     *
+     * <p>The rule itself is unchanged and is checked at every step: a
+     * transition answers compact, {@code dispatch_read} answers full, and every
+     * answer carries the conflict token.
+     */
     @Test
-    @DisplayName("compact answers over MCP — every transition, create, append, query strip "
-        + "the two role bodies; read and update carry them")
+    @DisplayName("compact answers over MCP — every process verb strips the two role bodies; "
+        + "the read carries them")
     void the_compact_answer_shape_over_mcp() {
-        new McpHarness().run();
+        SurfaceFixture.asConsole(identity);
+        Harness rule = new RestHarness();
+
+        // commission — compact. It is a transition, whatever else it is.
+        Map<String, Object> commissioned = mcp("dispatch_commission", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "fields", Map.of("title", "a commission with a body", "apparatus", "code",
+                "text", "the commission text", "date", "2026-09-01")));
+        rule.assertCompact(commissioned, "dispatch_commission");
+
+        String address = (String) commissioned.get("address");
+
+        // read — full. One of the two verbs that exist to carry a body.
+        rule.assertFull(mcp("dispatch_read", Map.of("address", address)), "dispatch_read");
+
+        // add_correction — compact, and it answers with what it corrects
+        // rather than with the correction: an addendum is not independently
+        // drawable, so its address is one the read would refuse.
+        rule.assertCompact(mcp("dispatch_add_correction", Map.of(
+            "address", address,
+            "fields", Map.of("title", "a correction", "text", "what it says"))),
+            "dispatch_add_correction");
+
+        // take — compact, plus the receipt.
+        SurfaceFixture.asExecutor(identity);
+        Map<String, Object> taken = mcp("dispatch_take",
+            Map.of("address", address, "duration", "PT1H"));
+        rule.assertCompact(taken, "dispatch_take");
+        assertThat(taken.get("receipt"))
+            .as("the receipt is the one thing this answer says that the compact shape "
+                + "does not")
+            .isNotNull();
+
+        // deliver_return — compact. The answer it wrote is not read back to it.
+        rule.assertCompact(mcp("dispatch_deliver_return", Map.of(
+            "address", address, "receipt", String.valueOf(taken.get("receipt")),
+            "fields", Map.of("text", "the answer text"))), "dispatch_deliver_return");
+
+        // query — a listing of compacts, each with its own next.
+        SurfaceFixture.asConsole(identity);
+        Map<String, Object> listing = mcp("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> hits = (List<Map<String, Object>>) listing.get("exchanges");
+        assertThat(hits)
+            .as("a listing answers with compacts: a twenty-hit query dragging "
+                + "ten-thousand-character bodies is not an answer to 'what is open'")
+            .anySatisfy(entry -> rule.assertCompact(entry, "query entry"));
+
+        // accept_return — compact, and terminal.
+        rule.assertCompact(mcp("dispatch_accept_return", Map.of("address", address)),
+            "dispatch_accept_return");
+    }
+
+    /** One tool call, asserted to have succeeded, and its structured answer. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mcp(String tool, Map<String, Object> arguments) {
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("jsonrpc", "2.0");
+        envelope.put("id", 1);
+        envelope.put("method", "tools/call");
+        envelope.put("params", Map.of("name", tool, "arguments", arguments));
+
+        Response answer = given().contentType(ContentType.JSON).accept(ContentType.JSON)
+            .body(envelope).post("/mcp");
+
+        assertThat(answer.jsonPath().getBoolean("result.isError"))
+            .as("'%s' was expected to succeed but was refused: %s", tool,
+                answer.jsonPath().getString("result.structuredContent.message"))
+            .isFalse();
+        return (Map<String, Object>) answer.jsonPath().getMap("result")
+            .get("structuredContent");
     }
 
     // =======================================================================
@@ -154,8 +237,8 @@ class CompactAnswerIT {
                 .as("%s: conflictToken travels on every response, compact or not — losing it "
                     + "would put the surface back where it was before the token projection: "
                     + "update demands a token no verb hands out", label)
-                .containsKey("conflictToken");
-            assertThat(answer.get("conflictToken"))
+                .containsKey("conflict_token");
+            assertThat(answer.get("conflict_token"))
                 .as("%s: conflictToken is a value, not a placeholder", label)
                 .isNotNull();
         }
@@ -176,30 +259,36 @@ class CompactAnswerIT {
                 .as("%s: an addendum carries no conflict token — that is a domain rule "
                     + "(Exchange.conflictToken() returns null for an addendum), and the "
                     + "compact projection follows it", label)
-                .doesNotContainKey("conflictToken");
+                .doesNotContainKey("conflict_token");
         }
 
+        @SuppressWarnings("unchecked")
         void assertNoCarriers(Map<String, Object> answer, String label) {
-            assertThat(answer)
+            Map<String, Object> fields =
+                (Map<String, Object>) answer.getOrDefault("fields", Map.of());
+            assertThat(fields)
                 .as("%s: the two role carriers must be absent from a compact answer — a null "
                     + "value would reach the caller as a field to read; @JsonInclude(NON_NULL) "
                     + "drops it instead", label)
-                .doesNotContainKey("dispatchBody")
-                .doesNotContainKey("dispatchMetadata")
-                .doesNotContainKey("returnBody")
-                .doesNotContainKey("returnMetadata");
+                .doesNotContainKey("dispatch_text")
+                .doesNotContainKey("dispatch_metadata")
+                .doesNotContainKey("return_text")
+                .doesNotContainKey("return_metadata");
         }
 
         void assertFull(Map<String, Object> answer, String label) {
             // The full projection includes at least dispatchBody (an empty
             // string is fine — the DB column is NOT NULL DEFAULT '').
-            assertThat(answer)
+            @SuppressWarnings("unchecked")
+            Map<String, Object> fields =
+                (Map<String, Object>) answer.getOrDefault("fields", Map.of());
+            assertThat(fields)
                 .as("%s: the full projection carries the dispatch body — read and update "
                     + "are the two verbs that exist to carry it", label)
-                .containsKey("dispatchBody");
+                .containsKey("dispatch_text");
             assertThat(answer)
                 .as("%s: conflictToken travels here too", label)
-                .containsKey("conflictToken");
+                .containsKey("conflict_token");
         }
 
         void assertClaim(Map<String, Object> claim) {
@@ -217,12 +306,22 @@ class CompactAnswerIT {
 
         // -------- shared helpers -------------------------------------------
 
+        /**
+         * The id part of an answer, read out of its {@code fields}.
+         *
+         * <p>Not {@code get("fields.number")}: the answer is a {@link Map} and
+         * that looks for a key with a dot in its name. It finds nothing and
+         * returns null, which produces the address {@code null.null} and a
+         * refusal that reads like a service defect.
+         */
+        @SuppressWarnings("unchecked")
         private static String idOf(Map<String, Object> response) {
-            return response.get("number") + "." + response.get("sub");
+            Map<String, Object> fields = (Map<String, Object>) response.get("fields");
+            return fields.get("number") + "." + fields.get("sub");
         }
 
         private static Object tokenOf(Map<String, Object> response) {
-            return response.get("conflictToken");
+            return response.get("conflict_token");
         }
 
         private static String receiptOf(Map<String, Object> claim) {
@@ -350,101 +449,13 @@ class CompactAnswerIT {
 
     // =======================================================================
     // MCP
+    //
+    // There is no MCP harness. The harness drives ONE sequence over two
+    // expositions so that a projection defect cannot hide in one of them, and
+    // since satellite/26.6 the two do not share a sequence: four of the generic
+    // steps have no process verb. The rule is checked over the assistant
+    // surface's own sequence, above, step for step — so both expositions are
+    // still probed, and neither is probed through a path it does not have.
     // =======================================================================
 
-    private class McpHarness extends Harness {
-        @Override
-        Map<String, Object> create(String title, String apparatus, String date) {
-            return call("create", Map.of(
-                "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-                "title", title, "apparatus", apparatus, "date", date));
-        }
-
-        @Override
-        Map<String, Object> read(String id) {
-            return call("read", Map.of("address", SurfaceFixture.address(id)));
-        }
-
-        @Override
-        Map<String, Object> readAsMap(String id) {
-            return read(id);
-        }
-
-        @Override
-        Map<String, Object> update(String id, String token, Map<String, Object> body) {
-            Map<String, Object> args = new LinkedHashMap<>();
-            args.put("address", SurfaceFixture.address(id));
-            args.put("conflict_token", token);
-            args.putAll(body);
-            return call("update", args);
-        }
-
-        @Override
-        Map<String, Object> send(String id) {
-            return call("send", Map.of("address", SurfaceFixture.address(id)));
-        }
-
-        @Override
-        Map<String, Object> append(String id, String title) {
-            return call("append", Map.of(
-                "address", SurfaceFixture.address(id),
-                "title", title, "apparatus", "code", "date", "2026-09-01"));
-        }
-
-        @Override
-        Map<String, Object> claim(String id) {
-            return call("claim",
-                Map.of("address", SurfaceFixture.address(id), "duration", "PT1H"));
-        }
-
-        @Override
-        Map<String, Object> release(String id) {
-            return call("release", Map.of("address", SurfaceFixture.address(id)));
-        }
-
-        @Override
-        Map<String, Object> block(String id) {
-            return call("block", Map.of("address", SurfaceFixture.address(id)));
-        }
-
-        @Override
-        Map<String, Object> resume(String id) {
-            return call("resume", Map.of("address", SurfaceFixture.address(id)));
-        }
-
-        @Override
-        Map<String, Object> close(String id) {
-            return call("close", Map.of("address", SurfaceFixture.address(id)));
-        }
-
-        @Override
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> query() {
-            Map<String, Object> listing = call("query",
-                Map.of("scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR));
-            return (List<Map<String, Object>>) listing.get("exchanges");
-        }
-
-        @SuppressWarnings("unchecked")
-        private Map<String, Object> call(String tool, Map<String, Object> arguments) {
-            Response answer = rpc("tools/call", Map.of("name", tool, "arguments", arguments));
-            answer.then().statusCode(200);
-            Map<String, Object> result = answer.jsonPath().getMap("result");
-            assertThat((Boolean) result.get("isError"))
-                .as("MCP call '%s' expected to succeed but was refused: %s", tool,
-                    ((Map<String, Object>) result.get("structuredContent")).get("message"))
-                .isFalse();
-            return (Map<String, Object>) result.get("structuredContent");
-        }
-    }
-
-    private static Response rpc(String method, Map<String, Object> params) {
-        Map<String, Object> envelope = new LinkedHashMap<>();
-        envelope.put("jsonrpc", "2.0");
-        envelope.put("id", 1);
-        envelope.put("method", method);
-        envelope.put("params", params);
-        return given().contentType(ContentType.JSON).accept(ContentType.JSON)
-            .body(envelope).post("/mcp");
-    }
 }

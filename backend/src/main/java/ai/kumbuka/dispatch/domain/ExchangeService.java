@@ -1,6 +1,7 @@
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.repository.ExchangeRepository;
+import ai.kumbuka.dispatch.repository.ScopeAccessRepository;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -54,6 +55,8 @@ public class ExchangeService {
 
     @Inject ExchangeRepository exchanges;
     @Inject SelectorRegistry selectors;
+    @Inject IdempotencyService keys;
+    @Inject ScopeAccessRepository scopes;
 
     private final Clock clock;
 
@@ -116,6 +119,24 @@ public class ExchangeService {
     @Transactional
     public Exchange addAddendum(UUID scopeId, ExchangeAddress base, String title,
                                 String apparatus, LocalDate date, Actor actor) {
+        return addAddendum(scopeId, base, title, apparatus, date, actor, null);
+    }
+
+    /**
+     * The same, with the correction's text.
+     *
+     * <p>The text arrives WITH the insert and is never written afterwards. An
+     * addendum is inserted already frozen — it corrects something that was
+     * committed, so there is no moment at which it is a draft — and the
+     * database enforces that with a trigger: measured 2026-09-18, writing the
+     * body in a second statement is refused with "exchange sprint.1.0 is
+     * frozen: title, dispatch_body, apparatus, date and sent_at cannot change
+     * after send". The trigger is right and the two-step write was wrong.
+     */
+    @Transactional
+    public Exchange addAddendum(UUID scopeId, ExchangeAddress base, String title,
+                                String apparatus, LocalDate date, Actor actor,
+                                String text) {
         if (base.isAddendum()) {
             throw new DispatchException(DispatchException.Reason.ADDENDUM_MALFORMED,
                 "an addendum corrects an exchange, not another addendum: " + base);
@@ -126,9 +147,23 @@ public class ExchangeService {
                 base + " is still a draft. An addendum exists for corrections after a "
                     + "commitment was acquired; before that the exchange is simply edited.");
         }
+        if (corrected.status().terminal()) {
+            // An addendum closes together with what it corrects, and that
+            // cascade runs at the base's terminal transition — which has
+            // already happened. One attached now would be non-terminal for
+            // ever, hanging off a finished exchange, reachable by nothing and
+            // closable by nothing: exactly the orphan the cascade exists to
+            // prevent. Found by the next-list probe on 2026-09-18, which
+            // offered the call on a closed exchange because the kernel would
+            // have allowed it.
+            throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
+                base + " is " + corrected.status().wireName() + " and finished. A "
+                    + "correction closes together with what it corrects, and that "
+                    + "already happened — one attached now could never be closed.");
+        }
         String suffix = nextSuffix(scopeId, base);
         return insertAddendum(new NewExchange(scopeId, corrected.selector, base.number(),
-            base.sub(), suffix, title, apparatus, date, actor.subject()));
+            base.sub(), suffix, title, apparatus, date, actor.subject()), text);
     }
 
     // ----------------------------------------------------------------------
@@ -154,10 +189,38 @@ public class ExchangeService {
         return require(scopeId, address);
     }
 
+    /**
+     * The address of an exchange known only by its durable identity.
+     *
+     * <p>What the idempotency ledger stores and the surface needs back: an
+     * identity is what survives a renumbering (ADR-0014), and an address is
+     * what a caller can act on. Empty where the identity names nothing in this
+     * scope, which a repeat under a key from another scope would.
+     */
+    @Transactional
+    public Optional<ExchangeAddress> addressOfIdentity(UUID scopeId, Long id) {
+        return exchanges.findByIdentity(scopeId, id)
+            .map(e -> new ExchangeAddress(e.selectorName(), e.number, e.sub,
+                e.addendumSuffix));
+    }
+
     /** The addenda hanging from one exchange, in suffix order. */
     @Transactional
     public List<Exchange> addenda(UUID scopeId, ExchangeAddress base) {
         return exchanges.addenda(scopeId, base);
+    }
+
+    /**
+     * The names of the bracket kinds this scope declares.
+     *
+     * <p>Read for one refusal only — {@code SELECTOR_UNKNOWN}, whose pattern
+     * names them and whose remedy is unactionable without them. Names alone
+     * and not the rows: a refusal has no business carrying a selector's
+     * status, its counter or when it was declared.
+     */
+    @Transactional
+    public List<String> declaredSelectors(UUID scopeId) {
+        return selectors.declared(scopeId).stream().map(s -> s.name).toList();
     }
 
     /** The children of a bracket, addenda excluded. */
@@ -190,13 +253,13 @@ public class ExchangeService {
      * be handing out addresses that do not work.
      */
     @Transactional
-    public List<ExchangeView> query(UUID scopeId, String selector, QueryFilter filter,
-                                    Actor actor) {
+    public List<ExchangeView> query(UUID scopeId, String scopeSlug, String selector,
+                                    QueryFilter filter, Actor actor) {
         selectors.requireDeclared(scopeId, selector);
 
         Instant now = Instant.now(clock);
         List<ExchangeView> found = exchanges.matching(scopeId, selector, filter).stream()
-            .map(e -> ExchangeView.of(e, actor, now))
+            .map(e -> project(e, actor, scopeId, scopeSlug, now))
             .toList();
 
         LOG.debugf("query %s: %d hit(s)", selector, found.size());
@@ -268,6 +331,344 @@ public class ExchangeService {
     }
 
     // ----------------------------------------------------------------------
+    // The process steps: one call, one transaction, no intermediate state
+    //
+    // Each of these composes two or three of the transitions below into one
+    // act. They are here rather than in the surface for the reason every other
+    // rule is here: a compound assembled in an adapter is a compound the next
+    // adapter assembles differently, and the half-done state it leaves behind
+    // on a failure is exactly what a caller cannot recover from.
+    //
+    // The measurement that made them necessary: an assistant called `create`
+    // and then stopped, because nothing it could see said a `send` was owed.
+    // A draft is not a state a caller should be able to be in by accident, and
+    // the cheapest way to guarantee that is for it not to be reachable at all.
+    // ----------------------------------------------------------------------
+
+    /**
+     * Commissions work: creates the exchange, writes its text and freezes it,
+     * in one transaction.
+     *
+     * <p>{@code draft} is never observable. The exchange either exists and is
+     * {@code open}, or it does not exist — there is no third outcome, and a
+     * failure at any of the three steps rolls back the number with it, because
+     * the number is allocated in this same transaction.
+     *
+     * @param parentNumber the bracket to add a child to, or null to open one
+     */
+    @Transactional
+    public Exchange commission(UUID scopeId, String selectorName, Integer parentNumber,
+                               String title, String apparatus, String text, LocalDate date,
+                               Map<String, Object> metadata, Actor actor) {
+        return commissionUnder(scopeId, selectorName, parentNumber, title, apparatus, text,
+            date, metadata, actor, IdempotencyKey.NONE);
+    }
+
+    /**
+     * The same, under a key the caller chose so that a retry does not
+     * commission twice.
+     *
+     * <p>Two entry points and one body, because the key is optional on the
+     * wire and an overload is how an optional argument stays out of every call
+     * site that does not use one. The rule itself lives in {@link
+     * IdempotencyService} and is applied HERE rather than at the surface: it
+     * decides whether a write happens, and it has to decide that inside the
+     * transaction that would do the writing. A surface-side check would read
+     * the ledger in one transaction and commission in another, so two retries
+     * a few milliseconds apart would both find no row.
+     */
+    @Transactional
+    public Exchange commissionUnder(UUID scopeId, String selectorName, Integer parentNumber,
+                                    String title, String apparatus, String text,
+                                    LocalDate date, Map<String, Object> metadata,
+                                    Actor actor, IdempotencyKey key) {
+        Metadata.validate(metadata);
+
+        String digest = IdempotencyService.digestOf(java.util.Arrays.asList(selectorName,
+            parentNumber == null ? null : String.valueOf(parentNumber), title, apparatus,
+            text, date == null ? null : date.toString(), String.valueOf(metadata)));
+
+        Optional<Exchange> already = keys.firstAnswerFor(scopeId, actor, key,
+            "dispatch_commission", digest)
+            .flatMap(id -> exchanges.findByIdentity(scopeId, id));
+        if (already.isPresent()) {
+            return already.get();
+        }
+
+        Exchange e = parentNumber == null
+            ? openBracket(scopeId, selectorName, title, apparatus, date, actor)
+            : addChild(scopeId, selectorName, parentNumber, title, apparatus, date, actor);
+
+        e.writeDispatch(null, text, null, null, metadata);
+        e.apply(Transition.SEND);
+        e.freezeDispatch(Instant.now(clock));
+        touch(e, actor.subject());
+        keys.remember(scopeId, actor, key, "dispatch_commission", digest, e);
+
+        LOG.infof("commission %s -> %s", e.address(), e.status().wireName());
+        return e;
+    }
+
+    /**
+     * Attaches a correction with its text, in one transaction.
+     *
+     * <p>An addendum is inserted already frozen — it corrects something that
+     * was committed, so there is no moment at which it is a draft. Which means
+     * its text cannot be written afterwards by the ordinary update path: after
+     * the freeze, an update writes the RETURN role. So the text arrives with
+     * the insert, here, and an empty correction is not a state this service can
+     * be left in.
+     *
+     * @return the exchange that was corrected, not the correction. A
+     *         correction has no standing of its own and is not independently
+     *         drawable, so answering with its address would hand back an
+     *         address the read verb refuses.
+     */
+    @Transactional
+    public Exchange addCorrection(UUID scopeId, ExchangeAddress address, String title,
+                                  String text, Actor actor) {
+        return addCorrectionUnder(scopeId, address, title, text, actor,
+            IdempotencyKey.NONE);
+    }
+
+    /**
+     * The same, under a key the caller chose so that a retry does not correct
+     * twice.
+     *
+     * <p>A correction cannot be removed and closes together with what it
+     * corrects, so a duplicate is permanent — which makes this the call where
+     * an accepted-and-discarded key costs most.
+     */
+    @Transactional
+    public Exchange addCorrectionUnder(UUID scopeId, ExchangeAddress address, String title,
+                                       String text, Actor actor, IdempotencyKey key) {
+        Exchange corrected = require(scopeId, address);
+
+        String digest = IdempotencyService.digestOf(
+            java.util.Arrays.asList(address.toString(), title, text));
+
+        Optional<Exchange> already = keys.firstAnswerFor(scopeId, actor, key,
+            "dispatch_add_correction", digest)
+            .flatMap(id -> exchanges.findByIdentity(scopeId, id));
+        if (already.isPresent()) {
+            return already.get();
+        }
+
+        Exchange addendum = addAddendum(scopeId, address, title, corrected.apparatus,
+            LocalDate.now(clock), actor, text);
+        keys.remember(scopeId, actor, key, "dispatch_add_correction", digest, corrected);
+
+        LOG.infof("add_correction %s", addendum.address());
+        return corrected;
+    }
+
+    /**
+     * Accepts the delivered answer and finishes the exchange: ratify and close
+     * in one transaction.
+     *
+     * <p>{@code returned} is never observable on the assistant surface for the
+     * same reason {@code draft} is not: it is a state between two halves of
+     * one act, and a caller that could stop in it would have an exchange
+     * nobody is waiting on and nothing is owed for.
+     */
+    @Transactional
+    public Exchange acceptReturn(UUID scopeId, ExchangeAddress address, Actor actor) {
+        Exchange e = ratifyUnlessAlready(scopeId, address, actor);
+        return transition(scopeId, Transition.CLOSE, actor, e);
+    }
+
+    /**
+     * Ratifies the answer, unless it has already been ratified.
+     *
+     * <p>{@code returned} is reachable through the generic surface, and
+     * section 5 declares the three accepting verbs from it as well as from
+     * {@code needs_input}. From {@code returned} the ratification is the step
+     * that has already happened, so the act is what remains of the chain —
+     * ratifying again would be refused by the kernel with {@code
+     * RETURN_ALREADY_RATIFIED}, on an exchange whose {@code next} had just
+     * offered the call.
+     *
+     * <p>This is not the surface deciding a kernel rule. It is the same
+     * reading {@link VerbStep} makes of the chain, in the one place that
+     * executes it: a compound verb may skip a prefix that is done, and may
+     * never skip a step in the middle.
+     */
+    private Exchange ratifyUnlessAlready(UUID scopeId, ExchangeAddress address,
+                                         Actor actor) {
+        Exchange e = require(scopeId, address);
+        return e.status() == ExchangeStatus.RETURNED ? e : ratify(scopeId, address, actor);
+    }
+
+    /**
+     * Accepts the answer and carries it forward into a named object: ratify,
+     * consume and record the target, in one transaction.
+     *
+     * <p>The target is resolved here and stored by its durable identity
+     * (ADR-0014). Resolving it is also what checks it: a target the caller
+     * cannot see, or that does not exist, refuses the whole act rather than
+     * consuming the exchange into nothing.
+     */
+    @Transactional
+    public Exchange curateReturn(UUID scopeId, ExchangeAddress address, UUID targetScopeId,
+                                 ExchangeAddress into, Actor actor) {
+        Exchange target = require(targetScopeId, into);
+        Exchange e = ratifyUnlessAlready(scopeId, address, actor);
+
+        if (target.id != null && target.id.equals(e.id)) {
+            throw new DispatchException(DispatchException.Reason.CURATION_TARGET_SELF,
+                "an exchange cannot be curated into itself");
+        }
+
+        e.curateInto(target.id);
+        return transition(scopeId, Transition.CONSUME, actor, e);
+    }
+
+    /**
+     * Finishes a bracket: checks the children, ratifies the record on the root
+     * and closes it, in one transaction.
+     *
+     * <p>The children are checked FIRST and the refusal names each one. The
+     * check also happens again inside {@link #transition}, at the CLOSE — that
+     * is not redundancy to be tidied away: the second one is the kernel's own
+     * gate and holds for every caller including a future adapter, and the
+     * first one is what stops this method ratifying a record it is then going
+     * to refuse to close. Ratifying and then failing would freeze the root's
+     * answer with the bracket still open, which is a state no verb can leave.
+     */
+    @Transactional
+    public Exchange closeBracket(UUID scopeId, ExchangeAddress address, Actor actor) {
+        Exchange root = require(scopeId, address);
+        requireSiblingsTerminal(scopeId, root);
+
+        Exchange e = ratifyUnlessAlready(scopeId, address, actor);
+        return transition(scopeId, Transition.CLOSE, actor, e);
+    }
+
+    /**
+     * Delivers the executor's answer: writes it and blocks, in one
+     * transaction.
+     *
+     * <p>Onto {@link #writeDraft} rather than beside it, so the three bolts on
+     * the return role — no body without a claim, only the receipt holder
+     * writes, no second answer after ratification — are the same three checks
+     * a generic caller passes. A second write path would be a second place
+     * those are decided.
+     */
+    @Transactional
+    public Exchange deliverReturn(UUID scopeId, ExchangeAddress address, Actor actor,
+                                  String receipt, String text) {
+        Exchange e = writeDraft(scopeId, address, actor, null, text, null, null, receipt,
+            null);
+        return transition(scopeId, Transition.BLOCK, actor, e);
+    }
+
+    /**
+     * Records the executor's question and blocks, in one transaction.
+     *
+     * <p>Checks the claim and the receipt the same way a delivered answer
+     * does. A question is not a smaller act than an answer: it stops the work
+     * and puts the exchange in front of the commissioner, and an executor that
+     * did not hold the exchange could use it to interrupt one that does.
+     */
+    @Transactional
+    public Exchange askCommissioner(UUID scopeId, ExchangeAddress address, Actor actor,
+                                    String receipt, String question) {
+        Exchange e = require(scopeId, address);
+        requireMayWriteReturn(e, actor, Instant.now(clock));
+        if (actor.isExecutor()) {
+            requireReceipt(e, receipt);
+        }
+
+        e.recordExecutorQuestion(question);
+        return transition(scopeId, Transition.BLOCK, actor, e);
+    }
+
+    /**
+     * Records the commissioner's message and resumes the holder, in one
+     * transaction.
+     *
+     * <p>The message lands whether it answers a question or asks for rework —
+     * one act from the exchange's side. What it does NOT do is touch the
+     * delivered answer: rework means the executor writes it again, and this
+     * service deleting it first would decide that the previous wording was
+     * worthless.
+     */
+    @Transactional
+    public Exchange replyToExecutor(UUID scopeId, ExchangeAddress address, Actor actor,
+                                    String message) {
+        Exchange e = require(scopeId, address);
+        e.recordCommissionerMessage(message);
+        return transition(scopeId, Transition.RESUME, actor, e);
+    }
+
+    /**
+     * Withdraws a commission: records the reason and closes, in one
+     * transaction.
+     *
+     * <p>On a bracket root this ends the bracket without a record, and the
+     * children are checked first — the same check {@link #closeBracket} makes,
+     * for the same reason. Section 5 admits cancel on a root "only when every
+     * child is terminal"; without the check here the kernel's own gate at the
+     * CLOSE would still catch it, but the refusal would arrive after the
+     * reason had been written onto the exchange.
+     */
+    @Transactional
+    public Exchange cancel(UUID scopeId, ExchangeAddress address, Actor actor,
+                           String reason) {
+        Exchange e = require(scopeId, address);
+        if (e.isBracketRoot()) {
+            requireSiblingsTerminal(scopeId, e);
+        }
+        e.recordTerminationReason(reason);
+        return transition(scopeId, Transition.CLOSE, actor, e);
+    }
+
+    /**
+     * Declines the work: records the reason and terminates, in one
+     * transaction.
+     *
+     * <p>Which terminal state is not the caller's to name — the prior state
+     * decides. From {@code open} this is a refusal of the commission; from
+     * {@code active} it is a failure to complete it. That distinction is the
+     * useful one and it is already in the kernel's table; asking the caller
+     * for it would let it be recorded wrongly.
+     */
+    @Transactional
+    public Exchange decline(UUID scopeId, ExchangeAddress address, Actor actor,
+                            ClaimProof proof, String reason) {
+        Exchange e = require(scopeId, address);
+        Transition ending = e.status() == ExchangeStatus.ACTIVE
+            ? Transition.FAIL
+            : Transition.REJECT;
+
+        if (ending == Transition.FAIL && actor.isExecutor()) {
+            requireHeld(e, proof);
+        }
+
+        e.recordTerminationReason(reason);
+        return transition(scopeId, ending, actor, e);
+    }
+
+    /**
+     * The receipt of a caller that says it holds the exchange.
+     *
+     * <p>A switch over {@link ClaimProof} rather than a null check, so the
+     * absent case is a case the compiler knows about. It is also the only
+     * place the two are told apart: a decline with no receipt on an ACTIVE
+     * exchange is a caller claiming an ending that is not its to record.
+     */
+    private void requireHeld(Exchange e, ClaimProof proof) {
+        switch (proof) {
+            case ClaimProof.Presented presented -> requireReceipt(e, presented.receipt());
+            case ClaimProof.NotTakenUp ignored -> throw new DispatchException(
+                DispatchException.Reason.RECEIPT_ABSENT,
+                "declining an exchange that is being worked on records a failure to "
+                    + "complete it, and only its holder can record that. The receipt is "
+                    + "the proof, and none arrived.");
+        }
+    }
+
+    // ----------------------------------------------------------------------
     // The verbs. One per transition.
     // ----------------------------------------------------------------------
 
@@ -314,10 +715,95 @@ public class ExchangeService {
      * from.
      */
     @Transactional
-    public ExchangeView view(UUID scopeId, ExchangeAddress address, Actor actor) {
+    public ExchangeView view(UUID scopeId, String scopeSlug, ExchangeAddress address,
+                             Actor actor) {
         Exchange e = require(scopeId, address);
         LOG.debugf("view %s", e.address());
-        return ExchangeView.of(e, actor, Instant.now(clock));
+        return project(e, actor, scopeId, scopeSlug, Instant.now(clock));
+    }
+
+    /**
+     * The view of one exchange, with its curation target resolved to an
+     * address.
+     *
+     * <p>The extra lookup runs only for a consumed exchange — {@code
+     * curatedIntoId} is null on every other — so the ordinary read costs
+     * nothing. It is here rather than in the projection because the projection
+     * is a pure function of the row and giving it a repository would make it
+     * something that can query, which is how a projection becomes a second
+     * service.
+     */
+    private ExchangeView project(Exchange e, Actor actor, UUID scopeId, String scopeSlug,
+                                 Instant now) {
+        return ExchangeView.of(e, actor, now, scopeSlug,
+            curatedIntoAddress(e, scopeId, scopeSlug), bracketMayEnd(scopeId, e));
+    }
+
+    /**
+     * The complete address of a curated answer's target, or nothing.
+     *
+     * <p>Looked up tenant-wide rather than in the curated exchange's own
+     * scope. Section 5.1 admits a target "in any scope and bracket kind", and
+     * a lookup bound to this exchange's scope would answer null for every
+     * cross-scope curation — a stored reference the answer silently omits,
+     * which is worse than refusing the curation outright.
+     *
+     * <p>The target's own scope slug is what renders the address, and it comes
+     * from the subject-filtered directory view. So a caller that may not see
+     * the target's scope gets no slug and therefore no address — the same
+     * answer it would get for a target that is not there, which is section
+     * 4.3's rule reaching into a field.
+     */
+    private String curatedIntoAddress(Exchange e, UUID scopeId, String scopeSlug) {
+        if (e.curatedIntoId() == null) {
+            return null;
+        }
+        return exchanges.findByIdentityAnywhere(e.curatedIntoId())
+            .flatMap(target -> slugOfTargetScope(target, scopeId, scopeSlug)
+                .map(slug -> new ExchangeAddress(target.selectorName(), target.number,
+                    target.sub, target.addendumSuffix).complete(slug)))
+            .orElse(null);
+    }
+
+    /**
+     * The target's scope as the caller names it.
+     *
+     * <p>A target in the exchange's own scope is rendered with the slug the
+     * caller used to get here, and costs no lookup: the caller named that
+     * scope a moment ago, and asking the directory for a name it just supplied
+     * would be a query to learn something already known.
+     *
+     * <p>A target in another scope needs the directory, and the directory
+     * answers for the bound subject — so a caller that may not see the target's
+     * scope gets no slug and therefore no address, which is the same answer it
+     * would get for a target that is not there.
+     */
+    private Optional<String> slugOfTargetScope(Exchange target, UUID scopeId,
+                                               String scopeSlug) {
+        if (target.scopeId == null || target.scopeId.equals(scopeId)) {
+            return Optional.of(scopeSlug);
+        }
+        return scopes.slugOf(target.scopeId);
+    }
+
+    /**
+     * Whether the bracket this exchange roots can be ended.
+     *
+     * <p>The same question {@link #requireSiblingsTerminal} asks at the
+     * transition, asked one turn earlier so that {@code next} can withhold the
+     * calls it would refuse. Two readings of one rule, and they cannot drift
+     * because both run the same predicate over the same rows — what would
+     * drift is a list that guessed.
+     *
+     * <p>Costs a query at a bracket root and none anywhere else: a child's
+     * calls do not depend on its siblings, so the common read pays nothing.
+     */
+    private boolean bracketMayEnd(UUID scopeId, Exchange e) {
+        if (!e.isBracketRoot()) {
+            return true;
+        }
+        return children(scopeId, e.selectorName(), e.number).stream()
+            .allMatch(child -> child.status().terminal());
     }
 
     /**
@@ -532,7 +1018,7 @@ public class ExchangeService {
 
         Exchange e = require(scopeId, address);
         if (e.returnBody() == null) {
-            throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
+            throw new DispatchException(DispatchException.Reason.RETURN_ABSENT,
                 e.address() + " has no return draft to ratify. Ratification freezes an "
                     + "answer that is already there; it does not create one.");
         }
@@ -581,7 +1067,20 @@ public class ExchangeService {
 
     private Exchange transition(UUID scopeId, ExchangeAddress address,
                                 Transition t, Actor actor) {
-        Exchange e = require(scopeId, address);
+        return transition(scopeId, t, actor, require(scopeId, address));
+    }
+
+    /**
+     * The same transition on an exchange this transaction already holds.
+     *
+     * <p>Exists for the compound verbs, which have loaded the row and written
+     * to it before the transition runs. Re-reading it here would be a second
+     * read in the same transaction — harmless with a persistence context, and
+     * misleading to anybody counting the reads — but the real reason is the
+     * write: a compound that wrote a value and then read the row afresh is a
+     * compound whose reader has to know that the two are the same object.
+     */
+    private Exchange transition(UUID scopeId, Transition t, Actor actor, Exchange e) {
 
         // The bracket closes through the termination of its .0, and the check
         // sits AT that transition rather than beside it. Beside it is where the
@@ -702,7 +1201,7 @@ public class ExchangeService {
      */
     private void requireReceipt(Exchange e, String presented) {
         if (presented == null || presented.isBlank()) {
-            throw new DispatchException(DispatchException.Reason.CLAIM_REQUIRED,
+            throw new DispatchException(DispatchException.Reason.RECEIPT_ABSENT,
                 e.address() + " needs the receipt that was issued at takeup.");
         }
         if (!e.receiptMatches(presented)) {
@@ -824,8 +1323,16 @@ public class ExchangeService {
      * be a draft of: the correction is the commitment. The table refuses a
      * draft addendum for the same reason.
      */
-    private Exchange insertAddendum(NewExchange spec) {
+    private Exchange insertAddendum(NewExchange spec, String text) {
         Exchange e = build(spec);
+
+        // The text goes on BEFORE the insert, for the same reason the send
+        // does: the row is frozen from the moment it exists, and a trigger
+        // refuses a later write to its body. Measured 2026-09-18 by writing it
+        // in a second statement and being told so.
+        if (text != null) {
+            e.writeDispatch(null, text, null, null, null);
+        }
 
         // Sent BEFORE the insert, not after it. An addendum corrects something
         // that was already frozen, so there is no moment at which it is a

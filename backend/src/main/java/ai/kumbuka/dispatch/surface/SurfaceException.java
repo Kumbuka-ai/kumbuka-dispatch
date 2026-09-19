@@ -74,6 +74,23 @@ public class SurfaceException extends RuntimeException {
          */
         WRITE_ON_TRUNCATED_ADDRESS(405),
 
+        /**
+         * The verb is real, the address is real, and the verb does not apply
+         * at it.
+         *
+         * <p>{@code dispatch_close_bracket} at a child, a sub-collection that
+         * exists only at a bracket root. Distinct from
+         * {@link #ADDRESS_MALFORMED}, which this borrowed before: the address
+         * obeys the production and names something the caller can see, so a
+         * form refusal sends it correcting a spelling that was right. The
+         * contract declares {@code CALL_NOT_AT_THIS_ADDRESS} for exactly this.
+         *
+         * <p>409 rather than 405: the pairing is wrong, not the HTTP method,
+         * and a 405 would have to carry an {@code Allow} listing methods that
+         * are not the problem.
+         */
+        CALL_NOT_AT_THIS_ADDRESS(409),
+
         /** A field write arrived without the conflict token it declares. */
         CONFLICT_TOKEN_MISSING(428),
 
@@ -81,7 +98,17 @@ public class SurfaceException extends RuntimeException {
         CONFLICT_TOKEN_STALE(412),
 
         /** The request body is absent or does not carry what the verb needs. */
-        PAYLOAD_MALFORMED(400);
+        PAYLOAD_MALFORMED(400),
+
+        /**
+         * A claim's duration is absent or is not a positive ISO-8601 duration.
+         *
+         * <p>Its own reason rather than a payload fault, because the surface
+         * contract declares a pattern for exactly this and could not reach it
+         * otherwise: the caller was told its payload was malformed, which is
+         * true and says nothing about which value it should correct.
+         */
+        CLAIM_DURATION_MALFORMED(400);
 
         private final int status;
 

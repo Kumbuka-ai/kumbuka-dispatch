@@ -64,6 +64,32 @@ public class ScopeAccessRepository {
     }
 
     /**
+     * The slug of a scope the bound subject may see, or empty.
+     *
+     * <p>The reverse of {@link #findBySlug}, and it reads the same
+     * subject-filtered view — which is what makes it safe to call for a scope
+     * the caller did not name. A curated answer's target may live in another
+     * scope entirely (section 5.1), and its address can only be rendered
+     * complete if the slug is known; a caller that may not see that scope gets
+     * no slug and therefore no address, which is the same answer it would get
+     * for a target that is not there.
+     */
+    @Transactional
+    public Optional<String> slugOf(UUID scopeId) {
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT slug
+                FROM platform.scope_access
+                WHERE scope_id = :id
+                """)
+            .setParameter("id", scopeId)
+            .getResultList();
+
+        return rows.isEmpty()
+            ? Optional.empty()
+            : Optional.of(String.valueOf(rows.get(0)));
+    }
+
+    /**
      * Binds the calling subject for this transaction.
      *
      * <p>{@code is_local = true} is the whole safety property: the value resets
