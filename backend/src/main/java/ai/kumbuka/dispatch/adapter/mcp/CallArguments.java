@@ -33,7 +33,7 @@ import java.util.Map;
 final class CallArguments {
 
     /** The one nested object a call may carry, by the name DEC-0040 gives it. */
-    private static final String FIELDS = "fields";
+    private static final String FIELDS_ARGUMENT = "fields";
 
     private final ProcessVerb verb;
     private final Map<String, Object> top;
@@ -57,12 +57,12 @@ final class CallArguments {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> nestedFields(ProcessVerb verb,
                                                     Map<String, Object> arguments) {
-        Object nested = arguments.get(FIELDS);
+        Object nested = arguments.get(FIELDS_ARGUMENT);
         if (nested == null) {
             return Map.of();
         }
         if (!(nested instanceof Map)) {
-            throw Refused.argumentInvalid(Surface.MCP, verb.call(), FIELDS,
+            throw Refused.argumentInvalid(Surface.MCP, verb.call(), FIELDS_ARGUMENT,
                 String.valueOf(nested),
                 "it carries the values this call writes and is an object");
         }
@@ -83,7 +83,7 @@ final class CallArguments {
         List<String> declared = new java.util.ArrayList<>(
             verb.topArguments().stream().map(Argument::name).toList());
         if (verb.hasFields()) {
-            declared.add(FIELDS);
+            declared.add(FIELDS_ARGUMENT);
         }
         if (verb == ProcessVerb.QUERY) {
             for (QueryFilter.Field field : QueryFilter.Field.values()) {

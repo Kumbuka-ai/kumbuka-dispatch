@@ -271,11 +271,9 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                                             DispatchException e) {
             return switch (code) {
                 case ROLE_DOES_NOT_ALLOW -> Refused.ofRole(Surface.REST, call, address,
-                    "commissioner", Participation.BYSTANDER, "not visible to you",
-                    List.of());
+                    "commissioner", Participation.BYSTANDER, NOT_VISIBLE, List.of());
                 case NOT_THE_HOLDER -> Refused.notTheHolder(Surface.REST, call, address,
-                    "its claim lapses", "make that call on it", "not visible to you",
-                    List.of());
+                    "its claim lapses", "make that call on it", NOT_VISIBLE, List.of());
                 case RECEIPT_MISSING, RECEIPT_WRONG -> Refused.receipt(Surface.REST, code,
                     call, address, NOT_VISIBLE, List.of());
                 case STATE_DOES_NOT_ALLOW -> Refused.ofState(Surface.REST, call, address,
