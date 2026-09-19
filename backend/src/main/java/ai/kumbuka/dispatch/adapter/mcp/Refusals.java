@@ -45,6 +45,13 @@ final class Refusals {
     /** This adapter's surface. Named once, so no branch can answer for another. */
     private static final Surface SURFACE = Surface.MCP;
 
+    /** The argument names this file hands to a refusal, once each. */
+    private static final String ARG_FIELDS = "fields";
+    private static final String ARG_ADDRESS = "address";
+
+    /** What an address reads as when the call named none. */
+    private static final String NO_ADDRESS = "the address given";
+
     /** A kernel refusal, in the caller's vocabulary. */
     static Refused of(DispatchException e, ProcessVerb verb, Map<String, Object> arguments,
                       McpAdapter adapter) {
@@ -93,7 +100,7 @@ final class Refusals {
             return argumentInvalid(e, verb);
         }
         if (code == RefusalCode.ARGUMENT_MISSING) {
-            return Refused.argumentMissing(SURFACE, verb.call(), "fields",
+            return Refused.argumentMissing(SURFACE, verb.call(), ARG_FIELDS,
                 "the values this call writes");
         }
         if (code == RefusalCode.ARGUMENT_UNKNOWN) {
@@ -131,14 +138,14 @@ final class Refusals {
                 "metadata carries the caller's own keys and takes no assertion and no "
                     + "URL carrying credentials");
             case ADDENDUM_MALFORMED -> Refused.argumentInvalid(SURFACE, verb.call(),
-                "address", "the address given",
+                ARG_ADDRESS, NO_ADDRESS,
                 "a correction is attached to an exchange, and the address given names a "
                     + "correction rather than one");
             case ADDENDUM_SUFFIX_EXHAUSTED -> Refused.argumentInvalid(SURFACE, verb.call(),
-                "address", "the address given",
+                ARG_ADDRESS, NO_ADDRESS,
                 "this exchange already carries every correction its address space "
                     + "admits");
-            default -> Refused.argumentInvalid(SURFACE, verb.call(), "fields",
+            default -> Refused.argumentInvalid(SURFACE, verb.call(), ARG_FIELDS,
                 "the values given", "one of them is not a value this call takes");
         };
     }
@@ -152,7 +159,7 @@ final class Refusals {
             // visible there" would tell a caller with a typo to go looking for
             // a permission problem.
             case ADDRESS_MALFORMED, PAYLOAD_MALFORMED -> Refused.argumentInvalid(SURFACE,
-                verb.call(), "address", addressIn(arguments),
+                verb.call(), ARG_ADDRESS, addressIn(arguments),
                 "an address is written dispatch://<scope>/<selector>/<number>.<sub>");
 
             case CLAIM_DURATION_MALFORMED -> Refused.claimDurationInvalid(SURFACE,
@@ -247,7 +254,7 @@ final class Refusals {
 
             case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(SURFACE, verb.call(),
                 firstUnknown(verb, arguments), verb.argumentNames());
-            case ARGUMENT_MISSING -> Refused.argumentMissing(SURFACE, verb.call(), "fields",
+            case ARGUMENT_MISSING -> Refused.argumentMissing(SURFACE, verb.call(), ARG_FIELDS,
                 "the values this call writes");
             case ARGUMENT_INVALID -> argumentInvalid(e, verb);
 
@@ -305,10 +312,10 @@ final class Refusals {
             String complete = sameScopeAs(root, bare);
 
             McpAdapter.Situation child =
-                adapter.situationOf(Map.of("address", complete));
+                adapter.situationOf(Map.of(ARG_ADDRESS, complete));
 
             Map<String, Object> named = new LinkedHashMap<>();
-            named.put("address", child == null ? complete : child.address());
+            named.put(ARG_ADDRESS, child == null ? complete : child.address());
             named.put("state", child == null ? stateIn(shortForm) : child.state());
             named.put("next", child == null ? List.of() : child.next());
             offenders.add(Map.copyOf(named));
@@ -368,8 +375,8 @@ final class Refusals {
     }
 
     private static String addressIn(Map<String, Object> arguments) {
-        Object address = arguments.get("address");
-        return address == null ? "the address given" : String.valueOf(address);
+        Object address = arguments.get(ARG_ADDRESS);
+        return address == null ? NO_ADDRESS : String.valueOf(address);
     }
 
     /**
@@ -382,7 +389,7 @@ final class Refusals {
      */
     private static String firstUnknown(ProcessVerb verb, Map<String, Object> arguments) {
         for (String name : arguments.keySet()) {
-            if (verb.argument(name) == null && !"fields".equals(name)) {
+            if (verb.argument(name) == null && !ARG_FIELDS.equals(name)) {
                 return name;
             }
         }

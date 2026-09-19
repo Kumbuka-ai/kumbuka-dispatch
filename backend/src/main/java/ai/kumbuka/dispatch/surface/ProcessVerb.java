@@ -47,16 +47,15 @@ public enum ProcessVerb {
             + "for an executor to take it up with dispatch_take.",
         Participation.COMMISSIONER,
         List.of(
-            Argument.top("scope", "string", true, "the scope name, a DNS label"),
-            Argument.top("selector", "string", true, "the declared bracket kind"),
-            Argument.top("parent", "string", false,
+            scope(),
+            selector(),
+            Argument.top("parent", Argument.STRING, false,
                 "the complete address of a bracket root, to add a child to it"),
-            Argument.top("idempotency_key", "string", false,
-                "a key of your own, so a retried call does not commission twice"),
-            Argument.field("title", "string", true, "the exchange's title"),
-            Argument.field("apparatus", "string", true, "who the work is addressed to"),
-            Argument.field("text", "string", true, "the body of the commission"),
-            Argument.field("date", "string", false,
+            idempotencyKey("commission twice"),
+            Argument.field("title", Argument.STRING, true, "the exchange's title"),
+            Argument.field("apparatus", Argument.STRING, true, "who the work is addressed to"),
+            Argument.field("text", Argument.STRING, true, "the body of the commission"),
+            Argument.field("date", Argument.STRING, false,
                 "the dispatch date as YYYY-MM-DD; today if omitted"),
             Argument.field("metadata", "object", false, "your own keys on the commission"))),
 
@@ -66,11 +65,10 @@ public enum ProcessVerb {
             + "together with it. Not possible once the exchange is finished.",
         Participation.COMMISSIONER,
         List.of(
-            Argument.top("address", "string", true, "the complete address of the exchange"),
-            Argument.top("idempotency_key", "string", false,
-                "a key of your own, so a retried call does not correct twice"),
-            Argument.field("title", "string", true, "the correction's title"),
-            Argument.field("text", "string", true, "what the correction says"))),
+            address(),
+            idempotencyKey("correct twice"),
+            Argument.field("title", Argument.STRING, true, "the correction's title"),
+            Argument.field("text", Argument.STRING, true, "what the correction says"))),
 
     ACCEPT_RETURN("dispatch_accept_return",
         "Accept the answer the executor delivered and finish the exchange. The answer is "
@@ -78,8 +76,7 @@ public enum ProcessVerb {
             + "if the answer is to be carried forward into another object, and "
             + "dispatch_reply_to_executor if it needs rework.",
         Participation.COMMISSIONER,
-        List.of(Argument.top("address", "string", true,
-            "the complete address of the exchange"))),
+        List.of(address())),
 
     CURATE_RETURN("dispatch_curate_return",
         "Accept the delivered answer and finish the exchange by carrying it forward into "
@@ -87,8 +84,8 @@ public enum ProcessVerb {
             + "belongs to. The target is stored with the exchange.",
         Participation.COMMISSIONER,
         List.of(
-            Argument.top("address", "string", true, "the complete address of the exchange"),
-            Argument.field("into", "string", true,
+            address(),
+            Argument.field("into", Argument.STRING, true,
                 "the complete address of the exchange the answer is carried into: any "
                     + "exchange of this service you can see, in any scope and bracket "
                     + "kind, other than this one"))),
@@ -99,10 +96,9 @@ public enum ProcessVerb {
             + "working.",
         Participation.COMMISSIONER,
         List.of(
-            Argument.top("address", "string", true, "the complete address of the exchange"),
-            Argument.top("conflict_token", "string", true,
-                "the token handed out with the last read of this exchange"),
-            Argument.field("message", "string", true, "what you are telling the executor"))),
+            address(),
+            conflictToken(),
+            Argument.field("message", Argument.STRING, true, "what you are telling the executor"))),
 
     CANCEL("dispatch_cancel",
         "Withdraw a commission that is no longer wanted. The exchange is closed without an "
@@ -110,17 +106,16 @@ public enum ProcessVerb {
             + "and is refused while any exchange of the bracket is unfinished.",
         Participation.COMMISSIONER,
         List.of(
-            Argument.top("address", "string", true, "the complete address of the exchange"),
-            Argument.top("conflict_token", "string", true,
-                "the token handed out with the last read of this exchange"),
-            Argument.field("reason", "string", true, "why the commission is withdrawn"))),
+            address(),
+            conflictToken(),
+            Argument.field("reason", Argument.STRING, true, "why the commission is withdrawn"))),
 
     CLOSE_BRACKET("dispatch_close_bracket",
         "Finish a bracket: accept the record delivered on its root and close it. Refused "
             + "while any exchange of the bracket is unfinished; the refusal names each one "
             + "with its complete address and the call that would finish it.",
         Participation.COMMISSIONER,
-        List.of(Argument.top("address", "string", true,
+        List.of(Argument.top("address", Argument.STRING, true,
             "the complete address of the bracket root"))),
 
     // ======================================================================
@@ -132,19 +127,17 @@ public enum ProcessVerb {
             + "this exchange need; keep it. The claim lasts for `duration`.",
         Participation.CANDIDATE,
         List.of(
-            Argument.top("address", "string", true, "the complete address of the exchange"),
-            Argument.top("duration", "string", true,
-                "how long the claim stands, as an ISO-8601 duration such as PT2H"))),
+            address(),
+            duration())),
 
     TAKE_NEXT("dispatch_take_next",
         "Take up the next open exchange of a bracket kind, in address order. Returns the "
             + "exchange and the receipt.",
         Participation.CANDIDATE,
         List.of(
-            Argument.top("scope", "string", true, "the scope name, a DNS label"),
-            Argument.top("selector", "string", true, "the declared bracket kind"),
-            Argument.top("duration", "string", true,
-                "how long the claim stands, as an ISO-8601 duration such as PT2H"))),
+            scope(),
+            selector(),
+            duration())),
 
     DELIVER_RETURN("dispatch_deliver_return",
         "Deliver your answer to the commissioner. The answer is stored and the exchange "
@@ -152,20 +145,18 @@ public enum ProcessVerb {
             + "keep the exchange meanwhile.",
         Participation.HOLDER,
         List.of(
-            Argument.top("address", "string", true, "the complete address of the exchange"),
-            Argument.top("receipt", "string", true,
-                "the receipt dispatch_take issued for this exchange"),
-            Argument.field("text", "string", true, "your answer"))),
+            address(),
+            receipt(),
+            Argument.field("text", Argument.STRING, true, "your answer"))),
 
     ASK_COMMISSIONER("dispatch_ask_commissioner",
         "Stop and ask the commissioner something you cannot decide. The question is stored "
             + "with the exchange; you keep it until the commissioner replies.",
         Participation.HOLDER,
         List.of(
-            Argument.top("address", "string", true, "the complete address of the exchange"),
-            Argument.top("receipt", "string", true,
-                "the receipt dispatch_take issued for this exchange"),
-            Argument.field("question", "string", true, "what you cannot decide"))),
+            address(),
+            receipt(),
+            Argument.field("question", Argument.STRING, true, "what you cannot decide"))),
 
     DECLINE("dispatch_decline",
         "Decline the work. On an open exchange, any executor who could take it up may "
@@ -174,10 +165,10 @@ public enum ProcessVerb {
             + "is stored. Final.",
         Participation.CANDIDATE,
         List.of(
-            Argument.top("address", "string", true, "the complete address of the exchange"),
-            Argument.top("receipt", "string", false,
+            address(),
+            Argument.top("receipt", Argument.STRING, false,
                 "the receipt dispatch_take issued, if you took the exchange up"),
-            Argument.field("reason", "string", true, "why you are declining"))),
+            Argument.field("reason", Argument.STRING, true, "why you are declining"))),
 
     // ======================================================================
     // 5.3 Both roles
@@ -187,16 +178,64 @@ public enum ProcessVerb {
         "Read one exchange with what you may see of it, the calls open to you from its "
             + "state, and who it is waiting for.",
         null,
-        List.of(Argument.top("address", "string", true,
-            "the complete address of the exchange"))),
+        List.of(address())),
 
     QUERY("dispatch_query",
         "List the exchanges of one bracket kind in a scope, narrowed by filters. Each "
             + "entry carries its complete address, its state and the calls open to you.",
         null,
         List.of(
-            Argument.top("scope", "string", true, "the scope name, a DNS label"),
-            Argument.top("selector", "string", true, "the declared bracket kind")));
+            scope(),
+            selector()));
+
+
+    // ======================================================================
+    // The arguments several calls share
+    //
+    // One definition each, because they ARE one argument: `address` means the
+    // same thing and is described the same way wherever it appears, and ten
+    // copies of its description are ten places a reworded sentence has to be
+    // changed and nine places it can be missed.
+    //
+    // The tool DESCRIPTIONS above are deliberately NOT treated this way. They
+    // are the contract's normative text, compared line for line against the
+    // copied document, and a reader checking one against the other has to see
+    // it where the call declares it.
+    // ======================================================================
+
+    private static Argument scope() {
+        return Argument.top("scope", Argument.STRING, true, "the scope name, a DNS label");
+    }
+
+    private static Argument selector() {
+        return Argument.top("selector", Argument.STRING, true, "the declared bracket kind");
+    }
+
+    private static Argument address() {
+        return Argument.top("address", Argument.STRING, true,
+            "the complete address of the exchange");
+    }
+
+    private static Argument duration() {
+        return Argument.top("duration", Argument.STRING, true,
+            "how long the claim stands, as an ISO-8601 duration such as PT2H");
+    }
+
+    private static Argument receipt() {
+        return Argument.top("receipt", Argument.STRING, true,
+            "the receipt dispatch_take issued for this exchange");
+    }
+
+    private static Argument conflictToken() {
+        return Argument.top("conflict_token", Argument.STRING, true,
+            "the token handed out with the last read of this exchange");
+    }
+
+    /** The key, with the sentence that says what a retry of THIS call does. */
+    private static Argument idempotencyKey(String does) {
+        return Argument.top("idempotency_key", Argument.STRING, false,
+            "a key of your own, so a retried call does not " + does);
+    }
 
     private final String call;
     private final String description;

@@ -22,6 +22,16 @@ package ai.kumbuka.dispatch.surface;
 public record Argument(String name, String type, boolean required, Placement placement,
                        String description) {
 
+    /**
+     * The JSON Schema type every argument of this surface has.
+     *
+     * <p>All of them, and that is not an accident to be tidied away later: an
+     * address, a receipt and a conflict token are opaque to the caller, and a
+     * typed shape would invite it to construct one. {@code metadata} is the
+     * single exception and declares its own type.
+     */
+    public static final String STRING = "string";
+
     /** Where an argument sits in the call. */
     public enum Placement {
 

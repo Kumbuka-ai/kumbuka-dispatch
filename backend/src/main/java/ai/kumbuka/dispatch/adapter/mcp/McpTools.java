@@ -38,6 +38,9 @@ import java.util.Map;
  */
 public final class McpTools {
 
+    /** The JSON Schema member every argument carries, by its schema name. */
+    private static final String KEY_DESCRIPTION = "description";
+
     private McpTools() {
     }
 
@@ -80,7 +83,7 @@ public final class McpTools {
             for (QueryFilter.Field field : QueryFilter.Field.values()) {
                 properties.put(field.wireName(), Map.of(
                     "type", "string",
-                    "description", "Narrow by " + field.wireName()
+                    KEY_DESCRIPTION, "Narrow by " + field.wireName()
                         + ". Comma-separated values are read as alternatives."));
             }
         }
@@ -115,14 +118,14 @@ public final class McpTools {
         }
 
         Map<String, Object> schema = new LinkedHashMap<>(closedObject(properties, required));
-        schema.put("description",
+        schema.put(KEY_DESCRIPTION,
             "What this call writes into the exchange. Values live here; the arguments that "
                 + "choose the target live beside it.");
         return Map.copyOf(schema);
     }
 
     private static Map<String, Object> property(Argument argument) {
-        return Map.of("type", argument.type(), "description", argument.description());
+        return Map.of("type", argument.type(), KEY_DESCRIPTION, argument.description());
     }
 
     /**

@@ -74,6 +74,13 @@ public final class ReasonCatalogue {
         "{call} is not possible on {address}: it is {state} and finished. Nothing further "
             + "can be done with it.";
 
+    /**
+     * The remedy of every refusal a caller can act on by reading its own
+     * {@code data}. Three reasons share it, and they share it because it is
+     * one instruction.
+     */
+    private static final String READ_THE_NEXT_LIST = "the calls in data.next";
+
     private static final Map<RefusalCode, Reason> DECLARED = declare();
 
     private static Map<RefusalCode, Reason> declare() {
@@ -86,12 +93,12 @@ public final class ReasonCatalogue {
         put(declared, RefusalCode.STATE_DOES_NOT_ALLOW,
             "{call} is not possible on {address}: it is {state}. From {state} you can: "
                 + "{calls}.",
-            "the calls in data.next");
+            READ_THE_NEXT_LIST);
 
         put(declared, RefusalCode.ROLE_DOES_NOT_ALLOW,
             "{call} can only be made by the {role}. You take part in {address} as "
                 + "{participation}.",
-            "the calls in data.next");
+            READ_THE_NEXT_LIST);
 
         put(declared, RefusalCode.NOT_THE_HOLDER,
             "{address} is held by someone else until {until}. Only the holder can {does}.",
@@ -160,7 +167,7 @@ public final class ReasonCatalogue {
         put(declared, RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
             "{call} cannot be made on {address}: it applies to {applies}. On {address} you "
                 + "can: {calls}.",
-            "the calls in data.next");
+            READ_THE_NEXT_LIST);
 
         put(declared, RefusalCode.UNEXPECTED_FAILURE,
             "{call} on {address} failed unexpectedly. This is a defect, not a rule. "

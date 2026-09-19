@@ -90,6 +90,9 @@ public class McpAdapter {
     private static final String ARG_CONFLICT_TOKEN = "conflict_token";
     private static final String ARG_IDEMPOTENCY_KEY = "idempotency_key";
 
+    /** The one nested object a call carries, by the name DEC-0040 gives it. */
+    private static final String ARG_FIELDS = "fields";
+
     /** JSON-RPC's own codes. Protocol faults only — a refused verb is not one. */
     private static final int METHOD_NOT_FOUND = -32601;
     private static final int INVALID_PARAMS = -32602;
@@ -351,18 +354,24 @@ public class McpAdapter {
      * exchange, because it is not a property of the exchange — it is this
      * caller's proof, issued once, and the service keeps only a hash. A field
      * on the exchange would be a field every later read would have to withhold.
+     *
+     * <p>The answer's members go by the same names as the arguments, and the
+     * constants are shared rather than re-spelled: DEC-0040 gives an address
+     * one name wherever it appears, so a caller can hand an answer's member
+     * straight back as the next call's argument. Two spellings of one name is
+     * how that stops being true.
      */
     private static Map<String, Object> withReceipt(VerbSurface.ClaimOutcome claimed) {
         Map<String, Object> answer = new LinkedHashMap<>();
         Payloads.Answer exchange = compact(claimed.result());
-        answer.put("address", exchange.address());
-        answer.put("fields", exchange.fields());
-        answer.put("conflict_token", exchange.conflictToken());
+        answer.put(ARG_ADDRESS, exchange.address());
+        answer.put(ARG_FIELDS, exchange.fields());
+        answer.put(ARG_CONFLICT_TOKEN, exchange.conflictToken());
         answer.put("next", exchange.next());
         if (exchange.waitingFor() != null) {
             answer.put("waiting_for", exchange.waitingFor());
         }
-        answer.put("receipt", claimed.receipt());
+        answer.put(ARG_RECEIPT, claimed.receipt());
         return Map.copyOf(answer);
     }
 

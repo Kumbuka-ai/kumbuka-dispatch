@@ -43,6 +43,17 @@ public class Refused extends RuntimeException {
     public static final String NEXT = "next";
     public static final String OFFENDERS = "offenders";
 
+    /**
+     * Placeholder names the catalogue's patterns use.
+     *
+     * <p>Named once because they are one name: a pattern that spelled {@code
+     * addres} would render a brace into a caller's message, and the failure
+     * would surface at the throw site rather than here.
+     */
+    private static final String P_CALL = "call";
+    private static final String P_ADDRESS = "address";
+    private static final String P_STATE = "state";
+
     private final transient RefusalCode code;
     private final transient Map<String, Object> data;
 
@@ -99,9 +110,9 @@ public class Refused extends RuntimeException {
     public static Refused ofState(Surface surface, String call, String address, String state,
                                   boolean terminal, List<NextCalculator.Step> next) {
         Map<String, String> values = new LinkedHashMap<>();
-        values.put("call", call);
-        values.put("address", address);
-        values.put("state", state);
+        values.put(P_CALL, call);
+        values.put(P_ADDRESS, address);
+        values.put(P_STATE, state);
         values.put("calls", named(next));
 
         String message = terminal
@@ -126,7 +137,7 @@ public class Refused extends RuntimeException {
                                  String required, Participation participation, String state,
                                  List<NextCalculator.Step> next) {
         String message = ReasonCatalogue.message(RefusalCode.ROLE_DOES_NOT_ALLOW, surface,
-            Map.of("call", call, "role", required, "address", address,
+            Map.of(P_CALL, call, "role", required, P_ADDRESS, address,
                 "participation", participation.wireName()));
         return new Refused(RefusalCode.ROLE_DOES_NOT_ALLOW, message,
             situation(call, state, next));
@@ -144,7 +155,7 @@ public class Refused extends RuntimeException {
                                        String until, String does, String state,
                                        List<NextCalculator.Step> next) {
         String message = ReasonCatalogue.message(RefusalCode.NOT_THE_HOLDER, surface, Map.of(
-            "address", address, "until", until, "does", does));
+            P_ADDRESS, address, "until", until, "does", does));
         return new Refused(RefusalCode.NOT_THE_HOLDER, message, situation(call, state, next));
     }
 
@@ -153,7 +164,7 @@ public class Refused extends RuntimeException {
                                   String address, String state,
                                   List<NextCalculator.Step> next) {
         String message = ReasonCatalogue.message(code, surface,
-            Map.of("call", call, "address", address));
+            Map.of(P_CALL, call, P_ADDRESS, address));
         return new Refused(code, message, situation(call, state, next));
     }
 
@@ -162,7 +173,7 @@ public class Refused extends RuntimeException {
                                             String state,
                                             List<NextCalculator.Step> next) {
         String message = ReasonCatalogue.message(RefusalCode.NO_ANSWER_DELIVERED, surface,
-            Map.of("address", address));
+            Map.of(P_ADDRESS, address));
         return new Refused(RefusalCode.NO_ANSWER_DELIVERED, message,
             situation(call, state, next));
     }
@@ -189,12 +200,12 @@ public class Refused extends RuntimeException {
                                               String state,
                                               List<NextCalculator.Step> next) {
         String listed = String.join(", ", offenders.stream()
-            .map(o -> o.get("address") + " (" + o.get(STATE) + ")")
+            .map(o -> o.get(P_ADDRESS) + " (" + o.get(STATE) + ")")
             .toList());
 
         String message = ReasonCatalogue.message(RefusalCode.CHILDREN_NOT_FINISHED, surface,
             Map.of("root", root, "ending", ending, "count", String.valueOf(offenders.size()),
-                "offenders", listed));
+                OFFENDERS, listed));
 
         Map<String, Object> data = new LinkedHashMap<>(situation(call, state, next));
         data.put(OFFENDERS, List.copyOf(offenders));
@@ -224,7 +235,7 @@ public class Refused extends RuntimeException {
                                                String applies, String state,
                                                List<NextCalculator.Step> next) {
         String message = ReasonCatalogue.message(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
-            surface, Map.of("call", call, "address", address, "applies", applies,
+            surface, Map.of(P_CALL, call, P_ADDRESS, address, "applies", applies,
                 "calls", named(next)));
         return new Refused(RefusalCode.CALL_NOT_AT_THIS_ADDRESS, message,
             situation(call, state, next));
@@ -238,7 +249,7 @@ public class Refused extends RuntimeException {
     public static Refused argumentUnknown(Surface surface, String call, String name,
                                           List<String> declared) {
         String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_UNKNOWN, surface,
-            Map.of("call", call, "name", name, "arguments", String.join(", ", declared)));
+            Map.of(P_CALL, call, "name", name, "arguments", String.join(", ", declared)));
         return new Refused(RefusalCode.ARGUMENT_UNKNOWN, message, Map.of(ATTEMPTED, call));
     }
 
@@ -246,7 +257,7 @@ public class Refused extends RuntimeException {
     public static Refused argumentMissing(Surface surface, String call, String name,
                                           String what) {
         String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_MISSING, surface,
-            Map.of("call", call, "name", name, "what", what));
+            Map.of(P_CALL, call, "name", name, "what", what));
         return new Refused(RefusalCode.ARGUMENT_MISSING, message, Map.of(ATTEMPTED, call));
     }
 
@@ -261,7 +272,7 @@ public class Refused extends RuntimeException {
     public static Refused argumentInvalid(Surface surface, String call, String name,
                                           String value, String why) {
         String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_INVALID, surface,
-            Map.of("call", call, "name", name, "value", String.valueOf(value), "why", why));
+            Map.of(P_CALL, call, "name", name, "value", String.valueOf(value), "why", why));
         return new Refused(RefusalCode.ARGUMENT_INVALID, message, Map.of(ATTEMPTED, call));
     }
 
@@ -277,7 +288,7 @@ public class Refused extends RuntimeException {
     public static Refused conflictToken(Surface surface, RefusalCode code, String call,
                                         String address) {
         String message = ReasonCatalogue.message(code, surface,
-            Map.of("call", call, "address", address));
+            Map.of(P_CALL, call, P_ADDRESS, address));
         return new Refused(code, message, Map.of(ATTEMPTED, call));
     }
 
@@ -301,7 +312,7 @@ public class Refused extends RuntimeException {
     public static Refused idempotencyKeyReused(Surface surface, String call, String key,
                                                String scope) {
         String message = ReasonCatalogue.message(RefusalCode.IDEMPOTENCY_KEY_REUSED, surface,
-            Map.of("key", key, "call", call, "scope", scope));
+            Map.of("key", key, P_CALL, call, "scope", scope));
         return new Refused(RefusalCode.IDEMPOTENCY_KEY_REUSED, message,
             Map.of(ATTEMPTED, call));
     }
@@ -320,7 +331,7 @@ public class Refused extends RuntimeException {
     public static Refused unexpected(Surface surface, String call, String address,
                                      String reference) {
         String message = ReasonCatalogue.message(RefusalCode.UNEXPECTED_FAILURE, surface,
-            Map.of("call", call, "address", address, "reference", reference));
+            Map.of(P_CALL, call, P_ADDRESS, address, "reference", reference));
         return new Refused(RefusalCode.UNEXPECTED_FAILURE, message,
             Map.of(ATTEMPTED, call, "reference", reference));
     }

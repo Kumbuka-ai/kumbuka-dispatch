@@ -80,6 +80,19 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
      */
     private static final Logger LOG = Logger.getLogger(RefusalMapper.class);
 
+    /**
+     * What a value reads as where this surface cannot name it.
+     *
+     * <p>Two of them and they say different things. {@code THE_ONE_GIVEN}
+     * stands where the caller supplied a value this mapper cannot read back
+     * out of the request; {@code NOT_VISIBLE} stands where the exchange itself
+     * could not be re-read, and is deliberately not a state — telling a caller
+     * that may not see an exchange what state it is in is the leak section 4.3
+     * exists to close.
+     */
+    static final String THE_ONE_GIVEN = "the one given";
+    static final String NOT_VISIBLE = "not visible to you";
+
     @Inject CallScope calling;
 
     @Override
@@ -99,7 +112,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                     "an address names a selector, a number and a sub-position under a "
                         + "scope this caller may see");
             case CLAIM_DURATION_MALFORMED ->
-                Refused.claimDurationInvalid(Surface.REST, call, "the one given");
+                Refused.claimDurationInvalid(Surface.REST, call, THE_ONE_GIVEN);
             case CONFLICT_TOKEN_MISSING ->
                 Refused.conflictToken(Surface.REST, RefusalCode.CONFLICT_TOKEN_MISSING,
                     call, address);
@@ -205,11 +218,11 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 // three values removed from one sentence, and the sentence
                 // still ends by telling the caller to use a declared one.
                 return Refused.selectorUnknown(Surface.REST, call,
-                    calling.selector("the one given"), calling.scope("this scope"),
+                    calling.selector(THE_ONE_GIVEN), calling.scope("this scope"),
                     declaredSelectors());
             }
             if (code == RefusalCode.IDEMPOTENCY_KEY_REUSED) {
-                return Refused.idempotencyKeyReused(Surface.REST, call, "the one given",
+                return Refused.idempotencyKeyReused(Surface.REST, call, THE_ONE_GIVEN,
                     calling.scope("this scope"));
             }
 
@@ -264,16 +277,16 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                     "its claim lapses", "make that call on it", "not visible to you",
                     List.of());
                 case RECEIPT_MISSING, RECEIPT_WRONG -> Refused.receipt(Surface.REST, code,
-                    call, address, "not visible to you", List.of());
+                    call, address, NOT_VISIBLE, List.of());
                 case STATE_DOES_NOT_ALLOW -> Refused.ofState(Surface.REST, call, address,
-                    "not visible to you", false, List.of());
+                    NOT_VISIBLE, false, List.of());
                 case NO_ANSWER_DELIVERED -> Refused.noAnswerDelivered(Surface.REST, call,
-                    address, "not visible to you", List.of());
+                    address, NOT_VISIBLE, List.of());
                 case NOTHING_TO_TAKE -> Refused.nothingToTake(Surface.REST, call, address);
                 case CLAIM_DURATION_INVALID -> Refused.claimDurationInvalid(Surface.REST,
                     call, "the duration given");
                 case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(Surface.REST, call,
-                    "the one given", List.of("see the service's declaration"));
+                    THE_ONE_GIVEN, List.of("see the service's declaration"));
                 case ARGUMENT_MISSING -> Refused.argumentMissing(Surface.REST, call,
                     "a required value", "a value this call cannot run without");
                 case ARGUMENT_INVALID -> argumentInvalid(call, e);
@@ -426,7 +439,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
          */
         private static String subjectOf(DispatchException e) {
             return e.offenders().isEmpty()
-                ? "the one given"
+                ? THE_ONE_GIVEN
                 : String.join(", ", e.offenders());
         }
 
