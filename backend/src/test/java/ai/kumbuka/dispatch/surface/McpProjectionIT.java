@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@org.junit.jupiter.api.Tag("TST-0001")
 class McpProjectionIT {
 
     @Inject TestIdentityAssociation identity;
