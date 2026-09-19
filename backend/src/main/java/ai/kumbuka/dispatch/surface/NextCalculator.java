@@ -73,15 +73,6 @@ public final class NextCalculator {
     }
 
     /**
-     * What each process verb does to the kernel, and from where.
-     *
-     * <p>Compound verbs carry their steps in order and the whole list runs in
-     * one transaction. {@code dispatch_accept_return} is {@code ratify} then
-     * {@code close} — which is why, on this surface, {@code returned} is a
-     * state a caller reaches only through the generic surface and can still
-     * finish from here.
-     */
-    /**
      * The four states an exchange can still be acted on in.
      *
      * <p>Declared BEFORE {@link #STEPS}, and the order is load-bearing: static
@@ -94,6 +85,15 @@ public final class NextCalculator {
         ExchangeStatus.OPEN, ExchangeStatus.ACTIVE, ExchangeStatus.NEEDS_INPUT,
         ExchangeStatus.RETURNED);
 
+    /**
+     * What each process verb does to the kernel, and from where.
+     *
+     * <p>Compound verbs carry their steps in order and the whole list runs in
+     * one transaction. {@code dispatch_accept_return} is {@code ratify} then
+     * {@code close} — which is why, on this surface, {@code returned} is a
+     * state a caller reaches only through the generic surface and can still
+     * finish from here.
+     */
     private static final Map<ProcessVerb, VerbStep> STEPS = steps();
 
     private static Map<ProcessVerb, VerbStep> steps() {
