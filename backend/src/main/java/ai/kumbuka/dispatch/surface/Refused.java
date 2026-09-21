@@ -51,6 +51,7 @@ public class Refused extends RuntimeException {
      * would surface at the throw site rather than here.
      */
     private static final String P_CALL = "call";
+    private static final String P_SCOPE = "scope";
     private static final String P_ADDRESS = "address";
     private static final String P_STATE = "state";
 
@@ -303,7 +304,7 @@ public class Refused extends RuntimeException {
     public static Refused selectorUnknown(Surface surface, String call, String selector,
                                           String scope, List<String> declared) {
         String message = ReasonCatalogue.message(RefusalCode.SELECTOR_UNKNOWN, surface,
-            Map.of("selector", selector, "scope", scope,
+            Map.of("selector", selector, P_SCOPE, scope,
                 "declared", declared.isEmpty() ? "none" : String.join(", ", declared)));
         return new Refused(RefusalCode.SELECTOR_UNKNOWN, message, Map.of(ATTEMPTED, call));
     }
@@ -328,7 +329,7 @@ public class Refused extends RuntimeException {
     public static Refused scopeKindUnsupported(Surface surface, String call, String scope,
                                                String kind) {
         String message = ReasonCatalogue.message(RefusalCode.SCOPE_KIND_UNSUPPORTED, surface,
-            Map.of("scope", scope, "kind", kind));
+            Map.of(P_SCOPE, scope, "kind", kind));
         return new Refused(RefusalCode.SCOPE_KIND_UNSUPPORTED, message,
             Map.of(ATTEMPTED, call));
     }
@@ -342,7 +343,7 @@ public class Refused extends RuntimeException {
      */
     public static Refused scopeReadOnly(Surface surface, String call, String scope) {
         String message = ReasonCatalogue.message(RefusalCode.SCOPE_READ_ONLY, surface,
-            Map.of("call", call, "scope", scope));
+            Map.of(P_CALL, call, P_SCOPE, scope));
         return new Refused(RefusalCode.SCOPE_READ_ONLY, message, Map.of(ATTEMPTED, call));
     }
 
@@ -355,7 +356,7 @@ public class Refused extends RuntimeException {
      */
     public static Refused scopeLocked(Surface surface, String call, String scope) {
         String message = ReasonCatalogue.message(RefusalCode.SCOPE_LOCKED, surface,
-            Map.of("scope", scope));
+            Map.of(P_SCOPE, scope));
         return new Refused(RefusalCode.SCOPE_LOCKED, message, Map.of(ATTEMPTED, call));
     }
 
@@ -363,7 +364,7 @@ public class Refused extends RuntimeException {
     public static Refused idempotencyKeyReused(Surface surface, String call, String key,
                                                String scope) {
         String message = ReasonCatalogue.message(RefusalCode.IDEMPOTENCY_KEY_REUSED, surface,
-            Map.of("key", key, P_CALL, call, "scope", scope));
+            Map.of("key", key, P_CALL, call, P_SCOPE, scope));
         return new Refused(RefusalCode.IDEMPOTENCY_KEY_REUSED, message,
             Map.of(ATTEMPTED, call));
     }

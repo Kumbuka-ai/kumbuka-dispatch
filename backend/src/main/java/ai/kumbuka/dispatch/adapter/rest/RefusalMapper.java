@@ -91,6 +91,9 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
      * exists to close.
      */
     static final String THE_ONE_GIVEN = "the one given";
+
+    /** What a scope reads as when the call's own spelling of it is not to hand. */
+    static final String THE_SCOPE_NAMED = "the scope named";
     static final String NOT_VISIBLE = "not visible to you";
 
     @Inject CallScope calling;
@@ -231,18 +234,9 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
             // so there is nothing to look up, and a lookup that found nothing
             // would answer NOT_FOUND and tell a caller whose scope is merely
             // locked to go looking for a typo.
-            if (code == RefusalCode.SCOPE_KIND_UNSUPPORTED) {
-                return Refused.scopeKindUnsupported(Surface.REST, call,
-                    calling.scope("the scope named"),
-                    e.offenders().isEmpty() ? "kind it does not serve" : e.offenders().get(0));
-            }
-            if (code == RefusalCode.SCOPE_READ_ONLY) {
-                return Refused.scopeReadOnly(Surface.REST, call,
-                    calling.scope("the scope named"));
-            }
-            if (code == RefusalCode.SCOPE_LOCKED) {
-                return Refused.scopeLocked(Surface.REST, call,
-                    calling.scope("the scope named"));
+            Refused aboutTheScope = aboutTheScope(code, call, e);
+            if (aboutTheScope != null) {
+                return aboutTheScope;
             }
 
             Situation situation = situationOf(address);
@@ -272,6 +266,30 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 case NO_ANSWER_DELIVERED -> Refused.noAnswerDelivered(Surface.REST, call,
                     situation.address(), situation.state(), situation.next());
                 default -> withoutState(code, call, situation.address(), e);
+            };
+        }
+
+        /**
+         * The three refusals about the scope itself, or null for anything else.
+         *
+         * <p>Lifted out of {@code dress} rather than written into its chain:
+         * the three share a shape — no exchange was reached, so no state and
+         * no {@code next} travels — and keeping them together is what lets
+         * that be read off the code rather than inferred from three
+         * consecutive early returns.
+         */
+        private Refused aboutTheScope(RefusalCode code, String call, DispatchException e) {
+            String scope = calling.scope(THE_SCOPE_NAMED);
+            return switch (code) {
+                case SCOPE_KIND_UNSUPPORTED -> Refused.scopeKindUnsupported(Surface.REST,
+                    call, scope,
+                    // The kind comes from the directory, which is the only
+                    // layer that read it. It is a value for the pattern and
+                    // does not reach `data`.
+                    e.offenders().isEmpty() ? "kind it does not serve" : e.offenders().get(0));
+                case SCOPE_READ_ONLY -> Refused.scopeReadOnly(Surface.REST, call, scope);
+                case SCOPE_LOCKED -> Refused.scopeLocked(Surface.REST, call, scope);
+                default -> null;
             };
         }
 

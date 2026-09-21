@@ -48,6 +48,7 @@ final class Refusals {
     /** The argument names this file hands to a refusal, once each. */
     private static final String ARG_FIELDS = "fields";
     private static final String ARG_ADDRESS = "address";
+    private static final String ARG_SCOPE = "scope";
 
     /** What an address reads as when the call named none. */
     private static final String NO_ADDRESS = "the address given";
@@ -79,13 +80,13 @@ final class Refusals {
             // pick from nothing.
             return Refused.selectorUnknown(SURFACE, verb.call(),
                 String.valueOf(arguments.get("selector")),
-                String.valueOf(arguments.get("scope")),
+                String.valueOf(arguments.get(ARG_SCOPE)),
                 adapter.declaredSelectorsIn(arguments));
         }
         if (code == RefusalCode.IDEMPOTENCY_KEY_REUSED) {
             return Refused.idempotencyKeyReused(SURFACE, verb.call(),
                 String.valueOf(arguments.get("idempotency_key")),
-                String.valueOf(arguments.get("scope")));
+                String.valueOf(arguments.get(ARG_SCOPE)));
         }
         if (code == RefusalCode.UNEXPECTED_FAILURE) {
             return UnexpectedFailures.refuse(SURFACE, verb.call(), addressIn(arguments), e);
@@ -96,18 +97,9 @@ final class Refusals {
         // is no situation to dress — and a state lookup would answer nothing
         // and send all three to NOT_FOUND, telling a caller whose scope is
         // merely locked that its address is wrong.
-        if (code == RefusalCode.SCOPE_KIND_UNSUPPORTED) {
-            // The kind comes from the directory, which is the only layer that
-            // read it. `offenders` carries it as a value for the pattern; it
-            // does not reach `data`.
-            return Refused.scopeKindUnsupported(SURFACE, verb.call(), scopeIn(arguments),
-                e.offenders().isEmpty() ? "kind it does not serve" : e.offenders().get(0));
-        }
-        if (code == RefusalCode.SCOPE_READ_ONLY) {
-            return Refused.scopeReadOnly(SURFACE, verb.call(), scopeIn(arguments));
-        }
-        if (code == RefusalCode.SCOPE_LOCKED) {
-            return Refused.scopeLocked(SURFACE, verb.call(), scopeIn(arguments));
+        Refused aboutTheScope = aboutTheScope(code, e, verb, arguments);
+        if (aboutTheScope != null) {
+            return aboutTheScope;
         }
 
         // The form faults, BEFORE any attempt to read a state. They carry none
@@ -136,6 +128,31 @@ final class Refusals {
 
         McpAdapter.Situation situation = adapter.situationOf(arguments);
         return dressed(code, verb, situation, arguments, e);
+    }
+
+    /**
+     * The three refusals about the scope itself, or null for anything else.
+     *
+     * <p>Together rather than as three links in {@code of}'s chain: they
+     * share a shape — the call was stopped at stage 2, so no exchange, no
+     * state and no {@code next} — and that is worth being able to read off
+     * the code.
+     */
+    private static Refused aboutTheScope(RefusalCode code, DispatchException e,
+                                         ProcessVerb verb, Map<String, Object> arguments) {
+        return switch (code) {
+            case SCOPE_KIND_UNSUPPORTED -> Refused.scopeKindUnsupported(SURFACE, verb.call(),
+                scopeIn(arguments),
+                // The kind comes from the directory, which is the only layer
+                // that read it. `offenders` carries it as a value for the
+                // pattern; it does not reach `data`.
+                e.offenders().isEmpty() ? "kind it does not serve" : e.offenders().get(0));
+            case SCOPE_READ_ONLY -> Refused.scopeReadOnly(SURFACE, verb.call(),
+                scopeIn(arguments));
+            case SCOPE_LOCKED -> Refused.scopeLocked(SURFACE, verb.call(),
+                scopeIn(arguments));
+            default -> null;
+        };
     }
 
     /**
@@ -404,7 +421,7 @@ final class Refusals {
      * as {@code scope}.
      */
     private static String scopeIn(Map<String, Object> arguments) {
-        Object named = arguments.get("scope");
+        Object named = arguments.get(ARG_SCOPE);
         if (named != null) {
             return String.valueOf(named);
         }
