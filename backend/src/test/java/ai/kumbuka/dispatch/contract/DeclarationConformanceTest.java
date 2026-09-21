@@ -158,10 +158,56 @@ class DeclarationConformanceTest {
         List<String> fromContract = Contract.declaredReasons();
 
         for (RefusalCode code : RefusalCode.values()) {
+            if (AHEAD_OF_THE_CONTRACT.contains(code.name())) {
+                continue;
+            }
             assertThat(fromContract)
                 .as("%s can be returned and the contract's table does not list it. A "
                     + "reason not in the table cannot be returned", code)
                 .contains(code.name());
+        }
+    }
+
+    /**
+     * The reasons this service raises that section 4.4 does not yet list.
+     *
+     * <p>Closed, named, and three. Dispatch 187.17 instructs this service to
+     * refuse a private scope, a locked scope and a scope without the write
+     * right, each with its own code — and it says in as many words which of
+     * the two documents gives way: "der Katalog wird angepasst, nicht die
+     * Plattform". The contract copy is a verbatim copy of a concept document
+     * that belongs to the concept apparatus and is not edited from here, so
+     * the divergence is declared rather than papered over, and reported for
+     * ratification.
+     *
+     * <p>A set and not a flag on the loop: a fourth code slipping in
+     * unnoticed is exactly what this probe exists to stop, and it still does.
+     * The set is also asserted from the other side below, so it cannot quietly
+     * outlive the ratification it is waiting for.
+     */
+    private static final java.util.Set<String> AHEAD_OF_THE_CONTRACT = java.util.Set.of(
+        "SCOPE_KIND_UNSUPPORTED", "SCOPE_READ_ONLY", "SCOPE_LOCKED");
+
+    /**
+     * The exception list expires by going red.
+     *
+     * <p>Every member of it must STILL be absent from the contract. When
+     * Concept adds the three to section 4.4 this probe turns red and the way
+     * to make it green again is to delete {@link #AHEAD_OF_THE_CONTRACT} — at
+     * which point the probe above starts checking them like everything else.
+     * Without this, a waiver written for one sprint outlives the reason for
+     * it, and nothing ever notices that the contract caught up.
+     */
+    @Test
+    void the_exception_list_holds_only_reasons_the_contract_still_omits() {
+        List<String> fromContract = Contract.declaredReasons();
+
+        for (String waived : AHEAD_OF_THE_CONTRACT) {
+            assertThat(fromContract)
+                .as("%s is in section 4.4 now, so the waiver it was given has outlived "
+                    + "its reason. Delete it from AHEAD_OF_THE_CONTRACT and let the "
+                    + "ordinary check cover it", waived)
+                .doesNotContain(waived);
         }
     }
 
@@ -266,13 +312,48 @@ class DeclarationConformanceTest {
         return found;
     }
 
+    /**
+     * The not-found message is the PLATFORM's, and it carries no values.
+     *
+     * <p>The expectation moved, and where it moved to is the point. It was
+     * this document's section 4.3, and the answers of this service all agreed
+     * with it and all differed from the router's — so DEC-0042's clause held
+     * inside the service and broke across the hop, and nothing went red. A
+     * caller reading two wordings for one condition learns which hop answered.
+     *
+     * <p>Transcribed here from {@code RouterException.NOT_FOUND_MESSAGE} on
+     * {@code main} of {@code Kumbuka-ai/platform} (lines 35-37, read
+     * 2026-09-21) rather than read from the catalogue under test: an
+     * expectation taken from the subject moves with the subject.
+     */
     @Test
-    void the_not_found_message_is_the_contract_s_own_and_carries_no_values() {
+    void the_not_found_message_is_the_platform_s_own_and_carries_no_values() {
         assertThat(ReasonCatalogue.NOT_FOUND_MESSAGE)
             .as("the one deliberately indistinguishable refusal must be byte-identical "
                 + "across its three causes, so it can carry nothing that differs between "
-                + "them")
+                + "them — and byte-identical with the router's, or the hop is legible "
+                + "from the wording")
             .doesNotContain("{")
+            .isEqualTo("nothing is addressed here. Check the address, and that you are "
+                + "a member of the scope it names.");
+    }
+
+    /**
+     * The contract copy still carries the wording the platform replaced.
+     *
+     * <p>The companion of the exception list above, for the one value rather
+     * than for the codes, and it expires the same way: when Concept brings
+     * section 4.3 in line with the router this probe goes red, and the repair
+     * is to delete it. Until then it is the record that the divergence is
+     * known and deliberate rather than an oversight — and that the document
+     * has not silently been edited from this side.
+     */
+    @Test
+    void the_contract_copy_still_carries_the_wording_the_platform_replaced() {
+        assertThat(Contract.text())
+            .as("section 4.3 has been brought in line with the router. Delete this probe "
+                + "and the note on ReasonCatalogue.NOT_FOUND_MESSAGE: the divergence "
+                + "dispatch 187.17 reported is resolved")
             .contains("Nothing is visible to you at the address you gave");
     }
 

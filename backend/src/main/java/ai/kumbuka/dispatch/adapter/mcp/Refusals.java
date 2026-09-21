@@ -48,6 +48,7 @@ final class Refusals {
     /** The argument names this file hands to a refusal, once each. */
     private static final String ARG_FIELDS = "fields";
     private static final String ARG_ADDRESS = "address";
+    private static final String ARG_SCOPE = "scope";
 
     /** What an address reads as when the call named none. */
     private static final String NO_ADDRESS = "the address given";
@@ -79,16 +80,26 @@ final class Refusals {
             // pick from nothing.
             return Refused.selectorUnknown(SURFACE, verb.call(),
                 String.valueOf(arguments.get("selector")),
-                String.valueOf(arguments.get("scope")),
+                String.valueOf(arguments.get(ARG_SCOPE)),
                 adapter.declaredSelectorsIn(arguments));
         }
         if (code == RefusalCode.IDEMPOTENCY_KEY_REUSED) {
             return Refused.idempotencyKeyReused(SURFACE, verb.call(),
                 String.valueOf(arguments.get("idempotency_key")),
-                String.valueOf(arguments.get("scope")));
+                String.valueOf(arguments.get(ARG_SCOPE)));
         }
         if (code == RefusalCode.UNEXPECTED_FAILURE) {
             return UnexpectedFailures.refuse(SURFACE, verb.call(), addressIn(arguments), e);
+        }
+
+        // The three about the scope, BEFORE any attempt to read a state. The
+        // scope was resolved and the call never reached an exchange, so there
+        // is no situation to dress — and a state lookup would answer nothing
+        // and send all three to NOT_FOUND, telling a caller whose scope is
+        // merely locked that its address is wrong.
+        Refused aboutTheScope = aboutTheScope(code, e, verb, arguments);
+        if (aboutTheScope != null) {
+            return aboutTheScope;
         }
 
         // The form faults, BEFORE any attempt to read a state. They carry none
@@ -117,6 +128,31 @@ final class Refusals {
 
         McpAdapter.Situation situation = adapter.situationOf(arguments);
         return dressed(code, verb, situation, arguments, e);
+    }
+
+    /**
+     * The three refusals about the scope itself, or null for anything else.
+     *
+     * <p>Together rather than as three links in {@code of}'s chain: they
+     * share a shape — the call was stopped at stage 2, so no exchange, no
+     * state and no {@code next} — and that is worth being able to read off
+     * the code.
+     */
+    private static Refused aboutTheScope(RefusalCode code, DispatchException e,
+                                         ProcessVerb verb, Map<String, Object> arguments) {
+        return switch (code) {
+            case SCOPE_KIND_UNSUPPORTED -> Refused.scopeKindUnsupported(SURFACE, verb.call(),
+                scopeIn(arguments),
+                // The kind comes from the directory, which is the only layer
+                // that read it. `offenders` carries it as a value for the
+                // pattern; it does not reach `data`.
+                e.offenders().isEmpty() ? "kind it does not serve" : e.offenders().get(0));
+            case SCOPE_READ_ONLY -> Refused.scopeReadOnly(SURFACE, verb.call(),
+                scopeIn(arguments));
+            case SCOPE_LOCKED -> Refused.scopeLocked(SURFACE, verb.call(),
+                scopeIn(arguments));
+            default -> null;
+        };
     }
 
     /**
@@ -263,6 +299,7 @@ final class Refusals {
             case NOT_FOUND, CHILDREN_NOT_FINISHED, NOTHING_TO_TAKE, CLAIM_DURATION_INVALID,
                  CONFLICT_TOKEN_MISSING, CONFLICT_TOKEN_STALE, SELECTOR_UNKNOWN,
                  IDEMPOTENCY_KEY_REUSED, CALL_NOT_AT_THIS_ADDRESS,
+                 SCOPE_KIND_UNSUPPORTED, SCOPE_READ_ONLY, SCOPE_LOCKED,
                  UNEXPECTED_FAILURE -> UnexpectedFailures.refuse(SURFACE, verb.call(),
                 situation.address(), e);
         };
@@ -372,6 +409,33 @@ final class Refusals {
             case DECLINE -> "decline it";
             default -> "make that call on it";
         };
+    }
+
+    /**
+     * The scope the caller named, as it named it.
+     *
+     * <p>From the arguments and never from the directory: a refusal names the
+     * scope back in the caller's own spelling, and the id the directory holds
+     * is not something this surface puts on the wire. Calls at a complete
+     * address carry it inside {@code address}; collection-level calls carry it
+     * as {@code scope}.
+     */
+    private static String scopeIn(Map<String, Object> arguments) {
+        Object named = arguments.get(ARG_SCOPE);
+        if (named != null) {
+            return String.valueOf(named);
+        }
+        Object address = arguments.get(ARG_ADDRESS);
+        if (address == null) {
+            return "the scope named";
+        }
+        String raw = String.valueOf(address);
+        int start = raw.indexOf("://");
+        if (start < 0) {
+            return "the scope named";
+        }
+        int end = raw.indexOf('/', start + 3);
+        return end < 0 ? raw.substring(start + 3) : raw.substring(start + 3, end);
     }
 
     private static String addressIn(Map<String, Object> arguments) {

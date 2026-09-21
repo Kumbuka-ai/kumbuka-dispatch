@@ -8,6 +8,7 @@ import ai.kumbuka.dispatch.domain.ExchangeService;
 import ai.kumbuka.dispatch.domain.ExchangeStatus;
 import ai.kumbuka.dispatch.domain.ExchangeView;
 import ai.kumbuka.dispatch.domain.Selector;
+import ai.kumbuka.dispatch.platform.Access;
 import ai.kumbuka.dispatch.platform.ScopeDirectory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -67,8 +68,9 @@ class VerbSurfaceTest {
         verbs.exchanges = exchanges;
         verbs.scopes = scopes;
 
-        when(scopes.resolve(anyString(), anyString()))
-            .thenReturn(new ScopeDirectory.ScopeAccess(SCOPE, TENANT, "probe-scope", false));
+        when(scopes.resolve(anyString(), anyString(), any()))
+            .thenReturn(new ScopeDirectory.ScopeAccess(
+                SCOPE, TENANT, "probe-scope", false, "project", false, true));
         when(exchanges.view(any(), any(), any(), any()))
             .thenReturn(viewOf(ExchangeStatus.OPEN));
         when(exchanges.read(any(), any())).thenReturn(anExchange());
@@ -172,7 +174,7 @@ class VerbSurfaceTest {
         assertThatThrownBy(() -> verbs.read(EXECUTOR, "probe-scope", "sprint", "164"))
             .isInstanceOf(SurfaceException.class);
 
-        verify(scopes, never()).resolve(any(), any());
+        verify(scopes, never()).resolve(any(), any(), any());
     }
 
     @Test
@@ -180,7 +182,7 @@ class VerbSurfaceTest {
         assertThatThrownBy(() -> verbs.read(EXECUTOR, "NOT-A-LABEL", "sprint", "164.1"))
             .isInstanceOf(SurfaceException.class);
 
-        verify(scopes, never()).resolve(any(), any());
+        verify(scopes, never()).resolve(any(), any(), any());
     }
 
     /**
@@ -198,7 +200,7 @@ class VerbSurfaceTest {
             .extracting(e -> ((SurfaceException) e).reason())
             .isEqualTo(SurfaceException.Reason.VERB_DEPTH_UNDECLARED);
 
-        verify(scopes).resolve("an-executor", "probe-scope");
+        verify(scopes).resolve("an-executor", "probe-scope", Access.READ);
     }
 
     /**
@@ -220,7 +222,7 @@ class VerbSurfaceTest {
             .extracting(e -> ((DispatchException) e).reason())
             .isEqualTo(DispatchException.Reason.FILTER_FIELD_UNKNOWN);
 
-        verify(scopes).resolve("an-executor", "probe-scope");
+        verify(scopes).resolve("an-executor", "probe-scope", Access.READ);
     }
 
     // =======================================================================

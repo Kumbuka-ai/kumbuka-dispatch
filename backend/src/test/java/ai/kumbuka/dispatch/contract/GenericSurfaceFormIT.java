@@ -139,10 +139,15 @@ class GenericSurfaceFormIT {
 
         assertThat(absent.statusCode()).isEqualTo(404);
         assertThat(absent.jsonPath().getString("message"))
-            .isEqualTo("Nothing is visible to you at the address you gave. The address or "
-                + "the scope may be wrong, or you may lack access; for your protection "
-                + "and that of others these cases are not told apart. Check the scope "
-                + "name and the number.");
+            // The router's wording since 187.17, not this service's own.
+            // Transcribed from RouterException.NOT_FOUND_MESSAGE on main of
+            // Kumbuka-ai/platform (lines 35-37, read 2026-09-21): DEC-0042's
+            // clause does not stop at the service boundary, and two hops
+            // wording one condition differently is an oracle for which hop
+            // answered. RefusalEnvelopeIT is where that is argued and probed
+            // in full; this assertion is the generic surface's own copy.
+            .isEqualTo("nothing is addressed here. Check the address, and that you are "
+                + "a member of the scope it names.");
         assertThat((Object) absent.jsonPath().get("data"))
             .as("no data, so the three causes cannot be told apart by what travels")
             .isNull();
