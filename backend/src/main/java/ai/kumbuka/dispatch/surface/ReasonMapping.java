@@ -67,6 +67,17 @@ public final class ReasonMapping {
             case SELECTOR_NOT_DECLARED, SELECTOR_WITHDRAWN, SELECTOR_IN_USE ->
                 RefusalCode.SELECTOR_UNKNOWN;
 
+            // The scope itself. One to one, unlike the not-found group above:
+            // these three say three different things to a caller and lead to
+            // three different remedies, so narrowing any pair of them onto one
+            // code would take away the only part a caller can act on. None of
+            // them is folded into NOT_FOUND either — the directory answered for
+            // the scope, so the caller can already see it, and hiding it now
+            // would withhold nothing it did not already have.
+            case SCOPE_KIND_UNSUPPORTED -> RefusalCode.SCOPE_KIND_UNSUPPORTED;
+            case SCOPE_READ_ONLY -> RefusalCode.SCOPE_READ_ONLY;
+            case SCOPE_LOCKED -> RefusalCode.SCOPE_LOCKED;
+
             // Form faults: an argument named, typed or shaped wrongly. Nothing
             // was written, so none of them carries a state.
             case NUMBER_NOT_ACCEPTED, HOLDER_NOT_ACCEPTED -> RefusalCode.ARGUMENT_UNKNOWN;

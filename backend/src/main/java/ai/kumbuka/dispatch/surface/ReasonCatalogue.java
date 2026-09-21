@@ -50,17 +50,48 @@ public final class ReasonCatalogue {
     }
 
     /**
-     * The exact text of section 4.3, which is the same for all three of its
-     * causes and carries no values at all.
+     * The one message the not-found class carries, transcribed from the
+     * platform.
+     *
+     * <p><strong>Source:</strong> {@code Kumbuka-ai/platform}, {@code main},
+     * {@code router/src/main/java/ai/kumbuka/router/surface/RouterException.java},
+     * constant {@code NOT_FOUND_MESSAGE} (lines 35-37, read 2026-09-21) —
+     * character for character. Copied and not imported: this service does not
+     * compile against the router and must not.
+     *
+     * <p><strong>Why the router's words and not this service's own.</strong>
+     * The DEC-0042 clause does not stop at the service boundary. Two hops
+     * answering one condition in two wordings are two answers a caller can
+     * tell apart by reading them: it learns which hop answered, and from that
+     * whether a service stands behind a scheme at all — the enumeration oracle
+     * ADR-0011 exists against. That this service's own three answers agree
+     * with each other is the smaller half of the clause, and it was the only
+     * half anything checked.
      *
      * <p>A constant rather than a pattern: it must be byte-identical across
      * "does not exist", "not visible to you" and "cannot be routed", and a
      * pattern with no placeholders is an invitation to add one.
+     *
+     * <p>What the text this replaced said at length, and what this one
+     * deliberately leaves unsaid: that the causes are different conditions.
+     * They answer alike because an answer that told them apart would let a
+     * caller map what it may not see. The message names the remedy instead,
+     * because the same remedy is true of all of them. That reasoning belongs
+     * here, where a reader changing the constant meets it; on the wire it is
+     * one more thing that could differ between two services saying the same
+     * thing.
+     *
+     * <p><strong>Known divergence from the contract copy.</strong> Section 4.3
+     * of {@code contract/assistant-surface.md} still carries the wording this
+     * replaced. The concept document is Concept's and is not edited from here;
+     * the divergence is declared in {@code DeclarationConformanceTest} and
+     * reported for ratification (dispatch 187.17). The platform wins on this
+     * value by that dispatch's own instruction: "der Katalog wird angepasst,
+     * nicht die Plattform".
      */
     public static final String NOT_FOUND_MESSAGE =
-        "Nothing is visible to you at the address you gave. The address or the scope may "
-            + "be wrong, or you may lack access; for your protection and that of others "
-            + "these cases are not told apart. Check the scope name and the number.";
+        "nothing is addressed here. Check the address, and that you are a member of "
+            + "the scope it names.";
 
     /**
      * The terminal variant of {@link RefusalCode#STATE_DOES_NOT_ALLOW}.
@@ -158,6 +189,26 @@ public final class ReasonCatalogue {
             "{selector} is not a bracket kind declared in scope {scope}. Declared: "
                 + "{declared}.",
             "use a declared one");
+
+        // The three of the isolation set. Each pattern says what was wrong AND
+        // what to do instead, and each names the value its remedy turns on:
+        // the kind for the one about the offering, the scope for the two about
+        // writing. A pattern that named neither would read as finished and
+        // leave the caller with nothing to act on.
+        put(declared, RefusalCode.SCOPE_KIND_UNSUPPORTED,
+            "{scope} is a {kind} scope, and this service does not carry exchanges in "
+                + "one. Name a project or a global scope instead.",
+            "name a project or a global scope");
+
+        put(declared, RefusalCode.SCOPE_READ_ONLY,
+            "{call} writes, and you may read {scope} without writing to it. Reading it "
+                + "is unaffected; the write right is granted with the membership.",
+            "ask whoever administers the membership of this scope");
+
+        put(declared, RefusalCode.SCOPE_LOCKED,
+            "{scope} is locked, so it refuses every write whatever your role. Reading "
+                + "it is unaffected. The lock is lifted where it was set.",
+            "wait for the lock to be lifted, or read instead");
 
         put(declared, RefusalCode.IDEMPOTENCY_KEY_REUSED,
             "The idempotency key {key} was used for a different {call} in scope {scope} "

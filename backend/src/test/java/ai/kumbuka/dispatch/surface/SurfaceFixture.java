@@ -30,6 +30,11 @@ public final class SurfaceFixture {
     /** A selector V5 declares for this deployment's own scope. */
     public static final String SELECTOR = "sprint";
 
+    /** The three scopes beside the ordinary one, by the names a caller uses. */
+    public static final String GLOBAL_SCOPE = SubstrateDatabaseResource.GLOBAL_SCOPE_SLUG;
+    public static final String PRIVATE_SCOPE = SubstrateDatabaseResource.PRIVATE_SCOPE_SLUG;
+    public static final String LOCKED_SCOPE = SubstrateDatabaseResource.LOCKED_SCOPE_SLUG;
+
     public static final String CONSOLE = "probe-console";
     public static final String EXECUTOR = "probe-executor";
     public static final String OTHER_EXECUTOR = "probe-executor-2";
@@ -43,6 +48,22 @@ public final class SurfaceFixture {
      * needs another caller.
      */
     public static final String OTHER_CONSOLE = "probe-console-2";
+
+    /**
+     * A console identity whose membership is muted, and therefore holds no
+     * write right over a service channel.
+     *
+     * <p>A capacity and a write right are different things and this fixture
+     * exists to keep them apart: the identity carries the console role, so
+     * every refusal it meets is the platform's answer about the membership
+     * and not this service's about the caller's capacity.
+     *
+     * <p>Not in the loop below that registers the others: the substrate
+     * already staged it, WITH the mute flag set. Registering it again here
+     * would be a second INSERT of the same subject, and the one that carries
+     * the flag is the substrate's.
+     */
+    public static final String MUTED = SubstrateDatabaseResource.MUTED_SUBJECT;
 
     private SurfaceFixture() {
     }
@@ -58,6 +79,7 @@ public final class SurfaceFixture {
      */
     public static void stage() {
         PlatformFixture.grantDirectoryAccess();
+        declareSelectorInTheOtherScopes();
         for (String subject : new String[] {CONSOLE, OTHER_CONSOLE, EXECUTOR,
             OTHER_EXECUTOR}) {
             PlatformFixture.run(
@@ -89,6 +111,39 @@ public final class SurfaceFixture {
     /** Calls as a second executor, which is how "only the holder" is observable. */
     public static void asOtherExecutor(TestIdentityAssociation identity) {
         as(identity, OTHER_EXECUTOR, Actor.ROLE_EXECUTOR);
+    }
+
+    /** Calls as a console identity whose membership is muted. */
+    public static void asMutedConsole(TestIdentityAssociation identity) {
+        as(identity, MUTED, Actor.ROLE_CONSOLE);
+    }
+
+    /**
+     * Declares this service's selector in the three scopes V5 does not reach.
+     *
+     * <p>V5 declares selectors for the ONE scope this deployment is configured
+     * for, which is correct and is not widened here. The other three scopes
+     * are the substrate's, and without a selector every call into them would
+     * stop at stage 3 — so a probe could never tell "the scope rule let me
+     * through" from "the scope rule refused me", which is the entire
+     * distinction the scope rules are about.
+     *
+     * <p>Written as the fixture's own act, as the container superuser, for the
+     * same reason the platform directory is: it stands in for a deployment
+     * step and is not a migration this service performs.
+     */
+    private static void declareSelectorInTheOtherScopes() {
+        for (String scopeId : new String[] {
+                SubstrateDatabaseResource.GLOBAL_SCOPE_ID,
+                SubstrateDatabaseResource.PRIVATE_SCOPE_ID,
+                SubstrateDatabaseResource.LOCKED_SCOPE_ID}) {
+            PlatformFixture.run(
+                "INSERT INTO dispatch.selector (tenant_id, scope_id, name, next_number) "
+                    + "SELECT '" + SubstrateDatabaseResource.TENANT_ID + "', '" + scopeId
+                    + "', '" + SELECTOR + "', 1 "
+                    + "WHERE NOT EXISTS (SELECT 1 FROM dispatch.selector WHERE scope_id = '"
+                    + scopeId + "' AND name = '" + SELECTOR + "')");
+        }
     }
 
     /** Calls as an authenticated token carrying neither capacity. */

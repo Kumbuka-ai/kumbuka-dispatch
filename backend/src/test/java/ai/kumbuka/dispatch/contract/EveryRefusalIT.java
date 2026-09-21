@@ -272,6 +272,28 @@ class EveryRefusalIT {
         SurfaceFixture.asConsole(identity);
         note(raised, call("dispatch_accept_return", Map.of("address", open)));
 
+        // The three about the scope itself. Each needs a scope the fixture
+        // staged for it, which is why they arrive here rather than being
+        // provoked out of the ordinary probe scope: no rule about a scope can
+        // be raised in a scope that breaks no rule.
+        //
+        // SCOPE_KIND_UNSUPPORTED — a private scope, which the read contract
+        // publishes and this service does not carry exchanges in.
+        note(raised, call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.PRIVATE_SCOPE, "selector", SurfaceFixture.SELECTOR)));
+
+        // SCOPE_LOCKED — a write into a locked scope. Reading it would
+        // succeed, which is the half ScopeIsolationIT asserts.
+        note(raised, call("dispatch_commission", inScope(SurfaceFixture.LOCKED_SCOPE)));
+
+        // SCOPE_READ_ONLY — a write by a member whose membership is muted.
+        // The identity is switched for this one call and switched back: it is
+        // a different subject, not a different capacity, and leaving it bound
+        // would change what every later probe is.
+        SurfaceFixture.asMutedConsole(identity);
+        note(raised, call("dispatch_commission", inScope(SurfaceFixture.SCOPE)));
+        SurfaceFixture.asConsole(identity);
+
         return raised;
     }
 
@@ -329,6 +351,19 @@ class EveryRefusalIT {
      * CHILDREN_NOT_FINISHED counts.
      */
     private final Map<String, String> childOf = new LinkedHashMap<>();
+
+    /**
+     * The commission arguments, in a scope other than the probe's own.
+     *
+     * <p>Built from {@link #commissionArguments()} so that the three scope
+     * probes send exactly what every other commission here sends, and differ
+     * in the one thing under test.
+     */
+    private Map<String, Object> inScope(String scope) {
+        Map<String, Object> arguments = new LinkedHashMap<>(commissionArguments());
+        arguments.put("scope", scope);
+        return arguments;
+    }
 
     private static String receiptOf(Response answer) {
         return answer.jsonPath().getString("result.structuredContent.receipt");

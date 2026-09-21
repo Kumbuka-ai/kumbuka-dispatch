@@ -10,6 +10,7 @@ import ai.kumbuka.dispatch.domain.ExchangeView;
 import ai.kumbuka.dispatch.domain.ClaimProof;
 import ai.kumbuka.dispatch.domain.IdempotencyKey;
 import ai.kumbuka.dispatch.domain.QueryFilter;
+import ai.kumbuka.dispatch.platform.Access;
 import ai.kumbuka.dispatch.platform.ScopeDirectory;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -83,7 +84,7 @@ public class VerbSurface {
     public Result commission(Actor actor, String rawScope, String rawSelector,
                              ExchangeAddress parent, VerbInput.Commission request,
                              IdempotencyKey key) {
-        Entry in = collection(actor, rawScope, rawSelector);
+        Entry in = collection(actor, rawScope, rawSelector, Access.WRITE);
         VerbInput.Commission body = required(request);
 
         // The key travels down rather than being honoured here. It decides
@@ -104,7 +105,7 @@ public class VerbSurface {
     public Result addCorrection(Actor actor, String rawScope, String rawSelector,
                                 String rawId, String title, String text,
                                 IdempotencyKey key) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.addCorrectionUnder(in.scopeId(), in.address(), title, text, actor, key);
         return at(in, in.address());
     }
@@ -113,7 +114,7 @@ public class VerbSurface {
     @Transactional
     public Result acceptReturn(Actor actor, String rawScope, String rawSelector,
                                String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.acceptReturn(in.scopeId(), in.address(), actor);
         return at(in, in.address());
     }
@@ -137,8 +138,13 @@ public class VerbSurface {
     @Transactional
     public Result curateReturn(Actor actor, String rawScope, String rawSelector, String rawId,
                                String rawTargetScope, ExchangeAddress into) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
-        UUID targetScopeId = resolve(actor, AddressParser.scope(rawTargetScope));
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
+        // READ and not WRITE: a curation writes `curated_into_id` on the exchange
+        // being curated, in ITS scope, and nothing at all in the target's. A
+        // target in a locked or read-only scope is therefore admissible, which
+        // is what section 5.1 asks for — "any scope the caller may see".
+        UUID targetScopeId = resolve(actor, AddressParser.scope(rawTargetScope),
+            Access.READ);
         exchanges.curateReturn(in.scopeId(), in.address(), targetScopeId, into, actor);
         return at(in, in.address());
     }
@@ -147,7 +153,7 @@ public class VerbSurface {
     @Transactional
     public Result replyToExecutor(Actor actor, String rawScope, String rawSelector,
                                   String rawId, String conflictToken, String message) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         requireConflictToken(in, conflictToken);
         exchanges.replyToExecutor(in.scopeId(), in.address(), actor, message);
         return at(in, in.address());
@@ -157,7 +163,7 @@ public class VerbSurface {
     @Transactional
     public Result cancel(Actor actor, String rawScope, String rawSelector, String rawId,
                          String conflictToken, String reason) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         requireConflictToken(in, conflictToken);
         exchanges.cancel(in.scopeId(), in.address(), actor, reason);
         return at(in, in.address());
@@ -173,7 +179,7 @@ public class VerbSurface {
     @Transactional
     public Result closeBracket(Actor actor, String rawScope, String rawSelector,
                                String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         requireBracketRoot(in.address(), "closing a bracket");
         exchanges.closeBracket(in.scopeId(), in.address(), actor);
         return at(in, in.address());
@@ -183,7 +189,7 @@ public class VerbSurface {
     @Transactional
     public Result deliverReturn(Actor actor, String rawScope, String rawSelector,
                                 String rawId, String receipt, String text) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.deliverReturn(in.scopeId(), in.address(), actor, receipt, text);
         return at(in, in.address());
     }
@@ -192,7 +198,7 @@ public class VerbSurface {
     @Transactional
     public Result askCommissioner(Actor actor, String rawScope, String rawSelector,
                                   String rawId, String receipt, String question) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.askCommissioner(in.scopeId(), in.address(), actor, receipt, question);
         return at(in, in.address());
     }
@@ -201,7 +207,7 @@ public class VerbSurface {
     @Transactional
     public Result decline(Actor actor, String rawScope, String rawSelector, String rawId,
                           ClaimProof proof, String reason) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.decline(in.scopeId(), in.address(), actor, proof, reason);
         return at(in, in.address());
     }
@@ -214,7 +220,7 @@ public class VerbSurface {
     @Transactional
     public Result create(Actor actor, String rawScope, String rawSelector,
                          VerbInput.Draft request) {
-        Entry in = collection(actor, rawScope, rawSelector);
+        Entry in = collection(actor, rawScope, rawSelector, Access.WRITE);
         VerbInput.Draft body = required(request);
 
         Exchange created = exchanges.openBracket(in.scopeId(), in.selector(), body.title(),
@@ -228,7 +234,7 @@ public class VerbSurface {
     @Transactional
     public Result createChild(Actor actor, String rawScope, String rawSelector, String rawId,
                               VerbInput.Draft request) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         requireBracketRoot(in.address(), "children");
         VerbInput.Draft body = required(request);
 
@@ -256,7 +262,7 @@ public class VerbSurface {
      */
     @Transactional
     public Result read(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.READ);
         return at(in, in.address());
     }
 
@@ -283,7 +289,7 @@ public class VerbSurface {
     @Transactional
     public Result update(Actor actor, String rawScope, String rawSelector, String rawId,
                          String conflictToken, VerbInput.Update request) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         VerbInput.Update body = required(request);
         requireConflictToken(in, conflictToken);
 
@@ -302,7 +308,7 @@ public class VerbSurface {
     @Transactional
     public Result append(Actor actor, String rawScope, String rawSelector, String rawId,
                          VerbInput.Addendum request) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         VerbInput.Addendum body = required(request);
 
         Exchange addendum = exchanges.addAddendum(in.scopeId(), in.address(), body.title(),
@@ -319,7 +325,7 @@ public class VerbSurface {
     @Transactional
     public Result send(Actor actor, String rawScope, String rawSelector, String rawId,
                        Map<String, Object> metadata) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.send(in.scopeId(), in.address(), actor, metadata);
         return at(in, in.address());
     }
@@ -334,7 +340,7 @@ public class VerbSurface {
      */
     @Transactional
     public Result accept(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.ratify(in.scopeId(), in.address(), actor);
         return at(in, in.address());
     }
@@ -343,7 +349,7 @@ public class VerbSurface {
     @Transactional
     public ClaimOutcome claim(Actor actor, String rawScope, String rawSelector, String rawId,
                               VerbInput.Claim request) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         ExchangeService.ClaimResult claimed = exchanges.takeup(in.scopeId(), in.address(),
             actor, required(request).parsed());
         return new ClaimOutcome(at(in, in.address()), claimed.receipt());
@@ -351,7 +357,7 @@ public class VerbSurface {
 
     @Transactional
     public Result release(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.revert(in.scopeId(), in.address(), actor);
         return at(in, in.address());
     }
@@ -366,7 +372,7 @@ public class VerbSurface {
      */
     @Transactional
     public Result abandon(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         ExchangeStatus before =
             exchanges.view(in.scopeId(), in.scopeSlug(), in.address(), actor).status();
 
@@ -380,28 +386,28 @@ public class VerbSurface {
 
     @Transactional
     public Result block(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.block(in.scopeId(), in.address(), actor);
         return at(in, in.address());
     }
 
     @Transactional
     public Result resume(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.resume(in.scopeId(), in.address(), actor);
         return at(in, in.address());
     }
 
     @Transactional
     public Result close(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.close(in.scopeId(), in.address(), actor);
         return at(in, in.address());
     }
 
     @Transactional
     public Result consume(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId);
+        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
         exchanges.consume(in.scopeId(), in.address(), actor);
         return at(in, in.address());
     }
@@ -428,7 +434,7 @@ public class VerbSurface {
     @Transactional
     public Listing query(Actor actor, String rawScope, String rawSelector,
                          Map<String, String> rawFilters) {
-        Entry in = collection(actor, rawScope, rawSelector);
+        Entry in = collection(actor, rawScope, rawSelector, Access.READ);
         QueryFilter filter = QueryFilter.of(rawFilters);
 
         List<ExchangeView> found =
@@ -462,7 +468,7 @@ public class VerbSurface {
     @Transactional
     public ClaimOutcome claimNext(Actor actor, String rawScope, String rawSelector,
                                   VerbInput.Claim request) {
-        Entry in = collection(actor, rawScope, rawSelector);
+        Entry in = collection(actor, rawScope, rawSelector, Access.WRITE);
         ExchangeService.ClaimResult claimed = exchanges.claimNext(in.scopeId(), in.selector(),
             actor, required(request).parsed());
 
@@ -489,7 +495,7 @@ public class VerbSurface {
     /** Refused on the machine surface: withdrawal is a ratchet. */
     @Transactional
     public void withdraw(Actor actor, String rawScope, String rawSelector, String rawId) {
-        item(actor, rawScope, rawSelector, rawId);
+        item(actor, rawScope, rawSelector, rawId, Access.READ);
         throw new SurfaceException(SurfaceException.Reason.WITHDRAWAL_VIA_CONSOLE_ONLY,
             "'withdraw' is not offered on the machine surface. Withdrawal is a ratchet and "
                 + "is restorable only through the console, so the act has an address and "
@@ -499,7 +505,7 @@ public class VerbSurface {
     /** No declared address depth, so fail-closed leaves it unbuildable. */
     @Transactional
     public void validate(Actor actor, String rawScope, String rawSelector, String rawId) {
-        item(actor, rawScope, rawSelector, rawId);
+        item(actor, rawScope, rawSelector, rawId, Access.READ);
         throw new SurfaceException(SurfaceException.Reason.VERB_DEPTH_UNDECLARED,
             "'validate' declares no address depth. Undeclared means complete address only, "
                 + "and a consistency check over one scope cannot act at that depth — so the "
@@ -519,21 +525,39 @@ public class VerbSurface {
      * Stage 1 is decidable without knowing a scope, so its refusal leaks
      * nothing; every later refusal necessarily reveals that a lookup happened.
      */
-    private Entry collection(Actor actor, String rawScope, String rawSelector) {
+    private Entry collection(Actor actor, String rawScope, String rawSelector,
+                             Access access) {
         String slug = AddressParser.scope(rawScope);
         String selector = AddressParser.selector(rawSelector);
-        return new Entry(actor, resolve(actor, slug), slug, selector, null);
+        return new Entry(actor, resolve(actor, slug, access), slug, selector, null);
     }
 
     /** Grammar, then scope visibility, for a complete address. */
-    private Entry item(Actor actor, String rawScope, String rawSelector, String rawId) {
+    private Entry item(Actor actor, String rawScope, String rawSelector, String rawId,
+                       Access access) {
         String slug = AddressParser.scope(rawScope);
         ExchangeAddress address = AddressParser.item(rawSelector, rawId);
-        return new Entry(actor, resolve(actor, slug), slug, address.selector(), address);
+        return new Entry(actor, resolve(actor, slug, access), slug, address.selector(),
+            address);
     }
 
-    private UUID resolve(Actor actor, String slug) {
-        return scopes.resolve(actor.subject(), slug).scopeId();
+    /**
+     * Stage 2, for both address forms and therefore for both expositions.
+     *
+     * <p>Every verb reaches the directory through here and through nothing
+     * else, which is what makes the scope rules hold on the collection form
+     * and on the complete address alike — not by being written twice and
+     * checked against each other, but by there being one call. The intent is
+     * the verb's and travels in; what the platform permits is the directory's
+     * and stays there.
+     *
+     * <p>That one call is also why the assistant surface and the generic one
+     * cannot drift: {@code McpAdapter} and {@code ExchangeResource} are two
+     * expositions OF THIS CLASS, so neither reaches an exchange without
+     * passing here first.
+     */
+    private UUID resolve(Actor actor, String slug, Access access) {
+        return scopes.resolve(actor.subject(), slug, access).scopeId();
     }
 
     /**
@@ -548,7 +572,7 @@ public class VerbSurface {
      */
     @Transactional
     public List<String> declaredSelectors(Actor actor, String rawScope) {
-        UUID scopeId = resolve(actor, AddressParser.scope(rawScope));
+        UUID scopeId = resolve(actor, AddressParser.scope(rawScope), Access.READ);
         return exchanges.declaredSelectors(scopeId);
     }
 

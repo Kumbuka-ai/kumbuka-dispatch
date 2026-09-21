@@ -308,6 +308,57 @@ public class Refused extends RuntimeException {
         return new Refused(RefusalCode.SELECTOR_UNKNOWN, message, Map.of(ATTEMPTED, call));
     }
 
+    // ======================================================================
+    // The scope itself: real, visible, and not one this call may act in
+    // ======================================================================
+
+    /**
+     * The scope is of a kind this service does not carry exchanges in.
+     *
+     * <p>Carries no {@code next}. Not an omission: there is no call at this
+     * address that would work, on either surface, so a list of calls would be
+     * a list of things that fail the same way. The remedy is another scope and
+     * the message says so.
+     *
+     * @param scope the scope as the caller named it — its slug, never its id
+     * @param kind  the kind the platform published for it, so the caller can
+     *              see WHICH of its scopes it reached rather than being told
+     *              only that this one was wrong
+     */
+    public static Refused scopeKindUnsupported(Surface surface, String call, String scope,
+                                               String kind) {
+        String message = ReasonCatalogue.message(RefusalCode.SCOPE_KIND_UNSUPPORTED, surface,
+            Map.of("scope", scope, "kind", kind));
+        return new Refused(RefusalCode.SCOPE_KIND_UNSUPPORTED, message,
+            Map.of(ATTEMPTED, call));
+    }
+
+    /**
+     * The caller may read this scope and not write to it.
+     *
+     * <p>Names the call as well as the scope: the same caller in the same
+     * scope succeeds with a read, so "you may not write here" is only
+     * actionable beside the thing that was a write.
+     */
+    public static Refused scopeReadOnly(Surface surface, String call, String scope) {
+        String message = ReasonCatalogue.message(RefusalCode.SCOPE_READ_ONLY, surface,
+            Map.of("call", call, "scope", scope));
+        return new Refused(RefusalCode.SCOPE_READ_ONLY, message, Map.of(ATTEMPTED, call));
+    }
+
+    /**
+     * The scope is locked and refuses every write.
+     *
+     * <p>Distinct from {@link #scopeReadOnly} in the message as well as in the
+     * code, because the two remedies go to different people. A caller told the
+     * wrong one goes to the wrong person.
+     */
+    public static Refused scopeLocked(Surface surface, String call, String scope) {
+        String message = ReasonCatalogue.message(RefusalCode.SCOPE_LOCKED, surface,
+            Map.of("scope", scope));
+        return new Refused(RefusalCode.SCOPE_LOCKED, message, Map.of(ATTEMPTED, call));
+    }
+
     /** The same key, a different call. */
     public static Refused idempotencyKeyReused(Surface surface, String call, String key,
                                                String scope) {

@@ -47,7 +47,14 @@ public class TenantMigrationCallback extends BaseCallback {
 
     @Override
     public void handle(Event event, Context context) {
-        String tenantId = ConfigProvider.getConfig().getValue("dispatch.tenant-id", String.class);
+        // Before the first migration and therefore before V5, which writes the
+        // scope into a selector declaration. A startup observer is too late for
+        // that: by the time one fires, the declaration is applied and an
+        // applied migration is not edited.
+        TenancyConfigurationGuard.requireConfigured(ConfigProvider.getConfig());
+
+        String tenantId = ConfigProvider.getConfig()
+            .getValue(TenancyConfigurationGuard.TENANT_KEY, String.class);
         // is_local = true scopes the binding to the transaction Flyway runs
         // the migration in, so it cannot outlive the migration on a pooled
         // connection. Parameterised rather than concatenated: a configured

@@ -76,6 +76,51 @@ public enum RefusalCode {
     SELECTOR_UNKNOWN,
 
     /**
+     * The scope is real and visible, and of a kind this service does not
+     * serve.
+     *
+     * <p>A statement about the offering, not about this caller. The platform's
+     * read contract answers for every service behind it, so it publishes
+     * private scopes too; a private scope is a per-tenant container for memory
+     * content and an exchange has no meaning in one. Nothing the caller
+     * presents changes that, which is why the remedy names another kind of
+     * scope rather than another token.
+     *
+     * <p>Not folded into {@link #NOT_FOUND}: the caller CAN see this scope —
+     * the directory answered for it — so hiding it would withhold nothing and
+     * would send somebody looking for a typo in an address that is correct.
+     */
+    SCOPE_KIND_UNSUPPORTED,
+
+    /**
+     * The caller may read this scope and may not write to it.
+     *
+     * <p>The write right is the platform's answer about the membership over a
+     * service channel. It is not about the exchange, not about the caller's
+     * part in one, and not lifted by anything this service offers.
+     *
+     * <p>Named beside {@link #SCOPE_LOCKED} and never merged with it, because
+     * the two remedies go to different people: a missing write right is lifted
+     * by whoever administers the membership, a lock where the lock was set.
+     */
+    SCOPE_READ_ONLY,
+
+    /**
+     * The scope is locked, and a locked scope refuses every write.
+     *
+     * <p>Whatever the caller's role. Reading is unaffected, which is what
+     * makes this a state of the scope rather than a judgement about the
+     * caller: the same caller with the same token gets through once the lock
+     * is lifted.
+     *
+     * <p>The platform derives the write right as {@code NOT locked AND …}, so
+     * a locked scope also arrives with no write right. The order the two are
+     * checked in is therefore what keeps this code reachable at all — see
+     * {@code ScopeDirectory.requireWritable}.
+     */
+    SCOPE_LOCKED,
+
+    /**
      * The same idempotency key was used for a different call.
      *
      * <p>A key means "this is the call I already made". Answering a caller

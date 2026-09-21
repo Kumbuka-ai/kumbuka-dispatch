@@ -226,6 +226,25 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                     calling.scope("this scope"));
             }
 
+            // The three about the scope, before any attempt to read a state.
+            // The call never reached an exchange — it was stopped at stage 2 —
+            // so there is nothing to look up, and a lookup that found nothing
+            // would answer NOT_FOUND and tell a caller whose scope is merely
+            // locked to go looking for a typo.
+            if (code == RefusalCode.SCOPE_KIND_UNSUPPORTED) {
+                return Refused.scopeKindUnsupported(Surface.REST, call,
+                    calling.scope("the scope named"),
+                    e.offenders().isEmpty() ? "kind it does not serve" : e.offenders().get(0));
+            }
+            if (code == RefusalCode.SCOPE_READ_ONLY) {
+                return Refused.scopeReadOnly(Surface.REST, call,
+                    calling.scope("the scope named"));
+            }
+            if (code == RefusalCode.SCOPE_LOCKED) {
+                return Refused.scopeLocked(Surface.REST, call,
+                    calling.scope("the scope named"));
+            }
+
             Situation situation = situationOf(address);
             if (code == RefusalCode.CHILDREN_NOT_FINISHED) {
                 return children(e, call, named(address), situation);
@@ -488,9 +507,25 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
 
                 // Vocabulary: well-formed, addressed at something this scope
                 // does not have, or carrying content the scope refuses.
+                // SCOPE_KIND_UNSUPPORTED is vocabulary in exactly this sense:
+                // the scope is real and visible, and an exchange in a scope of
+                // that kind is not part of the offering. Nothing the caller
+                // presents changes it.
                 case SELECTOR_NOT_DECLARED, SELECTOR_WITHDRAWN, ADDENDUM_NOT_DRAWABLE,
                      METADATA_REFUSED, FILTER_FIELD_UNKNOWN, FILTER_VALUE_REFUSED,
-                     CURATION_TARGET_SELF -> 422;
+                     CURATION_TARGET_SELF, SCOPE_KIND_UNSUPPORTED -> 422;
+
+                // The write right, and the lock. SCOPE_READ_ONLY is a 403 and
+                // not a 404 (ADR-0011 exception, ratified by the operator on
+                // 2026-09-21): the read contract has already told this caller
+                // the scope is visible, so withholding it now would hide
+                // nothing and would send somebody looking for a typo in an
+                // address that is correct. SCOPE_LOCKED is a 409 and not a
+                // 403, because it is the scope's own state rather than a
+                // judgement about the caller — the same token gets through
+                // once the lock is lifted.
+                case SCOPE_READ_ONLY -> 403;
+                case SCOPE_LOCKED -> 409;
 
                 // The key was already spent on a different call. 409: the
                 // caller can resolve it, by choosing another key.
@@ -537,7 +572,14 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 case CALL_NOT_AT_THIS_ADDRESS -> 405;
                 case CONFLICT_TOKEN_MISSING -> 428;
                 case CONFLICT_TOKEN_STALE -> 412;
-                case SELECTOR_UNKNOWN -> 422;
+                case SELECTOR_UNKNOWN, SCOPE_KIND_UNSUPPORTED -> 422;
+                // The pair the kernel switch above states its reasoning for.
+                // Written out here too rather than derived: this switch answers
+                // for the surface's codes and the other for the kernel's, and
+                // one deriving from the other is how the two would come to
+                // disagree on a code only one of them can raise.
+                case SCOPE_READ_ONLY -> 403;
+                case SCOPE_LOCKED -> 409;
                 case UNEXPECTED_FAILURE -> 500;
             };
         }
