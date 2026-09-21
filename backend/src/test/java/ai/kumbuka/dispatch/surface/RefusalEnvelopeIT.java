@@ -42,6 +42,27 @@ class RefusalEnvelopeIT {
     /** The one code the not-found class carries. Taken from DEC-0042, not from a run. */
     private static final String NOT_FOUND = "NOT_FOUND";
 
+    /**
+     * The one message that class carries, transcribed from the router.
+     *
+     * <p>Source: {@code RouterException.NOT_FOUND_MESSAGE} on {@code main} of
+     * {@code Kumbuka-ai/platform},
+     * {@code router/src/main/java/ai/kumbuka/router/surface/RouterException.java} —
+     * character for character, and copied rather than read from
+     * {@link ai.kumbuka.dispatch.adapter.payload.Payloads.Refusal}.
+     *
+     * <p>Reading it from the artefact under test is the one thing this
+     * constant must not do. Every comparison below it asks whether the
+     * answers of this service agree with each other, and they did while all
+     * of them together said something the router does not say: a message of
+     * this service's own, which tells a caller by its wording which hop
+     * answered. An expectation taken from the subject moves with the subject.
+     * This one does not, which is why it can catch that.
+     */
+    private static final String NOT_FOUND_MESSAGE =
+        "nothing is addressed here. Check the address, and that you are a member of "
+            + "the scope it names.";
+
     /** An address in the visible scope whose number was never allocated. */
     private static final String NEVER_ALLOCATED = "4242.0";
 
@@ -130,6 +151,57 @@ class RefusalEnvelopeIT {
 
         assertIdentical(read, write,
             "the verb must not separate what the code unified");
+    }
+
+    /**
+     * Every not-found answer of the REST path carries the router's message.
+     *
+     * <p>The comparisons above bind the answers of this service to each
+     * other; this one binds them to the other hop. The difference is not
+     * academic: they were all equal to each other, and all of them differed
+     * from the router, and nothing here went red. A caller reading two
+     * wordings for one condition learns which service answered — and from
+     * that whether a service stands behind a scheme at all, which is the
+     * enumeration oracle ADR-0011 is written against.
+     */
+    @Test
+    void every_not_found_answer_carries_the_message_the_router_carries() {
+        assertCarriesTheRoutersMessage(given()
+            .get("/api/" + SurfaceFixture.SCOPE + "/" + SurfaceFixture.SELECTOR + "/"
+                + NEVER_ALLOCATED), "an object that was never allocated");
+        assertCarriesTheRoutersMessage(given()
+            .get("/api/a-scope-this-caller-cannot-see/" + SurfaceFixture.SELECTOR + "/1.0"),
+            "an item in a scope this caller cannot see");
+        assertCarriesTheRoutersMessage(given()
+            .get("/api/a-scope-this-caller-cannot-see/" + SurfaceFixture.SELECTOR),
+            "the collection form of a scope this caller cannot see");
+        assertCarriesTheRoutersMessage(given().contentType(ContentType.JSON)
+            .body(Map.of("title", "into a scope that is not this caller's", "apparatus",
+                "code", "date", "2026-09-21"))
+            .post("/api/a-scope-this-caller-cannot-see/" + SurfaceFixture.SELECTOR),
+            "a write into a scope this caller cannot see");
+    }
+
+    /**
+     * And so does the protocol path.
+     *
+     * <p>Asserted against the literal and not against the REST answer. The
+     * existing comparison already holds the two paths together, and two paths
+     * that drift together is precisely the state it cannot see.
+     */
+    @Test
+    void the_protocol_path_carries_the_routers_message_too() {
+        Response tool = rpc("read", Map.of(
+            "address", "dispatch://a-scope-this-caller-cannot-see/"
+                + SurfaceFixture.SELECTOR + "/1.0"));
+
+        assertThat(tool.jsonPath().getBoolean("result.isError")).isTrue();
+        assertThat(tool.jsonPath().getString("result.structuredContent.reason"))
+            .isEqualTo(NOT_FOUND);
+        assertThat(tool.jsonPath().getString("result.structuredContent.message"))
+            .as("the protocol path, measured against the router's text rather than "
+                + "against what the REST path of this same service happens to say")
+            .isEqualTo(NOT_FOUND_MESSAGE);
     }
 
     /**
@@ -231,6 +303,19 @@ class RefusalEnvelopeIT {
     // =======================================================================
     // Helpers
     // =======================================================================
+
+    /**
+     * One refusal carrying the message the class carries everywhere, router
+     * included.
+     */
+    private static void assertCarriesTheRoutersMessage(Response refused, String which) {
+        assertThat(refused.jsonPath().getString("reason")).as(which).isEqualTo(NOT_FOUND);
+        assertThat(refused.jsonPath().getString("message"))
+            .as("%s — the message is the router's, character for character. A service "
+                + "wording its own is one a caller tells from the router by reading it",
+                which)
+            .isEqualTo(NOT_FOUND_MESSAGE);
+    }
 
     /** Two refusals a caller cannot tell apart, in the fields a caller reads. */
     private static void assertIdentical(Response one, Response other, String why) {

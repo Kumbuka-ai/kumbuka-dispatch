@@ -344,12 +344,40 @@ public final class Payloads {
          */
         public static final String NOT_FOUND = "NOT_FOUND";
 
+        /**
+         * The one message that class carries, transcribed from the router.
+         *
+         * <p>Source: {@code RouterException.NOT_FOUND_MESSAGE} on {@code main}
+         * of {@code Kumbuka-ai/platform},
+         * {@code router/src/main/java/ai/kumbuka/router/surface/RouterException.java}
+         * — character for character, and copied rather than imported: this
+         * service does not compile against the router and must not. The
+         * constructor there refuses any other text for a router
+         * {@code NOT_FOUND}; this constant is how the same text reaches the
+         * wire from here.
+         *
+         * <p>Why the router's words and not this service's own: the DEC-0042
+         * clause does not stop at the service boundary. Two hops answering one
+         * condition in two wordings are two answers a caller can tell apart by
+         * reading them — it learns which hop answered, and from that whether a
+         * service stands behind a scheme at all, which is the enumeration
+         * oracle ADR-0011 exists against. That the answers of this service all
+         * agree with each other is the smaller half of the clause, and it was
+         * the only half anything checked.
+         *
+         * <p>What the text this replaced said at length, and what the message
+         * deliberately leaves unsaid: that an absent object and an address in a
+         * scope this caller cannot enter are two different conditions. They
+         * answer alike because an answer that told them apart would let a
+         * caller map what it may not see. The message names the remedy instead
+         * — check the address, check the scope — because the same remedy is
+         * true of both. That reasoning belongs in the source, where a reader
+         * changing this constant meets it; on the wire it is one more thing
+         * that could differ between two services saying the same thing.
+         */
         static final String NOT_FOUND_MESSAGE =
-            "there is nothing at this address for this caller. Either no object stands "
-                + "there, or it stands in a scope this caller cannot enter — the answer "
-                + "is deliberately the same for both, because one that told them apart "
-                + "would let a caller map what it may not see. Check the address, and "
-                + "check that the scope is one this caller belongs to.";
+            "nothing is addressed here. Check the address, and that you are a member of "
+                + "the scope it names.";
 
         /**
          * The reasons that answer as the not-found class.
