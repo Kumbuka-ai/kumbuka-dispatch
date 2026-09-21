@@ -74,7 +74,7 @@ class QueryIT {
      */
     @Test
     void an_undeclared_filter_field_is_refused_and_named() {
-        assertThatThrownBy(() -> exchanges.query(SCOPE, SELECTOR,
+        assertThatThrownBy(() -> exchanges.query(SCOPE, "probe-scope", SELECTOR,
                 QueryFilter.of(Map.of("title", "anything")), CONSOLE))
             .isInstanceOf(DispatchException.class)
             .satisfies(thrown -> {
@@ -96,7 +96,7 @@ class QueryIT {
     /** Every unknown field at once, rather than the first one and a second trip. */
     @Test
     void several_undeclared_fields_are_all_named_in_one_refusal() {
-        assertThatThrownBy(() -> exchanges.query(SCOPE, SELECTOR,
+        assertThatThrownBy(() -> exchanges.query(SCOPE, "probe-scope", SELECTOR,
                 QueryFilter.of(new java.util.LinkedHashMap<>(Map.of(
                     "title", "x", "dispatchBody", "y"))), CONSOLE))
             .isInstanceOf(DispatchException.class)
@@ -119,7 +119,7 @@ class QueryIT {
     void a_status_this_scheme_does_not_have_is_refused_rather_than_matched_against_nothing() {
         openAndSend("something real");
 
-        assertThatThrownBy(() -> exchanges.query(SCOPE, SELECTOR,
+        assertThatThrownBy(() -> exchanges.query(SCOPE, "probe-scope", SELECTOR,
                 QueryFilter.of(Map.of("status", "banana")), CONSOLE))
             .isInstanceOf(DispatchException.class)
             .extracting(e -> ((DispatchException) e).reason())
@@ -129,7 +129,7 @@ class QueryIT {
     /** An empty value means neither "no filter" nor a filter, so it is refused. */
     @Test
     void an_empty_filter_value_is_refused_rather_than_read_as_no_filter() {
-        assertThatThrownBy(() -> exchanges.query(SCOPE, SELECTOR,
+        assertThatThrownBy(() -> exchanges.query(SCOPE, "probe-scope", SELECTOR,
                 QueryFilter.of(Map.of("status", "")), CONSOLE))
             .isInstanceOf(DispatchException.class)
             .extracting(e -> ((DispatchException) e).reason())
@@ -149,16 +149,16 @@ class QueryIT {
         Exchange closed = openAndSend("finished");
         exchanges.reject(SCOPE, addressOf(closed), CONSOLE);
 
-        assertThat(addressesOf(exchanges.query(SCOPE, SELECTOR,
+        assertThat(addressesOf(exchanges.query(SCOPE, "probe-scope", SELECTOR,
                 QueryFilter.of(Map.of("status", "open")), CONSOLE)))
             .as("one value narrows to that value")
-            .containsExactly(open.address());
+            .containsExactly(complete(open));
 
-        assertThat(addressesOf(exchanges.query(SCOPE, SELECTOR,
+        assertThat(addressesOf(exchanges.query(SCOPE, "probe-scope", SELECTOR,
                 QueryFilter.of(Map.of("status", "open,rejected")), CONSOLE)))
             .as("and comma-separated values are alternatives within the field, in the "
                 + "order of the address space")
-            .containsExactly(open.address(), closed.address());
+            .containsExactly(complete(open), complete(closed));
     }
 
     /** Separate fields are read together, not as alternatives. */
@@ -167,11 +167,11 @@ class QueryIT {
         Exchange forCode = openAndSend("addressed to code", "code");
         openAndSend("addressed to concept", "concept");
 
-        assertThat(addressesOf(exchanges.query(SCOPE, SELECTOR,
+        assertThat(addressesOf(exchanges.query(SCOPE, "probe-scope", SELECTOR,
                 QueryFilter.of(Map.of("status", "open", "apparatus", "code")), CONSOLE)))
             .as("a caller asking for open AND code gets neither the closed ones nor the "
                 + "ones addressed elsewhere")
-            .containsExactly(forCode.address());
+            .containsExactly(complete(forCode));
     }
 
     /** No filter at all is the whole selector, in address order. */
@@ -180,10 +180,10 @@ class QueryIT {
         Exchange first = openAndSend("first");
         Exchange second = openAndSend("second");
 
-        assertThat(addressesOf(exchanges.query(SCOPE, SELECTOR, QueryFilter.none(), CONSOLE)))
+        assertThat(addressesOf(exchanges.query(SCOPE, "probe-scope", SELECTOR, QueryFilter.none(), CONSOLE)))
             .as("the order is the address space's own — number then sub — and no second "
                 + "ordering is invented for a listing")
-            .containsExactly(first.address(), second.address());
+            .containsExactly(complete(first), complete(second));
     }
 
     /**
@@ -200,13 +200,13 @@ class QueryIT {
             "code", LocalDate.now(), CONSOLE);
 
         List<String> listed = addressesOf(
-            exchanges.query(SCOPE, SELECTOR, QueryFilter.none(), CONSOLE));
+            exchanges.query(SCOPE, "probe-scope", SELECTOR, QueryFilter.none(), CONSOLE));
 
-        assertThat(listed).containsExactly(base.address());
+        assertThat(listed).containsExactly(complete(base));
         assertThat(listed)
             .as("an addendum has no standing of its own; it is reached through the "
                 + "exchange it hangs from")
-            .doesNotContain(addendum.address());
+            .doesNotContain(complete(addendum));
     }
 
     // =======================================================================
@@ -227,7 +227,7 @@ class QueryIT {
     void an_executor_listing_receives_no_body_for_what_it_has_not_claimed() {
         openAndSend("a commission with a body");
 
-        List<ExchangeView> listed = exchanges.query(SCOPE, SELECTOR, QueryFilter.none(),
+        List<ExchangeView> listed = exchanges.query(SCOPE, "probe-scope", SELECTOR, QueryFilter.none(),
             EXECUTOR);
 
         assertThat(listed).singleElement().satisfies(view -> {
@@ -248,7 +248,7 @@ class QueryIT {
     void a_console_listing_receives_the_body() {
         openAndSend("a commission with a body");
 
-        assertThat(exchanges.query(SCOPE, SELECTOR, QueryFilter.none(), CONSOLE))
+        assertThat(exchanges.query(SCOPE, "probe-scope", SELECTOR, QueryFilter.none(), CONSOLE))
             .singleElement()
             .satisfies(view -> assertThat(view.dispatchBody())
                 .as("operators read commissions as a matter of course, and the listing "
@@ -267,7 +267,7 @@ class QueryIT {
         openAndSend("not claimed by anybody");
         exchanges.takeup(SCOPE, addressOf(held), EXECUTOR, CLAIM);
 
-        List<ExchangeView> listed = exchanges.query(SCOPE, SELECTOR, QueryFilter.none(),
+        List<ExchangeView> listed = exchanges.query(SCOPE, "probe-scope", SELECTOR, QueryFilter.none(),
             EXECUTOR);
 
         assertThat(listed).hasSize(2);
@@ -286,7 +286,7 @@ class QueryIT {
         Exchange held = openAndSend("claimed by somebody else");
         exchanges.takeup(SCOPE, addressOf(held), OTHER, CLAIM);
 
-        assertThat(exchanges.query(SCOPE, SELECTOR, QueryFilter.none(), EXECUTOR))
+        assertThat(exchanges.query(SCOPE, "probe-scope", SELECTOR, QueryFilter.none(), EXECUTOR))
             .singleElement()
             .satisfies(view -> {
                 assertThat(view.dispatchBody())
@@ -316,6 +316,21 @@ class QueryIT {
 
     private static List<String> addressesOf(List<ExchangeView> views) {
         return views.stream().map(ExchangeView::address).toList();
+    }
+
+    /**
+     * The complete address of an exchange, as the projection renders it.
+     *
+     * <p>The entity's own {@code address()} is the SHORT form and stays it —
+     * it is what the logs and the kernel's internal messages use. Everything
+     * that leaves the service carries the complete URI, so an expectation
+     * compared against a projection has to be built the same way. Before
+     * satellite/26.6 the two coincided, which is exactly why the short form
+     * reached callers.
+     */
+    private static String complete(Exchange e) {
+        return new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix)
+            .complete("probe-scope");
     }
 
     private static ExchangeAddress addressOf(Exchange e) {

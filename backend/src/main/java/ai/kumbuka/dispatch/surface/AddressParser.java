@@ -131,6 +131,30 @@ public final class AddressParser {
     }
 
     /**
+     * The complete address, in the one form every call of this surface takes.
+     *
+     * <p><strong>Every address anywhere goes through here.</strong> Not as a
+     * convention: an address that leaves this service in any other form is one
+     * a caller has to repair before it can use it, and a caller reading an
+     * address out of an answer has no way to know it needs repairing. Measured
+     * on 2026-09-18: {@code create} and {@code claim} answered
+     * {@code satellite/26.2}, which no call accepts.
+     *
+     * <p>The scope travels as the slug the caller used, never as the internal
+     * id. Two reasons and both are load-bearing: the id is meaningless outside
+     * this deployment, and the slug is what the caller will put back into its
+     * next call.
+     */
+    public static String complete(String scopeSlug, ExchangeAddress address) {
+        return address.complete(scopeSlug);
+    }
+
+    /** The complete address of a collection, for the refusals that name one. */
+    public static String completeCollection(String scopeSlug, String selector) {
+        return SCHEME + "://" + scopeSlug + "/" + selector;
+    }
+
+    /**
      * The scheme this service answers for, in leading position of an address.
      *
      * <p>Present in the MCP form and absent from the REST path, and that is

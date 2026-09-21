@@ -73,11 +73,11 @@ class SurfaceBoltsIT {
         Response answer = given().accept(ContentType.JSON).get(SurfaceFixture.item(bracket));
 
         answer.then().statusCode(200);
-        assertThat(answer.jsonPath().getMap("$"))
+        assertThat(answer.jsonPath().getMap("fields"))
             .as("enough to refuse, not enough to work. The field does not exist on the "
                 + "answer — a field that is sometimes populated invites a caller to read "
                 + "it and invites a later change to populate it always")
-            .doesNotContainKey("dispatchBody")
+            .doesNotContainKey("dispatch_text")
             .containsKey("title");
     }
 
@@ -89,25 +89,25 @@ class SurfaceBoltsIT {
         given().contentType(ContentType.JSON).body(Map.of("duration", "PT1H"))
             .post(SurfaceFixture.item(bracket) + ":claim").then().statusCode(200);
 
-        assertThat(given().get(SurfaceFixture.item(bracket)).jsonPath().getMap("$"))
+        assertThat(given().get(SurfaceFixture.item(bracket)).jsonPath().getMap("fields"))
             .as("taking it up is what buys the body")
-            .containsKey("dispatchBody");
+            .containsKey("dispatch_text");
 
         SurfaceFixture.asOtherExecutor(identity);
-        assertThat(given().get(SurfaceFixture.item(bracket)).jsonPath().getMap("$"))
+        assertThat(given().get(SurfaceFixture.item(bracket)).jsonPath().getMap("fields"))
             .as("and only for the holder — a second executor still sees none, which is "
                 + "what makes the guarantee about the claim rather than about the state")
-            .doesNotContainKey("dispatchBody");
+            .doesNotContainKey("dispatch_text");
     }
 
     @Test
     void a_console_identity_reads_the_body_without_holding_the_claim() {
         String bracket = aSentCommission();
 
-        assertThat(given().get(SurfaceFixture.item(bracket)).jsonPath().getMap("$"))
+        assertThat(given().get(SurfaceFixture.item(bracket)).jsonPath().getMap("fields"))
             .as("operators read commissions as a matter of course. Without this half the "
                 + "guarantee would just be a switched-off feature")
-            .containsKey("dispatchBody");
+            .containsKey("dispatch_text");
     }
 
     /**
@@ -131,10 +131,10 @@ class SurfaceBoltsIT {
         Response refused = given().contentType(ContentType.JSON).body(Map.of())
             .post(SurfaceFixture.item(bracket) + ":block");
 
-        assertThat(refused.jsonPath().getMap("$"))
+        assertThat(refused.jsonPath().getMap("fields"))
             .as("the loser of the race is refused, and the refusal carries no more than "
                 + "the refusal")
-            .doesNotContainKey("dispatchBody");
+            .doesNotContainKey("dispatch_text");
     }
 
     // =======================================================================
@@ -168,7 +168,7 @@ class SurfaceBoltsIT {
             .as("its own reason rather than a reuse of the transition refusal: an adapter "
                 + "that could not tell the two apart would report 'not yet' where the "
                 + "truth is 'not you, ever'")
-            .isEqualTo("RATIFICATION_NOT_PERMITTED");
+            .isEqualTo("ROLE_DOES_NOT_ALLOW");
     }
 
     @Test
@@ -180,7 +180,7 @@ class SurfaceBoltsIT {
             .post(SurfaceFixture.item(answered) + ":accept")
             .then()
             .statusCode(200)
-            .body("status", org.hamcrest.Matchers.equalTo("returned"));
+            .body("fields.state", org.hamcrest.Matchers.equalTo("returned"));
     }
 
     /**
@@ -196,13 +196,13 @@ class SurfaceBoltsIT {
 
         Response refused = given().contentType(ContentType.JSON)
             .body(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
-                "params", Map.of("name", "accept",
+                "params", Map.of("name", "dispatch_accept_return",
                     "arguments", Map.of("address", SurfaceFixture.address(answered)))))
             .post("/mcp");
 
         assertThat(refused.jsonPath().getBoolean("result.isError")).isTrue();
         assertThat(refused.jsonPath().getString("result.structuredContent.reason"))
-            .isEqualTo("RATIFICATION_NOT_PERMITTED");
+            .isEqualTo("ROLE_DOES_NOT_ALLOW");
     }
 
     // =======================================================================
@@ -217,7 +217,7 @@ class SurfaceBoltsIT {
             .post(SurfaceFixture.collection());
         created.then().statusCode(201);
 
-        String bracket = created.jsonPath().getString("number") + ".0";
+        String bracket = created.jsonPath().getString("fields.number") + ".0";
         given().contentType(ContentType.JSON).body(Map.of())
             .post(SurfaceFixture.item(bracket) + ":send").then().statusCode(200);
         return bracket;

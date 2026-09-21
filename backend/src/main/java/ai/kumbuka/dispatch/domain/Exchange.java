@@ -117,6 +117,46 @@ public class Exchange {
     @Column(name = "ratified_at")
     private Instant ratifiedAt;
 
+    // --- what the process verbs record ------------------------------------
+
+    /**
+     * The object this exchange's answer was carried forward into, by durable
+     * identity.
+     *
+     * <p>The internal key and not the address (ADR-0014). An address is a
+     * position and a position can be re-occupied; the key cannot be re-issued.
+     * A stored address would, after a renumbering, point at whatever has since
+     * moved into that position — which is worse than pointing at nothing,
+     * because it reads as correct.
+     *
+     * <p>A raw {@code Long} rather than a {@code @ManyToOne}. The association
+     * would be loaded on every read of a consumed exchange to answer a
+     * question almost no reader asks, and the projection needs the target's
+     * ADDRESS, which it resolves once when it needs it.
+     */
+    @Column(name = "curated_into_id")
+    private Long curatedIntoId;
+
+    /** What the commissioner said when it replied. */
+    @Column(name = "commissioner_message")
+    private String commissionerMessage;
+
+    /**
+     * What the executor asked.
+     *
+     * <p>Its presence is how the two meanings of {@code NEEDS_INPUT} are told
+     * apart from the question side, as {@link #returnBody} tells them apart
+     * from the answer side. The contract records that a dedicated state would
+     * be cleaner; this build does not add one, and the pair of nullable fields
+     * is the shape that reads the same as the contract says.
+     */
+    @Column(name = "executor_question")
+    private String executorQuestion;
+
+    /** Why the exchange ended without an accepted answer. */
+    @Column(name = "termination_reason")
+    private String terminationReason;
+
     // --- the claim --------------------------------------------------------
 
     @Column(name = "holder_subject")
@@ -349,6 +389,66 @@ public class Exchange {
     /** For the projection: what the return role currently holds. */
     public Map<String, Object> returnMetadata() {
         return returnMetadata;
+    }
+
+    // ----------------------------------------------------------------------
+    // What the process verbs recorded
+    // ----------------------------------------------------------------------
+
+    public Long curatedIntoId() {
+        return curatedIntoId;
+    }
+
+    public String commissionerMessage() {
+        return commissionerMessage;
+    }
+
+    public String executorQuestion() {
+        return executorQuestion;
+    }
+
+    public String terminationReason() {
+        return terminationReason;
+    }
+
+    /**
+     * Whether a delivered answer is present for the commissioner to act on.
+     *
+     * <p>The one question section 6 asks that the status cannot answer:
+     * {@code NEEDS_INPUT} means "there is an answer" and "there is a question"
+     * both, and {@code next} lists different calls for each. Reading it off
+     * the return body is what the kernel already does at {@code ratify}, so
+     * the list and the transition agree by construction rather than by
+     * inspection.
+     */
+    public boolean answerDelivered() {
+        return returnBody != null && !returnBody.isBlank();
+    }
+
+    /** Records the target an answer was carried forward into. */
+    void curateInto(Long targetId) {
+        this.curatedIntoId = targetId;
+    }
+
+    /** Records what the commissioner said, and clears the question it answers. */
+    void recordCommissionerMessage(String message) {
+        this.commissionerMessage = message;
+        // The question has been answered, so it is no longer outstanding. It
+        // is cleared rather than kept because `next` reads its presence: a
+        // question left standing after the reply would make the exchange
+        // look, on its next read, as though it were still waiting to be asked
+        // about — and the commissioner would be offered the reply again.
+        this.executorQuestion = null;
+    }
+
+    /** Records what the executor could not decide. */
+    void recordExecutorQuestion(String question) {
+        this.executorQuestion = question;
+    }
+
+    /** Records why the exchange ended without an accepted answer. */
+    void recordTerminationReason(String reason) {
+        this.terminationReason = reason;
     }
 
     /** True for the exchange the bracket is derived from. */

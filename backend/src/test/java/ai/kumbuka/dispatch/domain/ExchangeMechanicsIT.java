@@ -66,8 +66,8 @@ class ExchangeMechanicsIT {
         Instant before = sent.updatedAt;
         ExchangeStatus statusBefore = sent.status();
 
-        exchanges.view(SCOPE, at(sent), EXECUTOR);
-        exchanges.view(SCOPE, at(sent), CONSOLE);
+        exchanges.view(SCOPE, "probe-scope", at(sent), EXECUTOR);
+        exchanges.view(SCOPE, "probe-scope", at(sent), CONSOLE);
 
         Exchange after = exchanges.read(SCOPE, at(sent));
         assertThat(after.status())
@@ -87,7 +87,7 @@ class ExchangeMechanicsIT {
     void the_view_withholds_the_body_from_an_executor_that_has_not_claimed() {
         Exchange sent = openAndSend("a commission with a body nobody has claimed");
 
-        ExchangeView asExecutor = exchanges.view(SCOPE, at(sent), EXECUTOR);
+        ExchangeView asExecutor = exchanges.view(SCOPE, "probe-scope", at(sent), EXECUTOR);
         assertThat(asExecutor.dispatchBody())
             .as("enough to refuse, not enough to work. This is the first of three bolts "
                 + "against the race: a loser cannot have started, because it never had "
@@ -97,7 +97,7 @@ class ExchangeMechanicsIT {
             .as("but enough to decide against taking it up")
             .isEqualTo("a commission with a body nobody has claimed");
 
-        assertThat(exchanges.view(SCOPE, at(sent), CONSOLE).dispatchBody())
+        assertThat(exchanges.view(SCOPE, "probe-scope", at(sent), CONSOLE).dispatchBody())
             .as("a console identity reads it, because operators read commissions as a "
                 + "matter of course. Without this half the guarantee would just be a "
                 + "switched-off feature")
@@ -109,10 +109,10 @@ class ExchangeMechanicsIT {
         Exchange sent = openAndSend("a commission about to be claimed");
         exchanges.takeup(SCOPE, at(sent), EXECUTOR, CLAIM);
 
-        assertThat(exchanges.view(SCOPE, at(sent), EXECUTOR).dispatchBody())
+        assertThat(exchanges.view(SCOPE, "probe-scope", at(sent), EXECUTOR).dispatchBody())
             .as("taking it up is what buys the body")
             .isNotNull();
-        assertThat(exchanges.view(SCOPE, at(sent), OTHER_EXECUTOR).dispatchBody())
+        assertThat(exchanges.view(SCOPE, "probe-scope", at(sent), OTHER_EXECUTOR).dispatchBody())
             .as("and only for the holder — another executor still sees none")
             .isNull();
     }
@@ -146,8 +146,15 @@ class ExchangeMechanicsIT {
             .as("the subject alone is not enough: several runs can share one service "
                 + "identity, and the receipt is what tells the run that won the award "
                 + "from one that merely looks like it")
+            // RECEIPT_ABSENT since satellite/26.6, split out of CLAIM_REQUIRED.
+            // The two say different things and the caller does different things
+            // about them: CLAIM_REQUIRED says the exchange is not theirs to
+            // write, and this one says it may well be and the proof did not
+            // travel. The surface contract declares a separate code for each,
+            // and neither could be raised while the kernel answered one reason
+            // for both.
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
-                .isEqualTo(DispatchException.Reason.CLAIM_REQUIRED));
+                .isEqualTo(DispatchException.Reason.RECEIPT_ABSENT));
 
         assertThatThrownBy(() -> exchanges.writeDraft(SCOPE, at(sent), EXECUTOR,
             null, "an answer", null, null, "a-receipt-nobody-issued", null))

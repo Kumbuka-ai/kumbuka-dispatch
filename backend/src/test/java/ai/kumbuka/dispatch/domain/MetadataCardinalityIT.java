@@ -75,7 +75,7 @@ class MetadataCardinalityIT {
     void query_over_a_selector_with_a_list_metadata_row_in_the_bestand_answers() {
         insertBestandRow("in-the-bestand", Map.of("tracks", List.of("a", "b", "c")));
 
-        List<ExchangeView> found = exchanges.query(SCOPE, SELECTOR, QueryFilter.none(), CONSOLE);
+        List<ExchangeView> found = exchanges.query(SCOPE, "probe-scope", SELECTOR, QueryFilter.none(), CONSOLE);
 
         assertThat(found)
             .as("the read path deserialises a jsonb value that is a list, rather than "

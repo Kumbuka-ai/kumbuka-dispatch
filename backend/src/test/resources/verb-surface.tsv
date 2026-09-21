@@ -81,3 +81,8 @@ binding	-	POST	/api/{scope}/{selector}/{id}/addenda	sub-collection	-
 
 extension	-	GET	/api/whoami	none	-
 extension	-	POST	/mcp	none	-
+# The service's own declaration: what it offers, what each call takes, and
+# every refusal it can raise with its message pattern. A read, adding no
+# effect, and declared here because a route nobody wrote into this file is a
+# violation however harmless it looks.
+extension	-	GET	/mcp/declaration	none	-

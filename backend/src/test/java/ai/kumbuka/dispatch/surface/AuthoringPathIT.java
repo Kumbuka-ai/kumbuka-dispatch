@@ -55,11 +55,68 @@ class AuthoringPathIT {
         new RestHarness().run();
     }
 
+    /**
+     * The assistant surface has no authoring path, and that is the repair.
+     *
+     * <p>This replaced a probe that drove the same seven-step sequence as the
+     * REST one. Six of those steps are the author's — create a draft, write its
+     * body, retitle it, send it — and satellite/26.6 removed all of them from
+     * this surface: {@code dispatch_commission} creates, writes and freezes in
+     * one transaction. Running the old sequence here would mean putting the
+     * draft back.
+     *
+     * <p>What is asserted instead is the property that replaced it: the
+     * exchange is {@code open} the moment it exists, and the text the
+     * commission carried is the text the read hands back. The REST half of this
+     * file still drives the authoring path, because the generic surface still
+     * has one.
+     */
     @Test
-    @DisplayName("authoring path over MCP — create, write body, retitle, send, claim, write "
-        + "return, read back each role")
-    void the_authoring_path_over_mcp() {
-        new McpHarness().run();
+    @DisplayName("assistant surface — commissioning is one step, and leaves no draft")
+    void commissioning_over_mcp_leaves_no_authoring_path_to_walk() {
+        SurfaceFixture.asConsole(identity);
+
+        Map<String, Object> commissioned = mcp("dispatch_commission", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "fields", Map.of("title", "a commission", "apparatus", "code",
+                "text", "the commission text", "date", "2026-09-01")));
+
+        assertThat(fieldOf(commissioned, "state"))
+            .as("the exchange is open the moment it exists: draft is a state inside the "
+                + "transaction and is never visible here")
+            .isEqualTo("open");
+
+        String address = (String) commissioned.get("address");
+        Map<String, Object> read = mcp("dispatch_read", Map.of("address", address));
+
+        assertThat(fieldOf(read, "dispatch_text"))
+            .as("the text the commission carried is the text that was stored — measured "
+                + "2026-09-18, a `draft` argument was accepted and discarded, and the "
+                + "author was told it had succeeded")
+            .isEqualTo("the commission text");
+        assertThat(fieldOf(read, "title")).isEqualTo("a commission");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object fieldOf(Map<String, Object> answer, String name) {
+        Map<String, Object> fields = (Map<String, Object>) answer.get("fields");
+        return fields == null ? null : fields.get(name);
+    }
+
+    /** One tool call, asserted to have succeeded, and its structured answer. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mcp(String tool, Map<String, Object> arguments) {
+        Response answer = given().contentType(ContentType.JSON)
+            .body(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/call",
+                "params", Map.of("name", tool, "arguments", arguments)))
+            .post("/mcp");
+
+        assertThat(answer.jsonPath().getBoolean("result.isError"))
+            .as("'%s' was expected to succeed but was refused: %s", tool,
+                answer.jsonPath().getString("result.structuredContent.message"))
+            .isFalse();
+        return (Map<String, Object>) answer.jsonPath().getMap("result")
+            .get("structuredContent");
     }
 
     // =======================================================================
@@ -167,7 +224,13 @@ class AuthoringPathIT {
                 .as("and the title stays the one the author set")
                 .isEqualTo("the actual title");
 
-            // 11. update after send with a title argument — refused as FROZEN.
+            // 11. update after send with a title argument — refused, because a
+            //     frozen field is frozen. The caller-facing reason is
+            //     STATE_DOES_NOT_ALLOW since satellite/26.6: the kernel still
+            //     distinguishes FROZEN internally, and the contract's closed
+            //     set of reasons does not carry it — what the caller needs is
+            //     that the exchange's state does not permit the write, and the
+            //     calls that it does permit.
             //     The dispatch fields are frozen at send; a caller that thinks
             //     it can still rename a sent exchange learns so through a typed
             //     refusal, not by finding the old title on a later read.
@@ -175,7 +238,7 @@ class AuthoringPathIT {
                 "draft", "another answer",
                 "receipt", receipt,
                 "title", "a title that must not stick"),
-                "FROZEN");
+                "STATE_DOES_NOT_ALLOW");
 
             View afterFrozenAttempt = read(created.id);
             assertThat(afterFrozenAttempt.title)
@@ -220,8 +283,8 @@ class AuthoringPathIT {
                 .body(Map.of("title", title, "apparatus", apparatus, "date", date))
                 .post(SurfaceFixture.collection());
             response.then().statusCode(201);
-            String id = response.jsonPath().getString("number") + ".0";
-            return new Created(id, response.jsonPath().getString("status"));
+            String id = response.jsonPath().getString("fields.number") + ".0";
+            return new Created(id, response.jsonPath().getString("fields.state"));
         }
 
         @Override
@@ -229,11 +292,11 @@ class AuthoringPathIT {
             Response response = given().accept(ContentType.JSON).get(SurfaceFixture.item(id));
             response.then().statusCode(200);
             return new View(
-                response.jsonPath().getString("title"),
-                response.jsonPath().getString("status"),
-                response.jsonPath().getString("dispatchBody"),
-                response.jsonPath().getString("returnBody"),
-                response.jsonPath().getString("conflictToken"));
+                response.jsonPath().getString("fields.title"),
+                response.jsonPath().getString("fields.state"),
+                response.jsonPath().getString("fields.dispatch_text"),
+                response.jsonPath().getString("fields.return_text"),
+                response.jsonPath().getString("conflict_token"));
         }
 
         @Override
@@ -276,101 +339,14 @@ class AuthoringPathIT {
 
     // =======================================================================
     // MCP
+    //
+    // There is no MCP harness. The harness exists to drive ONE sequence over
+    // two expositions and compare them, and since satellite/26.6 the two do not
+    // share this sequence: the authoring path is the generic surface's, and the
+    // assistant surface reaches the same end state in a single call. A harness
+    // that mapped the six author steps onto process verbs would be asserting
+    // that a path exists which the repair deliberately removed.
     // =======================================================================
-
-    private class McpHarness extends Harness {
-
-        @Override
-        Created create(String title, String apparatus, String date) {
-            Map<String, Object> answer = call("create", Map.of(
-                "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-                "title", title, "apparatus", apparatus, "date", date));
-            String id = answer.get("number") + "." + answer.get("sub");
-            return new Created(id, (String) answer.get("status"));
-        }
-
-        @Override
-        View read(String id) {
-            Map<String, Object> answer = call("read", Map.of("address", SurfaceFixture.address(id)));
-            return new View(
-                (String) answer.get("title"),
-                (String) answer.get("status"),
-                (String) answer.get("dispatchBody"),
-                (String) answer.get("returnBody"),
-                (String) answer.get("conflictToken"));
-        }
-
-        @Override
-        void update(String id, String token, Map<String, Object> body) {
-            Map<String, Object> arguments = new LinkedHashMap<>();
-            arguments.put("address", SurfaceFixture.address(id));
-            arguments.put("conflict_token", token);
-            arguments.putAll(body);
-            call("update", arguments);
-        }
-
-        @Override
-        void updateRefused(String id, String token, Map<String, Object> body,
-                           String expectedReason) {
-            Map<String, Object> arguments = new LinkedHashMap<>();
-            arguments.put("address", SurfaceFixture.address(id));
-            arguments.put("conflict_token", token);
-            arguments.putAll(body);
-            Response answer = rpc("tools/call",
-                Map.of("name", "update", "arguments", arguments));
-            answer.then().statusCode(200);
-            assertThat(answer.jsonPath().getBoolean("result.isError"))
-                .as("update expected to be refused with %s", expectedReason)
-                .isTrue();
-            assertThat(answer.jsonPath().getString("result.structuredContent.reason"))
-                .isEqualTo(expectedReason);
-        }
-
-        @Override
-        void send(String id) {
-            call("send", Map.of("address", SurfaceFixture.address(id)));
-        }
-
-        @Override
-        String claim(String id) {
-            Map<String, Object> answer = call("claim",
-                Map.of("address", SurfaceFixture.address(id), "duration", "PT1H"));
-            return (String) answer.get("receipt");
-        }
-
-        @SuppressWarnings("unchecked")
-        private Map<String, Object> call(String tool, Map<String, Object> arguments) {
-            Response answer = rpc("tools/call",
-                Map.of("name", tool, "arguments", arguments));
-            answer.then().statusCode(200);
-
-            Map<String, Object> result = answer.jsonPath().getMap("result");
-            assertThat((Boolean) result.get("isError"))
-                .as("MCP call '%s' expected to succeed but was refused: %s",
-                    tool, structuredMessage(result))
-                .isFalse();
-            return (Map<String, Object>) result.get("structuredContent");
-        }
-
-        @SuppressWarnings("unchecked")
-        private String structuredMessage(Map<String, Object> result) {
-            Object structured = result.get("structuredContent");
-            if (structured instanceof Map<?, ?> map) {
-                return String.valueOf(((Map<String, Object>) map).get("message"));
-            }
-            return "no structured content";
-        }
-    }
-
-    private static Response rpc(String method, Map<String, Object> params) {
-        Map<String, Object> envelope = new LinkedHashMap<>();
-        envelope.put("jsonrpc", "2.0");
-        envelope.put("id", 1);
-        envelope.put("method", method);
-        envelope.put("params", params);
-        return given().contentType(ContentType.JSON).accept(ContentType.JSON)
-            .body(envelope).post("/mcp");
-    }
 
     // =======================================================================
     // What the harness exchanges: two small records so the sequence reads

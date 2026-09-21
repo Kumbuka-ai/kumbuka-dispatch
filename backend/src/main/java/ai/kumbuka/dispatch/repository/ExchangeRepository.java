@@ -95,6 +95,51 @@ public class ExchangeRepository {
         return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
     }
 
+    /**
+     * The exchange with this durable identity, in whatever scope of this
+     * tenant holds it.
+     *
+     * <p>Scope-free on purpose, and tenant-bound all the same: the {@code
+     * @TenantId} filter and the row-level policy both still apply, so this
+     * reaches no further than the caller's own tenant. It exists because a
+     * curated answer's target may be in another scope (section 5.1) and the
+     * projection that renders its address has only the identity to go on.
+     */
+    @Transactional
+    public Optional<Exchange> findByIdentityAnywhere(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        List<Exchange> found = em.createQuery("""
+                SELECT e FROM Exchange e WHERE e.id = :id
+                """, Exchange.class)
+            .setParameter("id", id)
+            .getResultList();
+        return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
+    }
+
+    /**
+     * The same, narrowed to one scope.
+     *
+     * <p>The scope is bound in the query rather than checked afterwards — a
+     * target in another scope must read as absent, not as a row the caller can
+     * then infer the existence of from a refusal.
+     */
+    @Transactional
+    public Optional<Exchange> findByIdentity(UUID scopeId, Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        List<Exchange> found = em.createQuery("""
+                SELECT e FROM Exchange e
+                WHERE e.id = :id AND e.scopeId = :scope
+                """, Exchange.class)
+            .setParameter("id", id)
+            .setParameter(P_SCOPE, scopeId)
+            .getResultList();
+        return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
+    }
+
     /** The addenda hanging from one exchange, in suffix order. */
     @Transactional
     public List<Exchange> addenda(UUID scopeId, ExchangeAddress base) {
