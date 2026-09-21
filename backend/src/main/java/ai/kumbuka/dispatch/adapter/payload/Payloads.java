@@ -1,5 +1,6 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
+import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.domain.ExchangeView;
 import ai.kumbuka.dispatch.domain.HolderState;
 import ai.kumbuka.dispatch.surface.VerbInput;
@@ -9,6 +10,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The wire shapes of the verb surface.
@@ -307,18 +309,102 @@ public final class Payloads {
     }
 
     /**
-     * A refusal, in the shape a caller can act on.
+     * A refusal, in the platform envelope: {@code reason}, {@code message},
+     * and machine-readable detail under {@code data}.
      *
      * <p>The reason is the stable part and the message is for a human. A
      * caller matching on prose breaks when somebody improves the wording,
      * which is why every refusal in this service carries a typed reason and
      * why that reason travels on the wire.
+     *
+     * <p><strong>The detail is under {@code data} and not beside the
+     * message.</strong> It was a top-level {@code offenders} member here, and
+     * a caller reading two services could not write one handler: DEC-0042
+     * fixes one envelope for the whole surface, and a third top-level key is
+     * a second shape however well it is named. The member keeps its name —
+     * {@code data.offenders} — because the name was never the problem.
+     *
+     * <p>{@code NON_EMPTY} is what keeps the key out of an answer that has no
+     * detail. An absent key and a key holding an empty list are different
+     * bytes, and the not-found clause of DEC-0042 is a statement about bytes.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    public record Refusal(String reason, String message, List<String> offenders) {
+    public record Refusal(String reason, String message, Map<String, Object> data) {
 
+        /**
+         * The one code the not-found class carries, and the one message.
+         *
+         * <p>An absent object and an address in a scope this caller cannot
+         * enter answer with this literal pair and no {@code data}. The message
+         * is a constant rather than a format: anything interpolated into it —
+         * the slug, the address, the count of what was found — would make the
+         * two answers differ in the bytes, which is exactly the enumeration
+         * oracle the single code exists to close. It names what to check
+         * without naming which of the two happened.
+         */
+        public static final String NOT_FOUND = "NOT_FOUND";
+
+        static final String NOT_FOUND_MESSAGE =
+            "there is nothing at this address for this caller. Either no object stands "
+                + "there, or it stands in a scope this caller cannot enter — the answer "
+                + "is deliberately the same for both, because one that told them apart "
+                + "would let a caller map what it may not see. Check the address, and "
+                + "check that the scope is one this caller belongs to.";
+
+        /**
+         * The reasons that answer as the not-found class.
+         *
+         * <p>Two, and the line between them and everything else is the one
+         * DEC-0042 draws: an address that names nothing, and an address in a
+         * scope that is not this caller's to see. A reason describing the
+         * STATE of an object that does exist is not in here — a held claim, a
+         * frozen field, a transition refused from the current status. Those
+         * reveal nothing a caller could not already learn by having the
+         * address answer at all, and collapsing them would take away the one
+         * thing a refusal is for: telling a caller what to do next.
+         *
+         * <p>The unroutable scheme, the third member of the class in the
+         * node, is the router's and cannot arise here.
+         */
+        private static final Set<DispatchException.Reason> NOT_FOUND_REASONS = Set.of(
+            DispatchException.Reason.NOT_FOUND,
+            DispatchException.Reason.SCOPE_UNRESOLVED);
+
+        /** A refusal with a reason and a message and nothing machine-readable. */
         public static Refusal of(String reason, String message) {
-            return new Refusal(reason, message, List.of());
+            return new Refusal(reason, message, null);
+        }
+
+        /**
+         * The wire form of a domain refusal — the one place the mapping lives.
+         *
+         * <p>Both expositions call this. That is the whole point of it being
+         * here rather than in each adapter: the not-found collapse and the
+         * placement of the detail are properties of the envelope, and an
+         * envelope built twice is one that eventually differs on one path.
+         * Measured before this existed: REST and the protocol path each
+         * constructed the shape themselves, from the same three values.
+         */
+        public static Refusal of(DispatchException e) {
+            if (NOT_FOUND_REASONS.contains(e.reason())) {
+                return new Refusal(NOT_FOUND, NOT_FOUND_MESSAGE, null);
+            }
+            return new Refusal(e.reason().name(), e.getMessage(), dataOf(e));
+        }
+
+        /**
+         * The machine-readable detail, under {@code data} and nowhere else.
+         *
+         * <p>Null when there is none, and the record omits it — so a refusal
+         * without detail carries no {@code data} key at all rather than an
+         * empty one. DEC-0042 requires the not-found answers to be without
+         * {@code data}, and an empty object under the key is not the same
+         * wire bytes as an absent key.
+         */
+        private static Map<String, Object> dataOf(DispatchException e) {
+            return e.offenders().isEmpty()
+                ? null
+                : Map.of("offenders", List.copyOf(e.offenders()));
         }
     }
 }

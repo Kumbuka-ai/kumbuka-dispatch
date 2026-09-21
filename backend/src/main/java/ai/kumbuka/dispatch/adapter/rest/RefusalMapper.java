@@ -108,9 +108,13 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 LOG.debugf("domain refusal: %s -> %d", e.reason().name(), status);
             }
 
+            // The envelope is built in ONE place for both expositions. What a
+            // caller reads here — the collapsed not-found code, the detail
+            // under `data` — is not this mapper's decision to make a second
+            // time; the status is.
             return Response.status(status)
                 .type(MediaType.APPLICATION_JSON)
-                .entity(new Payloads.Refusal(e.reason().name(), e.getMessage(), e.offenders()))
+                .entity(Payloads.Refusal.of(e))
                 .build();
         }
 
@@ -128,11 +132,19 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                      CLAIM_DURATION_NOT_POSITIVE,
                      UPDATE_EMPTY, RETURN_DRAFT_REQUIRED -> 400;
 
-                // Not this caller. Ever, or with this proof.
-                case RATIFICATION_NOT_PERMITTED, RECEIPT_MISMATCH -> 403;
+                // Not this caller. Ever, or with this proof. SCOPE_READ_ONLY
+                // joins them and is not a 404: the caller can already see this
+                // scope — the directory answered for it — so saying "you may
+                // not write here" reveals nothing a 404 would withhold, and a
+                // 404 would send somebody looking for a typo in an address
+                // that is correct.
+                case RATIFICATION_NOT_PERMITTED, RECEIPT_MISMATCH, SCOPE_READ_ONLY -> 403;
                 case ACTOR_UNKNOWN -> 403;
 
                 // Nothing there — or nothing this subject may know is there.
+                // One status for the two, as they carry one code and one
+                // message: a status that differed would separate them again
+                // below the envelope.
                 case NOT_FOUND, SCOPE_UNRESOLVED -> 404;
 
                 // The object is real and its state says no. NOTHING_TO_CLAIM is
@@ -140,17 +152,25 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 // is there and nothing in it is free right now, which a caller
                 // waits on rather than re-addresses. Never 404 — that would say
                 // the selector is missing and send it looking for a typo.
+                // SCOPE_LOCKED is here and not with the 403s: a lock is the
+                // scope's own state, it is lifted where it was set, and the
+                // same caller with the same token gets through once it is.
                 case TRANSITION_NOT_PERMITTED, FROZEN, SIBLINGS_NON_TERMINAL, SELECTOR_IN_USE,
                      ADDENDUM_SUFFIX_EXHAUSTED, CLAIM_REQUIRED, RETURN_ALREADY_RATIFIED,
-                     NOTHING_TO_CLAIM -> 409;
+                     NOTHING_TO_CLAIM, SCOPE_LOCKED -> 409;
 
                 // Vocabulary: well-formed, addressed at something this scope does
                 // not have, or carrying content the scope refuses. A filter field
                 // this scheme does not carry and a value a field cannot take are
                 // both vocabulary — the call parses, and it names something that
                 // is not part of the offering.
+                // SCOPE_KIND_UNSUPPORTED is vocabulary in exactly this sense:
+                // the scope is real and visible, and an exchange in a scope of
+                // that kind is not part of the offering. Nothing the caller
+                // presents changes it.
                 case SELECTOR_NOT_DECLARED, SELECTOR_WITHDRAWN, ADDENDUM_NOT_DRAWABLE,
-                     METADATA_REFUSED, FILTER_FIELD_UNKNOWN, FILTER_VALUE_REFUSED -> 422;
+                     METADATA_REFUSED, FILTER_FIELD_UNKNOWN, FILTER_VALUE_REFUSED,
+                     SCOPE_KIND_UNSUPPORTED -> 422;
 
                 // Ours, not the caller's: the session contract was not bound, and
                 // no retry of theirs will fix it.

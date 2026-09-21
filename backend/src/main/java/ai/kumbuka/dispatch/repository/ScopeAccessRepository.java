@@ -45,7 +45,7 @@ public class ScopeAccessRepository {
     @Transactional
     public Optional<ScopeAccessRow> findBySlug(String slug) {
         List<Object[]> rows = em.createNativeQuery("""
-                SELECT scope_id, tenant_id, slug, archived
+                SELECT scope_id, tenant_id, slug, archived, kind, locked, can_write
                 FROM platform.scope_access
                 WHERE slug = :slug
                 """)
@@ -60,7 +60,10 @@ public class ScopeAccessRepository {
             (UUID) row[0],
             (UUID) row[1],
             (String) row[2],
-            (Boolean) row[3]));
+            (Boolean) row[3],
+            (String) row[4],
+            (Boolean) row[5],
+            (Boolean) row[6]));
     }
 
     /**
@@ -95,10 +98,24 @@ public class ScopeAccessRepository {
      * One row of the read contract, as it comes off the view.
      *
      * <p>Distinct from the directory's own {@code ScopeAccess} on purpose. The
-     * two carry the same four values today; keeping them apart is what lets
+     * two carry the same seven values today; keeping them apart is what lets
      * the published shape of the view change without the type the domain reads
-     * changing with it.
+     * changing with it. That is not hypothetical: the view grew from four
+     * columns to seven between two releases of the platform, and the split is
+     * why the change arrived here as one edit to a query and a record rather
+     * than as an edit to everything that reads a scope.
+     *
+     * <p>{@code kind}, {@code locked} and {@code canWrite} are the three the
+     * platform added. {@code kind} is {@code project}, {@code private} or
+     * {@code global} — the view no longer filters to the first, so a service
+     * has to decide for itself which kinds it serves. {@code locked} is the
+     * content lock, published beside {@code archived} because the two are
+     * different refusals: archived is retired, locked is frozen.
+     * {@code canWrite} is the calling subject's write right OVER A SERVICE
+     * CHANNEL, which is the only channel this service is; a console admin's
+     * override keys on the channel and is deliberately not in this column.
      */
-    public record ScopeAccessRow(UUID scopeId, UUID tenantId, String slug, boolean archived) {
+    public record ScopeAccessRow(UUID scopeId, UUID tenantId, String slug, boolean archived,
+                                 String kind, boolean locked, boolean canWrite) {
     }
 }

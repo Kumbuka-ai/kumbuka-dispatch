@@ -147,11 +147,13 @@ public class McpAdapter {
         try {
             return content(invoke(tool, arguments), false);
         } catch (SurfaceException e) {
-            return content(new Payloads.Refusal(e.reason().name(), e.getMessage(), List.of()),
-                true);
+            return content(Payloads.Refusal.of(e.reason().name(), e.getMessage()), true);
         } catch (DispatchException e) {
-            return content(new Payloads.Refusal(e.reason().name(), e.getMessage(),
-                e.offenders()), true);
+            // The same envelope the REST path answers with, from the same
+            // construction — not a second one built from the same three
+            // values. DEC-0042 fixes the form across both paths of a service,
+            // and two constructions is how one path would drift.
+            return content(Payloads.Refusal.of(e), true);
         }
     }
 

@@ -39,6 +39,46 @@ public class DispatchException extends RuntimeException {
         NUMBER_NOT_ACCEPTED,
         /** The scope could not be resolved against the platform's read contract. */
         SCOPE_UNRESOLVED,
+
+        /**
+         * The scope is of a kind this service does not serve.
+         *
+         * <p>A category statement and not a permission one. The platform's
+         * read contract answers for every service, so it publishes private
+         * scopes too; a private scope is a per-tenant container for memory
+         * content and an exchange has no meaning in one. The caller is told
+         * what the scheme carries, so that it stops rather than retries with
+         * another token.
+         *
+         * <p>Declared under this name deliberately: the condition is the same
+         * on every service behind the same contract, and a code that differed
+         * per service would be two vocabularies for one condition (DEC-0042).
+         */
+        SCOPE_KIND_UNSUPPORTED,
+
+        /**
+         * The caller may read this scope but not write to it.
+         *
+         * <p>The write right is the platform's answer about the membership,
+         * over a service channel. It is not about the exchange, not about the
+         * caller's capacity, and not lifted by anything this service offers —
+         * which is why it is its own reason rather than a reuse of the
+         * transition refusal that would send the caller back to retry.
+         */
+        SCOPE_READ_ONLY,
+
+        /**
+         * The scope is locked, so it refuses every write.
+         *
+         * <p>Apart from {@link #SCOPE_READ_ONLY} because the remedies differ:
+         * a lock is lifted where it was set, a missing write right is lifted
+         * by whoever administers the membership. The platform derives the
+         * write right as "not locked and …", so a locked scope also carries no
+         * write right — the check order is what keeps this reason reachable,
+         * and it is asserted rather than left to the reading order of a
+         * method.
+         */
+        SCOPE_LOCKED,
         /** The session settings the read contract needs were not bound. */
         SESSION_NOT_BOUND,
         /** No exchange at that address. */

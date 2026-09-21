@@ -378,7 +378,10 @@ class ExchangeSurfaceIT {
             .then()
             .statusCode(409)
             .body("reason", equalTo("SIBLINGS_NON_TERMINAL"))
-            .body("offenders.size()", equalTo(1));
+            // Under `data` since the envelope was unified: DEC-0042 puts
+            // machine-readable detail there, and a third top-level member
+            // beside reason and message is a second envelope shape.
+            .body("data.offenders.size()", equalTo(1));
     }
 
     // =======================================================================
@@ -423,7 +426,7 @@ class ExchangeSurfaceIT {
             .then()
             .statusCode(422)
             .body("reason", equalTo("FILTER_FIELD_UNKNOWN"))
-            .body("offenders", org.hamcrest.Matchers.hasItem("title"));
+            .body("data.offenders", org.hamcrest.Matchers.hasItem("title"));
     }
 
     /**
@@ -698,10 +701,17 @@ class ExchangeSurfaceIT {
         // Existence in the directory's answer IS the permission, so a 403
         // would confirm a scope exists to a caller who may not see it —
         // turning the error path into a scope enumerator nobody audits.
+        //
+        // The reason is NOT_FOUND and no longer SCOPE_UNRESOLVED: the code
+        // that named the case was the last thing distinguishing it from an
+        // object that is simply not there, which DEC-0042 forbids. The domain
+        // keeps its own reason; the wire carries one. That the two cases now
+        // agree byte for byte is RefusalEnvelopeIT's assertion, not this one's
+        // — this one is about the status of an invisible scope.
         given().get("/api/no-such-scope/sprint/1.0")
             .then()
             .statusCode(404)
-            .body("reason", equalTo("SCOPE_UNRESOLVED"));
+            .body("reason", equalTo("NOT_FOUND"));
     }
 
     @Test
