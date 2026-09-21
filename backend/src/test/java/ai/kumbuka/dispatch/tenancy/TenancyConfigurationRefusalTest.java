@@ -142,6 +142,34 @@ class TenancyConfigurationRefusalTest {
     }
 
     /**
+     * The configuration this test assembles actually expands expressions.
+     *
+     * <p>Not a statement about the service — a statement about the
+     * instrument. A configuration that does not expand answers the raw
+     * {@code ${…}} text of every property, the guard refuses it as "not a
+     * uuid", and every assertion above passes whether or not the defaults are
+     * gone. That is what this test did when it was written, and the red probe
+     * for the defaults is what found it: the probe put a default back and
+     * nothing went red.
+     *
+     * <p>So the instrument is checked first, against a property whose value
+     * is nothing BUT an expression.
+     */
+    @Test
+    void the_configuration_under_test_expands_expressions_at_all() {
+        Config config = withOverrides(Map.of(
+            TenancyConfigurationGuard.TENANT_KEY, A_UUID,
+            TenancyConfigurationGuard.SCOPE_KEY, ANOTHER_UUID));
+
+        assertThat(config.getValue("quarkus.flyway.placeholders.dispatchTenantId",
+                String.class))
+            .as("the shipped file writes this placeholder as a reference to the tenant "
+                + "key. If it comes back as the reference rather than as the value, this "
+                + "test class is measuring nothing")
+            .isEqualTo(A_UUID);
+    }
+
+    /**
      * The shipped file still routes the two values into the migration set.
      *
      * <p>Removing the defaults must not remove the placeholders: V5 writes the
@@ -177,6 +205,15 @@ class TenancyConfigurationRefusalTest {
      */
     private static Config withOverrides(Map<String, String> overrides) {
         SmallRyeConfigBuilder builder = new SmallRyeConfigBuilder()
+            // addDefaultInterceptors() is what makes `${…}` expand. Without
+            // it the configuration answers the RAW text of a property, and a
+            // default written into the file is never reached — so the guard
+            // refuses "not a uuid" on the literal `${DISPATCH_TENANT_ID:…}`
+            // and this test stays green with the default back in place.
+            //
+            // Measured: it did exactly that, in the red probe of this very
+            // assertion, which is the only reason it is not still doing it.
+            .addDefaultInterceptors()
             .withSources(shippedSource());
         if (!overrides.isEmpty()) {
             builder.withSources(new PropertiesConfigSource(
