@@ -137,6 +137,7 @@ public enum ProcessVerb {
         List.of(
             scope(),
             selector(),
+            apparatus(),
             duration())),
 
     DELIVER_RETURN("dispatch_deliver_return",
@@ -219,6 +220,30 @@ public enum ProcessVerb {
     private static Argument duration() {
         return Argument.top("duration", Argument.STRING, true,
             "how long the claim stands, as an ISO-8601 duration such as PT2H");
+    }
+
+    /**
+     * Which apparatus the draw is for, as patterns.
+     *
+     * <p>Required, and the requirement is the argument's whole reason for
+     * existing: the draw used to take the next open exchange of a bracket kind
+     * whatever it was addressed to, so a controller polling for its own work
+     * claimed every manual commission it overtook. A pattern narrows the draw
+     * to the apparatus the caller can actually act as.
+     *
+     * <p>The values themselves mean nothing to this service. An apparatus is a
+     * name the scope's operator gives out, and {@code agent-} is one
+     * installation's convention rather than a distinction the product makes —
+     * so what the product offers is the general mechanism, drawing by pattern,
+     * and not an attribute for agentic execution.
+     */
+    private static Argument apparatus() {
+        return Argument.topList("apparatus", VerbInput.ClaimNext.CHARACTER_RULE,
+            "which apparatus to draw for: one or more patterns, matched as alternatives. "
+                + "'*' stands for any run of characters at any position, so 'agent-*' "
+                + "draws only what is addressed to an agent. The comparison is "
+                + "case-sensitive, and a pattern of nothing but '*' is refused because it "
+                + "narrows nothing");
     }
 
     private static Argument receipt() {

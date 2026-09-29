@@ -124,8 +124,30 @@ public final class McpTools {
         return Map.copyOf(schema);
     }
 
+    /**
+     * One argument's schema.
+     *
+     * <p>A list argument carries its element rule with it: {@code items} with
+     * the declared pattern, and {@code minItems: 1}. The pattern is the same
+     * expression the surface enforces, read from the declaration rather than
+     * written again here — a schema that advertised a different rule from the
+     * one the service applies is worse than none, because a caller that obeys
+     * it is still refused.
+     *
+     * <p>{@code minItems} is not decoration either. The argument is required,
+     * which an empty array satisfies; the empty array is exactly the draw with
+     * no pattern, so without it the schema would admit the one call the
+     * argument exists to refuse.
+     */
     private static Map<String, Object> property(Argument argument) {
-        return Map.of("type", argument.type(), KEY_DESCRIPTION, argument.description());
+        if (argument.itemPattern() == null) {
+            return Map.of("type", argument.type(), KEY_DESCRIPTION, argument.description());
+        }
+        return Map.of(
+            "type", argument.type(),
+            "items", Map.of("type", Argument.STRING, "pattern", argument.itemPattern()),
+            "minItems", 1,
+            KEY_DESCRIPTION, argument.description());
     }
 
     /**

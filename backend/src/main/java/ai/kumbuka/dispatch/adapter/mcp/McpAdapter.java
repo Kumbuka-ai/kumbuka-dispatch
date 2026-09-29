@@ -77,6 +77,7 @@ public class McpAdapter {
     private static final String ARG_SELECTOR = "selector";
     private static final String ARG_ADDRESS = "address";
     private static final String ARG_DURATION = "duration";
+    private static final String ARG_APPARATUS = "apparatus";
     private static final String ARG_RECEIPT = "receipt";
     private static final String ARG_CONFLICT_TOKEN = "conflict_token";
     private static final String ARG_IDEMPOTENCY_KEY = "idempotency_key";
@@ -298,7 +299,8 @@ public class McpAdapter {
     private Object takeNext(Actor actor, CallArguments in) {
         VerbSurface.ClaimOutcome claimed = verbs.claimNext(actor,
             in.requiredTop(ARG_SCOPE), in.requiredTop(ARG_SELECTOR),
-            new VerbInput.Claim(in.requiredTop(ARG_DURATION)));
+            new VerbInput.ClaimNext(in.requiredTop(ARG_DURATION),
+                in.listTop(ARG_APPARATUS)));
         return withReceipt(claimed);
     }
 

@@ -27,7 +27,10 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.core.UriBuilder;
 
+import java.lang.reflect.RecordComponent;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -134,7 +137,8 @@ public class ExchangeResource {
             calling.calling("claim_next", null);
             calling.on(scope, at.address());
             return claimed(verbs.claimNext(caller.current(), scope, at.address(),
-                Payloads.claim(read(body, Payloads.ClaimRequest.class))));
+                Payloads.claimNext(
+                    readClosed(body, Payloads.ClaimNextRequest.class))));
         }
 
         // Every other verb acts at item depth. Depth is declared per verb and
@@ -425,6 +429,46 @@ public class ExchangeResource {
             throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
                 "the request body is not the JSON this verb takes: " + e.getOriginalMessage());
         }
+    }
+
+    /**
+     * The same read, with the body's field names closed against the shape.
+     *
+     * <p>Why this exists at all: the deserialiser is configured to drop a field
+     * it does not recognise, so a caller that misspells one is told its call
+     * succeeded and the value is simply gone. That is F-0365, and the schema
+     * published for this verb says {@code additionalProperties: false} — a
+     * schema is a description, and this is the enforcement of it. The assistant
+     * surface has had that enforcement since {@code CallArguments}; this is the
+     * REST half of the same check.
+     *
+     * <p>The declared names come from the record's own components rather than
+     * from a list written beside it. A second list is a second place a renamed
+     * field has to be changed, and the failure of forgetting is silent in
+     * exactly the direction this method exists to close.
+     *
+     * <p>Applied to this one verb and not to every body. Closing the rest is
+     * the same act on a wider surface and needs its own measurement of what
+     * callers are sending today; doing it here, where the argument set is new,
+     * breaks nothing that was working.
+     */
+    private <T extends Record> T readClosed(String body, Class<T> shape) {
+        Object carried = read(body, Map.class);
+        if (carried == null) {
+            return null;
+        }
+        List<String> declared = Arrays.stream(shape.getRecordComponents())
+            .map(RecordComponent::getName)
+            .toList();
+        for (Object name : ((Map<?, ?>) carried).keySet()) {
+            if (!declared.contains(String.valueOf(name))) {
+                throw SurfaceException.about(SurfaceException.Reason.BODY_FIELD_UNKNOWN,
+                    String.valueOf(name),
+                    "'" + name + "' is not a field of this call's body. Its fields are: "
+                        + String.join(", ", declared) + ".");
+            }
+        }
+        return json.convertValue(carried, shape);
     }
 
     /**

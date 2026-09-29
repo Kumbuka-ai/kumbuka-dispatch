@@ -2,7 +2,9 @@ package ai.kumbuka.dispatch.surface;
 
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * What the verb surface accepts, in a form that names no protocol.
@@ -120,20 +122,140 @@ public final class VerbInput {
 
         /** @throws SurfaceException when the value is absent or not a duration */
         public Duration parsed() {
-            if (duration == null || duration.isBlank()) {
+            return parseDuration(duration);
+        }
+    }
+
+    /**
+     * What a draw takes: how long the claim should stand, and which apparatus
+     * the draw is for.
+     *
+     * <p><strong>Its own shape and not {@link Claim} with a field added.</strong>
+     * {@code claim} names one exchange and the apparatus is already decided by
+     * the address it names; a draw names a set and has to say which part of that
+     * set it is drawing from. One record for both would carry, on the call that
+     * addresses a single exchange, an argument that call cannot mean — and an
+     * argument a call cannot mean is one a caller will eventually send.
+     *
+     * <p>The patterns are validated here rather than at either adapter, so the
+     * rule is enforced once for both surfaces and in the position the ratified
+     * check order gives a body fault: after the scope has been resolved. An
+     * adapter that checked them would answer before that resolution, and the
+     * caller would learn from the shape of its refusal that a scope it may not
+     * see exists.
+     */
+    public record ClaimNext(String duration, List<String> apparatus) {
+
+        /**
+         * The character rule an apparatus pattern obeys, as a regular
+         * expression, declared here because this is where it is enforced.
+         *
+         * <p>The published input schema carries the same expression, so a
+         * conforming client can refuse a pattern before sending it. The
+         * hyphen sits last in the character class deliberately: written
+         * {@code [A-Za-z0-9+-*]} it would be the range from {@code +} to
+         * {@code *}, which is empty and would reject every pattern.
+         *
+         * <p>The underscore is excluded, and so is the percent sign — they are
+         * the two wildcards of the comparison the draw runs, and a pattern
+         * carrying one would match more than it says while reading as though
+         * it named one apparatus. That exclusion is what lets the draw pass
+         * the pattern into its comparison without escaping it.
+         */
+        public static final String CHARACTER_RULE = "^[A-Za-z0-9+*-]+$";
+
+        private static final Pattern WELL_FORMED = Pattern.compile(CHARACTER_RULE);
+
+        /** A pattern that is nothing but wildcards, which narrows nothing. */
+        private static final Pattern ONLY_WILDCARDS = Pattern.compile("^\\*+$");
+
+        /** @throws SurfaceException when the value is absent or not a duration */
+        public Duration parsedDuration() {
+            return parseDuration(duration);
+        }
+
+        /**
+         * The patterns this draw is narrowed to, checked.
+         *
+         * <p>Returned rather than stored, so that a record built by an adapter
+         * carries exactly what arrived and nothing is checked twice. The list
+         * is copied on the way out: the draw reaches the database with it, and
+         * a caller-owned list that changed under the query would be a filter
+         * that is not the one that was refused or admitted.
+         *
+         * @throws SurfaceException when no pattern arrived, when one is spelled
+         *         outside {@link #CHARACTER_RULE}, or when one is nothing but
+         *         wildcards
+         */
+        public List<String> patterns() {
+            if (apparatus == null || apparatus.isEmpty()) {
                 throw new SurfaceException(
-                    SurfaceException.Reason.CLAIM_DURATION_MALFORMED,
-                    "a claim names how long it stands, as an ISO-8601 duration such as "
-                        + "'PT1H'. There is no default: a lease length is a policy, and one "
-                        + "invented here would be a policy nobody ratified.");
+                    SurfaceException.Reason.APPARATUS_PATTERN_MISSING,
+                    "a draw names which apparatus it draws for, as a list of one or more "
+                        + "patterns such as ['agent-code'] or ['agent-*']. There is no "
+                        + "default: a draw with no pattern takes the next exchange of any "
+                        + "apparatus, which is how a controller polling for its own work "
+                        + "claims a commission addressed to somebody else.");
             }
-            try {
-                return Duration.parse(duration);
-            } catch (java.time.format.DateTimeParseException e) {
-                throw new SurfaceException(
-                    SurfaceException.Reason.CLAIM_DURATION_MALFORMED,
-                    "'" + duration + "' is not an ISO-8601 duration. 'PT1H', 'PT30M', 'P1D'.");
+            for (String pattern : apparatus) {
+                refuseMalformed(pattern);
+                refuseUnbounded(pattern);
             }
+            return List.copyOf(apparatus);
+        }
+
+        private static void refuseMalformed(String pattern) {
+            if (pattern != null && WELL_FORMED.matcher(pattern).matches()) {
+                return;
+            }
+            throw SurfaceException.about(
+                SurfaceException.Reason.APPARATUS_PATTERN_MALFORMED, pattern,
+                "'" + pattern + "' is not an apparatus pattern. A pattern is one or more "
+                    + "of A-Z, a-z, 0-9, '+', '-' and '*', and '*' is the only wildcard: "
+                    + "it stands for any run of characters, at any position. The "
+                    + "underscore and the percent sign are excluded because they carry a "
+                    + "meaning of their own in the comparison the draw runs.");
+        }
+
+        private static void refuseUnbounded(String pattern) {
+            if (!ONLY_WILDCARDS.matcher(pattern).matches()) {
+                return;
+            }
+            throw SurfaceException.about(
+                SurfaceException.Reason.APPARATUS_PATTERN_UNBOUNDED, pattern,
+                "'" + pattern + "' matches every apparatus there is, which is the blind "
+                    + "draw this argument exists to refuse. Name the apparatus, or a part "
+                    + "of it such as 'agent-*'.");
+        }
+    }
+
+    /**
+     * The lease length of a claim, parsed.
+     *
+     * <p>Shared by {@link Claim} and {@link ClaimNext} because it is one rule:
+     * the two calls take the same argument and a second copy of the parse is a
+     * second place the refusal wording and the accepted forms can drift.
+     *
+     * <p>Parsed at the surface and not at the adapter, so that a malformed
+     * duration is refused in the same position in the check order as every
+     * other body fault.
+     *
+     * @throws SurfaceException when the value is absent or not a duration
+     */
+    private static Duration parseDuration(String duration) {
+        if (duration == null || duration.isBlank()) {
+            throw new SurfaceException(
+                SurfaceException.Reason.CLAIM_DURATION_MALFORMED,
+                "a claim names how long it stands, as an ISO-8601 duration such as "
+                    + "'PT1H'. There is no default: a lease length is a policy, and one "
+                    + "invented here would be a policy nobody ratified.");
+        }
+        try {
+            return Duration.parse(duration);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new SurfaceException(
+                SurfaceException.Reason.CLAIM_DURATION_MALFORMED,
+                "'" + duration + "' is not an ISO-8601 duration. 'PT1H', 'PT30M', 'P1D'.");
         }
     }
 }

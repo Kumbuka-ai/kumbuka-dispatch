@@ -464,13 +464,21 @@ public class VerbSurface {
      * <p>The atomicity is the domain's and is not reconstructed here. Building
      * this as a read followed by a claim would be a second construction of the
      * draw, in the one place that cannot make it atomic.
+     *
+     * <p><strong>The apparatus patterns are checked here and on no other
+     * path.</strong> Both adapters hand over what arrived and neither validates
+     * it: one rule, one enforcement, and it runs AFTER the scope has been
+     * resolved so that a pattern fault is refused in the position the ratified
+     * check order gives a body fault. An adapter that checked first would tell
+     * a caller its pattern was malformed for a scope it may not see.
      */
     @Transactional
     public ClaimOutcome claimNext(Actor actor, String rawScope, String rawSelector,
-                                  VerbInput.Claim request) {
+                                  VerbInput.ClaimNext request) {
         Entry in = collection(actor, rawScope, rawSelector, Access.WRITE);
+        VerbInput.ClaimNext asked = required(request);
         ExchangeService.ClaimResult claimed = exchanges.claimNext(in.scopeId(), in.selector(),
-            actor, required(request).parsed());
+            actor, new ExchangeService.ClaimTerms(asked.parsedDuration(), asked.patterns()));
 
         ExchangeAddress address = addressOf(claimed.exchange());
         LOG.infof("claim_next %s in scope %s", address, in.scopeId());

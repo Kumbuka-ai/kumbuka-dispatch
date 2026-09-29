@@ -262,7 +262,7 @@ class EveryRefusalIT {
         // open exchange would answer with that exchange instead.
         note(raised, call("dispatch_take_next", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", "satellite",
-            "duration", "PT1H")));
+            "duration", "PT1H", "apparatus", List.of("code"))));
 
         // NO_ANSWER_DELIVERED — the commissioner accepting a question.
         SurfaceFixture.asExecutor(identity);

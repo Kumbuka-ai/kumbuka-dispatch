@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -298,24 +299,35 @@ public class ExchangeService {
      * row another transaction is claiming is invisible to this one, so each
      * draw either gets an exchange nobody else is taking or gets none.
      *
+     * <h2>Why the apparatus is a filter and not a look-and-skip</h2>
+     *
+     * The patterns narrow the draw inside the locking query, so a caller drawing
+     * for {@code agent-*} never locks, and never has to step over, an exchange
+     * addressed to somebody else. Reading the next one and putting it back if
+     * the apparatus does not match would be the same verb with two extra
+     * failure modes: the row is locked for the length of the check, and a
+     * caller whose pattern matches nothing walks the whole selector.
+     *
      * @return the claimed exchange and the receipt, which is the only copy
      * @throws DispatchException with {@code NOTHING_TO_CLAIM} when the
-     *         selector holds nothing claimable, which is a different statement
-     *         from an address that does not exist
+     *         selector holds nothing claimable the patterns match, which is a
+     *         different statement from an address that does not exist
      */
     @Transactional
     public ClaimResult claimNext(UUID scopeId, String selector, Actor actor,
-                                 Duration duration) {
-        requirePositive(duration);
+                                 ClaimTerms terms) {
+        requirePositive(terms.duration());
         selectors.requireDeclared(scopeId, selector);
         Instant now = Instant.now(clock);
 
-        Exchange e = exchanges.lockNextClaimable(scopeId, selector, now)
+        Exchange e = exchanges.lockNextClaimable(scopeId, selector, terms.apparatus(), now)
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOTHING_TO_CLAIM,
-                "nothing in '" + selector + "' is claimable. Every exchange there is "
+                "nothing in '" + selector + "' addressed to " + terms.apparatus()
+                    + " is claimable. Every exchange there that those patterns match is "
                     + "terminal, still a draft, awaiting its commissioner, or effectively "
-                    + "held by somebody else. The selector exists — this is an empty draw, "
-                    + "not a missing address."));
+                    + "held by somebody else — and an exchange addressed to another "
+                    + "apparatus is not drawn at all. The selector exists — this is an "
+                    + "empty draw, not a missing address."));
 
         if (e.status() == ExchangeStatus.ACTIVE) {
             reclaim(e);
@@ -323,11 +335,42 @@ public class ExchangeService {
 
         e.apply(Transition.TAKEUP);
         String receipt = Receipt.mint();
-        e.award(actor.subject(), receipt, now.plus(duration));
+        e.award(actor.subject(), receipt, now.plus(terms.duration()));
         touch(e, actor.subject());
 
         LOG.infof("claim_next %s -> %s", e.address(), e.status().wireName());
         return new ClaimResult(e, receipt);
+    }
+
+    /**
+     * What a draw asks for: the lease length, and which apparatus it draws for.
+     *
+     * <p>One argument rather than two, because the two belong to the same act
+     * and a draw that grew a third would otherwise go on lengthening the
+     * signature of every layer it passes through.
+     *
+     * <p>The emptiness check is a defect guard and not a caller refusal. The
+     * caller's refusal is {@code APPARATUS_PATTERN_MISSING} at the surface,
+     * where the caller can be told what to send; by the time a draw is built
+     * there is no caller left to correct, and an empty list would reach the
+     * database as a filter that admits nothing and reads as an empty selector.
+     *
+     * @param apparatus patterns in the surface's pattern language, where
+     *                  {@code *} is the wildcard — never the comparison's own
+     *                  wildcard, which the persistence layer translates to
+     */
+    public record ClaimTerms(Duration duration, List<String> apparatus) {
+
+        public ClaimTerms {
+            Objects.requireNonNull(duration, "duration");
+            Objects.requireNonNull(apparatus, "apparatus");
+            if (apparatus.isEmpty()) {
+                throw new IllegalArgumentException(
+                    "a draw carries at least one apparatus pattern; an empty list is a "
+                        + "filter that admits nothing and would read as an empty selector");
+            }
+            apparatus = List.copyOf(apparatus);
+        }
     }
 
     // ----------------------------------------------------------------------
