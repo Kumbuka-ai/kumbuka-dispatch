@@ -146,9 +146,9 @@ class FreezeAndAddendaIT {
         ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
 
         Exchange first = exchanges.addAddendum(SCOPE, at, "a correction", "code",
-            LocalDate.now(), CONSOLE);
+            LocalDate.now(), CONSOLE, "what the correction says");
         Exchange second = exchanges.addAddendum(SCOPE, at, "another correction", "code",
-            LocalDate.now(), CONSOLE);
+            LocalDate.now(), CONSOLE, "what the second correction says");
 
         assertThat(first.addendumSuffix).isEqualTo("a");
         assertThat(second.addendumSuffix).isEqualTo("b");
@@ -174,7 +174,8 @@ class FreezeAndAddendaIT {
     void an_addendum_is_not_independently_drawable() {
         Exchange base = openAndSend("the exchange being corrected");
         ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
-        exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), CONSOLE);
+        exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), CONSOLE,
+            "what the correction says");
 
         ExchangeAddress addendumAddress =
             new ExchangeAddress(base.selectorName(), base.number, base.sub, "a");
@@ -191,6 +192,79 @@ class FreezeAndAddendaIT {
             .hasSize(1);
     }
 
+    /**
+     * A correction without its text is refused, and nothing is inserted.
+     *
+     * <p>Asserted in the domain and not only at the surface, because both
+     * entry points — {@code append} and {@code add_correction} — reach the
+     * insert through the same method, and a check placed at one surface is a
+     * check the other does not have.
+     *
+     * <p>Why the refusal and not a default: the column is {@code NOT NULL
+     * DEFAULT ''}, so an absent text does not fail at the database. It
+     * succeeds, into a record that is frozen at birth ({@code
+     * ck_addendum_not_draft}), unwritable afterwards ({@code
+     * refuse_frozen_writes()}), tokenless on read, and unremovable because
+     * this service has no delete verb. That record was produced twice in
+     * production before the text reached this signature.
+     */
+    @Test
+    void an_addendum_without_text_is_refused_and_nothing_is_inserted() {
+        Exchange base = openAndSend("the exchange being corrected");
+        ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
+
+        assertThatThrownBy(() -> exchanges.addAddendum(SCOPE, at, "a correction", "code",
+            LocalDate.now(), CONSOLE, null))
+            .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
+                .isEqualTo(DispatchException.Reason.ADDENDUM_TEXT_MISSING));
+
+        assertThat(exchanges.addenda(SCOPE, at))
+            .as("the refusal came before the insert: the suffix is still free, so the "
+                + "next correction is 'a' and not 'b'")
+            .isEmpty();
+    }
+
+    /**
+     * Blank is the same fault as absent.
+     *
+     * <p>Its own case because a blank string passes every null check ever
+     * written, and the record it leaves behind is byte for byte the one the
+     * production incidents left.
+     */
+    @Test
+    void an_addendum_whose_text_is_blank_is_refused_the_same_way() {
+        Exchange base = openAndSend("the exchange being corrected");
+        ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
+
+        assertThatThrownBy(() -> exchanges.addAddendum(SCOPE, at, "a correction", "code",
+            LocalDate.now(), CONSOLE, "   "))
+            .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
+                .isEqualTo(DispatchException.Reason.ADDENDUM_TEXT_MISSING));
+
+        assertThat(exchanges.addenda(SCOPE, at)).isEmpty();
+    }
+
+    /**
+     * The text survives the insert and is readable through the base.
+     *
+     * <p>An addendum is not independently drawable, so this is the only path
+     * its content has to a caller — and therefore the only place the loss was
+     * ever visible.
+     */
+    @Test
+    void an_addendum_keeps_the_text_it_was_created_with() {
+        Exchange base = openAndSend("the exchange being corrected");
+        ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
+
+        exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), CONSOLE,
+            "what the correction actually says");
+
+        assertThat(exchanges.addenda(SCOPE, at))
+            .singleElement()
+            .satisfies(a -> assertThat(a.dispatchBody)
+                .isEqualTo("what the correction actually says"));
+    }
+
     @Test
     void an_addendum_cannot_hang_from_a_draft() {
         Exchange draft = exchanges.openBracket(SCOPE, "sprint", "still provisional", "code",
@@ -198,7 +272,7 @@ class FreezeAndAddendaIT {
         ExchangeAddress at = new ExchangeAddress(draft.selectorName(), draft.number, draft.sub, null);
 
         assertThatThrownBy(() -> exchanges.addAddendum(SCOPE, at, "a correction", "code",
-            LocalDate.now(), CONSOLE))
+            LocalDate.now(), CONSOLE, "what the correction says"))
             .as("there is nothing to correct until a commitment was acquired; before that "
                 + "the exchange is simply edited")
             .isInstanceOfSatisfying(DispatchException.class, x -> assertThat(x.reason())
@@ -209,7 +283,8 @@ class FreezeAndAddendaIT {
     void terminating_the_base_cascades_onto_its_addenda_in_one_transaction() {
         Exchange base = openAndSend("the exchange being corrected");
         ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
-        exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), CONSOLE);
+        exchanges.addAddendum(SCOPE, at, "a correction", "code", LocalDate.now(), CONSOLE,
+            "what the correction says");
 
         assertThat(exchanges.addenda(SCOPE, at).get(0).status().terminal())
             .as("the addendum starts non-terminal, or the cascade below would prove nothing")
@@ -222,6 +297,38 @@ class FreezeAndAddendaIT {
                 + "behind would create an object nobody can reach and nothing can close — "
                 + "an addendum has no standing of its own to be closed through")
             .isEqualTo(ExchangeStatus.CLOSED);
+    }
+
+    /**
+     * The freeze refusal names the row it refused, letter included.
+     *
+     * <p>It did not. The message was composed from selector, number and sub
+     * and left {@code addendum_suffix} out, so a refused write to the
+     * addendum {@code sprint.N.0a} announced itself as {@code sprint.N.0} —
+     * the address of the exchange it corrects. That row is frozen too, so the
+     * sentence read true and sent every reader to the wrong object. It is how
+     * the empty-addendum defect stayed unlocated: the database was reporting
+     * the parent's address for the child's refusal.
+     *
+     * <p>Driven through raw SQL under the service role, like the other freeze
+     * probes here: the message is the trigger's and has to be right against a
+     * statement the application never built.
+     */
+    @Test
+    void the_freeze_refusal_names_the_addendum_and_not_the_exchange_it_corrects()
+            throws SQLException {
+        Exchange base = openAndSend("the exchange being corrected");
+        ExchangeAddress at = new ExchangeAddress(base.selectorName(), base.number, base.sub, null);
+        Exchange addendum = exchanges.addAddendum(SCOPE, at, "a correction", "code",
+            LocalDate.now(), CONSOLE, "what the correction says");
+
+        String parent = "sprint." + base.number + "." + base.sub;
+
+        assertThatThrownBy(() -> rewriteTitle(addendum.id, "rewritten"))
+            .as("naming the parent instead would be a true sentence about a DIFFERENT "
+                + "row, which is worse than saying nothing: the reader goes and checks "
+                + "an object that is indeed frozen and finds nothing wrong with it")
+            .hasMessageContaining(parent + "a is frozen");
     }
 
     // -----------------------------------------------------------------------

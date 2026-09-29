@@ -129,7 +129,8 @@ class NoUuidLabelsAtSurfaceIT {
 
         // append — an addendum lives beside the bracket
         Response addendum = post(SurfaceFixture.item(bracket) + "/addenda",
-            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01"));
+            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01",
+                "text", "what the correction says"));
         addendum.then().statusCode(201);
         assertNoUuid("append", addendum);
 

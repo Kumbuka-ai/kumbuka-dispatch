@@ -391,7 +391,8 @@ class CompactAnswerIT {
         @Override
         Map<String, Object> append(String id, String title) {
             Response r = given().contentType(ContentType.JSON)
-                .body(Map.of("title", title, "apparatus", "code", "date", "2026-09-01"))
+                .body(Map.of("title", title, "apparatus", "code", "date", "2026-09-01",
+                    "text", "what the correction says"))
                 .post(SurfaceFixture.item(id) + "/addenda");
             r.then().statusCode(201);
             return r.jsonPath().getMap("$");

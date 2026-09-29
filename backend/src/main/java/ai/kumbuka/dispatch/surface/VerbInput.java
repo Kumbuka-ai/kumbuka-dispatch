@@ -72,11 +72,26 @@ public final class VerbInput {
         Map<String, Object> metadata) {
     }
 
-    /** What attaches an addendum to an exchange that has already been frozen. */
+    /**
+     * What attaches an addendum, text included, to an already frozen exchange.
+     *
+     * <p>Shaped like {@link Commission} and deliberately NOT like {@link
+     * Draft}: an addendum is create-write-freeze in one act, because the row
+     * is frozen the moment it exists and there is no second call that could
+     * put the text in. {@code Draft} is what {@code create} takes, and {@code
+     * create} omits the text on purpose — the initial-draft moment belongs to
+     * the author, and an addendum has no such moment.
+     *
+     * <p>The text was missing from this record until 2026-09-29, and with it
+     * missing there was no field anywhere on the surface for an addendum's
+     * content. Every append produced an empty, frozen, unfillable record and
+     * answered 201.
+     */
     public record Addendum(
         String title,
         String apparatus,
-        LocalDate date) {
+        LocalDate date,
+        String text) {
     }
 
     /**

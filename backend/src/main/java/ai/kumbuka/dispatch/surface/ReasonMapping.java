@@ -89,7 +89,8 @@ public final class ReasonMapping {
             // different one.
             case IDEMPOTENCY_KEY_REUSED -> RefusalCode.IDEMPOTENCY_KEY_REUSED;
             case FILTER_FIELD_UNKNOWN -> RefusalCode.ARGUMENT_UNKNOWN;
-            case UPDATE_EMPTY, RETURN_DRAFT_REQUIRED -> RefusalCode.ARGUMENT_MISSING;
+            case UPDATE_EMPTY, RETURN_DRAFT_REQUIRED, ADDENDUM_TEXT_MISSING ->
+                RefusalCode.ARGUMENT_MISSING;
 
             // Ours, not the caller's.
             case SESSION_NOT_BOUND -> RefusalCode.UNEXPECTED_FAILURE;
