@@ -270,6 +270,31 @@ class ExchangeSurfaceIT {
             .then().statusCode(200).body("fields.state", equalTo("open"));
     }
 
+    /**
+     * A write that names no field is refused, and the refusal does not
+     * pretend to know which field was meant.
+     *
+     * <p>The counterpart of the addendum's refusal, and here so that the
+     * general wording has a probe of its own: {@code update} has several
+     * required-ish values and the kernel's reason identifies none of them, so
+     * the honest sentence is the general one. Asserting only the specific
+     * branch would leave the fallback as a line nobody has ever seen run.
+     */
+    @Test
+    void an_update_that_writes_nothing_is_refused_without_naming_a_field() {
+        String bracket = openBracket();
+        String token = get(SurfaceFixture.item(bracket)).header("ETag");
+
+        given().contentType(ContentType.JSON)
+            .header("If-Match", token)
+            .body(Map.of())
+            .patch(SurfaceFixture.item(bracket))
+            .then()
+            .statusCode(400)
+            .body("reason", equalTo("ARGUMENT_MISSING"))
+            .body("message", containsString("a required value"));
+    }
+
     // =======================================================================
     // append
     // =======================================================================

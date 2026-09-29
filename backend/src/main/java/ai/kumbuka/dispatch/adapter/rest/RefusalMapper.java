@@ -322,29 +322,30 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                     call, "the duration given");
                 case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(Surface.REST, call,
                     THE_ONE_GIVEN, List.of("see the service's declaration"));
-                case ARGUMENT_MISSING -> argumentMissing(call, e);
+                case ARGUMENT_MISSING -> e.reason()
+                    == DispatchException.Reason.ADDENDUM_TEXT_MISSING
+                    ? missingAddendumText(call)
+                    : Refused.argumentMissing(Surface.REST, call,
+                        "a required value", "a value this call cannot run without");
                 case ARGUMENT_INVALID -> argumentInvalid(call, e);
                 default -> UnexpectedFailures.refuse(Surface.REST, call, address, e);
             };
         }
 
         /**
-         * A required argument that did not arrive, named where it can be.
+         * The addendum arrived without its text, said so the caller can act
+         * on it.
          *
          * <p>A refusal is worth only what its remedy is worth, and "a
          * required value is missing" has none: it leaves the caller to guess
-         * which. Where the kernel's reason identifies the argument, this
-         * names it.
+         * which. This is the one reason behind this code that identifies its
+         * own argument, so it is the one that gets a sentence of its own.
          */
-        private static Refused argumentMissing(String call, DispatchException e) {
-            return switch (e.reason()) {
-                case ADDENDUM_TEXT_MISSING -> Refused.argumentMissing(Surface.REST, call,
-                    "text", "the addendum's content, which arrives with this call or "
-                        + "never — the addendum is frozen the moment it exists, so no "
-                        + "later update can fill it");
-                default -> Refused.argumentMissing(Surface.REST, call,
-                    "a required value", "a value this call cannot run without");
-            };
+        private static Refused missingAddendumText(String call) {
+            return Refused.argumentMissing(Surface.REST, call, "text",
+                "the addendum's content, which arrives with this call or never — the "
+                    + "addendum is frozen the moment it exists, so no later update can "
+                    + "fill it");
         }
 
         /**

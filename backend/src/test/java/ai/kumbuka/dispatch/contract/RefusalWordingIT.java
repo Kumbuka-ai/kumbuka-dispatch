@@ -145,6 +145,39 @@ class RefusalWordingIT {
      * were, and the path they took out was the one refusal whose pattern
      * accepts free text.
      */
+    /**
+     * A correction whose text is blank is refused, and the refusal names the
+     * argument.
+     *
+     * <p>Blank and not absent, because that is the case a null check does not
+     * catch: whitespace passes every one ever written, and on the REST side it
+     * is what produced twenty-three empty, frozen, unfillable addenda before
+     * the kernel gained a check of its own.
+     *
+     * <p>What this pins is that the assistant surface never needed that
+     * kernel check to behave: {@code CallArguments.require} treats a blank
+     * required argument as absent and answers with the argument's name and
+     * its declared description. The claim is about the WORDING — "a required
+     * value is missing" would leave the caller to guess which, and a caller
+     * that has to guess retries the same call.
+     */
+    @Test
+    void a_correction_with_a_blank_text_names_the_argument_it_is_missing() {
+        String address = commission();
+
+        Response refused = call("dispatch_add_correction", Map.of(
+            "address", address,
+            "fields", Map.of("title", "a correction", "text", "   ")));
+
+        String body = refused.asString();
+        assertThat(body).contains("ARGUMENT_MISSING");
+        assertThat(body)
+            .as("the refusal names the argument and repeats what it is for, because the "
+                + "caller's remedy is the whole worth of a refusal")
+            .contains("needs text")
+            .contains("what the correction says");
+    }
+
     @Test
     void no_message_carries_a_kernel_sentence_or_a_short_form_address() {
         for (Response refused : everyRefusalThisProbeCanProvoke()) {
