@@ -107,7 +107,7 @@ public class ExchangeService {
     }
 
     /**
-     * Attaches an addendum to an exchange that has already been frozen.
+     * Attaches an addendum, with its text, to an exchange already frozen.
      *
      * <p>The suffix is a letter on the exchange it corrects, never a regular
      * sub-number: a regular number would make the addendum an ordinary child
@@ -115,28 +115,54 @@ public class ExchangeService {
      * and counts in the terminality check that governs whether the bracket
      * may close. The correction stays attached to what it corrects without
      * manufacturing a second exchange.
-     */
-    @Transactional
-    public Exchange addAddendum(UUID scopeId, ExchangeAddress base, String title,
-                                String apparatus, LocalDate date, Actor actor) {
-        return addAddendum(scopeId, base, title, apparatus, date, actor, null);
-    }
-
-    /**
-     * The same, with the correction's text.
      *
-     * <p>The text arrives WITH the insert and is never written afterwards. An
-     * addendum is inserted already frozen — it corrects something that was
-     * committed, so there is no moment at which it is a draft — and the
-     * database enforces that with a trigger: measured 2026-09-18, writing the
-     * body in a second statement is refused with "exchange sprint.1.0 is
-     * frozen: title, dispatch_body, apparatus, date and sent_at cannot change
-     * after send". The trigger is right and the two-step write was wrong.
+     * <p><strong>The text arrives WITH the insert and can never be written
+     * afterwards.</strong> An addendum is inserted already frozen — it
+     * corrects something that was committed, so there is no moment at which
+     * it is a draft — and the database says so twice: {@code
+     * ck_addendum_not_draft} forbids it the draft state at all, and {@code
+     * refuse_frozen_writes()} refuses every later write to its body. Measured
+     * 2026-09-18: writing the body in a second statement is refused with
+     * "exchange sprint.1.0 is frozen: title, dispatch_body, apparatus, date
+     * and sent_at cannot change after send". The trigger is right and the
+     * two-step write was wrong.
+     *
+     * <h2>Why there is no overload without the text</h2>
+     *
+     * There was one, and it is the whole of the defect this signature exists
+     * to make unrepeatable. {@code VerbSurface.append} called it, so every
+     * append over REST and over MCP inserted an addendum whose body was the
+     * column default — an empty string. The caller was answered 201. The
+     * record was frozen at birth, so no update could fill it; its read hands
+     * out no conflict token, so no update could even be attempted; and this
+     * service has no delete verb, so it could not be removed either. Twice in
+     * production: satellite/29.4a on 2026-09-27 and satellite/29.17a on
+     * 2026-09-29, both empty and both permanent.
+     *
+     * <p>A default value would have been the other way to write this, and it
+     * is the way that produced the incident: a contentless correction is not
+     * a state this service may be left in, so the absent text is refused
+     * rather than substituted.
+     *
+     * @throws DispatchException {@code ADDENDUM_TEXT_MISSING} when the text
+     *         is absent or blank — before anything is inserted.
      */
     @Transactional
     public Exchange addAddendum(UUID scopeId, ExchangeAddress base, String title,
                                 String apparatus, LocalDate date, Actor actor,
                                 String text) {
+        if (text == null || text.isBlank()) {
+            // Checked FIRST, and in the domain rather than at the surface:
+            // both entry points (append and add_correction) reach the insert
+            // through here, and a check at one surface is a check the other
+            // does not have. Before the base is even resolved, because
+            // nothing about the base can make an empty correction admissible.
+            throw new DispatchException(DispatchException.Reason.ADDENDUM_TEXT_MISSING,
+                "an addendum carries the correction's text, and it arrives with this "
+                    + "call or never: the record is frozen the moment it exists, so no "
+                    + "later update can fill it and this service has no verb to remove "
+                    + "it. Send the text as 'text'.");
+        }
         if (base.isAddendum()) {
             throw new DispatchException(DispatchException.Reason.ADDENDUM_MALFORMED,
                 "an addendum corrects an exchange, not another addendum: " + base);

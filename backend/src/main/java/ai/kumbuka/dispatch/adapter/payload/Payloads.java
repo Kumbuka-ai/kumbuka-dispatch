@@ -49,7 +49,7 @@ public final class Payloads {
     /** The addendum behind an append, or null when no body arrived. */
     public static VerbInput.Addendum addendum(AppendRequest request) {
         return request == null ? null : new VerbInput.Addendum(
-            request.title(), request.apparatus(), request.date());
+            request.title(), request.apparatus(), request.date(), request.text());
     }
 
     /** The update behind a PATCH, or null when no body arrived. */
@@ -87,11 +87,20 @@ public final class Payloads {
         Map<String, Object> metadata) {
     }
 
-    /** What a caller supplies to attach an addendum to a frozen exchange. */
+    /**
+     * What a caller supplies to attach an addendum to a frozen exchange.
+     *
+     * <p>{@code text} is not optional and has no default. An addendum is
+     * inserted already frozen, so a call that does not carry the text is a
+     * call whose content can never arrive — the domain refuses it with {@code
+     * ADDENDUM_MALFORMED} rather than inserting an empty record that no verb
+     * of this service could afterwards fill or remove.
+     */
     public record AppendRequest(
         String title,
         String apparatus,
-        LocalDate date) {
+        LocalDate date,
+        String text) {
     }
 
     /**

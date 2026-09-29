@@ -31,6 +31,17 @@ public class DispatchException extends RuntimeException {
         SELECTOR_IN_USE,
         /** An addendum was addressed with a regular sub-number instead of a letter. */
         ADDENDUM_MALFORMED,
+        /**
+         * An addendum was attached without its text.
+         *
+         * <p>Its own reason and not {@link #ADDENDUM_MALFORMED}, because the
+         * remedy is different and a refusal is only worth anything if it
+         * carries one: a malformed addendum is an address to correct, and
+         * this is an argument to supply. Under the shared reason the caller
+         * was told "a value given is not a value this call takes" and sent
+         * looking at the address, which was right.
+         */
+        ADDENDUM_TEXT_MISSING,
         /** An addendum was asked for on its own. It is never independently drawable. */
         ADDENDUM_NOT_DRAWABLE,
         /** Letter suffixes past `z` are deferred, so this is refused rather than wrapped. */

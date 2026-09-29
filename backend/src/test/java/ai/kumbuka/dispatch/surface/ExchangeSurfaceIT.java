@@ -14,6 +14,7 @@ import java.util.Map;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 
 /**
@@ -279,7 +280,8 @@ class ExchangeSurfaceIT {
         send(bracket);
 
         Response addendum = post(SurfaceFixture.item(bracket) + "/addenda",
-            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01"));
+            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01",
+                "text", "what the correction says"));
 
         addendum.then().statusCode(201);
         assertThat(addendum.jsonPath().getString("address"))
@@ -298,12 +300,104 @@ class ExchangeSurfaceIT {
             .body("address", equalTo(SELECTOR_PREFIX + number(bracket) + ".0a"));
     }
 
+    /**
+     * The addendum's text arrives WITH the append and is readable afterwards.
+     *
+     * <p>Asserted on the way back out rather than on the 201: the 201 carries
+     * the compact shape, which has no body at all, so an append that dropped
+     * its text would answer indistinguishably from one that kept it. That is
+     * how the loss went unnoticed twice in production — 2026-09-27 on
+     * satellite/29.4a and 2026-09-29 on satellite/29.17a, both frozen, both
+     * empty, neither fillable by any call of this service.
+     *
+     * <p>Why the text cannot arrive later: an addendum is inserted already
+     * sent (ck_addendum_not_draft forbids it a draft state), and from that
+     * moment refuse_frozen_writes() refuses every write to its body. An
+     * addendum's read hands out no conflict token either, so update has
+     * nothing to present. The text arrives here or it never arrives.
+     */
+    @Test
+    void append_carries_the_addendums_text_and_reads_it_back() {
+        String bracket = openBracket();
+        send(bracket);
+
+        post(SurfaceFixture.item(bracket) + "/addenda",
+            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01",
+                "text", "what the correction actually says"))
+            .then().statusCode(201);
+
+        get(SurfaceFixture.item(number(bracket) + ".0a"))
+            .then()
+            .statusCode(200)
+            .body("fields.dispatch_text", equalTo("what the correction actually says"));
+    }
+
+    /**
+     * An append that cannot carry its content is refused, and nothing is
+     * written.
+     *
+     * <p>Fail loud rather than accept a default. The column is
+     * {@code NOT NULL DEFAULT ''}, so a missing text does not fail at the
+     * database — it succeeds into a frozen, contentless record that this
+     * service has no verb to remove.
+     *
+     * <p>The refusal names the argument. {@code ARGUMENT_MISSING} on the wire
+     * and {@code ADDENDUM_TEXT_MISSING} in the kernel, rather than the
+     * addendum's shared {@code ADDENDUM_MALFORMED}: that one maps to "a value
+     * given is not a value this call takes", which sends the caller to check
+     * the address — and the address was right.
+     */
+    @Test
+    void append_without_text_is_refused_and_no_addendum_comes_into_being() {
+        String bracket = openBracket();
+        send(bracket);
+
+        post(SurfaceFixture.item(bracket) + "/addenda",
+            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01"))
+            .then()
+            .statusCode(400)
+            .body("reason", equalTo("ARGUMENT_MISSING"))
+            // The remedy is in the refusal or the refusal is worth nothing:
+            // an agent told only "a required value is missing" retries the
+            // same call.
+            .body("message", containsString("text"));
+
+        // The suffix is still free, which is the assertion that matters: a
+        // refusal that had already inserted the row would leave the same
+        // unfillable object the call is supposed to prevent.
+        get(SurfaceFixture.item(number(bracket) + ".0a")).then().statusCode(404);
+    }
+
+    /**
+     * Blank is the same fault as absent, and is refused the same way.
+     *
+     * <p>Separately asserted because a blank string passes every null check
+     * ever written, and the record it would leave behind is byte for byte the
+     * one the production incidents left.
+     */
+    @Test
+    void append_with_a_blank_text_is_refused_for_the_same_reason() {
+        String bracket = openBracket();
+        send(bracket);
+
+        post(SurfaceFixture.item(bracket) + "/addenda",
+            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01",
+                "text", "   "))
+            .then()
+            .statusCode(400)
+            .body("reason", equalTo("ARGUMENT_MISSING"))
+            .body("message", containsString("text"));
+
+        get(SurfaceFixture.item(number(bracket) + ".0a")).then().statusCode(404);
+    }
+
     @Test
     void append_on_a_draft_is_refused_because_there_is_nothing_committed_to_correct() {
         String bracket = openBracket();
 
         post(SurfaceFixture.item(bracket) + "/addenda",
-            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01"))
+            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01",
+                "text", "what the correction says"))
             .then()
             .statusCode(409)
             .body("reason", equalTo("STATE_DOES_NOT_ALLOW"));
@@ -711,7 +805,8 @@ class ExchangeSurfaceIT {
         String bracket = openBracket();
         send(bracket);
         post(SurfaceFixture.item(bracket) + "/addenda",
-            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01"))
+            Map.of("title", "a correction", "apparatus", "code", "date", "2026-09-01",
+                "text", "what the correction says"))
             .then().statusCode(201);
 
         Response read = get(SurfaceFixture.item(number(bracket) + ".0a"));

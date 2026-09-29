@@ -305,6 +305,16 @@ public class VerbSurface {
     // append — additive, and never removable afterwards
     // ======================================================================
 
+    /**
+     * Attaches an addendum, with its text, to an exchange already frozen.
+     *
+     * <p>The text travels in the same call and there is no second call that
+     * could add it: the row is frozen from the moment it exists, so the
+     * domain refuses an absent or blank text instead of inserting a record
+     * nothing could afterwards fill. Until 2026-09-29 this method called an
+     * overload that took no text at all, and every append silently produced
+     * exactly that unfillable record.
+     */
     @Transactional
     public Result append(Actor actor, String rawScope, String rawSelector, String rawId,
                          VerbInput.Addendum request) {
@@ -312,7 +322,7 @@ public class VerbSurface {
         VerbInput.Addendum body = required(request);
 
         Exchange addendum = exchanges.addAddendum(in.scopeId(), in.address(), body.title(),
-            body.apparatus(), body.date(), actor);
+            body.apparatus(), body.date(), actor, body.text());
 
         LOG.infof("append %s in scope %s", addendum.address(), in.scopeId());
         return at(in, addressOf(addendum));

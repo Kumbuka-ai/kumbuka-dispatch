@@ -322,10 +322,28 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                     call, "the duration given");
                 case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(Surface.REST, call,
                     THE_ONE_GIVEN, List.of("see the service's declaration"));
-                case ARGUMENT_MISSING -> Refused.argumentMissing(Surface.REST, call,
-                    "a required value", "a value this call cannot run without");
+                case ARGUMENT_MISSING -> argumentMissing(call, e);
                 case ARGUMENT_INVALID -> argumentInvalid(call, e);
                 default -> UnexpectedFailures.refuse(Surface.REST, call, address, e);
+            };
+        }
+
+        /**
+         * A required argument that did not arrive, named where it can be.
+         *
+         * <p>A refusal is worth only what its remedy is worth, and "a
+         * required value is missing" has none: it leaves the caller to guess
+         * which. Where the kernel's reason identifies the argument, this
+         * names it.
+         */
+        private static Refused argumentMissing(String call, DispatchException e) {
+            return switch (e.reason()) {
+                case ADDENDUM_TEXT_MISSING -> Refused.argumentMissing(Surface.REST, call,
+                    "text", "the addendum's content, which arrives with this call or "
+                        + "never — the addendum is frozen the moment it exists, so no "
+                        + "later update can fill it");
+                default -> Refused.argumentMissing(Surface.REST, call,
+                    "a required value", "a value this call cannot run without");
             };
         }
 
@@ -506,7 +524,8 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
         private static int statusOf(DispatchException.Reason reason) {
             return switch (reason) {
                 // The call is malformed, and no scope had to be known to say so.
-                case ADDENDUM_MALFORMED, NUMBER_NOT_ACCEPTED, HOLDER_NOT_ACCEPTED,
+                case ADDENDUM_MALFORMED, ADDENDUM_TEXT_MISSING,
+                     NUMBER_NOT_ACCEPTED, HOLDER_NOT_ACCEPTED,
                      CLAIM_DURATION_NOT_POSITIVE,
                      UPDATE_EMPTY, RETURN_DRAFT_REQUIRED -> 400;
 

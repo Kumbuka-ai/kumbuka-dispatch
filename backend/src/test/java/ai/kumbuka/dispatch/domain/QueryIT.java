@@ -197,7 +197,7 @@ class QueryIT {
     void addenda_are_not_listed() {
         Exchange base = openAndSend("the base");
         Exchange addendum = exchanges.addAddendum(SCOPE, addressOf(base), "a correction",
-            "code", LocalDate.now(), CONSOLE);
+            "code", LocalDate.now(), CONSOLE, "what the correction says");
 
         List<String> listed = addressesOf(
             exchanges.query(SCOPE, "probe-scope", SELECTOR, QueryFilter.none(), CONSOLE));

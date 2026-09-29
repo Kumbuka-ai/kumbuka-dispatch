@@ -111,8 +111,7 @@ final class Refusals {
             return argumentInvalid(e, verb);
         }
         if (code == RefusalCode.ARGUMENT_MISSING) {
-            return Refused.argumentMissing(SURFACE, verb.call(), ARG_FIELDS,
-                "the values this call writes");
+            return argumentMissing(e, verb);
         }
         if (code == RefusalCode.ARGUMENT_UNKNOWN) {
             // The kernel names what it refused in its offenders list — the
@@ -183,6 +182,24 @@ final class Refusals {
                     + "admits");
             default -> Refused.argumentInvalid(SURFACE, verb.call(), ARG_FIELDS,
                 "the values given", "one of them is not a value this call takes");
+        };
+    }
+
+    /**
+     * A required argument that did not arrive, named where it can be.
+     *
+     * <p>The mirror of the REST surface's branch, for the same reason: a
+     * refusal whose remedy the caller has to guess is a refusal that gets
+     * retried unchanged.
+     */
+    private static Refused argumentMissing(DispatchException e, ProcessVerb verb) {
+        return switch (e.reason()) {
+            case ADDENDUM_TEXT_MISSING -> Refused.argumentMissing(SURFACE, verb.call(),
+                "text", "the correction's content, which arrives with this call or "
+                    + "never — a correction is frozen the moment it exists, so no "
+                    + "later write can fill it");
+            default -> Refused.argumentMissing(SURFACE, verb.call(), ARG_FIELDS,
+                "the values this call writes");
         };
     }
 
@@ -290,8 +307,7 @@ final class Refusals {
 
             case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(SURFACE, verb.call(),
                 firstUnknown(verb, arguments), verb.argumentNames());
-            case ARGUMENT_MISSING -> Refused.argumentMissing(SURFACE, verb.call(), ARG_FIELDS,
-                "the values this call writes");
+            case ARGUMENT_MISSING -> argumentMissing(e, verb);
             case ARGUMENT_INVALID -> argumentInvalid(e, verb);
 
             // Every remaining code is raised directly, never mapped here. A
