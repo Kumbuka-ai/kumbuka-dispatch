@@ -77,6 +77,13 @@ public class McpAdapter {
     private static final String ARG_SELECTOR = "selector";
     private static final String ARG_ADDRESS = "address";
     private static final String ARG_DURATION = "duration";
+    /**
+     * One name, two placements: a top-level list of patterns on the draw, and a
+     * written field on a commission. It is the same argument name either way, so
+     * it is one constant — the placement is carried by the reader that fetches
+     * it, not by a second spelling of the name.
+     */
+    private static final String ARG_APPARATUS = "apparatus";
     private static final String ARG_RECEIPT = "receipt";
     private static final String ARG_CONFLICT_TOKEN = "conflict_token";
     private static final String ARG_IDEMPOTENCY_KEY = "idempotency_key";
@@ -237,7 +244,7 @@ public class McpAdapter {
 
         VerbInput.Commission body = new VerbInput.Commission(
             in.requiredField("title"),
-            in.requiredField("apparatus"),
+            in.requiredField(ARG_APPARATUS),
             in.requiredField("text"),
             in.optionalDateField("date", LocalDate.now()),
             in.metadataField().orElse(null));
@@ -298,7 +305,8 @@ public class McpAdapter {
     private Object takeNext(Actor actor, CallArguments in) {
         VerbSurface.ClaimOutcome claimed = verbs.claimNext(actor,
             in.requiredTop(ARG_SCOPE), in.requiredTop(ARG_SELECTOR),
-            new VerbInput.Claim(in.requiredTop(ARG_DURATION)));
+            new VerbInput.ClaimNext(in.requiredTop(ARG_DURATION),
+                in.listTop(ARG_APPARATUS)));
         return withReceipt(claimed);
     }
 

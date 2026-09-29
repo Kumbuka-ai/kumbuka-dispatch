@@ -54,6 +54,17 @@ public class ExchangeRepository {
 
     private static final String P_SUB = "sub";
 
+    /**
+     * The prefix of the draw's apparatus parameters, numbered from zero.
+     *
+     * <p>A prefix and an index rather than one parameter holding a list: the
+     * comparison is {@code LIKE} and there is no list form of it. The number of
+     * conjuncts therefore comes from the size of the caller's list, and that
+     * size is the only caller-derived thing that reaches the query text —
+     * every pattern itself travels as a bound parameter.
+     */
+    private static final String P_APPARATUS = "ap";
+
     @Inject EntityManager em;
 
     // ----------------------------------------------------------------------
@@ -238,31 +249,79 @@ public class ExchangeRepository {
      * driver may hand back a UUID or the string of one depending on how the
      * column is read, and a cast that is right today is a
      * {@code ClassCastException} the day that changes.
+     *
+     * @param apparatusPatterns the patterns the drawn exchange's apparatus must
+     *                          match, at least one, as alternatives. In the
+     *                          surface's pattern language, where {@code *} is
+     *                          the wildcard; the translation to the comparison's
+     *                          own wildcard happens here and nowhere else
      */
     @Transactional
-    public Optional<Exchange> lockNextClaimable(UUID scopeId, String selector, Instant now) {
-        List<?> ids = em.createNativeQuery("""
-                SELECT e.id FROM dispatch.exchange e
-                JOIN dispatch.selector s ON s.id = e.selector_id
-                WHERE e.scope_id = :scope
-                  AND s.name = :sel
-                  AND e.addendum_suffix IS NULL
-                  AND (e.status = 'open'
-                       OR (e.status = 'active' AND e.claim_expires_at <= :now))
-                ORDER BY e.number, e.sub
-                LIMIT 1
-                FOR UPDATE OF e SKIP LOCKED
-                """)
+    public Optional<Exchange> lockNextClaimable(UUID scopeId, String selector,
+                                               List<String> apparatusPatterns, Instant now) {
+        if (apparatusPatterns.isEmpty()) {
+            // Not a refusal: the caller's refusal happened at the surface. This
+            // is the guard that keeps a defect from reaching the database as
+            // `AND ()`, which is a syntax error answered as an unexpected
+            // failure rather than as the empty draw it would look like.
+            throw new IllegalArgumentException(
+                "a draw filters on at least one apparatus pattern");
+        }
+
+        StringBuilder sql = new StringBuilder("""
+            SELECT e.id FROM dispatch.exchange e
+            JOIN dispatch.selector s ON s.id = e.selector_id
+            WHERE e.scope_id = :scope
+              AND s.name = :sel
+              AND e.addendum_suffix IS NULL
+              AND (e.status = 'open'
+                   OR (e.status = 'active' AND e.claim_expires_at <= :now))
+            """);
+        sql.append("  AND (");
+        for (int i = 0; i < apparatusPatterns.size(); i++) {
+            sql.append(i == 0 ? "" : " OR ")
+                .append("e.apparatus LIKE :").append(P_APPARATUS).append(i);
+        }
+        sql.append(")\n");
+        sql.append("""
+            ORDER BY e.number, e.sub
+            LIMIT 1
+            FOR UPDATE OF e SKIP LOCKED
+            """);
+
+        var query = em.createNativeQuery(sql.toString())
             .setParameter(P_SCOPE, scopeId)
             .setParameter(P_SELECTOR, selector)
-            .setParameter("now", java.sql.Timestamp.from(now))
-            .getResultList();
+            .setParameter("now", java.sql.Timestamp.from(now));
+        for (int i = 0; i < apparatusPatterns.size(); i++) {
+            query.setParameter(P_APPARATUS + i, likeExpression(apparatusPatterns.get(i)));
+        }
 
+        List<?> ids = query.getResultList();
         if (ids.isEmpty()) {
             return Optional.empty();
         }
         return Optional.ofNullable(
             em.find(Exchange.class, ((Number) ids.get(0)).longValue()));
+    }
+
+    /**
+     * One apparatus pattern as the comparison reads it.
+     *
+     * <p>{@code *} becomes {@code %} and nothing else changes. Nothing is
+     * escaped, and that is admissible only because of the character rule the
+     * surface enforces: a pattern is letters, digits, {@code +}, {@code -} and
+     * {@code *}, so neither {@code %} nor {@code _} — the two characters
+     * {@code LIKE} reads as wildcards — can be in one. The rule and this
+     * translation are two halves of one decision, and the refusal of
+     * {@code agent-%} and {@code agent_code} at the entrance is what backs it.
+     *
+     * <p>{@code LIKE} rather than {@code ILIKE}: an apparatus value is an
+     * identifier the scope's operator gave out, and matching {@code Agent-Code}
+     * against {@code agent-*} would make two distinct values one.
+     */
+    private static String likeExpression(String pattern) {
+        return pattern.replace('*', '%');
     }
 
     // ----------------------------------------------------------------------

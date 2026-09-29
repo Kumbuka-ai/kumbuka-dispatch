@@ -235,9 +235,11 @@ class SurfaceConformanceIT {
             case "create", "append" -> Map.of(
                 "title", "a probe", "apparatus", "code", "date", "2026-09-01");
             case "update" -> Map.of("draft", "a probe");
-            // claim_next takes the same argument as claim: the draw is a claim
-            // whose target is chosen by position rather than named.
-            case "claim", "claim_next" -> Map.of("duration", "PT1H");
+            case "claim" -> Map.of("duration", "PT1H");
+            // claim_next takes the claim's argument and one of its own: the draw
+            // is a claim whose target is chosen by position rather than named,
+            // and the apparatus pattern is what bounds the set it picks from.
+            case "claim_next" -> Map.of("duration", "PT1H", "apparatus", List.of("code"));
             default -> Map.of();
         };
     }

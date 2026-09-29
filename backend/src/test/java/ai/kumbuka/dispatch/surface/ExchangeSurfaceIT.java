@@ -10,6 +10,7 @@ import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static io.restassured.RestAssured.given;
@@ -462,7 +463,8 @@ class ExchangeSurfaceIT {
         // other case left behind — which is the verb working, not a defect.
         // The selection order is asserted where it can be: against a tenant of
         // its own, in the domain probe.
-        post(SurfaceFixture.collection() + ":claim_next", Map.of("duration", "PT1H"))
+        post(SurfaceFixture.collection() + ":claim_next",
+                Map.of("duration", "PT1H", "apparatus", List.of("code")))
             .then()
             .statusCode(200)
             .body("exchange.address", org.hamcrest.Matchers.containsString(
@@ -482,7 +484,7 @@ class ExchangeSurfaceIT {
     @Test
     void claim_next_on_a_selector_with_nothing_claimable_refuses_typed() {
         post("/api/" + SurfaceFixture.SCOPE + "/satellite:claim_next",
-                Map.of("duration", "PT1H"))
+                Map.of("duration", "PT1H", "apparatus", List.of("code")))
             .then()
             .statusCode(409)
             .body("reason", equalTo("NOTHING_TO_TAKE"));

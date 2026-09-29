@@ -18,9 +18,15 @@ package ai.kumbuka.dispatch.surface;
  * @param description what it is, in one sentence; also the {@code {what}} of
  *                    an {@code ARGUMENT_MISSING} refusal, which is why it
  *                    reads as a noun phrase rather than an instruction
+ * @param itemPattern for a {@link #ARRAY} argument, the regular expression
+ *                    every element obeys; null for every other argument. It
+ *                    travels into the published schema so a conforming client
+ *                    can refuse a malformed element before sending it — the
+ *                    schema is a description and the surface is the
+ *                    enforcement, and this is the description's half
  */
 public record Argument(String name, String type, boolean required, Placement placement,
-                       String description) {
+                       String description, String itemPattern) {
 
     /**
      * The JSON Schema type every argument of this surface has.
@@ -31,6 +37,20 @@ public record Argument(String name, String type, boolean required, Placement pla
      * single exception and declares its own type.
      */
     public static final String STRING = "string";
+
+    /**
+     * The one argument of this surface that is not a scalar: a list of
+     * patterns.
+     *
+     * <p>The exception is narrow and earned. {@code dispatch_take_next} draws
+     * from a set and has to say which part of that set — several alternatives
+     * at once, because a controller that serves two apparatus values would
+     * otherwise have to poll twice and would draw them in the wrong order. A
+     * comma-separated string would carry the same cardinality while hiding it
+     * from the schema, which is how a caller comes to send a list the surface
+     * reads as one long name.
+     */
+    public static final String ARRAY = "array";
 
     /** Where an argument sits in the call. */
     public enum Placement {
@@ -54,12 +74,24 @@ public record Argument(String name, String type, boolean required, Placement pla
     }
 
     public static Argument top(String name, String type, boolean required, String description) {
-        return new Argument(name, type, required, Placement.TOP, description);
+        return new Argument(name, type, required, Placement.TOP, description, null);
     }
 
     public static Argument field(String name, String type, boolean required,
                                  String description) {
-        return new Argument(name, type, required, Placement.FIELDS, description);
+        return new Argument(name, type, required, Placement.FIELDS, description, null);
+    }
+
+    /**
+     * A top-level list of strings, every element of which obeys one pattern.
+     *
+     * <p>Always required, because the only such argument there is exists to
+     * stop a call being made without it. An optional list of patterns would be
+     * an argument whose absence means "match everything", which is precisely
+     * the default the pattern rule refuses.
+     */
+    public static Argument topList(String name, String itemPattern, String description) {
+        return new Argument(name, ARRAY, true, Placement.TOP, description, itemPattern);
     }
 
     public boolean isField() {

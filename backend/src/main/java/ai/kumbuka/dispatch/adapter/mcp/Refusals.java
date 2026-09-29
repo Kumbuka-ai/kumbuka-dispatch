@@ -49,6 +49,7 @@ final class Refusals {
     private static final String ARG_FIELDS = "fields";
     private static final String ARG_ADDRESS = "address";
     private static final String ARG_SCOPE = "scope";
+    private static final String ARG_APPARATUS = "apparatus";
 
     /** What an address reads as when the call named none. */
     private static final String NO_ADDRESS = "the address given";
@@ -201,6 +202,25 @@ final class Refusals {
             case CLAIM_DURATION_MALFORMED -> Refused.claimDurationInvalid(SURFACE,
                 verb.call(), String.valueOf(arguments.get("duration")));
 
+            // The draw's apparatus filter. Three reasons and not one, because
+            // the three send a caller to three different corrections: supply
+            // the argument, correct a character, or narrow a pattern that is
+            // well spelled and says everything.
+            case APPARATUS_PATTERN_MISSING -> Refused.argumentMissing(SURFACE, verb.call(),
+                ARG_APPARATUS,
+                "which apparatus to draw for, as one or more patterns such as "
+                    + "['agent-*']. There is no default, because the default would be "
+                    + "every apparatus");
+            case APPARATUS_PATTERN_MALFORMED -> Refused.argumentInvalid(SURFACE, verb.call(),
+                ARG_APPARATUS, String.valueOf(arguments.get(ARG_APPARATUS)),
+                "a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*', and '*' is "
+                    + "the only wildcard; the underscore and the percent sign carry a "
+                    + "meaning of their own in the comparison and are excluded");
+            case APPARATUS_PATTERN_UNBOUNDED -> Refused.argumentInvalid(SURFACE, verb.call(),
+                ARG_APPARATUS, String.valueOf(arguments.get(ARG_APPARATUS)),
+                "a pattern of nothing but '*' matches every apparatus, which is the blind "
+                    + "draw the argument exists to refuse");
+
             case CONFLICT_TOKEN_MISSING -> Refused.conflictToken(SURFACE,
                 RefusalCode.CONFLICT_TOKEN_MISSING, verb.call(), addressIn(arguments));
             case CONFLICT_TOKEN_STALE -> Refused.conflictToken(SURFACE,
@@ -217,6 +237,14 @@ final class Refusals {
             // this surface — no process verb maps onto them — so reaching one
             // is a defect in the routing rather than a rule the caller broke.
             case VERB_NOT_CARRIED, WITHDRAWAL_VIA_CONSOLE_ONLY -> UnexpectedFailures.refuse(
+                SURFACE, verb.call(), addressIn(arguments), e);
+
+            // Unreachable from here, and for a reason this surface can state:
+            // CallArguments closes both levels of every call before a value is
+            // read, so a field this surface does not declare is refused with
+            // ARGUMENT_UNKNOWN long before a body shape is built. Reaching it
+            // is a defect in the routing, not a rule the caller broke.
+            case BODY_FIELD_UNKNOWN -> UnexpectedFailures.refuse(
                 SURFACE, verb.call(), addressIn(arguments), e);
         };
     }

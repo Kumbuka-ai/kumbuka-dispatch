@@ -124,6 +124,35 @@ final class CallArguments {
         return string(top.get(name));
     }
 
+    /**
+     * A top-level list of strings, as it arrived.
+     *
+     * <p><strong>Not routed through {@link #require}</strong>, and that is the
+     * one place this class deliberately does not refuse. An absent list comes
+     * back empty and the SURFACE refuses it, with the reason that names the
+     * argument and says why there is no default. Refusing it here would put the
+     * same refusal in a second place, under a more generic reason, and in front
+     * of the scope resolution the check order puts first — so a caller would
+     * learn from the shape of its error that a scope it may not see exists.
+     *
+     * <p>What IS refused here is the shape: a value that is not a list at all.
+     * That is a fault of this protocol's encoding and the surface never sees it,
+     * because by the time the surface reads the argument it is a list or it is
+     * nothing.
+     */
+    List<String> listTop(String name) {
+        Object raw = top.get(name);
+        if (raw == null) {
+            return List.of();
+        }
+        if (!(raw instanceof List<?> values)) {
+            throw Refused.argumentInvalid(Surface.MCP, verb.call(), name,
+                String.valueOf(raw),
+                "it is a list, even when it carries one value: ['agent-code']");
+        }
+        return values.stream().map(CallArguments::string).toList();
+    }
+
     /** A required value under {@code fields}. */
     String requiredField(String name) {
         return require(name, string(fields.get(name)));

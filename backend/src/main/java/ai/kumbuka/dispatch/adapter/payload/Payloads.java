@@ -64,6 +64,12 @@ public final class Payloads {
         return request == null ? null : new VerbInput.Claim(request.duration());
     }
 
+    /** The draw behind a claim_next, or null when no body arrived. */
+    public static VerbInput.ClaimNext claimNext(ClaimNextRequest request) {
+        return request == null ? null
+            : new VerbInput.ClaimNext(request.duration(), request.apparatus());
+    }
+
     /** The metadata a send freezes, or null when no body arrived. */
     public static Map<String, Object> metadata(SendRequest request) {
         return request == null ? null : request.metadata();
@@ -138,6 +144,23 @@ public final class Payloads {
      * it in its own position instead.
      */
     public record ClaimRequest(String duration) {
+    }
+
+    /**
+     * What a caller supplies to draw the next exchange of a selector: the lease
+     * length, and which apparatus it is drawing for.
+     *
+     * <p>Its own shape and not {@link ClaimRequest} with a field added, for the
+     * reason the surface's own two shapes are separate: {@code claim} names one
+     * exchange, whose apparatus the address already decides, and an argument a
+     * call cannot mean is one a caller will eventually send.
+     *
+     * <p>Neither value is parsed or checked here. The patterns are checked by
+     * the surface, in one place for both surfaces, and in the position the
+     * check order gives a body fault. What IS enforced at this boundary is the
+     * set of field names: see {@code ExchangeResource.readClosed}.
+     */
+    public record ClaimNextRequest(String duration, List<String> apparatus) {
     }
 
     /**

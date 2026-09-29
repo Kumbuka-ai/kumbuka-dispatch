@@ -518,7 +518,8 @@ class ProcessSurfaceIT {
                 "conflict_token", "any", "fields", Map.of("reason", "a reason"));
             case TAKE -> Map.of("address", address, "duration", "PT1H");
             case TAKE_NEXT -> Map.of("scope", SurfaceFixture.SCOPE,
-                "selector", SurfaceFixture.SELECTOR, "duration", "PT1H");
+                "selector", SurfaceFixture.SELECTOR, "duration", "PT1H",
+                "apparatus", List.of("code"));
             case DELIVER_RETURN -> Map.of("address", address, "receipt", "any",
                 "fields", Map.of("text", "an answer"));
             case ASK_COMMISSIONER -> Map.of("address", address, "receipt", "any",

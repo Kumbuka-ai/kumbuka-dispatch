@@ -1,6 +1,7 @@
 package ai.kumbuka.dispatch.contract;
 
 import ai.kumbuka.dispatch.adapter.mcp.McpTools;
+import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.ReasonCatalogue;
 import ai.kumbuka.dispatch.surface.RefusalCode;
@@ -109,6 +110,53 @@ class DeclarationConformanceTest {
                     + "because nothing looked inside", tool.name())
                 .isEqualTo(false);
         }
+    }
+
+    /**
+     * A declared list argument publishes the rule its elements obey, and a
+     * lower bound.
+     *
+     * <p>Reads the expectation off the DECLARATION rather than writing the
+     * expression out again: what this asserts is that the schema and the check
+     * are one string, and a copy of the expression here would make the probe
+     * pass while the two drifted.
+     *
+     * <p>{@code minItems} is asserted because the requiredness alone is
+     * satisfied by an empty array, and an empty list of patterns is precisely
+     * the draw the argument exists to refuse. A schema that admitted it would
+     * describe a call the service rejects.
+     */
+    @Test
+    void every_list_argument_publishes_its_element_rule_and_a_lower_bound() {
+        int checked = 0;
+        for (ProcessVerb verb : ProcessVerb.values()) {
+            for (Argument argument : verb.topArguments()) {
+                if (argument.itemPattern() == null) {
+                    continue;
+                }
+                checked++;
+                @SuppressWarnings("unchecked")
+                Map<String, Object> property = (Map<String, Object>)
+                    properties(byName(verb.call())).get(argument.name());
+
+                assertThat(property.get("type")).isEqualTo(Argument.ARRAY);
+                assertThat(property.get("minItems"))
+                    .as("%s's %s is required, and an empty array satisfies required",
+                        verb.call(), argument.name())
+                    .isEqualTo(1);
+                @SuppressWarnings("unchecked")
+                Map<String, Object> items = (Map<String, Object>) property.get("items");
+                assertThat(items.get("pattern"))
+                    .as("the published element rule is the one the surface enforces. A "
+                        + "schema advertising a different rule is worse than none: a "
+                        + "caller that obeys it is still refused")
+                    .isEqualTo(argument.itemPattern());
+            }
+        }
+        assertThat(checked)
+            .as("no list argument is declared any more, so this probe asserts nothing. "
+                + "Remove it, or the surface has lost the argument it was written for")
+            .isPositive();
     }
 
     @Test

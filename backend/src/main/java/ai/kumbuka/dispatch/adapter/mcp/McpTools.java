@@ -5,6 +5,7 @@ import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.domain.QueryFilter;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,13 +51,18 @@ public final class McpTools {
 
     private static final String OBJECT = "object";
 
-    /** The fourteen, in the order of section 5 of the contract. */
+    /**
+     * The fourteen, in the order of section 5 of the contract.
+     *
+     * <p>Declaration order is the contract's order, so the enum's own order is
+     * the answer and nothing sorts here. {@code toList} hands back an
+     * unmodifiable list, which is what the previous {@code List.copyOf} was
+     * for.
+     */
     public static List<Tool> declared() {
-        List<Tool> tools = new ArrayList<>();
-        for (ProcessVerb verb : ProcessVerb.values()) {
-            tools.add(new Tool(verb.call(), verb.description(), schemaOf(verb)));
-        }
-        return List.copyOf(tools);
+        return Arrays.stream(ProcessVerb.values())
+            .map(verb -> new Tool(verb.call(), verb.description(), schemaOf(verb)))
+            .toList();
     }
 
     /**
@@ -124,8 +130,30 @@ public final class McpTools {
         return Map.copyOf(schema);
     }
 
+    /**
+     * One argument's schema.
+     *
+     * <p>A list argument carries its element rule with it: {@code items} with
+     * the declared pattern, and {@code minItems: 1}. The pattern is the same
+     * expression the surface enforces, read from the declaration rather than
+     * written again here — a schema that advertised a different rule from the
+     * one the service applies is worse than none, because a caller that obeys
+     * it is still refused.
+     *
+     * <p>{@code minItems} is not decoration either. The argument is required,
+     * which an empty array satisfies; the empty array is exactly the draw with
+     * no pattern, so without it the schema would admit the one call the
+     * argument exists to refuse.
+     */
     private static Map<String, Object> property(Argument argument) {
-        return Map.of("type", argument.type(), KEY_DESCRIPTION, argument.description());
+        if (argument.itemPattern() == null) {
+            return Map.of("type", argument.type(), KEY_DESCRIPTION, argument.description());
+        }
+        return Map.of(
+            "type", argument.type(),
+            "items", Map.of("type", Argument.STRING, "pattern", argument.itemPattern()),
+            "minItems", 1,
+            KEY_DESCRIPTION, argument.description());
     }
 
     /**

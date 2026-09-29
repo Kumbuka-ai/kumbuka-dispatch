@@ -108,7 +108,52 @@ public class SurfaceException extends RuntimeException {
          * otherwise: the caller was told its payload was malformed, which is
          * true and says nothing about which value it should correct.
          */
-        CLAIM_DURATION_MALFORMED(400);
+        CLAIM_DURATION_MALFORMED(400),
+
+        /**
+         * A draw arrived naming no apparatus at all.
+         *
+         * <p>Its own reason rather than a payload fault, for the same argument
+         * {@link #CLAIM_DURATION_MALFORMED} makes: the caller needs to know
+         * which value to supply, and "the payload is malformed" names none.
+         *
+         * <p>There is no default, and the absence of one is the whole point of
+         * the argument. A draw with no pattern takes the next exchange of any
+         * apparatus, which is how a controller polling for its own work claims
+         * a commission addressed to somebody else.
+         */
+        APPARATUS_PATTERN_MISSING(400),
+
+        /**
+         * An apparatus pattern carries a character the pattern language does
+         * not have.
+         *
+         * <p>Separate from {@link #APPARATUS_PATTERN_UNBOUNDED}: this one is a
+         * spelling to correct, that one is a pattern that is well spelled and
+         * says too much. A caller told "malformed" about {@code *} would go
+         * looking for a typo it does not have.
+         */
+        APPARATUS_PATTERN_MALFORMED(400),
+
+        /**
+         * An apparatus pattern matches every apparatus there is.
+         *
+         * <p>Refused although it is well formed, because it is the blind draw
+         * the argument exists to close: a pattern of nothing but wildcards
+         * narrows nothing, and a caller that sent one would be polling for
+         * everybody's work while believing it had declared whose it wanted.
+         */
+        APPARATUS_PATTERN_UNBOUNDED(400),
+
+        /**
+         * The request body carries a field this call does not read.
+         *
+         * <p>Named after {@code FILTER_FIELD_UNKNOWN}, which says the same
+         * thing one level along, and refused rather than dropped: a field the
+         * service silently discards is one a client comes to depend on, and
+         * the caller is told its call succeeded. Measured as F-0365.
+         */
+        BODY_FIELD_UNKNOWN(400);
 
         private final int status;
 
@@ -124,9 +169,27 @@ public class SurfaceException extends RuntimeException {
 
     private final transient Reason reason;
     private final transient String allow;
+    private final transient String subject;
 
     public SurfaceException(Reason reason, String message) {
         this(reason, message, null);
+    }
+
+    /**
+     * A refusal that names the value it is about.
+     *
+     * <p>A separate factory rather than a fourth constructor argument, because
+     * the {@code allow} overload already occupies the three-argument shape and
+     * a second one taking a {@code String} in that position would be decided
+     * by whichever cast the call site happened to write.
+     *
+     * <p>It exists for the refusal whose whole content is a name: a body field
+     * the call does not read. Telling the caller "a field you sent is unknown"
+     * without saying which one is the sentence the typed refusal model exists
+     * to replace.
+     */
+    public static SurfaceException about(Reason reason, String subject, String message) {
+        return new SurfaceException(reason, message, null, subject);
     }
 
     /**
@@ -135,9 +198,14 @@ public class SurfaceException extends RuntimeException {
      *              would have worked.
      */
     public SurfaceException(Reason reason, String message, String allow) {
+        this(reason, message, allow, null);
+    }
+
+    private SurfaceException(Reason reason, String message, String allow, String subject) {
         super(message);
         this.reason = reason;
         this.allow = allow;
+        this.subject = subject;
     }
 
     public Reason reason() {
@@ -146,5 +214,10 @@ public class SurfaceException extends RuntimeException {
 
     public String allow() {
         return allow;
+    }
+
+    /** The value this refusal is about, or null where it names none. */
+    public String subject() {
+        return subject;
     }
 }

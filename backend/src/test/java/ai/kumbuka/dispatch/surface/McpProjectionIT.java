@@ -658,6 +658,7 @@ class McpProjectionIT {
                 arguments.put("scope", SurfaceFixture.SCOPE);
                 arguments.put("selector", SurfaceFixture.SELECTOR);
                 arguments.put("duration", "PT1H");
+                arguments.put("apparatus", List.of("code"));
             }
             case "dispatch_add_correction" -> {
                 arguments.put("address", address);

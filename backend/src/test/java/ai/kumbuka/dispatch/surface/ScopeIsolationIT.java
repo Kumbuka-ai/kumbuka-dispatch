@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static io.restassured.RestAssured.given;
@@ -184,7 +185,7 @@ class ScopeIsolationIT {
 
         Response collectionWrite = restCollectionWrite(SurfaceFixture.SCOPE);
         Response truncatedWrite = given().contentType(ContentType.JSON)
-            .body(Map.of("duration", "PT1H"))
+            .body(Map.of("duration", "PT1H", "apparatus", List.of("code")))
             .post("/api/" + SurfaceFixture.SCOPE + "/" + SurfaceFixture.SELECTOR
                 + ":claim_next");
         Response itemWrite = restItemWrite(SurfaceFixture.SCOPE);

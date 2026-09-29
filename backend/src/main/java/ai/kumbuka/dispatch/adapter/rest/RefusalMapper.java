@@ -92,6 +92,9 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
      */
     static final String THE_ONE_GIVEN = "the one given";
 
+    /** The draw's apparatus filter, by the name the caller writes. */
+    static final String APPARATUS = "apparatus";
+
     /** What a scope reads as when the call's own spelling of it is not to hand. */
     static final String THE_SCOPE_NAMED = "the scope named";
     static final String NOT_VISIBLE = "not visible to you";
@@ -139,6 +142,34 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 Refused.argumentInvalid(Surface.REST, call, "verb", call,
                     "this scheme does not carry it, and a verb it does not carry is "
                         + "refused rather than quietly absent");
+            // The draw's apparatus filter. Three reasons and not one: they send
+            // a caller to three different corrections, and a single
+            // "invalid apparatus" would tell the one that sent '*' to go
+            // looking for a typo it does not have.
+            case APPARATUS_PATTERN_MISSING ->
+                Refused.argumentMissing(Surface.REST, call, APPARATUS,
+                    "which apparatus to draw for, as one or more patterns such as "
+                        + "['agent-*']. There is no default, because the default would "
+                        + "be every apparatus");
+            case APPARATUS_PATTERN_MALFORMED ->
+                Refused.argumentInvalid(Surface.REST, call, APPARATUS,
+                    named(e.subject(), THE_ONE_GIVEN),
+                    "a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*', and "
+                        + "'*' is the only wildcard; the underscore and the percent sign "
+                        + "carry a meaning of their own in the comparison and are "
+                        + "excluded");
+            case APPARATUS_PATTERN_UNBOUNDED ->
+                Refused.argumentInvalid(Surface.REST, call, APPARATUS,
+                    named(e.subject(), THE_ONE_GIVEN),
+                    "a pattern of nothing but '*' matches every apparatus, which is the "
+                        + "blind draw the argument exists to refuse");
+            // The field is named from the refusal's own subject. A refusal whose
+            // whole content is a name and that does not carry the name tells the
+            // caller to go looking through its own body for it.
+            case BODY_FIELD_UNKNOWN ->
+                Refused.argumentUnknown(Surface.REST, call,
+                    named(e.subject(), THE_ONE_GIVEN),
+                    List.of("see " + AddressParser.SCHEME + "'s declaration"));
         };
 
         Response.ResponseBuilder response = Response.status(e.reason().status())
@@ -151,6 +182,11 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
             response.header(HttpHeaders.ALLOW, e.allow());
         }
         return response.build();
+    }
+
+    /** A value the refusal carries, or the stand-in for one it does not. */
+    private static String named(String subject, String fallback) {
+        return subject == null || subject.isBlank() ? fallback : subject;
     }
 
     static Payloads.RefusalEnvelope envelope(Refused refused) {
