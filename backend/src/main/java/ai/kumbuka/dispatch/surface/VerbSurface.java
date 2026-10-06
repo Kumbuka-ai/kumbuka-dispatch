@@ -1,15 +1,20 @@
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
-import ai.kumbuka.dispatch.domain.DispatchException;
-import ai.kumbuka.dispatch.domain.Exchange;
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
-import ai.kumbuka.dispatch.domain.ExchangeService;
-import ai.kumbuka.dispatch.domain.ExchangeStatus;
-import ai.kumbuka.dispatch.domain.ExchangeView;
-import ai.kumbuka.dispatch.domain.ClaimProof;
 import ai.kumbuka.dispatch.domain.IdempotencyKey;
-import ai.kumbuka.dispatch.domain.QueryFilter;
+import ai.kumbuka.dispatch.domain.SelectorRegistry;
+import ai.kumbuka.dispatch.domain.TaskCall;
+import ai.kumbuka.dispatch.domain.TaskClaim;
+import ai.kumbuka.dispatch.domain.TaskFilter;
+import ai.kumbuka.dispatch.domain.TaskListing;
+import ai.kumbuka.dispatch.domain.TaskService;
+import ai.kumbuka.dispatch.domain.TaskState;
+import ai.kumbuka.dispatch.domain.TaskTextView;
+import ai.kumbuka.dispatch.domain.TaskVerb;
+import ai.kumbuka.dispatch.domain.TaskView;
+import ai.kumbuka.dispatch.domain.TextPart;
+import ai.kumbuka.dispatch.domain.TextType;
 import ai.kumbuka.dispatch.platform.Access;
 import ai.kumbuka.dispatch.platform.ScopeDirectory;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
@@ -18,785 +23,207 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
-import java.time.Instant;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
- * The thirteen verbs, once.
+ * The twenty-five calls, each bound to the kernel in one transaction.
  *
- * <p>Both expositions call this and neither reimplements it. That is what
- * makes "REST is the complete surface and MCP only omits" a property of the
- * construction rather than a claim about it: an omission is a tool the MCP
- * adapter does not declare, and an addition is impossible because there is
- * nothing here for one adapter to reach that the other cannot.
+ * <p>Both surfaces reach the kernel through here and through nothing else:
+ * {@link CallRouter} reads the call, checks its arguments against the
+ * declaration and calls one method of this class. Each method resolves the
+ * scope the caller names — so a scope the caller may not see answers {@code
+ * NOT_FOUND} however the rest of the call looks — and then makes exactly one
+ * call of {@link TaskService}, which decides. Nothing here decides whether a
+ * transition is permitted, and nothing here composes two kernel calls into
+ * one act.
  *
- * <p>Two things deliberately do <strong>not</strong> live here, because they
- * are expression rather than offering. The HTTP form of a verb — colon
- * notation, 201 with {@code Location}, 405 with {@code Allow} — is the REST
- * adapter's. The shape of a JSON-RPC tool call is the MCP adapter's. What is
- * shared is the act, its checks and their order.
- *
- * <h2>The order of the checks, and why it is here</h2>
- *
- * Grammar (stage 1) then scope visibility (stage 2) then vocabulary (stage 3)
- * then resolution (stage 4). It is in this class rather than in each adapter
- * because a check order is exactly the thing that drifts between two copies,
- * and the one that would drift first is the one whose whole purpose is that a
- * scope the caller cannot see answers 404 however broken the rest of the call
- * is.
+ * <p>What comes back is the kernel's {@link TaskView}, which has no component
+ * that could carry a text, and the scope's slug the complete address is
+ * rendered with. Only {@link #readText} answers a text.
  */
 @ApplicationScoped
 @TenantBound
 public class VerbSurface {
 
     /**
-     * The convention this service's loggers keep: address, selector, number,
-     * transition, status, typed reason, duration, scope id — and never a
-     * title, a body, metadata text, a token, a receipt or the actor. A guard
-     * enforces it over this tree.
+     * Says call, address and scope id; never a title, a text, metadata, a
+     * token, a receipt or the actor. A guard enforces it over this tree.
      */
     private static final Logger LOG = Logger.getLogger(VerbSurface.class);
 
-    @Inject ExchangeService exchanges;
+    @Inject TaskService tasks;
     @Inject ScopeDirectory scopes;
+    @Inject SelectorRegistry selectors;
+
+    /** A task the caller addressed: the scope as the caller named it, and the address in it. */
+    public record Item(String scope, ExchangeAddress address) {
+
+        /** The complete address, as every answer writes it. */
+        public String complete() {
+            return address.complete(scope);
+        }
+    }
+
+    /** What a call on one task answers: its head, and the scope it is addressed in. */
+    public record Result(String scope, TaskView view) {
+
+        public String address() {
+            return view.address().complete(scope);
+        }
+    }
+
+    /** A claim: the head and the receipt, which is the only copy there is. */
+    public record Claimed(Result result, String receipt) {
+    }
+
+    /** A listing: the heads, and whether the page bound cut it. */
+    public record Listing(String scope, TaskListing listing) {
+    }
 
     // ======================================================================
-    // The process verbs
-    //
-    // Each maps onto ONE call of the domain, and the domain makes it atomic.
-    // None of them assembles a compound out of two surface calls: an act
-    // assembled here would be an act the REST surface assembles differently,
-    // and the half-done state left by a failure in the middle is exactly what
-    // a caller cannot recover from.
+    // The calls that are not transitions
     // ======================================================================
 
-    /**
-     * Commissions work: one call, and the exchange comes out open.
-     *
-     * <p>The bracket to add to arrives as a complete address and is resolved
-     * against the same scope, because a child numbers within its bracket and
-     * the two cannot disagree.
-     */
     @Transactional
-    public Result commission(Actor actor, String rawScope, String rawSelector,
-                             ExchangeAddress parent, VerbInput.Commission request,
-                             IdempotencyKey key) {
-        Entry in = collection(actor, rawScope, rawSelector, Access.WRITE);
-        VerbInput.Commission body = required(request);
-
-        // The key travels down rather than being honoured here. It decides
-        // whether a write happens, and that decision belongs inside the
-        // transaction that would do the writing: a check at this level would
-        // read the ledger in one transaction and commission in another, so two
-        // retries a few milliseconds apart would both find no row.
-        Exchange created = exchanges.commissionUnder(in.scopeId(), in.selector(),
-            parent == null ? null : parent.number(), body.title(), body.apparatus(),
-            body.text(), body.date(), body.metadata(), actor, key);
-
-        LOG.infof("commission %s in scope %s", created.address(), in.scopeId());
-        return at(in, addressOf(created));
+    public Result create(Actor actor, String scope, String selector, Integer parentNumber,
+                         TaskService.Draft draft, IdempotencyKey key) {
+        UUID scopeId = resolve(actor, scope, Access.WRITE);
+        TaskView created = tasks.create(scopeId, selector, parentNumber, draft, actor, key);
+        LOG.infof("create %s in scope %s", created.address(), scopeId);
+        return new Result(scope, created);
     }
 
-    /** Attaches a correction, text included, and answers with what it corrects. */
     @Transactional
-    public Result addCorrection(Actor actor, String rawScope, String rawSelector,
-                                String rawId, String title, String text,
-                                IdempotencyKey key) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.addCorrectionUnder(in.scopeId(), in.address(), title, text, actor, key);
-        return at(in, in.address());
+    public Result update(Actor actor, Item at, TaskService.Draft changes, String conflictToken) {
+        UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
+        return new Result(at.scope(),
+            tasks.update(scopeId, at.address(), changes, conflictToken, actor));
     }
 
-    /** Accepts the delivered answer and finishes the exchange. */
+    /** Deletes a draft and answers the complete address it had. */
     @Transactional
-    public Result acceptReturn(Actor actor, String rawScope, String rawSelector,
-                               String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.acceptReturn(in.scopeId(), in.address(), actor);
-        return at(in, in.address());
+    public String delete(Actor actor, Item at, String conflictToken) {
+        UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
+        return tasks.delete(scopeId, at.address(), conflictToken, actor).complete(at.scope());
     }
 
-    /**
-     * Accepts the answer and carries it forward into another exchange.
-     *
-     * <p><strong>The target may be in another scope and another bracket
-     * kind.</strong> Section 5.1 says so in as many words — "an exchange of
-     * this service that the caller may see, in any scope and bracket kind,
-     * other than the exchange itself" — and the predecessor narrowed it to the
-     * exchange's own collection, which is the one arrangement ADR-0014 exists
-     * to make unnecessary: a stored reference holds a durable identity, so
-     * nothing about the target's address constrains where it may live.
-     *
-     * <p>The target's scope goes through {@link #resolve} like any other, so a
-     * scope the caller may not see answers {@code NOT_FOUND} — as does a
-     * target that is not there. The two are not told apart, which is section
-     * 4.3 and not an accident of this path.
-     */
     @Transactional
-    public Result curateReturn(Actor actor, String rawScope, String rawSelector, String rawId,
-                               String rawTargetScope, ExchangeAddress into) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        // READ and not WRITE: a curation writes `curated_into_id` on the exchange
-        // being curated, in ITS scope, and nothing at all in the target's. A
-        // target in a locked or read-only scope is therefore admissible, which
-        // is what section 5.1 asks for — "any scope the caller may see".
-        UUID targetScopeId = resolve(actor, AddressParser.scope(rawTargetScope),
-            Access.READ);
-        exchanges.curateReturn(in.scopeId(), in.address(), targetScopeId, into, actor);
-        return at(in, in.address());
+    public Result read(Actor actor, Item at) {
+        UUID scopeId = resolve(actor, at.scope(), Access.READ);
+        return new Result(at.scope(), tasks.read(scopeId, at.address(), actor));
     }
 
-    /** Sends the exchange back with a message; the holder continues. */
+    /** One part of a task's text: the only answer of this class that carries text. */
     @Transactional
-    public Result replyToExecutor(Actor actor, String rawScope, String rawSelector,
-                                  String rawId, String conflictToken, String message) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        requireConflictToken(in, conflictToken);
-        exchanges.replyToExecutor(in.scopeId(), in.address(), actor, message);
-        return at(in, in.address());
+    public TaskTextView readText(Actor actor, Item at, TextPart part) {
+        UUID scopeId = resolve(actor, at.scope(), Access.READ);
+        return tasks.readText(scopeId, at.address(), part, actor);
     }
 
-    /** Withdraws a commission that is no longer wanted. */
     @Transactional
-    public Result cancel(Actor actor, String rawScope, String rawSelector, String rawId,
-                         String conflictToken, String reason) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        requireConflictToken(in, conflictToken);
-        exchanges.cancel(in.scopeId(), in.address(), actor, reason);
-        return at(in, in.address());
+    public Listing query(Actor actor, String scope, String selector, TaskFilter filter,
+                         int limit) {
+        UUID scopeId = resolve(actor, scope, Access.READ);
+        TaskListing listing = tasks.query(scopeId, selector, filter, limit, actor);
+        LOG.debugf("query %s in scope %s: %d head(s)", selector, scopeId,
+            listing.tasks().size());
+        return new Listing(scope, listing);
     }
 
     /**
-     * Finishes a bracket: accepts the record on its root and closes it.
+     * Adds an addendum to a text of a sent task.
      *
-     * <p>Refuses a non-root before the domain sees it, because the refusal a
-     * caller needs here is "this is not a bracket root" and the domain's would
-     * be about the children of a bracket the address does not name.
+     * <p>Refuses a part a sent task has no text of, by name, before the kernel
+     * is called; a draft is left to the kernel, which refuses it by its state: the kernel answers that case as not found, and an answer that
+     * says "nothing is addressed here" about a task the caller just read sends
+     * it looking for a typo it does not have.
      */
     @Transactional
-    public Result closeBracket(Actor actor, String rawScope, String rawSelector,
-                               String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        requireBracketRoot(in.address(), "closing a bracket");
-        exchanges.closeBracket(in.scopeId(), in.address(), actor);
-        return at(in, in.address());
+    public Result annotate(Actor actor, Item at, TextType part, String text, String call) {
+        UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
+        TaskView head = tasks.read(scopeId, at.address(), actor);
+        boolean written = head.texts().stream()
+            .anyMatch(x -> x.type() == part && x.addendumSuffix() == null);
+        if (!written && head.state() != TaskState.DRAFT) {
+            throw Refused.argumentInvalid(call, "part", part.wireName(),
+                at.complete() + " has no " + part.wireName() + " text for an addendum to "
+                    + "supplement");
+        }
+        return new Result(at.scope(),
+            tasks.annotate(scopeId, at.address(), part, text, actor, IdempotencyKey.NONE));
     }
-
-    /** Delivers the executor's answer to the commissioner. */
-    @Transactional
-    public Result deliverReturn(Actor actor, String rawScope, String rawSelector,
-                                String rawId, String receipt, String text) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.deliverReturn(in.scopeId(), in.address(), actor, receipt, text);
-        return at(in, in.address());
-    }
-
-    /** Stops and asks the commissioner something the executor cannot decide. */
-    @Transactional
-    public Result askCommissioner(Actor actor, String rawScope, String rawSelector,
-                                  String rawId, String receipt, String question) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.askCommissioner(in.scopeId(), in.address(), actor, receipt, question);
-        return at(in, in.address());
-    }
-
-    /** Declines the work — a refusal before takeup, a failure after it. */
-    @Transactional
-    public Result decline(Actor actor, String rawScope, String rawSelector, String rawId,
-                          ClaimProof proof, String reason) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.decline(in.scopeId(), in.address(), actor, proof, reason);
-        return at(in, in.address());
-    }
-
-    // ======================================================================
-    // create — two address forms, chosen by the form
-    // ======================================================================
-
-    /** Opens a bracket. The collection form. */
-    @Transactional
-    public Result create(Actor actor, String rawScope, String rawSelector,
-                         VerbInput.Draft request) {
-        Entry in = collection(actor, rawScope, rawSelector, Access.WRITE);
-        VerbInput.Draft body = required(request);
-
-        Exchange created = exchanges.openBracket(in.scopeId(), in.selector(), body.title(),
-            body.apparatus(), body.date(), actor);
-
-        LOG.infof("create %s in scope %s", created.address(), in.scopeId());
-        return at(in, addressOf(created));
-    }
-
-    /** Adds a child to an open bracket. The sub-collection form. */
-    @Transactional
-    public Result createChild(Actor actor, String rawScope, String rawSelector, String rawId,
-                              VerbInput.Draft request) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        requireBracketRoot(in.address(), "children");
-        VerbInput.Draft body = required(request);
-
-        Exchange created = exchanges.addChild(in.scopeId(), in.selector(),
-            in.address().number(), body.title(), body.apparatus(), body.date(), actor);
-
-        LOG.infof("create %s in scope %s", created.address(), in.scopeId());
-        return at(in, addressOf(created));
-    }
-
-    // ======================================================================
-    // read — onto view, and onto nothing else
-    // ======================================================================
 
     /**
-     * One exchange, as this caller may see it.
+     * Records what a closed task was curated into.
      *
-     * <p>Onto {@link ExchangeService#view} and never onto
-     * {@link ExchangeService#read}. The domain carries both: {@code read}
-     * takes no actor and hands back the raw entity, and the actor-dependent
-     * projection lives only in {@code view}. Mapping this verb onto the
-     * same-named method would hand out the body ungated and break a ratified
-     * bolt without touching a line of security code — which is precisely why
-     * it carries a red probe rather than a comment.
+     * <p>The target's scope is resolved for reading only: the relation is
+     * written on the task in its own scope and nothing in the target's, so a
+     * target in a scope the caller may read and not write is admissible.
      */
     @Transactional
-    public Result read(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.READ);
-        return at(in, in.address());
+    public Result relate(Actor actor, Item at, Item target, String conflictToken) {
+        UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
+        UUID targetScopeId = resolve(actor, target.scope(), Access.READ);
+        return new Result(at.scope(), tasks.relate(scopeId, at.address(), targetScopeId,
+            target.address(), conflictToken, actor));
     }
 
-    // ======================================================================
-    // update — the field write
-    // ======================================================================
-
-    /**
-     * Writes the exchange's draft, against the conflict token.
-     *
-     * <p>One verb, two roles: before send the write lands in the dispatch role,
-     * after send in the return role. The caller does not choose — the state
-     * does. The choice lives in {@link ExchangeService#writeDraft} because
-     * every consequence of it (which fields may be written, whether a receipt
-     * is required, whether a ratified answer is rejected) is a domain rule.
-     *
-     * <p>The token is checked in the same transaction as the write and is
-     * <strong>not enforced atomically</strong>: the entity carries no version
-     * column and adding one would change the domain. The window is one
-     * transaction rather than zero. That is strictly better than the
-     * predecessor, which takes no token on any writing verb, and it is
-     * reported rather than presented as finished.
-     */
     @Transactional
-    public Result update(Actor actor, String rawScope, String rawSelector, String rawId,
-                         String conflictToken, VerbInput.Update request) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        VerbInput.Update body = required(request);
-        requireConflictToken(in, conflictToken);
-
-        exchanges.writeDraft(in.scopeId(), in.address(), actor,
-            body.title(), body.draft(), body.apparatus(), body.date(),
-            body.receipt(), body.metadata());
-
-        LOG.infof("update %s in scope %s", in.address(), in.scopeId());
-        return at(in, in.address());
-    }
-
-    // ======================================================================
-    // append — additive, and never removable afterwards
-    // ======================================================================
-
-    /**
-     * Attaches an addendum, with its text, to an exchange already frozen.
-     *
-     * <p>The text travels in the same call and there is no second call that
-     * could add it: the row is frozen from the moment it exists, so the
-     * domain refuses an absent or blank text instead of inserting a record
-     * nothing could afterwards fill. Until 2026-09-29 this method called an
-     * overload that took no text at all, and every append silently produced
-     * exactly that unfillable record.
-     */
-    @Transactional
-    public Result append(Actor actor, String rawScope, String rawSelector, String rawId,
-                         VerbInput.Addendum request) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        VerbInput.Addendum body = required(request);
-
-        Exchange addendum = exchanges.addAddendum(in.scopeId(), in.address(), body.title(),
-            body.apparatus(), body.date(), actor, body.text());
-
-        LOG.infof("append %s in scope %s", addendum.address(), in.scopeId());
-        return at(in, addressOf(addendum));
+    public Result unrelate(Actor actor, Item at, String conflictToken) {
+        UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
+        return new Result(at.scope(),
+            tasks.unrelate(scopeId, at.address(), conflictToken, actor));
     }
 
     // ======================================================================
     // The transitions
     // ======================================================================
 
+    /** One transition other than a take-up, as its row of the table decides it. */
     @Transactional
-    public Result send(Actor actor, String rawScope, String rawSelector, String rawId,
-                       Map<String, Object> metadata) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.send(in.scopeId(), in.address(), actor, metadata);
-        return at(in, in.address());
-    }
-
-    /**
-     * Ratifies the return.
-     *
-     * <p>The executing apparatus cannot reach this, and the refusal is the
-     * core's. Nothing here substitutes an identity on the way past — that is
-     * the whole of the second red probe, and the reason this method is three
-     * lines rather than four.
-     */
-    @Transactional
-    public Result accept(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.ratify(in.scopeId(), in.address(), actor);
-        return at(in, in.address());
-    }
-
-    /** Claims the exchange and returns the receipt, which is the only copy. */
-    @Transactional
-    public ClaimOutcome claim(Actor actor, String rawScope, String rawSelector, String rawId,
-                              VerbInput.Claim request) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        ExchangeService.ClaimResult claimed = exchanges.takeup(in.scopeId(), in.address(),
-            actor, required(request).parsed());
-        return new ClaimOutcome(at(in, in.address()), claimed.receipt());
+    public Result act(Item at, TaskVerb verb, TaskCall call) {
+        UUID scopeId = resolve(call.caller(), at.scope(), Access.WRITE);
+        TaskView after = tasks.act(scopeId, at.address(), verb, call);
+        LOG.infof("%s %s in scope %s", verb.wireName(), at.address(), scopeId);
+        return new Result(at.scope(), after);
     }
 
     @Transactional
-    public Result release(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.revert(in.scopeId(), in.address(), actor);
-        return at(in, in.address());
-    }
-
-    /**
-     * The executor does not deliver. One verb over two domain methods, chosen
-     * by the prior state inside one transaction.
-     *
-     * <p>Where the exchange is in neither prior state the refusal comes from
-     * the domain and names the states that would have worked. A refusal
-     * invented here would have to guess which of the two the caller meant.
-     */
-    @Transactional
-    public Result abandon(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        ExchangeStatus before =
-            exchanges.view(in.scopeId(), in.scopeSlug(), in.address(), actor).status();
-
-        if (before == ExchangeStatus.ACTIVE) {
-            exchanges.fail(in.scopeId(), in.address(), actor);
-        } else {
-            exchanges.reject(in.scopeId(), in.address(), actor);
-        }
-        return at(in, in.address());
+    public Claimed claim(Item at, TaskCall call, IdempotencyKey key) {
+        UUID scopeId = resolve(call.caller(), at.scope(), Access.WRITE);
+        TaskClaim claimed = tasks.claim(scopeId, at.address(), call, key);
+        return new Claimed(new Result(at.scope(), claimed.task()), claimed.receipt());
     }
 
     @Transactional
-    public Result block(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.block(in.scopeId(), in.address(), actor);
-        return at(in, in.address());
-    }
-
-    @Transactional
-    public Result resume(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.resume(in.scopeId(), in.address(), actor);
-        return at(in, in.address());
-    }
-
-    @Transactional
-    public Result close(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.close(in.scopeId(), in.address(), actor);
-        return at(in, in.address());
-    }
-
-    @Transactional
-    public Result consume(Actor actor, String rawScope, String rawSelector, String rawId) {
-        Entry in = item(actor, rawScope, rawSelector, rawId, Access.WRITE);
-        exchanges.consume(in.scopeId(), in.address(), actor);
-        return at(in, in.address());
+    public Claimed claimNext(String scope, String selector, List<String> patterns,
+                             TaskCall call, IdempotencyKey key) {
+        UUID scopeId = resolve(call.caller(), scope, Access.WRITE);
+        TaskClaim claimed = tasks.claimNext(scopeId, selector, patterns, call, key);
+        LOG.infof("claim_next %s in scope %s", claimed.task().address(), scopeId);
+        return new Claimed(new Result(scope, claimed.task()), claimed.receipt());
     }
 
     // ======================================================================
-    // query and claim_next — the two verbs that act on a truncated address
+    // What a refusal needs to name
     // ======================================================================
 
     /**
-     * The exchanges of one selector, narrowed by the declared filter.
-     *
-     * <p>Reading on a collection, so GET on the collection URI. The form
-     * follows from the target and the effect class and is not chosen per verb.
-     *
-     * <p>The filter fields are the DOMAIN's, not this adapter's: an adapter
-     * that decided what is filterable would be a second place the question is
-     * answered, and the two would drift. What arrives here is whatever the
-     * caller wrote, and {@link QueryFilter} refuses anything undeclared —
-     * naming the field, rather than ignoring it and returning a full set that
-     * looks like a correct narrow one.
-     *
-     * @param rawFilters the query parameters exactly as the caller wrote them
+     * The bracket kinds a scope declares, for the refusal that names them.
+     * Behind scope visibility like everything else.
      */
     @Transactional
-    public Listing query(Actor actor, String rawScope, String rawSelector,
-                         Map<String, String> rawFilters) {
-        Entry in = collection(actor, rawScope, rawSelector, Access.READ);
-        QueryFilter filter = QueryFilter.of(rawFilters);
-
-        List<ExchangeView> found =
-            exchanges.query(in.scopeId(), in.scopeSlug(), in.selector(), filter, actor);
-
-        // Each hit becomes a Result, so each carries its own `next`. A listing
-        // whose entries said only what they are would send a caller back for a
-        // second read of every one of them before it could act on any.
-        List<Result> entries = found.stream()
-            .map(view -> new Result(
-                new ExchangeAddress(view.selector(), view.number(), view.sub(), null),
-                view, view.conflictToken(), participationOf(actor, view)))
-            .toList();
-
-        LOG.debugf("query %s in scope %s: %d hit(s)", in.selector(), in.scopeId(), found.size());
-        return new Listing(entries);
+    public List<String> declaredSelectors(Actor actor, String scope) {
+        UUID scopeId = resolve(actor, scope, Access.READ);
+        return selectors.declared(scopeId).stream().map(s -> s.name).toList();
     }
 
     /**
-     * Takes up the next claimable exchange of a selector.
-     *
-     * <p>A write on a truncated address, which is admissible here and nowhere
-     * else among the transitions: the verb contract declares set semantics,
-     * and the only declarable set semantics is exactly one. Every other
-     * transition addressed at a collection stays a 405 carrying {@code Allow}.
-     *
-     * <p>The atomicity is the domain's and is not reconstructed here. Building
-     * this as a read followed by a claim would be a second construction of the
-     * draw, in the one place that cannot make it atomic.
-     *
-     * <p><strong>The apparatus patterns are checked here and on no other
-     * path.</strong> Both adapters hand over what arrived and neither validates
-     * it: one rule, one enforcement, and it runs AFTER the scope has been
-     * resolved so that a pattern fault is refused in the position the ratified
-     * check order gives a body fault. An adapter that checked first would tell
-     * a caller its pattern was malformed for a scope it may not see.
+     * The one way to a scope: the platform's directory decides whether the
+     * caller may see it and, for a write, whether it may write to it.
      */
-    @Transactional
-    public ClaimOutcome claimNext(Actor actor, String rawScope, String rawSelector,
-                                  VerbInput.ClaimNext request) {
-        Entry in = collection(actor, rawScope, rawSelector, Access.WRITE);
-        VerbInput.ClaimNext asked = required(request);
-        ExchangeService.ClaimResult claimed = exchanges.claimNext(in.scopeId(), in.selector(),
-            actor, new ExchangeService.ClaimTerms(asked.parsedDuration(), asked.patterns()));
-
-        ExchangeAddress address = addressOf(claimed.exchange());
-        LOG.infof("claim_next %s in scope %s", address, in.scopeId());
-        return new ClaimOutcome(at(in, address), claimed.receipt());
-    }
-
-    // ======================================================================
-    // The two the scheme does not carry
-    //
-    // Each is a typed category error naming the reason -- never a 404, never
-    // an unimplemented path, never a silent absence. A caller has to be able
-    // to tell "this will never work, and here is why" from "not there right
-    // now" and from "not built yet"; only the first stops it retrying.
-    //
-    // Both sit BEHIND scope visibility, because capability is declared per
-    // scope and a category error is therefore in principle a statement about
-    // a scope. Today the declaration is identical for every scope so nothing
-    // leaks either way; the order is the ratified one and a per-scope
-    // declaration is the direction of travel.
-    // ======================================================================
-
-    /** Refused on the machine surface: withdrawal is a ratchet. */
-    @Transactional
-    public void withdraw(Actor actor, String rawScope, String rawSelector, String rawId) {
-        item(actor, rawScope, rawSelector, rawId, Access.READ);
-        throw new SurfaceException(SurfaceException.Reason.WITHDRAWAL_VIA_CONSOLE_ONLY,
-            "'withdraw' is not offered on the machine surface. Withdrawal is a ratchet and "
-                + "is restorable only through the console, so the act has an address and "
-                + "this is not it. A typed refusal naming where it lives, not an absence.");
-    }
-
-    /** No declared address depth, so fail-closed leaves it unbuildable. */
-    @Transactional
-    public void validate(Actor actor, String rawScope, String rawSelector, String rawId) {
-        item(actor, rawScope, rawSelector, rawId, Access.READ);
-        throw new SurfaceException(SurfaceException.Reason.VERB_DEPTH_UNDECLARED,
-            "'validate' declares no address depth. Undeclared means complete address only, "
-                + "and a consistency check over one scope cannot act at that depth — so the "
-                + "verb is unbuildable fail-closed rather than unbuilt. Declaring a depth "
-                + "here would be deciding a specification gap in an adapter.");
-    }
-
-
-    // ======================================================================
-    // Stage 1 and stage 2
-    // ======================================================================
-
-    /**
-     * Grammar, then scope visibility, for a collection address.
-     *
-     * <p>The grammar runs against the raw strings before anything is resolved.
-     * Stage 1 is decidable without knowing a scope, so its refusal leaks
-     * nothing; every later refusal necessarily reveals that a lookup happened.
-     */
-    private Entry collection(Actor actor, String rawScope, String rawSelector,
-                             Access access) {
-        String slug = AddressParser.scope(rawScope);
-        String selector = AddressParser.selector(rawSelector);
-        return new Entry(actor, resolve(actor, slug, access), slug, selector, null);
-    }
-
-    /** Grammar, then scope visibility, for a complete address. */
-    private Entry item(Actor actor, String rawScope, String rawSelector, String rawId,
-                       Access access) {
-        String slug = AddressParser.scope(rawScope);
-        ExchangeAddress address = AddressParser.item(rawSelector, rawId);
-        return new Entry(actor, resolve(actor, slug, access), slug, address.selector(),
-            address);
-    }
-
-    /**
-     * Stage 2, for both address forms and therefore for both expositions.
-     *
-     * <p>Every verb reaches the directory through here and through nothing
-     * else, which is what makes the scope rules hold on the collection form
-     * and on the complete address alike — not by being written twice and
-     * checked against each other, but by there being one call. The intent is
-     * the verb's and travels in; what the platform permits is the directory's
-     * and stays there.
-     *
-     * <p>That one call is also why the assistant surface and the generic one
-     * cannot drift: {@code McpAdapter} and {@code ExchangeResource} are two
-     * expositions OF THIS CLASS, so neither reaches an exchange without
-     * passing here first.
-     */
-    private UUID resolve(Actor actor, String slug, Access access) {
-        return scopes.resolve(actor.subject(), slug, access).scopeId();
-    }
-
-    /**
-     * The bracket kinds a scope declares, for the refusal that has to name
-     * them.
-     *
-     * <p>Behind scope visibility like everything else: a caller that may not
-     * see the scope is refused here and learns nothing about what it declares.
-     * The list itself is not a secret from a caller who may see the scope —
-     * the contract's own remedy for {@code SELECTOR_UNKNOWN} is "use a
-     * declared one", which is unactionable without it.
-     */
-    @Transactional
-    public List<String> declaredSelectors(Actor actor, String rawScope) {
-        UUID scopeId = resolve(actor, AddressParser.scope(rawScope), Access.READ);
-        return exchanges.declaredSelectors(scopeId);
-    }
-
-    // ======================================================================
-    // Answers
-    // ======================================================================
-
-    /**
-     * The answer to any verb: the exchange as this caller may see it, plus its
-     * conflict token.
-     *
-     * <p>Always through {@code view}, never through the entity a transition
-     * returned. An {@link Exchange} carries the body, so serialising one would
-     * hand out exactly what the projection exists to withhold — on eleven
-     * routes at once, and without anybody having decided to.
-     *
-     * <p>The token comes off the view rather than being recomputed here. It is
-     * a per-exchange state marker rather than a transport artefact and lives
-     * with the projection: one source, both expositions.
-     */
-    private Result at(Entry in, ExchangeAddress address) {
-        ExchangeView view = exchanges.view(in.scopeId(), in.scopeSlug(), address, in.actor());
-        return new Result(address, view, view.conflictToken(),
-            participationOf(in.actor(), view));
-    }
-
-    /**
-     * How this caller takes part in this exchange.
-     *
-     * <p>Decided here, once, from the two things that decide it: the caller's
-     * capacity and whether it effectively holds the exchange. Both adapters
-     * read the answer rather than deriving it — a second derivation is a
-     * second permission model, and the one that would be wrong is whichever
-     * adapter gets written next.
-     *
-     * <p><strong>A console identity is the commissioner of every exchange it
-     * can see.</strong> That is wider than the contract's "the commissioner",
-     * and it is where the service stands today: the exchange stores who
-     * created it, but the roles are decided from the realm role, and narrowing
-     * this to the creating subject would be a permission change nobody
-     * ratified. Reported as a finding rather than decided here.
-     */
-    private static Participation participationOf(Actor actor, ExchangeView view) {
-        if (actor.isConsole()) {
-            return Participation.COMMISSIONER;
-        }
-        if (actor.subject().equals(view.effectiveHolderSubject())) {
-            return Participation.HOLDER;
-        }
-        // Candidate at an open exchange, bystander everywhere else. Section 2
-        // draws the line by the exchange's state and by nothing the caller
-        // carries, so it is drawn once, in Participation itself.
-        return Participation.of(view.status());
-    }
-
-    private void requireConflictToken(Entry in, String presented) {
-        if (presented == null || presented.isBlank()) {
-            throw new SurfaceException(SurfaceException.Reason.CONFLICT_TOKEN_MISSING,
-                "a field write declares conflict-token repetition, so it carries one. The "
-                    + "token is the one handed out with the last read. Without it a retry "
-                    + "across a network cannot be told from a second, different write.");
-        }
-
-        String held = heldConflictToken(in);
-        if (held == null || !held.equals(unquote(presented.trim()))) {
-            throw new SurfaceException(SurfaceException.Reason.CONFLICT_TOKEN_STALE,
-                "the conflict token is not the one " + in.address() + " holds. Somebody "
-                    + "else wrote it since this caller last read it, and overwriting on a "
-                    + "stale token is the lost update the token exists to prevent.");
-        }
-    }
-
-    /**
-     * The token this exchange currently holds, as the sperre reads it.
-     *
-     * <p>Addendum guard sits BEFORE the read: an addendum is not independently
-     * drawable, so {@code exchanges.read} refuses it — and that refusal is
-     * thrown out of a {@code @Transactional} method, which marks the
-     * surrounding transaction rollback-only whether or not anybody catches it.
-     * The guard leaves the token null instead, and the caller sees the same
-     * {@code CONFLICT_TOKEN_STALE} it would see for any other write that has
-     * no token to match against.
-     *
-     * <p>The value itself is {@link Exchange#conflictToken()}: the entity
-     * owns the formulation, so the read side and the write-check side do not
-     * carry two copies of the same rule.
-     */
-    private String heldConflictToken(Entry in) {
-        if (in.address().isAddendum()) {
-            return null;
-        }
-        return exchanges.read(in.scopeId(), in.address()).conflictToken();
-    }
-
-    /** Tolerates the quoted form an HTTP entity tag arrives in. */
-    private static String unquote(String raw) {
-        String value = raw.startsWith("W/") ? raw.substring(2) : raw;
-        return value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")
-            ? value.substring(1, value.length() - 1)
-            : value;
-    }
-
-    private static ExchangeAddress addressOf(Exchange e) {
-        return new ExchangeAddress(e.selectorName(), e.number, e.sub, e.addendumSuffix);
-    }
-
-    private static <T> T required(T body) {
-        if (body == null) {
-            throw new SurfaceException(SurfaceException.Reason.PAYLOAD_MALFORMED,
-                "this verb takes arguments and none arrived.");
-        }
-        return body;
-    }
-
-    /**
-     * The {@code children} sub-collection exists at a bracket root and nowhere
-     * else.
-     *
-     * <p>A form refusal rather than a lookup: a child numbers within the
-     * bracket instance, so {@code 149.2/children} would silently mean "a child
-     * of bracket 149" — one address with two readings, which is the ambiguity
-     * the address space exists to exclude.
-     */
-    private static void requireBracketRoot(ExchangeAddress address, String subCollection) {
-        if (address.sub() != 0 || address.isAddendum()) {
-            throw new SurfaceException(SurfaceException.Reason.CALL_NOT_AT_THIS_ADDRESS,
-                "the '" + subCollection + "' sub-collection exists at a bracket root — "
-                    + "'<number>.0' — and " + address + " is not one. A child numbers "
-                    + "within the bracket instance, so addressing it anywhere else would "
-                    + "give one address two readings.");
-        }
-    }
-
-    /**
-     * What a verb answers with, before either adapter dresses it.
-     *
-     * <p>The view, not the wire shape. The projection that withholds a body
-     * from an unclaiming caller has already been applied — that is what makes
-     * it a view — and turning it into JSON is the adapter's act, in the
-     * adapter's own type. Carrying the wire shape here is what put the surface
-     * in a cycle with the payload package.
-     */
-    public record Result(ExchangeAddress address, ExchangeView exchange,
-                         String conflictToken, Participation participation) {
-
-        /**
-         * The situation {@code next} is computed from.
-         *
-         * <p>Assembled here rather than at each adapter, so the two surfaces
-         * answer the same question and differ only in the vocabulary they
-         * answer it in.
-         */
-        public NextCalculator.Situation situation() {
-            return new NextCalculator.Situation(exchange.status(),
-                exchange.answerDelivered(), exchange.bracketRoot(), exchange.frozen(),
-                exchange.childrenFinished());
-        }
-
-        /** The calls open to this caller on the surface it called through. */
-        public List<NextCalculator.Step> next(Surface surface) {
-            return NextCalculator.next(surface, situation(), participation);
-        }
-
-        /** Who the exchange waits for, where the caller can do nothing. */
-        public String waitingFor(Surface surface) {
-            return NextCalculator.waitingFor(situation(), next(surface));
-        }
-    }
-
-    /** A claim, and the receipt that is its only copy. */
-    public record ClaimOutcome(Result result, String receipt) {
-    }
-
-    /**
-     * What a listing answers with.
-     *
-     * <p>An object around the list rather than the bare array, so that
-     * anything a listing later needs to say about itself — a continuation
-     * token above all — is an added key rather than a changed shape. A bare
-     * array cannot grow a sibling field, and this surface is a published
-     * contract from the day it answers.
-     *
-     * <p><strong>There is no paging today and none is implied.</strong> The
-     * whole matching set comes back. That is a bounded thing for a selector of
-     * the size this scheme is built for and an unbounded one in general, and
-     * it is reported rather than quietly deferred: introducing paging is a
-     * decision about the published contract, which is not this run's to make.
-     */
-    public record Listing(List<Result> exchanges) {
-
-        /** The views alone, for callers that only want what matched. */
-        public List<ExchangeView> views() {
-            return exchanges.stream().map(Result::exchange).toList();
-        }
-    }
-
-    /**
-     * Everything one call needs once the first two stages have held.
-     *
-     * <p>The slug travels beside the resolved id, and carries its weight: the
-     * id is what the domain queries on, and the slug is what every address in
-     * the answer is rendered with. Deriving the slug back from the id would be
-     * a reverse lookup of something the caller already told us, and a cache of
-     * it would be a second copy of the mapping the directory owns.
-     */
-    private record Entry(Actor actor, UUID scopeId, String scopeSlug, String selector,
-                         ExchangeAddress address) {
+    private UUID resolve(Actor actor, String scope, Access access) {
+        return scopes.resolve(actor.subject(), scope, access).scopeId();
     }
 }

@@ -111,8 +111,8 @@ class ScopeIsolationIT {
      * <p>That combination is the point. The contract publishes the scope — it
      * answers for every service and the memory service serves it — so the
      * refusal cannot be the not-found class without lying about what the
-     * directory returned. It is a category statement: an exchange has no
-     * meaning in a container for memory content.
+     * directory returned. It is a category statement: a task has no meaning
+     * in a container for memory content.
      */
     @Test
     void a_private_scope_is_refused_the_same_way_on_both_address_forms_of_rest() {
@@ -121,7 +121,7 @@ class ScopeIsolationIT {
 
         assertThat(collection.statusCode())
             .as("422 and not 404: the scope is real and visible, and what is refused is "
-                + "an exchange in a scope of that kind. Nothing the caller presents "
+                + "a task in a scope of that kind. Nothing the caller presents "
                 + "changes it")
             .isEqualTo(422);
         assertThat(collection.jsonPath().getString("reason"))
@@ -227,7 +227,7 @@ class ScopeIsolationIT {
             .as("the vocabulary is this surface's: the pattern names the call the caller "
                 + "actually made, and a caller here told to stop making a REST verb has "
                 + "been told about something it cannot reach")
-            .contains("dispatch_commission");
+            .contains("dispatch_create");
 
         assertSameMcpRefusalBarTheCall(collectionWrite, itemWrite,
             "the write right does not depend on the address form here either");
@@ -339,8 +339,8 @@ class ScopeIsolationIT {
 
     private static Response restCollectionWrite(String scope) {
         return given().contentType(ContentType.JSON)
-            .body(Map.of("title", "a write into " + scope, "apparatus", "code",
-                "date", "2026-09-21", "dispatchBody", "the body"))
+            .body(Map.of("fields", Map.of("title", "a write into " + scope,
+                "apparatus", "code", "text", "the body")))
             .post("/api/" + scope + "/" + SurfaceFixture.SELECTOR);
     }
 
@@ -368,11 +368,11 @@ class ScopeIsolationIT {
     }
 
     private Response mcpCollectionWrite(String scope) {
-        return call("dispatch_commission", Map.of(
+        return call("dispatch_create", Map.of(
             "scope", scope,
             "selector", SurfaceFixture.SELECTOR,
             "fields", Map.of("title", "a write into " + scope, "apparatus", "code",
-                "text", "the body", "date", "2026-09-21")));
+                "text", "the body")));
     }
 
     private Response mcpItemRead(String scope) {
@@ -382,16 +382,16 @@ class ScopeIsolationIT {
     /**
      * A write at a complete address, in the caller's own part.
      *
-     * <p>{@code dispatch_add_correction} rather than {@code dispatch_take}:
-     * the probing identity is a commissioner, and a call reserved for the
-     * executor would be refused for the part rather than for the scope if the
-     * order of the two checks ever inverted. This way the only thing that can
-     * refuse it is the scope.
+     * <p>{@code dispatch_annotate} rather than {@code dispatch_claim}: the
+     * probing identity is a commissioner, and a call reserved for the executor
+     * would be refused for the part rather than for the scope if the order of
+     * the two checks ever inverted. The scope is resolved before the task is
+     * looked at, so the only thing that can refuse it here is the scope.
      */
     private Response mcpItemWrite(String scope) {
-        return call("dispatch_add_correction", Map.of(
+        return call("dispatch_annotate", Map.of(
             "address", addressIn(scope),
-            "fields", Map.of("title", "a correction", "text", "the correction's body")));
+            "fields", Map.of("part", "dispatch", "text", "an addendum's text")));
     }
 
     private Response call(String tool, Map<String, Object> arguments) {

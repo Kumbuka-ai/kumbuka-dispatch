@@ -14,9 +14,9 @@ import java.util.UUID;
 /**
  * Every statement issued against the selector table.
  *
- * <p>Separate from {@link ExchangeRepository} because the registry above it is
+ * <p>Separate from {@link TaskRepository} because the registry above it is
  * separate: a selector is declared deliberately and never as a side effect of
- * use, and folding its three statements into the exchange repository would put
+ * use, and folding its three statements into the task repository would put
  * them next to the ones that DO run on every ordinary write.
  *
  * <p>As there, refusals stay above. "Not declared" and "withdrawn" are two
@@ -54,12 +54,17 @@ public class SelectorRepository {
             .getResultList();
     }
 
-    /** How many exchanges carry a selector — the number a withdrawal turns on. */
+        /**
+     * How many tasks are filed under a selector in a scope.
+     *
+     * <p>What decides whether a selector may still be withdrawn: a selector
+     * that carries a task carries addresses somebody depends on.
+     */
     @Transactional
-    public long exchangesUnder(UUID scopeId, String name) {
+    public long tasksUnder(UUID scopeId, String name) {
         return em.createQuery("""
-                SELECT COUNT(e) FROM Exchange e
-                WHERE e.scopeId = :scope AND e.selector.name = :sel
+                SELECT COUNT(t) FROM Task t
+                WHERE t.scopeId = :scope AND t.selector.name = :sel
                 """, Long.class)
             .setParameter(P_SCOPE, scopeId)
             .setParameter("sel", name)

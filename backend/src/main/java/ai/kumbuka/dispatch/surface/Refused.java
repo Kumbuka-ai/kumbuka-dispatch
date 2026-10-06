@@ -5,55 +5,42 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A refusal in the shape section 4 fixes: a stable reason, a message that
- * explains itself, and the data a caller acts on.
+ * A refusal in the shape TAR-0004 section 7 fixes: a stable reason, a message
+ * that explains itself, and the data a caller acts on — the call as it was
+ * made, the state, and the way out.
  *
  * <p>Raised at the surface, never in the kernel. The kernel keeps its own
- * typed refusals — it has to, because it is reached by callers this class
- * knows nothing about — and {@link ReasonMapping} turns each into one of
- * these at the boundary. That direction matters: a kernel that knew the
- * caller's vocabulary would be a kernel with a surface inside it, and the
- * kernel is what the router will reuse.
+ * typed refusals and {@link ReasonMapping} turns each into one of these at the
+ * boundary; the kernel's own message is discarded, because it names addresses
+ * in short form and speaks the kernel's words.
  *
- * <h2>Why the message is built here and not at the throw site</h2>
+ * <p>The message is built here, from the pattern in {@link ReasonCatalogue}
+ * and the values the raising place supplies, so one refusal is worded one way
+ * wherever it is raised. Every call name a factory receives is already the
+ * name on the caller's surface: {@code dispatch_accept} on MCP, {@code accept}
+ * on REST.
  *
- * A throw site knows the values; the catalogue knows the shape. Twenty-eight
- * throw sites each wording their own refusal is how the measured surface came
- * to answer "cannot takeup" in one place and a full sentence in another. So a
- * throw site supplies values under the names the pattern uses, and the wording
- * happens once.
- *
- * <h2>Why every factory takes a surface</h2>
- *
- * Because section 4.2 makes the vocabulary part of the message and not a
- * rendering detail on top of it. A pattern names a step; the surface decides
- * which call that step is made with. Measured in review on 2026-09-19: a REST caller
- * was told "the holder delivers with dispatch_deliver_return", and told to
- * {@code dispatch_query} in {@code data.next} — two calls it cannot make. The
- * parameter is what stops the vocabulary being decided by whichever throw site
- * was written last.
+ * <p>No refusal carries a text of a task: the values filled in are addresses,
+ * states, call names and the caller's own arguments.
  */
 public class Refused extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
-    /** Keys of the refusal's {@code data}, by the names section 4.1 gives them. */
+    /** Keys of the refusal's {@code data}. */
     public static final String ATTEMPTED = "attempted";
     public static final String STATE = "state";
     public static final String NEXT = "next";
+    public static final String WAITING_FOR = "waiting_for";
     public static final String OFFENDERS = "offenders";
+    public static final String CONFIRMATION = "confirmation";
+    public static final String CONFLICT_TOKEN = "conflict_token";
 
-    /**
-     * Placeholder names the catalogue's patterns use.
-     *
-     * <p>Named once because they are one name: a pattern that spelled {@code
-     * addres} would render a brace into a caller's message, and the failure
-     * would surface at the throw site rather than here.
-     */
     private static final String P_CALL = "call";
     private static final String P_SCOPE = "scope";
     private static final String P_ADDRESS = "address";
     private static final String P_STATE = "state";
+    private static final String P_NAME = "name";
 
     private final transient RefusalCode code;
     private final transient Map<String, Object> data;
@@ -61,7 +48,8 @@ public class Refused extends RuntimeException {
     private Refused(RefusalCode code, String message, Map<String, Object> data) {
         super(message);
         this.code = code;
-        this.data = data == null ? null : Map.copyOf(data);
+        this.data = data == null ? null : java.util.Collections.unmodifiableMap(
+            new LinkedHashMap<>(data));
     }
 
     public RefusalCode code() {
@@ -71,14 +59,25 @@ public class Refused extends RuntimeException {
     /**
      * The refusal's data, or null where it carries none.
      *
-     * <p>Null and not an empty map, and the difference is load-bearing exactly
-     * once: {@link RefusalCode#NOT_FOUND} must be byte-identical across its
-     * three causes, and an empty {@code data: {}} is a key the other refusals
-     * carry and this one would have to carry identically for ever. Absent is
-     * the only shape that cannot drift.
+     * <p>Null and not an empty map for {@link RefusalCode#NOT_FOUND}, which
+     * must be byte-identical across its causes; absent is the only shape that
+     * cannot drift.
      */
     public Map<String, Object> data() {
         return data;
+    }
+
+    /**
+     * Where a refused call stood: the task's complete address, its state as a
+     * caller reads it, the calls open to the caller with one sentence each,
+     * and what the task waits for where none is.
+     */
+    public record Situation(String address, String state, List<NextList.Step> next,
+                            String waitingFor) {
+
+        public Situation {
+            next = next == null ? List.of() : List.copyOf(next);
+        }
     }
 
     // ======================================================================
@@ -86,322 +85,252 @@ public class Refused extends RuntimeException {
     // ======================================================================
 
     /**
-     * The deliberately indistinguishable refusal of section 4.3.
-     *
-     * <p>Takes no arguments, which is the enforcement — not even a surface.
-     * A factory that accepted an address or a call name would eventually be
-     * called with one, and the three causes this refusal exists to blur would
-     * become distinguishable by whichever detail leaked first.
+     * The deliberately indistinguishable refusal: nothing there, a scope the
+     * caller may not see, and an address that cannot be routed answer alike.
+     * Takes no arguments, which is the enforcement.
      */
     public static Refused notFound() {
         return new Refused(RefusalCode.NOT_FOUND, ReasonCatalogue.NOT_FOUND_MESSAGE, null);
     }
 
     // ======================================================================
-    // The ones that explain
+    // The ones about a task the caller may see: they carry its situation
     // ======================================================================
 
     /**
-     * A refusal that names the call, its state and the way out.
+     * The state, or the condition on the hold, does not permit the call.
      *
-     * @param call  the call as the caller made it, on its own surface
-     * @param state the exchange's state, where the caller may see it
-     * @param next  the calls open to the caller instead
+     * @param applies where the call applies, as a phrase: "only in draft"
      */
-    public static Refused ofState(Surface surface, String call, String address, String state,
-                                  boolean terminal, List<NextCalculator.Step> next) {
+    public static Refused ofState(String call, Situation at, boolean closed, String applies) {
         Map<String, String> values = new LinkedHashMap<>();
         values.put(P_CALL, call);
-        values.put(P_ADDRESS, address);
-        values.put(P_STATE, state);
-        values.put("calls", named(next));
-
-        String message = terminal
-            ? ReasonCatalogue.terminalStateMessage(surface, values)
-            : ReasonCatalogue.message(RefusalCode.STATE_DOES_NOT_ALLOW, surface, values);
-
-        return new Refused(RefusalCode.STATE_DOES_NOT_ALLOW, message,
-            situation(call, state, next));
+        values.put(P_ADDRESS, at.address());
+        values.put(P_STATE, at.state());
+        values.put("applies", applies);
+        values.put("calls", named(at.next()));
+        String message = closed
+            ? ReasonCatalogue.terminalStateMessage(values)
+            : ReasonCatalogue.message(RefusalCode.STATE_DOES_NOT_ALLOW, values);
+        return new Refused(RefusalCode.STATE_DOES_NOT_ALLOW, message, situation(call, at));
     }
 
     /**
      * The call belongs to another part, and the caller is told which part it
-     * actually has.
+     * has.
      *
-     * @param required      the part section 5 reserves the call for
-     * @param participation the caller's own part, from section 2. Never a
-     *                      stand-in: the predecessor hardcoded "bystander" and
-     *                      told a holder it took no part in the exchange it
-     *                      was holding.
+     * @param role who makes the call, as a phrase: "the commissioner"
      */
-    public static Refused ofRole(Surface surface, String call, String address,
-                                 String required, Participation participation, String state,
-                                 List<NextCalculator.Step> next) {
-        String message = ReasonCatalogue.message(RefusalCode.ROLE_DOES_NOT_ALLOW, surface,
-            Map.of(P_CALL, call, "role", required, P_ADDRESS, address,
-                "participation", participation.wireName()));
-        return new Refused(RefusalCode.ROLE_DOES_NOT_ALLOW, message,
-            situation(call, state, next));
+    public static Refused ofRole(String call, Situation at, String role,
+                                 Participation participation) {
+        String message = ReasonCatalogue.message(RefusalCode.ROLE_DOES_NOT_ALLOW, Map.of(
+            P_CALL, call, "role", role, P_ADDRESS, at.address(),
+            "participation", participation.wireName()));
+        return new Refused(RefusalCode.ROLE_DOES_NOT_ALLOW, message, situation(call, at));
     }
 
     /**
-     * Somebody else holds it, and the caller is told until when.
+     * The call is the holder's and the caller does not hold the task.
      *
-     * @param until the ISO-8601 instant the claim lapses at. The contract's
-     *              pattern names a time and the predecessor filled it with the
-     *              phrase "its claim lapses", which is the sentence with the
-     *              value taken out of it.
+     * @param why which of the three it is: another holds it, nobody does, or
+     *            the caller's lease ended
      */
-    public static Refused notTheHolder(Surface surface, String call, String address,
-                                       String until, String does, String state,
-                                       List<NextCalculator.Step> next) {
-        String message = ReasonCatalogue.message(RefusalCode.NOT_THE_HOLDER, surface, Map.of(
-            P_ADDRESS, address, "until", until, "does", does));
-        return new Refused(RefusalCode.NOT_THE_HOLDER, message, situation(call, state, next));
+    public static Refused notTheHolder(String call, Situation at, String why) {
+        String message = ReasonCatalogue.message(RefusalCode.NOT_THE_HOLDER, Map.of(
+            P_CALL, call, P_ADDRESS, at.address(), "why", why));
+        return new Refused(RefusalCode.NOT_THE_HOLDER, message, situation(call, at));
     }
 
-    /** A receipt was needed and none arrived, or the wrong one did. */
-    public static Refused receipt(Surface surface, RefusalCode code, String call,
-                                  String address, String state,
-                                  List<NextCalculator.Step> next) {
-        String message = ReasonCatalogue.message(code, surface,
-            Map.of(P_CALL, call, P_ADDRESS, address));
-        return new Refused(code, message, situation(call, state, next));
-    }
-
-    /** There is no delivered answer to accept. */
-    public static Refused noAnswerDelivered(Surface surface, String call, String address,
-                                            String state,
-                                            List<NextCalculator.Step> next) {
-        String message = ReasonCatalogue.message(RefusalCode.NO_ANSWER_DELIVERED, surface,
-            Map.of(P_ADDRESS, address));
-        return new Refused(RefusalCode.NO_ANSWER_DELIVERED, message,
-            situation(call, state, next));
+    /** A receipt arrived and is not the one the task holds. */
+    public static Refused receiptWrong(String call, Situation at) {
+        String message = ReasonCatalogue.message(RefusalCode.RECEIPT_WRONG,
+            Map.of(P_CALL, call, P_ADDRESS, at.address()));
+        return new Refused(RefusalCode.RECEIPT_WRONG, message, situation(call, at));
     }
 
     /**
-     * The bracket has unfinished exchanges, each named with what would finish
-     * it.
+     * The call would close a bracket root with unfinished children.
      *
-     * <p>{@code offenders} travels under {@code data} and carries structure
-     * rather than prose: measured on 2026-09-18, the list arrived as
-     * {@code ["satellite/26.1 (draft)"]} — a member of its own, in a form a
-     * caller has to parse back out of a sentence, with an address no call
-     * accepts.
-     *
-     * @param ending {@code closed} or {@code cancelled}, per the contract's
-     *               own {@code <closed / cancelled>}. Which of the two the
-     *               caller attempted is the one thing this message cannot
-     *               derive, and getting it wrong describes an act the caller
-     *               did not make.
+     * @param offenders    each unfinished child: complete address, state, and
+     *                     the calls open to the caller on it
+     * @param confirmation what the call is repeated with to close them all
+     * @param stale        whether the call carried a confirmation that no
+     *                     longer holds
      */
-    public static Refused childrenNotFinished(Surface surface, String call, String root,
-                                              String ending,
+    public static Refused childrenNotFinished(String call, Situation at,
                                               List<Map<String, Object>> offenders,
-                                              String state,
-                                              List<NextCalculator.Step> next) {
+                                              String confirmation, boolean stale) {
         String listed = String.join(", ", offenders.stream()
             .map(o -> o.get(P_ADDRESS) + " (" + o.get(STATE) + ")")
             .toList());
-
-        String message = ReasonCatalogue.message(RefusalCode.CHILDREN_NOT_FINISHED, surface,
-            Map.of("root", root, "ending", ending, "count", String.valueOf(offenders.size()),
-                OFFENDERS, listed));
-
-        Map<String, Object> data = new LinkedHashMap<>(situation(call, state, next));
+        String confirm = stale
+            ? "The confirmation given no longer holds: the unfinished tasks changed since it "
+                + "was handed out. Repeat the call with the one in data.confirmation."
+            : "Repeat the call with data.confirmation to withdraw them and close the root.";
+        String message = ReasonCatalogue.message(RefusalCode.CHILDREN_NOT_FINISHED, Map.of(
+            P_CALL, call, P_ADDRESS, at.address(),
+            "count", String.valueOf(offenders.size()), OFFENDERS, listed, "confirm", confirm));
+        Map<String, Object> data = situation(call, at);
         data.put(OFFENDERS, List.copyOf(offenders));
+        data.put(CONFIRMATION, confirmation);
         return new Refused(RefusalCode.CHILDREN_NOT_FINISHED, message, data);
     }
 
-    /** The draw found nothing free in a collection that exists. */
-    public static Refused nothingToTake(Surface surface, String call, String collection) {
-        String message = ReasonCatalogue.message(RefusalCode.NOTHING_TO_TAKE, surface,
-            Map.of("collection", collection));
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put(ATTEMPTED, call);
-        data.put(NEXT, List.of(new NextCalculator.Step(SurfaceStep.QUERY.on(surface),
-            "Lists the exchanges of this bracket kind.")));
-        return new Refused(RefusalCode.NOTHING_TO_TAKE, message, data);
+    /** A claim on a task deferred until an instant that has not come. */
+    public static Refused deferralPending(String call, Situation at, String notBefore) {
+        String message = ReasonCatalogue.message(RefusalCode.DEFERRAL_PENDING, Map.of(
+            P_CALL, call, P_ADDRESS, at.address(), "not_before", notBefore));
+        return new Refused(RefusalCode.DEFERRAL_PENDING, message, situation(call, at));
     }
 
     /**
-     * The call is real on this surface and does not apply at this address.
-     *
-     * <p>Its own code rather than {@link RefusalCode#ARGUMENT_INVALID}, which
-     * the predecessor pressed into service here. The address is well formed
-     * and names something real; what does not fit is the pairing. A caller
-     * told its argument is invalid corrects an address that was right.
+     * The token presented is not the one the task holds; the current one
+     * travels in the message and in {@code data.conflict_token}.
      */
-    public static Refused callNotAtThisAddress(Surface surface, String call, String address,
-                                               String applies, String state,
-                                               List<NextCalculator.Step> next) {
-        String message = ReasonCatalogue.message(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
-            surface, Map.of(P_CALL, call, P_ADDRESS, address, "applies", applies,
-                "calls", named(next)));
-        return new Refused(RefusalCode.CALL_NOT_AT_THIS_ADDRESS, message,
-            situation(call, state, next));
+    public static Refused conflictTokenStale(String call, Situation at, String current) {
+        String message = ReasonCatalogue.message(RefusalCode.CONFLICT_TOKEN_STALE,
+            Map.of(P_CALL, call, P_ADDRESS, at.address(), "current", current));
+        Map<String, Object> data = situation(call, at);
+        data.put(CONFLICT_TOKEN, current);
+        return new Refused(RefusalCode.CONFLICT_TOKEN_STALE, message, data);
     }
 
     // ======================================================================
-    // Form faults: nothing was written, so no state travels
+    // The ones decided before a task is resolved: no state travels, because
+    // naming one would tell a task the caller may see from one it may not
     // ======================================================================
 
-    /** An argument the call does not declare, at any depth. */
-    public static Refused argumentUnknown(Surface surface, String call, String name,
-                                          List<String> declared) {
-        String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_UNKNOWN, surface,
-            Map.of(P_CALL, call, "name", name, "arguments", String.join(", ", declared)));
-        return new Refused(RefusalCode.ARGUMENT_UNKNOWN, message, Map.of(ATTEMPTED, call));
+    /** The draw found nothing in a collection that exists. */
+    public static Refused nothingToTake(String call, String collection, String query) {
+        String message = ReasonCatalogue.message(RefusalCode.NOTHING_TO_TAKE,
+            Map.of("collection", collection));
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put(ATTEMPTED, call);
+        data.put(NEXT, List.of(new NextList.Step(query,
+            "Lists the tasks of this bracket kind with their state and apparatus.")));
+        return new Refused(RefusalCode.NOTHING_TO_TAKE, message, data);
+    }
+
+    /** A duration that is not a positive ISO-8601 duration. */
+    public static Refused claimDurationInvalid(String call, String value) {
+        String message = ReasonCatalogue.message(RefusalCode.CLAIM_DURATION_INVALID,
+            Map.of("value", String.valueOf(value)));
+        return new Refused(RefusalCode.CLAIM_DURATION_INVALID, message, attempted(call));
+    }
+
+    /**
+     * Something the declaration does not have: an argument at either level,
+     * a filter, or a call.
+     *
+     * @param subject the call whose argument it is, or "this service" for a call
+     * @param kind    "argument", "argument under fields", or "call"
+     * @param known   what it has instead
+     */
+    public static Refused argumentUnknown(String attempted, String subject, String kind,
+                                          String name, List<String> known) {
+        String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_UNKNOWN, Map.of(
+            "subject", subject, "kind", kind, P_NAME, name,
+            "known", known.isEmpty() ? "none" : String.join(", ", known)));
+        return new Refused(RefusalCode.ARGUMENT_UNKNOWN, message, attempted(attempted));
     }
 
     /** A required argument did not arrive. */
-    public static Refused argumentMissing(Surface surface, String call, String name,
-                                          String what) {
-        String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_MISSING, surface,
-            Map.of(P_CALL, call, "name", name, "what", what));
-        return new Refused(RefusalCode.ARGUMENT_MISSING, message, Map.of(ATTEMPTED, call));
+    public static Refused argumentMissing(String call, String name, String what) {
+        String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_MISSING,
+            Map.of(P_CALL, call, P_NAME, name, "what", what));
+        return new Refused(RefusalCode.ARGUMENT_MISSING, message, attempted(call));
     }
 
     /**
      * An argument arrived with a value it cannot take.
      *
-     * @param why a sentence of the pattern's own. Section 4.4 says so in as
-     *            many words, and the predecessor passed the kernel's message
-     *            here — which is how a short-form address reached a caller
-     *            through the one refusal that takes free text.
+     * @param why a sentence of the surface's own, never the kernel's message
      */
-    public static Refused argumentInvalid(Surface surface, String call, String name,
-                                          String value, String why) {
-        String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_INVALID, surface,
-            Map.of(P_CALL, call, "name", name, "value", String.valueOf(value), "why", why));
-        return new Refused(RefusalCode.ARGUMENT_INVALID, message, Map.of(ATTEMPTED, call));
+    public static Refused argumentInvalid(String call, String name, String value, String why) {
+        String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_INVALID, Map.of(
+            P_CALL, call, P_NAME, name, "value", String.valueOf(value), "why", why));
+        return new Refused(RefusalCode.ARGUMENT_INVALID, message, attempted(call));
     }
 
-    /** A duration that is not a positive ISO-8601 duration. */
-    public static Refused claimDurationInvalid(Surface surface, String call, String value) {
-        String message = ReasonCatalogue.message(RefusalCode.CLAIM_DURATION_INVALID, surface,
-            Map.of("value", String.valueOf(value)));
-        return new Refused(RefusalCode.CLAIM_DURATION_INVALID, message,
-            Map.of(ATTEMPTED, call));
+    /** The bracket kind is not declared in this scope; the declared ones are named. */
+    public static Refused selectorUnknown(String call, String selector, String scope,
+                                          List<String> declared) {
+        String message = ReasonCatalogue.message(RefusalCode.SELECTOR_UNKNOWN, Map.of(
+            "selector", selector, P_SCOPE, scope,
+            "declared", declared.isEmpty() ? "none" : String.join(", ", declared)));
+        return new Refused(RefusalCode.SELECTOR_UNKNOWN, message, attempted(call));
     }
 
-    /** A conflict token was required and none arrived, or a stale one did. */
-    public static Refused conflictToken(Surface surface, RefusalCode code, String call,
-                                        String address) {
-        String message = ReasonCatalogue.message(code, surface,
-            Map.of(P_CALL, call, P_ADDRESS, address));
-        return new Refused(code, message, Map.of(ATTEMPTED, call));
-    }
-
-    /**
-     * The bracket kind is not declared in this scope.
-     *
-     * @param declared every selector the scope declares. The contract's
-     *                 pattern names them and the remedy is "use a declared
-     *                 one"; a caller told to use a declared one and not told
-     *                 which has been told nothing it can act on.
-     */
-    public static Refused selectorUnknown(Surface surface, String call, String selector,
-                                          String scope, List<String> declared) {
-        String message = ReasonCatalogue.message(RefusalCode.SELECTOR_UNKNOWN, surface,
-            Map.of("selector", selector, P_SCOPE, scope,
-                "declared", declared.isEmpty() ? "none" : String.join(", ", declared)));
-        return new Refused(RefusalCode.SELECTOR_UNKNOWN, message, Map.of(ATTEMPTED, call));
-    }
-
-    // ======================================================================
-    // The scope itself: real, visible, and not one this call may act in
-    // ======================================================================
-
-    /**
-     * The scope is of a kind this service does not carry exchanges in.
-     *
-     * <p>Carries no {@code next}. Not an omission: there is no call at this
-     * address that would work, on either surface, so a list of calls would be
-     * a list of things that fail the same way. The remedy is another scope and
-     * the message says so.
-     *
-     * @param scope the scope as the caller named it — its slug, never its id
-     * @param kind  the kind the platform published for it, so the caller can
-     *              see WHICH of its scopes it reached rather than being told
-     *              only that this one was wrong
-     */
-    public static Refused scopeKindUnsupported(Surface surface, String call, String scope,
-                                               String kind) {
-        String message = ReasonCatalogue.message(RefusalCode.SCOPE_KIND_UNSUPPORTED, surface,
+    /** The scope is of a kind this service does not carry tasks in. */
+    public static Refused scopeKindUnsupported(String call, String scope, String kind) {
+        String message = ReasonCatalogue.message(RefusalCode.SCOPE_KIND_UNSUPPORTED,
             Map.of(P_SCOPE, scope, "kind", kind));
-        return new Refused(RefusalCode.SCOPE_KIND_UNSUPPORTED, message,
-            Map.of(ATTEMPTED, call));
+        return new Refused(RefusalCode.SCOPE_KIND_UNSUPPORTED, message, attempted(call));
     }
 
-    /**
-     * The caller may read this scope and not write to it.
-     *
-     * <p>Names the call as well as the scope: the same caller in the same
-     * scope succeeds with a read, so "you may not write here" is only
-     * actionable beside the thing that was a write.
-     */
-    public static Refused scopeReadOnly(Surface surface, String call, String scope) {
-        String message = ReasonCatalogue.message(RefusalCode.SCOPE_READ_ONLY, surface,
+    /** The caller may read this scope and not write to it. */
+    public static Refused scopeReadOnly(String call, String scope) {
+        String message = ReasonCatalogue.message(RefusalCode.SCOPE_READ_ONLY,
             Map.of(P_CALL, call, P_SCOPE, scope));
-        return new Refused(RefusalCode.SCOPE_READ_ONLY, message, Map.of(ATTEMPTED, call));
+        return new Refused(RefusalCode.SCOPE_READ_ONLY, message, attempted(call));
     }
 
-    /**
-     * The scope is locked and refuses every write.
-     *
-     * <p>Distinct from {@link #scopeReadOnly} in the message as well as in the
-     * code, because the two remedies go to different people. A caller told the
-     * wrong one goes to the wrong person.
-     */
-    public static Refused scopeLocked(Surface surface, String call, String scope) {
-        String message = ReasonCatalogue.message(RefusalCode.SCOPE_LOCKED, surface,
+    /** The scope is locked and refuses every write. */
+    public static Refused scopeLocked(String call, String scope) {
+        String message = ReasonCatalogue.message(RefusalCode.SCOPE_LOCKED,
             Map.of(P_SCOPE, scope));
-        return new Refused(RefusalCode.SCOPE_LOCKED, message, Map.of(ATTEMPTED, call));
+        return new Refused(RefusalCode.SCOPE_LOCKED, message, attempted(call));
     }
 
-    /** The same key, a different call. */
-    public static Refused idempotencyKeyReused(Surface surface, String call, String key,
-                                               String scope) {
-        String message = ReasonCatalogue.message(RefusalCode.IDEMPOTENCY_KEY_REUSED, surface,
-            Map.of("key", key, P_CALL, call, P_SCOPE, scope));
-        return new Refused(RefusalCode.IDEMPOTENCY_KEY_REUSED, message,
-            Map.of(ATTEMPTED, call));
+    /** The same key, a different call or different arguments. */
+    public static Refused idempotencyKeyReused(String call, String key, String scope) {
+        String message = ReasonCatalogue.message(RefusalCode.IDEMPOTENCY_KEY_REUSED,
+            Map.of("key", key, P_SCOPE, scope));
+        return new Refused(RefusalCode.IDEMPOTENCY_KEY_REUSED, message, attempted(call));
+    }
+
+    /** The call is real and does not apply where it was addressed. */
+    public static Refused callNotAtThisAddress(String call, String address, String applies) {
+        String message = ReasonCatalogue.message(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            Map.of(P_CALL, call, P_ADDRESS, address, "applies", applies));
+        return new Refused(RefusalCode.CALL_NOT_AT_THIS_ADDRESS, message, attempted(call));
     }
 
     /**
-     * Ours, not the caller's.
-     *
-     * <p>Says that nothing was changed, because a caller that cannot tell a
-     * failed call from a half-done one has to assume the worst and retry into
-     * whatever state the failure left. The reference is what makes the report
-     * actionable without the caller quoting a stack trace it cannot read — and
-     * it is worth nothing unless the same reference is in the service's log,
-     * which is why {@link UnexpectedFailures} and not this factory is what a
-     * throw site calls.
+     * Ours, not the caller's. Says that nothing was changed, and carries the
+     * reference {@link UnexpectedFailures} logged it under; call that, not this.
      */
-    public static Refused unexpected(Surface surface, String call, String address,
-                                     String reference) {
-        String message = ReasonCatalogue.message(RefusalCode.UNEXPECTED_FAILURE, surface,
+    public static Refused unexpected(String call, String address, String reference) {
+        String message = ReasonCatalogue.message(RefusalCode.UNEXPECTED_FAILURE,
             Map.of(P_CALL, call, P_ADDRESS, address, "reference", reference));
-        return new Refused(RefusalCode.UNEXPECTED_FAILURE, message,
-            Map.of(ATTEMPTED, call, "reference", reference));
+        Map<String, Object> data = attempted(call);
+        data.put("reference", reference);
+        return new Refused(RefusalCode.UNEXPECTED_FAILURE, message, data);
     }
 
-    /** The three members every refusal about a real exchange carries. */
-    private static Map<String, Object> situation(String call, String state,
-                                                 List<NextCalculator.Step> next) {
+    // ======================================================================
+
+    private static Map<String, Object> attempted(String call) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put(ATTEMPTED, call);
-        data.put(STATE, state);
-        data.put(NEXT, next == null ? List.of() : List.copyOf(next));
+        return data;
+    }
+
+    /** The members every refusal about a task the caller may see carries. */
+    private static Map<String, Object> situation(String call, Situation at) {
+        Map<String, Object> data = attempted(call);
+        data.put(STATE, at.state());
+        data.put(NEXT, at.next());
+        if (at.waitingFor() != null) {
+            data.put(WAITING_FOR, at.waitingFor());
+        }
         return data;
     }
 
     /** The offered calls as the message lists them, or the honest nothing. */
-    private static String named(List<NextCalculator.Step> next) {
-        return next == null || next.isEmpty()
+    private static String named(List<NextList.Step> next) {
+        return next.isEmpty()
             ? "nothing"
-            : String.join(", ", next.stream().map(NextCalculator.Step::call).toList());
+            : String.join(", ", next.stream().map(NextList.Step::call).toList());
     }
 }

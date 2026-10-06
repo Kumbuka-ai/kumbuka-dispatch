@@ -171,6 +171,39 @@ public final class SurfaceFixture {
     }
 
     /** The complete address of an exchange, as the MCP form spells one. */
+    /**
+     * Creates a draft over REST as the current identity, with the fields
+     * given, and answers the response.
+     */
+    public static io.restassured.response.Response create(java.util.Map<String, Object> fields) {
+        return io.restassured.RestAssured.given()
+            .contentType(io.restassured.http.ContentType.JSON)
+            .body(java.util.Map.of("fields", fields))
+            .post(collection());
+    }
+
+    /** The {@code <number>.<sub>} of the task an answer names. */
+    public static String idOf(io.restassured.response.Response answer) {
+        String address = answer.jsonPath().getString("address");
+        return address.substring(address.lastIndexOf('/') + 1);
+    }
+
+    /**
+     * Creates a task over REST and sends it, as the current identity, which
+     * must be a commissioner; answers its {@code <number>.<sub>}.
+     */
+    public static String open(String title, String apparatus) {
+        io.restassured.response.Response created = create(java.util.Map.of(
+            "title", title, "apparatus", apparatus, "text", "the commission of " + title));
+        created.then().statusCode(201);
+        String id = idOf(created);
+        io.restassured.RestAssured.given()
+            .header("If-Match", created.header("ETag"))
+            .post(item(id) + ":send")
+            .then().statusCode(200);
+        return id;
+    }
+
     public static String address(String id) {
         return "dispatch://" + SCOPE + "/" + SELECTOR + "/" + id;
     }

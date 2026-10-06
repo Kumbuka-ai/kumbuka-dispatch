@@ -30,26 +30,32 @@ public enum RefusalCode {
      */
     NOT_FOUND,
 
-    /** The exchange is real and its state does not permit this call. */
+    /**
+     * The task is real and its state, or the condition on its hold, does not
+     * permit this call. One code for both, and the message names both.
+     */
     STATE_DOES_NOT_ALLOW,
 
     /** The call belongs to the other role. */
     ROLE_DOES_NOT_ALLOW,
 
-    /** Somebody else holds the exchange. */
+    /** The call is the holder's, and the caller does not hold the task: another does,
+     *  nobody does, or the caller's lease ended. */
     NOT_THE_HOLDER,
 
-    /** A call that needs the take's receipt arrived without one. */
-    RECEIPT_MISSING,
-
-    /** A receipt arrived and is not the one this exchange issued. */
+    /** A receipt arrived and is not the one this task holds. */
     RECEIPT_WRONG,
 
-    /** There is nothing delivered to accept. */
-    NO_ANSWER_DELIVERED,
-
-    /** The bracket has unfinished exchanges; they travel in {@code data.offenders}. */
+    /**
+     * The call would close a bracket root with unfinished children: they travel
+     * in {@code data.offenders}, and the confirmation to repeat the call with
+     * in {@code data.confirmation}. Also when the confirmation given no longer
+     * holds, because the set of unfinished children changed.
+     */
     CHILDREN_NOT_FINISHED,
+
+    /** A claim on a task deferred until an instant that has not come. */
+    DEFERRAL_PENDING,
 
     /** The draw found nothing free. About a set, never about an address. */
     NOTHING_TO_TAKE,
@@ -66,10 +72,7 @@ public enum RefusalCode {
     /** An argument arrived with a value it cannot take. */
     ARGUMENT_INVALID,
 
-    /** A call that repeats the conflict token arrived without one. */
-    CONFLICT_TOKEN_MISSING,
-
-    /** The token presented is not the one the exchange holds. */
+    /** The token presented is not the one the task holds; the current one travels along. */
     CONFLICT_TOKEN_STALE,
 
     /** The bracket kind is not declared in this scope. */
@@ -82,7 +85,7 @@ public enum RefusalCode {
      * <p>A statement about the offering, not about this caller. The platform's
      * read contract answers for every service behind it, so it publishes
      * private scopes too; a private scope is a per-tenant container for memory
-     * content and an exchange has no meaning in one. Nothing the caller
+     * content and a task has no meaning in one. Nothing the caller
      * presents changes that, which is why the remedy names another kind of
      * scope rather than another token.
      *
@@ -96,7 +99,7 @@ public enum RefusalCode {
      * The caller may read this scope and may not write to it.
      *
      * <p>The write right is the platform's answer about the membership over a
-     * service channel. It is not about the exchange, not about the caller's
+     * service channel. It is not about the task, not about the caller's
      * part in one, and not lifted by anything this service offers.
      *
      * <p>Named beside {@link #SCOPE_LOCKED} and never merged with it, because
@@ -133,8 +136,8 @@ public enum RefusalCode {
     /**
      * The call exists on this surface and not at this address depth.
      *
-     * <p>{@code dispatch_close_bracket} at a child, {@code dispatch_take} at a
-     * collection. Distinct from {@link #ARGUMENT_INVALID}, which the
+     * <p>A transition addressed at a collection on REST, a parent that is not
+     * a bracket root. Distinct from {@link #ARGUMENT_INVALID}, which the
      * predecessor used here: the address is well formed and names something
      * real, and what is wrong is the pairing of the call with it. A caller
      * told its address is invalid goes looking for a typo it does not have.

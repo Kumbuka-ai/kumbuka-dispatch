@@ -1,303 +1,428 @@
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.domain.TaskVerb;
+
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * The fourteen calls of the assistant surface, as section 5 of the contract
- * writes them.
+ * The twenty-five calls of the verb surface: the sixteen transitions and the
+ * nine calls that are not transitions (TAR-0004 section 3), with the arguments
+ * of concept section 3.2 and the descriptions of section 3.5.
  *
- * <p><strong>The descriptions are normative and are copied, not composed.</strong>
- * The conformance probe takes its expected values from the contract document
- * and not from this enum, so a wording improved here and not there turns the
- * probe red — which is the only arrangement under which "the description is
- * the contract's" means anything. Reword the contract first.
+ * <p><strong>This is the single source of the surface.</strong> The MCP tool
+ * list, the input schemas, the closure of every call's arguments at both
+ * levels, the {@code next} names and the {@code ARGUMENT_UNKNOWN} refusal all
+ * read from here; the REST routes are written by hand and a test holds them to
+ * this list. The shape is a plain value type with no framework and no adapter
+ * import, because the router takes the same declaration.
  *
- * <p><strong>This is the single source.</strong> The MCP tool list, the input
- * schemas, the closed-schema check, the {@code next} lists and the {@code
- * ARGUMENT_UNKNOWN} refusal all read from here. The router takes the same
- * declaration unchanged in a later commission, which is why the shape is a
- * plain value type with no Quarkus, no JSON annotations and no adapter
- * imports: the thing that travels between two services cannot depend on the
- * framework either of them happens to run.
+ * <p>A transition names its row of {@link TaskVerb}, which decides it. The
+ * nine others name none; the kernel's call of the same name decides them.
  *
- * <h2>Why process verbs rather than the generic ones</h2>
+ * <h2>Descriptions</h2>
  *
- * The generic verbs name transitions of the kernel — {@code send}, {@code
- * ratify}, {@code takeup}. An assistant reading a tool list learns from them
- * what the machine does, not what it can do next. Measured on 2026-09-18: an
- * assistant with no skill called {@code create}, then {@code claim}, and was
- * told its exchange "is draft and cannot takeup" — a true sentence from which
- * the missing step ({@code send}) could not be inferred. A process verb has no
- * such gap because it has no intermediate state to be in: {@code
- * dispatch_commission} is create-write-send in one transaction, and there is
- * nothing after it for the caller to have forgotten.
+ * Each is at most {@link SurfaceDeclaration#DESCRIPTION_BUDGET} characters,
+ * and what explains one argument stands at that argument. The descriptions of
+ * {@code dispatch_claim} and {@code dispatch_claim_next} and of the argument
+ * {@code apparatus} are concept section 3.5 word for word; the sentence about
+ * the text is the same in both.
  */
 public enum ProcessVerb {
 
     // ======================================================================
-    // 5.1 Commissioner
+    // The sixteen transitions, in the order of TAR-0004 section 3
     // ======================================================================
 
-    COMMISSION("dispatch_commission",
-        "Give a piece of work to someone. Creates the exchange and freezes it in one step: "
-            + "once commissioned, the text cannot be changed, only corrected with "
-            + "dispatch_add_correction. Without `parent` it opens a new bracket and the "
-            + "exchange becomes its root; with `parent` it adds a child to that bracket. "
-            + "The service allocates the number. Afterwards the exchange is open and waits "
-            + "for an executor to take it up with dispatch_take.",
-        Participation.COMMISSIONER,
-        List.of(
-            scope(),
-            selector(),
+    SEND("send", TaskVerb.SEND, Participation.COMMISSIONER,
+        "Sends your draft: the task is frozen and becomes open, waiting for an executor to "
+            + "take it up. Moves the task from draft to open (not final). Call as the "
+            + "commissioner, with the conflict token of your last read.\n\n"
+            + "After this the commission's text cannot change; add to it with "
+            + "dispatch_annotate. Withdraw it with dispatch_withdraw.",
+        List.of(address(), conflictToken())),
+
+    CLAIM("claim", TaskVerb.CLAIM, Participation.CANDIDATE,
+        "Takes up one open task and makes you its holder. Moves the task from open to "
+            + "active (not final). Call as an executor, naming the task by its address.\n\n"
+            + "Returns a receipt and the end of your hold. Keep the receipt: every later "
+            + "call on this task needs it.\n\n"
+            + Shared.THE_TEXT_IS_NOT_IN_THE_ANSWER + "\n\n"
+            + "Your hold lasts 30 minutes unless you state a duration; extend it with "
+            + "dispatch_renew.",
+        List.of(address(), duration(), idempotencyKey(
+            "a key of your own: repeating the claim with it while you hold the task "
+                + "returns the same task and a new receipt, and takes nothing up again"))),
+
+    CLAIM_NEXT("claim_next", TaskVerb.CLAIM_NEXT, Participation.CANDIDATE,
+        "Takes up the next open task addressed to you, without naming one; use "
+            + "dispatch_claim when you know the address. Moves the task from open to active "
+            + "(not final). Call as an executor with scope, selector and apparatus.\n\n"
+            + "Returns the address, a receipt and the end of your hold. Keep the receipt: "
+            + "every later call on this task needs it.\n\n"
+            + Shared.THE_TEXT_IS_NOT_IN_THE_ANSWER + "\n\n"
+            + "If nothing matches, nothing is taken.",
+        List.of(scope(), selector(),
+            Argument.topList("apparatus", true, ApparatusPatterns.CHARACTER_RULE,
+                "Which apparatus you draw for. Every task is addressed to an apparatus: the "
+                    + "kind of executor it is meant for, such as \"code\" or \"review\". Give "
+                    + "one or more patterns, matched as alternatives. \"*\" stands for any run "
+                    + "of characters, so \"agent-*\" matches \"agent-backend\". Case-sensitive. "
+                    + "A pattern of only \"*\" is refused. dispatch_query lists open tasks with "
+                    + "their apparatus."),
+            duration(),
+            idempotencyKey("a key of your own: repeating the draw with it while you hold the "
+                + "task it drew returns that task and a new receipt, and draws nothing"))),
+
+    RELEASE("release", TaskVerb.RELEASE, Participation.HOLDER,
+        "Gives a task you hold back: it is open again for any executor. Moves the task from "
+            + "active to open (not final). Call as its holder, with your receipt. Use it when "
+            + "you lose control over the run.\n\n"
+            + "To give it back until a later instant use dispatch_defer; if the work cannot "
+            + "be done, dispatch_fail.",
+        List.of(address(), receipt(), remark(false))),
+
+    DEFER("defer", TaskVerb.DEFER, Participation.HOLDER,
+        "Gives a task you hold back until an instant you name; nobody can take it up before "
+            + "then. Moves the task from active to open (not final). Call as its holder, with "
+            + "your receipt. Use it for a technical abort that a later attempt may "
+            + "overcome.\n\n"
+            + "dispatch_read and dispatch_query show the instant.",
+        List.of(address(), receipt(),
+            Argument.field("not_before", Argument.STRING, true,
+                "the instant before which nobody can take the task up, as ISO-8601 such as "
+                    + "2026-10-07T09:00:00Z"),
+            remark(false))),
+
+    RENEW("renew", TaskVerb.RENEW, Participation.HOLDER,
+        "Extends your hold on a task you are working on. The task stays active (not final). "
+            + "Call as its holder, with your receipt.\n\n"
+            + "The answer carries the new end of your hold.",
+        List.of(address(), receipt(), duration())),
+
+    ASK("ask", TaskVerb.ASK, Participation.HOLDER,
+        "Pauses a task you hold and asks the commissioner a question, with answer options, "
+            + "free text admitted, or both. Moves the task from active to on_hold (not "
+            + "final). Call as its holder, with your receipt.\n\n"
+            + "You keep the task. The commissioner's dispatch_answer makes it active again "
+            + "with a fresh 30-minute hold; read the answer with dispatch_read_text, part "
+            + "\"thread\".",
+        List.of(address(), receipt(),
+            Argument.field("question", Argument.STRING, true, "what you cannot decide"),
+            Argument.field("options", Argument.ARRAY, false,
+                "the answers the commissioner can choose from"),
+            Argument.field("free_text", Argument.BOOLEAN, false,
+                "whether the commissioner may answer in free text; false if omitted, and "
+                    + "then options are needed"))),
+
+    ANSWER("answer", TaskVerb.ANSWER, Participation.COMMISSIONER,
+        "Answers the question the holder asked: name one of its options, or give text where "
+            + "free text is admitted. Moves the task from on_hold to active (not final); the "
+            + "holder continues with a fresh 30-minute hold. Call as the commissioner, with "
+            + "the conflict token of your last read.\n\n"
+            + "Read the question first with dispatch_read_text, part \"thread\".",
+        List.of(address(), conflictToken(),
+            Argument.field("option", Argument.STRING, false,
+                "one of the question's options; give this or text"),
+            Argument.field("text", Argument.STRING, false,
+                "a free-text answer, where the question admits one; give this or option"))),
+
+    HOLD("hold", TaskVerb.HOLD, Participation.HOLDER,
+        "Pauses a task you hold while it waits on a dependency or on something external. "
+            + "Moves the task from active to on_hold (not final). Call as its holder, with "
+            + "your receipt. You keep the task; the hold does not run out while it is "
+            + "paused.\n\n"
+            + "Continue with dispatch_resume.",
+        List.of(address(), receipt(),
+            Argument.oneOf("reason", Argument.Placement.FIELDS, true,
+                List.of("dependency", "external"), "why the task waits"),
+            remark(false))),
+
+    RESUME("resume", TaskVerb.RESUME, Participation.HOLDER,
+        "Continues a task you paused with dispatch_hold. Moves the task from on_hold to "
+            + "active (not final). Call as its holder, with your receipt.\n\n"
+            + "A question you asked is continued by the commissioner's dispatch_answer, not "
+            + "by this call.",
+        List.of(address(), receipt(), duration())),
+
+    DELIVER("deliver", TaskVerb.DELIVER, Participation.HOLDER,
+        "Delivers your answer, its text and your metadata in one act. Moves the task from "
+            + "active to delivered (not final). Call as its holder, with your receipt.\n\n"
+            + "You keep the task while the commissioner reviews it. It closes when accepted, "
+            + "or comes back to you with a remark through dispatch_rework.",
+        List.of(address(), receipt(),
+            Argument.field("text", Argument.STRING, true, "your answer"),
+            metadata("your own keys on the answer"))),
+
+    REWORK("rework", TaskVerb.REWORK, Participation.COMMISSIONER,
+        "Sends a delivered answer back to its holder with a remark saying what to change. "
+            + "Moves the task from delivered to active (not final); the holder continues with "
+            + "a fresh 30-minute hold. Call as the commissioner, with the conflict token of "
+            + "your last read.\n\n"
+            + "Read the answer first with dispatch_read_text, part \"return\".",
+        List.of(address(), conflictToken(), remark(true))),
+
+    ACCEPT("accept", TaskVerb.ACCEPT, Participation.COMMISSIONER,
+        "Accepts the delivered answer and closes the task. Moves the task from delivered to "
+            + "closed, outcome accepted (final). Call as the commissioner, with the conflict "
+            + "token of your last read; the identity that delivered cannot accept.\n\n"
+            + "Read the answer first with dispatch_read_text, part \"return\". On a bracket "
+            + "root with unfinished children, repeat with the confirmation the refusal hands "
+            + "out.",
+        List.of(address(), conflictToken(), confirmation())),
+
+    REJECT("reject", TaskVerb.REJECT, Participation.CANDIDATE,
+        "Declines a commission you were offered, with a remark saying why. Moves the task "
+            + "from open to closed, outcome rejected (final). Call as an executor who could "
+            + "take it up; no claim is needed.",
+        List.of(address(), remark(true))),
+
+    FAIL("fail", TaskVerb.FAIL, Participation.HOLDER,
+        "Closes a task you hold as failed, with a remark saying why. Moves the task from "
+            + "active or on_hold to closed, outcome failed (final). Call as its holder, with "
+            + "your receipt. For a technical abort use dispatch_defer; to hand the task back, "
+            + "dispatch_release.\n\n"
+            + "On a bracket root with unfinished children, repeat with the confirmation the "
+            + "refusal hands out.",
+        List.of(address(), receipt(), confirmation(), remark(true))),
+
+    WITHDRAW("withdraw", TaskVerb.WITHDRAW, Participation.COMMISSIONER,
+        "Withdraws a commission that is no longer wanted. Moves the task from open, active, "
+            + "on_hold or delivered to closed, outcome withdrawn (final). Call as the "
+            + "commissioner, with the conflict token of your last read.\n\n"
+            + "On a bracket root with unfinished children the first call is refused and names "
+            + "them; repeat it with the confirmation it hands out to withdraw them and the "
+            + "root together.",
+        List.of(address(), conflictToken(), confirmation(), remark(false))),
+
+    // ======================================================================
+    // The nine calls that are not transitions
+    // ======================================================================
+
+    CREATE("create", null, Participation.COMMISSIONER,
+        "Creates a task as a draft, for you to complete and send. Without parent it opens a "
+            + "new bracket and the task is its root; with parent it adds a child to that "
+            + "bracket. The service allocates the number. Call as a commissioner; you become "
+            + "the task's commissioner.\n\n"
+            + "Nobody is offered the draft until you send it with dispatch_send. Change it "
+            + "with dispatch_update, or discard it with dispatch_delete.",
+        List.of(scope(), selector(),
             Argument.top("parent", Argument.STRING, false,
-                "the complete address of a bracket root, to add a child to it"),
-            idempotencyKey("commission twice"),
-            Argument.field("title", Argument.STRING, true, "the exchange's title"),
-            Argument.field("apparatus", Argument.STRING, true, "who the work is addressed to"),
-            Argument.field("text", Argument.STRING, true, "the body of the commission"),
-            Argument.field("date", Argument.STRING, false,
-                "the dispatch date as YYYY-MM-DD; today if omitted"),
-            Argument.field("metadata", "object", false, "your own keys on the commission"))),
+                "the complete address of a bracket root, to add a child to that bracket"),
+            idempotencyKey("a key of your own, so a retried create does not create twice"),
+            Argument.field("title", Argument.STRING, true, "the task's title"),
+            Argument.field("apparatus", Argument.STRING, true,
+                "the kind of executor the task is addressed to, such as \"code\""),
+            Argument.field("text", Argument.STRING, false, "the commission's text"),
+            metadata("your own keys on the task"))),
 
-    ADD_CORRECTION("dispatch_add_correction",
-        "Attach a correction to a commissioned exchange whose text is frozen. The "
-            + "correction is shown with the exchange, cannot be removed, and closes "
-            + "together with it. Not possible once the exchange is finished.",
-        Participation.COMMISSIONER,
-        List.of(
-            address(),
-            idempotencyKey("correct twice"),
-            Argument.field("title", Argument.STRING, true, "the correction's title"),
-            Argument.field("text", Argument.STRING, true, "what the correction says"))),
+    UPDATE("update", null, Participation.COMMISSIONER,
+        "Changes your draft: its title, apparatus, text or metadata; only what you give "
+            + "changes. Call as the commissioner, with the conflict token of your last read. "
+            + "The task stays a draft.\n\n"
+            + "A sent task cannot be changed; add to its text with dispatch_annotate.",
+        List.of(address(), conflictToken(),
+            Argument.field("title", Argument.STRING, false, "the new title"),
+            Argument.field("apparatus", Argument.STRING, false, "the new apparatus"),
+            Argument.field("text", Argument.STRING, false, "the new text of the commission"),
+            metadata("your own keys on the task, replacing the ones it has"))),
 
-    ACCEPT_RETURN("dispatch_accept_return",
-        "Accept the answer the executor delivered and finish the exchange. The answer is "
-            + "frozen and the exchange becomes closed. Use dispatch_curate_return instead "
-            + "if the answer is to be carried forward into another object, and "
-            + "dispatch_reply_to_executor if it needs rework.",
-        Participation.COMMISSIONER,
+    DELETE("delete", null, Participation.COMMISSIONER,
+        "Deletes your draft outright; it leaves no trace. Call as the commissioner, with the "
+            + "conflict token of your last read. Only a draft can be deleted; a sent task is "
+            + "withdrawn with dispatch_withdraw.\n\n"
+            + "The answer carries the address the draft had, and nothing else.",
+        List.of(address(), conflictToken())),
+
+    READ("read", null, null,
+        "Reads the head of one task: its state and attributes, whether you, someone else or "
+            + "nobody holds it, its metadata, which texts it has, and the calls open to you "
+            + "with what each does, or what the task waits for.\n\n"
+            + "The answer does NOT contain the task's text; read that with "
+            + "dispatch_read_text.",
         List.of(address())),
 
-    CURATE_RETURN("dispatch_curate_return",
-        "Accept the delivered answer and finish the exchange by carrying it forward into "
-            + "another exchange you can see, for example the record of the bracket it "
-            + "belongs to. The target is stored with the exchange.",
-        Participation.COMMISSIONER,
-        List.of(
-            address(),
-            Argument.field("into", Argument.STRING, true,
-                "the complete address of the exchange the answer is carried into: any "
-                    + "exchange of this service you can see, in any scope and bracket "
-                    + "kind, other than this one"))),
+    READ_TEXT("read_text", null, null,
+        "Reads one part of a task's text: \"dispatch\" (the commission), \"return\" (the valid "
+            + "answer), \"thread\" (questions, answers, remarks and earlier answers, in order) "
+            + "or \"addenda\". One part per call.\n\n"
+            + "The commissioner reads every part in every state; an executor reads only a "
+            + "task it holds. For \"dispatch\" and \"return\" the answer says how many addenda "
+            + "the text has.",
+        List.of(address(),
+            Argument.oneOf("part", Argument.Placement.TOP, true,
+                List.of("dispatch", "return", "thread", "addenda"), "the part to read"))),
 
-    REPLY_TO_EXECUTOR("dispatch_reply_to_executor",
-        "Answer the executor: either a question it asked, or a delivered answer that needs "
-            + "rework. The message is stored with the exchange and the holder continues "
-            + "working.",
-        Participation.COMMISSIONER,
-        List.of(
-            address(),
-            conflictToken(),
-            Argument.field("message", Argument.STRING, true, "what you are telling the executor"))),
+    QUERY("query", null, null,
+        "Lists the tasks of one bracket kind in a scope, without their text: each with its "
+            + "state, attributes and the calls open to you. Narrow by state, apparatus, "
+            + "bracket or address; comma-separated values are alternatives, and an undeclared "
+            + "filter is refused.\n\n"
+            + "The list follows the address order, stops at the page bound and says whether "
+            + "it was cut.",
+        List.of(scope(), selector(),
+            Argument.top("state", Argument.STRING, false,
+                "states to list, comma-separated: draft, open, active, on_hold, delivered, "
+                    + "closed"),
+            Argument.top("apparatus", Argument.STRING, false,
+                "apparatus patterns, comma-separated; \"*\" stands for any run of characters"),
+            Argument.top("bracket", Argument.STRING, false, "bracket numbers, comma-separated"),
+            Argument.top("address", Argument.STRING, false,
+                "complete addresses of tasks of this bracket kind, comma-separated"),
+            Argument.top("limit", Argument.INTEGER, false,
+                "the page bound: at most this many tasks; 100 if omitted"))),
 
-    CANCEL("dispatch_cancel",
-        "Withdraw a commission that is no longer wanted. The exchange is closed without an "
-            + "accepted answer. On a bracket root this ends the bracket without a record, "
-            + "and is refused while any exchange of the bracket is unfinished.",
-        Participation.COMMISSIONER,
-        List.of(
-            address(),
-            conflictToken(),
-            Argument.field("reason", Argument.STRING, true, "why the commission is withdrawn"))),
+    ANNOTATE("annotate", null, null,
+        "Adds an addendum to a text of a sent task: a supplement with its own time and "
+            + "author that cannot be removed. Name the part it supplements. Call as the "
+            + "identity that wrote that text; the task's state does not change.\n\n"
+            + "Read addenda with dispatch_read_text, part \"addenda\".",
+        List.of(address(),
+            Argument.field("text", Argument.STRING, true, "the addendum's text"),
+            Argument.oneOf("part", Argument.Placement.FIELDS, true,
+                List.of("dispatch", "return", "question", "answer", "remark"),
+                "the text it supplements"))),
 
-    CLOSE_BRACKET("dispatch_close_bracket",
-        "Finish a bracket: accept the record delivered on its root and close it. Refused "
-            + "while any exchange of the bracket is unfinished; the refusal names each one "
-            + "with its complete address and the call that would finish it.",
-        Participation.COMMISSIONER,
-        List.of(Argument.top("address", Argument.STRING, true,
-            "the complete address of the bracket root"))),
+    RELATE("relate", null, Participation.COMMISSIONER,
+        "Records the object a closed task was curated into: another task you can see, in any "
+            + "scope and bracket kind, never the task itself. Call as the commissioner, with "
+            + "the conflict token of your last read. The task stays closed.\n\n"
+            + "Remove the relation with dispatch_unrelate.",
+        List.of(address(), conflictToken(),
+            Argument.field("curated_in", Argument.STRING, true,
+                "the complete address of the task this one was curated into"))),
 
-    // ======================================================================
-    // 5.2 Executor
-    // ======================================================================
+    UNRELATE("unrelate", null, Participation.COMMISSIONER,
+        "Removes the record of the object a closed task was curated into. Call as the "
+            + "commissioner, with the conflict token of your last read. The task stays "
+            + "closed.",
+        List.of(address(), conflictToken()));
 
-    TAKE("dispatch_take",
-        "Take up an open exchange to work on it. Returns a receipt that later calls on "
-            + "this exchange need; keep it. The claim lasts for `duration`.",
-        Participation.CANDIDATE,
-        List.of(
-            address(),
-            duration())),
+    /** The prefix every call carries on the assistant surface. */
+    public static final String PREFIX = "dispatch_";
 
-    TAKE_NEXT("dispatch_take_next",
-        "Take up the next open exchange of a bracket kind, in address order. Returns the "
-            + "exchange and the receipt.",
-        Participation.CANDIDATE,
-        List.of(
-            scope(),
-            selector(),
-            apparatus(),
-            duration())),
+    /**
+     * Texts the constants share. A holder of its own, because an enum constant
+     * cannot name a static field of its own type that is declared after it.
+     */
+    private static final class Shared {
 
-    DELIVER_RETURN("dispatch_deliver_return",
-        "Deliver your answer to the commissioner. The answer is stored and the exchange "
-            + "waits for the commissioner to accept it, curate it or send it back. You "
-            + "keep the exchange meanwhile.",
-        Participation.HOLDER,
-        List.of(
-            address(),
-            receipt(),
-            Argument.field("text", Argument.STRING, true, "your answer"))),
+        /** The sentence about the text, word for word the same in both claim descriptions. */
+        static final String THE_TEXT_IS_NOT_IN_THE_ANSWER =
+            "The answer does NOT contain the task's text. Read it next with dispatch_read_text, "
+                + "part \"dispatch\", before you start working.";
 
-    ASK_COMMISSIONER("dispatch_ask_commissioner",
-        "Stop and ask the commissioner something you cannot decide. The question is stored "
-            + "with the exchange; you keep it until the commissioner replies.",
-        Participation.HOLDER,
-        List.of(
-            address(),
-            receipt(),
-            Argument.field("question", Argument.STRING, true, "what you cannot decide"))),
-
-    DECLINE("dispatch_decline",
-        "Decline the work. On an open exchange, any executor who could take it up may "
-            + "decline it, and the commission is refused. On an exchange you hold, it "
-            + "records that you could not complete it, and needs your receipt. The reason "
-            + "is stored. Final.",
-        Participation.CANDIDATE,
-        List.of(
-            address(),
-            Argument.top("receipt", Argument.STRING, false,
-                "the receipt dispatch_take issued, if you took the exchange up"),
-            Argument.field("reason", Argument.STRING, true, "why you are declining"))),
+        private Shared() {
+        }
+    }
 
     // ======================================================================
-    // 5.3 Both roles
-    // ======================================================================
-
-    READ("dispatch_read",
-        "Read one exchange with what you may see of it, the calls open to you from its "
-            + "state, and who it is waiting for.",
-        null,
-        List.of(address())),
-
-    QUERY("dispatch_query",
-        "List the exchanges of one bracket kind in a scope, narrowed by filters. Each "
-            + "entry carries its complete address, its state and the calls open to you.",
-        null,
-        List.of(
-            scope(),
-            selector()));
-
-
-    // ======================================================================
-    // The arguments several calls share
-    //
-    // One definition each, because they ARE one argument: `address` means the
-    // same thing and is described the same way wherever it appears, and ten
-    // copies of its description are ten places a reworded sentence has to be
-    // changed and nine places it can be missed.
-    //
-    // The tool DESCRIPTIONS above are deliberately NOT treated this way. They
-    // are the contract's normative text, compared line for line against the
-    // copied document, and a reader checking one against the other has to see
-    // it where the call declares it.
+    // The arguments several calls share: one definition each, because they
+    // ARE one argument and mean the same wherever they appear.
     // ======================================================================
 
     private static Argument scope() {
-        return Argument.top("scope", Argument.STRING, true, "the scope name, a DNS label");
+        return Argument.top("scope", Argument.STRING, true, "the scope's name, a DNS label");
     }
 
     private static Argument selector() {
-        return Argument.top("selector", Argument.STRING, true, "the declared bracket kind");
+        return Argument.top("selector", Argument.STRING, true,
+            "the declared bracket kind, such as \"sprint\"");
     }
 
     private static Argument address() {
         return Argument.top("address", Argument.STRING, true,
-            "the complete address of the exchange");
-    }
-
-    private static Argument duration() {
-        return Argument.top("duration", Argument.STRING, true,
-            "how long the claim stands, as an ISO-8601 duration such as PT2H");
-    }
-
-    /**
-     * Which apparatus the draw is for, as patterns.
-     *
-     * <p>Required, and the requirement is the argument's whole reason for
-     * existing: the draw used to take the next open exchange of a bracket kind
-     * whatever it was addressed to, so a controller polling for its own work
-     * claimed every manual commission it overtook. A pattern narrows the draw
-     * to the apparatus the caller can actually act as.
-     *
-     * <p>The values themselves mean nothing to this service. An apparatus is a
-     * name the scope's operator gives out, and {@code agent-} is one
-     * installation's convention rather than a distinction the product makes —
-     * so what the product offers is the general mechanism, drawing by pattern,
-     * and not an attribute for agentic execution.
-     */
-    private static Argument apparatus() {
-        return Argument.topList("apparatus", VerbInput.ClaimNext.CHARACTER_RULE,
-            "which apparatus to draw for: one or more patterns, matched as alternatives. "
-                + "'*' stands for any run of characters at any position, so 'agent-*' "
-                + "draws only what is addressed to an agent. The comparison is "
-                + "case-sensitive, and a pattern of nothing but '*' is refused because it "
-                + "narrows nothing");
-    }
-
-    private static Argument receipt() {
-        return Argument.top("receipt", Argument.STRING, true,
-            "the receipt dispatch_take issued for this exchange");
+            "the complete address of the task, dispatch://<scope>/<selector>/<number>.<sub>");
     }
 
     private static Argument conflictToken() {
         return Argument.top("conflict_token", Argument.STRING, true,
-            "the token handed out with the last read of this exchange");
+            "the conflict token handed out with your last read of this task");
     }
 
-    /** The key, with the sentence that says what a retry of THIS call does. */
-    private static Argument idempotencyKey(String does) {
-        return Argument.top("idempotency_key", Argument.STRING, false,
-            "a key of your own, so a retried call does not " + does);
+    private static Argument receipt() {
+        return Argument.top("receipt", Argument.STRING, true,
+            "the receipt your claim handed out for this task");
     }
 
-    private final String call;
-    private final String description;
+    private static Argument duration() {
+        return Argument.top("duration", Argument.STRING, false,
+            "how long your hold lasts, as an ISO-8601 duration such as PT2H; 30 minutes if "
+                + "omitted");
+    }
+
+    private static Argument confirmation() {
+        return Argument.top("confirmation", Argument.STRING, false,
+            "the confirmation a refusal handed out for closing a bracket root with unfinished "
+                + "children");
+    }
+
+    private static Argument idempotencyKey(String description) {
+        return Argument.top("idempotency_key", Argument.STRING, false, description);
+    }
+
+    private static Argument remark(boolean required) {
+        return Argument.field("remark", Argument.STRING, required,
+            required ? "why, in a sentence the other side can act on"
+                : "a remark kept with the task");
+    }
+
+    private static Argument metadata(String description) {
+        return Argument.field("metadata", Argument.OBJECT, false,
+            description + ": each value a string or a list of strings");
+    }
+
+    private final String verb;
+    private final TaskVerb transition;
     private final Participation role;
+    private final String description;
     private final List<Argument> arguments;
 
-    ProcessVerb(String call, String description, Participation role,
+    ProcessVerb(String verb, TaskVerb transition, Participation role, String description,
                 List<Argument> arguments) {
-        this.call = call;
-        this.description = description;
+        this.verb = verb;
+        this.transition = transition;
         this.role = role;
-        this.arguments = arguments;
+        this.description = description;
+        this.arguments = List.copyOf(arguments);
     }
 
-    /** The name a caller uses. Always prefixed, because a tool list is flat. */
+    /** The verb as TAR-0004 section 3 names it, without a prefix: the name on REST. */
+    public String verb() {
+        return verb;
+    }
+
+    /** The name on the assistant surface: the verb, prefixed {@code dispatch_}. */
     public String call() {
-        return call;
+        return PREFIX + verb;
     }
 
-    /** Section 5's text, verbatim. */
-    public String description() {
-        return description;
+    /** The name this call goes by on one surface. */
+    public String on(Surface surface) {
+        return surface == Surface.MCP ? call() : verb;
+    }
+
+    /** The row of the transition table that decides this call, or null for the nine others. */
+    public TaskVerb transition() {
+        return transition;
+    }
+
+    public boolean isTransition() {
+        return transition != null;
     }
 
     /**
-     * The part that may make this call, or null where every part may.
-     *
-     * <p>{@link Participation#CANDIDATE} on the two takes and on {@code
-     * dispatch_decline} is section 2's own part and not a looser {@code
-     * HOLDER}: a candidate is an executor at an exchange that is still open,
-     * which is exactly the precondition those three carry on the open side.
-     * {@code dispatch_decline} additionally admits the holder, on an {@code
-     * active} exchange and with its receipt — one call over two parts, which
-     * {@link NextCalculator} reads from the state rather than from this field.
+     * The part that makes this call, or null where it depends on the task:
+     * reading is open to whoever may see a task, an addendum to whoever wrote
+     * the text it supplements.
      */
     public Participation role() {
         return role;
+    }
+
+    public String description() {
+        return description;
     }
 
     public List<Argument> arguments() {
@@ -319,39 +444,50 @@ public enum ProcessVerb {
         return !fieldArguments().isEmpty();
     }
 
-    /** The declared argument of this name, at either level, or null. */
-    public Argument argument(String name) {
+    /** The declared argument of this name at one level, or null. */
+    public Argument argument(String name, Argument.Placement placement) {
         return arguments.stream()
-            .filter(a -> a.name().equals(name))
+            .filter(a -> a.name().equals(name) && a.placement() == placement)
             .findFirst()
             .orElse(null);
     }
 
-    /** Every declared argument name, for the {@code ARGUMENT_UNKNOWN} message. */
-    public List<String> argumentNames() {
-        return arguments.stream().map(Argument::name).toList();
+    /** Every declared top-level name, {@code fields} included where the call writes. */
+    public List<String> topNames() {
+        List<String> names = new java.util.ArrayList<>(
+            topArguments().stream().map(Argument::name).toList());
+        if (hasFields()) {
+            names.add("fields");
+        }
+        return List.copyOf(names);
     }
 
-    /**
-     * Every call name this surface offers.
-     *
-     * <p>Used by the refusal a caller gets when it names a tool that does not
-     * exist. The contract has no {@code TOOL_UNKNOWN} reason, and inventing one
-     * would break "a reason not in the table cannot be returned"; {@code
-     * ARGUMENT_UNKNOWN} with the whole list is the honest reading — the caller
-     * named something the surface does not have, and here is what it does.
-     */
-    public static List<String> byCallNames() {
-        return java.util.Arrays.stream(values()).map(ProcessVerb::call).toList();
+    /** The call this transition row is declared as. */
+    public static ProcessVerb of(TaskVerb transition) {
+        return Arrays.stream(values())
+            .filter(v -> v.transition == transition)
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException(
+                "no call is declared for the transition " + transition));
     }
 
-    /** The verb of this call name, or null when no call goes by it. */
-    public static ProcessVerb byCall(String call) {
-        for (ProcessVerb verb : values()) {
-            if (verb.call.equals(call)) {
-                return verb;
+    /** The call of this name on one surface, or null when no call goes by it. */
+    public static ProcessVerb byName(Surface surface, String name) {
+        for (ProcessVerb call : values()) {
+            if (call.on(surface).equals(name)) {
+                return call;
             }
         }
         return null;
+    }
+
+    /** Every call name on one surface, in declaration order. */
+    public static List<String> names(Surface surface) {
+        return Arrays.stream(values()).map(v -> v.on(surface)).toList();
+    }
+
+    /** The role as the declaration publishes it. */
+    public String roleName() {
+        return role == null ? "any" : role.name().toLowerCase(Locale.ROOT);
     }
 }

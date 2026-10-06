@@ -24,15 +24,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <h2>Why "nothing was claimed" is asserted and not assumed</h2>
  *
  * A refused draw that had already awarded a claim would be the worst outcome
- * available: the caller is told its call failed and retries, while an exchange
+ * available: the caller is told its call failed and retries, while a task
  * somewhere is held by a lease nobody is working. The status code alone cannot
  * rule that out — it says what the caller was told, not what the service did —
- * so every case here reads the exchange back afterwards and checks that it is
+ * so every case here reads the task back afterwards and checks that it is
  * still open and unheld.
  *
- * <p>The scope holds exactly one claimable exchange for the whole class, and
+ * <p>The scope holds exactly one claimable task for the whole class, and
  * each case reads that one back. With more than one, a refusal that claimed
- * "some" exchange could still leave the one being read untouched.
+ * "some" task could still leave the one being read untouched.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -43,10 +43,10 @@ class ApparatusFilterRefusalIT {
     @Inject TestIdentityAssociation identity;
 
     /**
-     * The exchange every refusal case in this class reads back afterwards.
+     * The task every refusal case in this class reads back afterwards.
      *
      * <p>Fresh for each case, and it is the case's OWN: a refused draw must
-     * leave the exchange that was there untouched, and reading back one an
+     * leave the task that was there untouched, and reading back one an
      * earlier case had left would be asserting about that case's leftovers.
      */
     private String bait;
@@ -184,7 +184,7 @@ class ApparatusFilterRefusalIT {
         Map<String, Object> arguments = new LinkedHashMap<>(takeNextArguments(List.of("code")));
         arguments.put("apparatuses", List.of("agent-*"));
 
-        assertThat(reasonOf(mcp("dispatch_take_next", arguments)))
+        assertThat(reasonOf(mcp("dispatch_claim_next", arguments)))
             .isEqualTo("ARGUMENT_UNKNOWN");
         assertNothingWasClaimed();
     }
@@ -200,26 +200,28 @@ class ApparatusFilterRefusalIT {
      * that refused everything, which is the failure a probe set made only of
      * refusals cannot see.
      *
-     * <p><strong>WHICH exchange comes back is deliberately not asserted.</strong>
+     * <p><strong>WHICH task comes back is deliberately not asserted.</strong>
      * Every case in this class, and the other classes of this suite, share one
      * scope and one selector, so the draw takes the position-next claimable one
      * across everything they left behind. What IS asserted is that its
      * apparatus matches the pattern — the property the filter is for, and one
-     * that holds whichever exchange the position picks. The selection order is
+     * that holds whichever task the position picks. The selection order is
      * asserted where it can be, against a tenant of its own, in the domain
      * probe.
      */
     @Test
-    void a_well_formed_draw_claims_an_exchange_of_the_named_apparatus() {
+    void a_well_formed_draw_claims_a_task_of_the_named_apparatus() {
+        SurfaceFixture.asExecutor(identity);
         Response drawn = draw(body(LEASE, List.of("code")));
 
         assertThat(drawn.statusCode()).isEqualTo(200);
-        assertThat(drawn.jsonPath().getString("exchange.fields.apparatus"))
+        String id = SurfaceFixture.idOf(drawn);
+        assertThat(given().get(SurfaceFixture.item(id)).jsonPath().getString("fields.apparatus"))
             .as("the draw was for 'code' and what came back must be addressed to it. This "
                 + "is the one positive case of the class, and an address assertion here "
-                + "would be about whichever exchange the shared selector happened to hold")
+                + "would be about whichever task the shared selector happened to hold")
             .isEqualTo("code");
-        assertThat(drawn.jsonPath().getString("exchange.fields.state")).isEqualTo("active");
+        assertThat(drawn.jsonPath().getString("fields.state")).isEqualTo("active");
         assertThat(drawn.jsonPath().getString("receipt")).isNotBlank();
     }
 
@@ -238,7 +240,7 @@ class ApparatusFilterRefusalIT {
     }
 
     private String reasonOfTakeNext(List<String> apparatus) {
-        return reasonOf(mcp("dispatch_take_next", takeNextArguments(apparatus)));
+        return reasonOf(mcp("dispatch_claim_next", takeNextArguments(apparatus)));
     }
 
     private static Map<String, Object> takeNextArguments(List<String> apparatus) {
@@ -279,34 +281,28 @@ class ApparatusFilterRefusalIT {
     }
 
     /**
-     * The bait exchange is still open and held by nobody.
+     * The bait task is still open and held by nobody.
      *
      * <p>Read back over the surface rather than out of the database, because
      * what has to be true is what a caller can see: the next well-formed draw
-     * must find this exchange exactly as the refused one left it.
+     * must find this task exactly as the refused one left it.
      */
     private void assertNothingWasClaimed() {
+        SurfaceFixture.asConsole(identity);
         Response read = given().get(SurfaceFixture.item(bait));
         read.then().statusCode(200);
         assertThat(read.jsonPath().getString("fields.state"))
-            .as("a refused draw must not have moved anything. An exchange left active by "
+            .as("a refused draw must not have moved anything. A task left active by "
                 + "a call the caller was told had failed is a lease nobody is working and "
                 + "nobody knows about")
             .isEqualTo("open");
-        assertThat(read.jsonPath().getString("fields.effective_holder"))
+        assertThat(read.jsonPath().getString("fields.holder"))
             .as("and nobody holds it")
             .isIn(null, "nobody");
     }
 
-    /** One open, claimable exchange addressed to {@code code}. */
+    /** One open, claimable task addressed to {@code code}. */
     private String commissionOne() {
-        Response created = given().contentType(ContentType.JSON)
-            .body(Map.of("title", "the bait", "apparatus", "code", "date", "2026-09-29"))
-            .post(SurfaceFixture.collection());
-        created.then().statusCode(201);
-        String id = created.jsonPath().getString("fields.number") + ".0";
-        given().contentType(ContentType.JSON)
-            .post(SurfaceFixture.item(id) + ":send").then().statusCode(200);
-        return id;
+        return SurfaceFixture.open("the bait", "code");
     }
 }

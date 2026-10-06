@@ -5,10 +5,11 @@ import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.ReasonCatalogue;
 import ai.kumbuka.dispatch.surface.RefusalCode;
+import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.SurfaceDeclaration;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -16,481 +17,180 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * A1, A5 and A8: the declaration against the contract, with no service running.
+ * The declaration against the target and the concept document.
  *
- * <p>A unit test and not an integration test, deliberately. What is asserted
- * here is a property of the DECLARATION — the names, the normative
- * descriptions, the reason catalogue — and none of it needs a database, a token
- * or a running surface to be true. Putting it behind Testcontainers would make
- * the cheapest and most-often-broken check the slowest one to run.
+ * <p>Every expected value here is a fixed value written from the
+ * specification ({@link TargetSurface}) or read from the contract copy
+ * ({@link Contract}), never from the declaration it checks.
  *
- * <p>Every expected value comes from {@link Contract}, which reads the copied
- * contract document. Nothing here reads the declaration to decide what the
- * declaration should say.
+ * <p>Red probes, observed: a twenty-sixth call declared, and a declared call
+ * removed, each turn {@link #the_declaration_carries_the_twenty_five_calls_of_the_target}
+ * red; a description over 500 characters stops the service at start and with
+ * it the build, and turns {@link #every_description_is_within_its_budget} red.
  */
-@Tag("TST-0001")
-@Tag("TST-0005")
-@Tag("TST-0008")
 class DeclarationConformanceTest {
 
     // =======================================================================
-    // A1 — the tool list is the contract's
+    // Criterion 1: the calls of the target, nothing missing, nothing extra
     // =======================================================================
 
     @Test
-    void the_tool_list_is_exactly_the_calls_the_contract_declares() {
-        List<String> declared = McpTools.declared().stream().map(McpTools.Tool::name).toList();
+    void the_declaration_carries_the_twenty_five_calls_of_the_target() {
+        assertThat(ProcessVerb.names(Surface.REST))
+            .as("TAR-0004 section 3: sixteen transitions and nine further calls, and no "
+                + "other")
+            .containsExactlyInAnyOrderElementsOf(TargetSurface.REST);
+        assertThat(ProcessVerb.names(Surface.MCP))
+            .as("on the assistant surface each is named dispatch_<verb>")
+            .containsExactlyInAnyOrderElementsOf(TargetSurface.MCP);
+        assertThat(McpTools.declared().stream().map(McpTools.Tool::name).toList())
+            .as("and the tool list is exactly the declaration")
+            .containsExactlyInAnyOrderElementsOf(TargetSurface.MCP);
+    }
 
+    @Test
+    void the_sixteen_transitions_are_the_transitions_and_the_nine_are_not() {
+        assertThat(Arrays.stream(ProcessVerb.values()).filter(ProcessVerb::isTransition)
+                .map(ProcessVerb::verb).toList())
+            .containsExactlyInAnyOrderElementsOf(TargetSurface.TRANSITIONS);
+        assertThat(Arrays.stream(ProcessVerb.values()).filter(v -> !v.isTransition())
+                .map(ProcessVerb::verb).toList())
+            .containsExactlyInAnyOrderElementsOf(TargetSurface.OTHERS);
+        for (ProcessVerb call : ProcessVerb.values()) {
+            if (call.isTransition()) {
+                assertThat(call.transition().wireName())
+                    .as("a transition is bound to the row of the table of its own name")
+                    .isEqualTo(call.verb());
+            }
+        }
+    }
+
+    // =======================================================================
+    // Criterion 2: the arguments of the table in concept section 3.2
+    // =======================================================================
+
+    @Test
+    void every_call_takes_exactly_the_arguments_of_the_concept_table() {
+        for (ProcessVerb call : ProcessVerb.values()) {
+            TargetSurface.Arguments expected = TargetSurface.ARGUMENTS.get(call.verb());
+            assertThat(expected).as("the table has a row for %s", call.verb()).isNotNull();
+            assertThat(call.topArguments().stream().map(Argument::name).toList())
+                .as("%s: what names the target and what is transport stands at the top",
+                    call.call())
+                .containsExactlyInAnyOrderElementsOf(expected.top());
+            assertThat(call.fieldArguments().stream().map(Argument::name).toList())
+                .as("%s: everything written stands under fields", call.call())
+                .containsExactlyInAnyOrderElementsOf(expected.fields());
+        }
+    }
+
+    @Test
+    void the_mandatory_arguments_are_the_ones_the_concept_names() {
+        for (ProcessVerb call : ProcessVerb.values()) {
+            Argument remark = call.argument("remark", Argument.Placement.FIELDS);
+            if (remark != null) {
+                assertThat(remark.required())
+                    .as("remark is mandatory on fail, reject and rework and optional "
+                        + "elsewhere: %s", call.call())
+                    .isEqualTo(TargetSurface.REMARK_REQUIRED.contains(call.verb()));
+            }
+            Argument duration = call.argument("duration", Argument.Placement.TOP);
+            if (duration != null) {
+                assertThat(duration.required())
+                    .as("a duration is optional everywhere: %s", call.call()).isFalse();
+            }
+            assertThat(call.argument("date", Argument.Placement.FIELDS))
+                .as("create takes no date, and nothing else does: %s", call.call()).isNull();
+        }
+        for (String name : TargetSurface.CLAIM_NEXT_REQUIRED) {
+            assertThat(ProcessVerb.CLAIM_NEXT.argument(name, Argument.Placement.TOP).required())
+                .as("%s is mandatory on claim_next", name).isTrue();
+        }
+    }
+
+    // =======================================================================
+    // Descriptions
+    // =======================================================================
+
+    @Test
+    void every_description_is_within_its_budget() {
+        for (ProcessVerb call : ProcessVerb.values()) {
+            assertThat(call.description().length())
+                .as("%s: a description is at most 500 characters", call.call())
+                .isLessThanOrEqualTo(500);
+        }
+        assertThat(SurfaceDeclaration.DESCRIPTION_BUDGET).isEqualTo(500);
+    }
+
+    @Test
+    void a_description_over_the_budget_is_refused_by_the_start_up_guard() {
+        assertThatThrownBy(() -> SurfaceDeclaration.requireWithinBudget("dispatch_probe",
+                "x".repeat(501)))
+            .as("RED STATE, observed: the guard the service runs at start refuses a "
+                + "description of 501 characters, so a declaration that carried one would "
+                + "not start and no test that boots it would pass")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("501");
+        SurfaceDeclaration.requireWithinBudget("dispatch_probe", "x".repeat(500));
+    }
+
+    @Test
+    void the_texts_of_concept_section_3_5_stand_word_for_word() {
+        assertThat(ProcessVerb.CLAIM.description()).isEqualTo(TargetSurface.CLAIM_DESCRIPTION);
+        assertThat(ProcessVerb.CLAIM_NEXT.description())
+            .isEqualTo(TargetSurface.CLAIM_NEXT_DESCRIPTION);
+        assertThat(ProcessVerb.CLAIM_NEXT.argument("apparatus", Argument.Placement.TOP)
+                .description())
+            .isEqualTo(TargetSurface.APPARATUS_ARGUMENT);
+        assertThat(ProcessVerb.CLAIM.description())
+            .as("the sentence about the text is the same in both descriptions")
+            .contains(TargetSurface.THE_TEXT_SENTENCE);
+        assertThat(ProcessVerb.CLAIM_NEXT.description())
+            .contains(TargetSurface.THE_TEXT_SENTENCE);
+    }
+
+    @Test
+    void every_description_is_the_contract_copy_s() {
+        Map<String, String> described = Contract.describedCalls();
+        assertThat(described.keySet())
+            .as("the contract copy describes exactly the calls of the target")
+            .containsExactlyInAnyOrderElementsOf(TargetSurface.MCP);
+        for (ProcessVerb call : ProcessVerb.values()) {
+            assertThat(Contract.collapsed(call.description()))
+                .as("%s carries the description the contract copy writes", call.call())
+                .isEqualTo(described.get(call.call()));
+        }
+        assertThat(Contract.collapsed(ProcessVerb.CLAIM_NEXT
+                .argument("apparatus", Argument.Placement.TOP).description()))
+            .isEqualTo(Contract.quotedUnder("### 3.3"));
+    }
+
+    // =======================================================================
+    // The refusals
+    // =======================================================================
+
+    @Test
+    void the_catalogue_is_the_contract_copy_s_table() {
+        List<String> declared = Arrays.stream(RefusalCode.values()).map(Enum::name).toList();
         assertThat(declared)
-            .as("a tool the contract does not name is an addition nobody ratified, and a "
-                + "call the contract names and the surface does not carry is an omission "
-                + "a caller has no way to notice")
-            .containsExactlyInAnyOrderElementsOf(Contract.describedCalls().keySet());
-    }
-
-    @Test
-    void the_tool_list_carries_fourteen_calls() {
-        assertThat(McpTools.declared())
-            .as("section 5 declares fourteen: seven for the commissioner, five for the "
-                + "executor, two for both")
-            .hasSize(14);
-    }
-
-    @Test
-    void every_description_is_the_contract_s_own_text() {
-        Map<String, String> expected = Contract.describedCalls();
-
-        for (McpTools.Tool tool : McpTools.declared()) {
-            assertThat(normalise(tool.description()))
-                .as("the description of %s is normative text. Reword the contract first, "
-                    + "then copy it here — the other order edits the specification to make "
-                    + "a probe pass", tool.name())
-                .isEqualTo(normalise(expected.get(tool.name())));
-        }
-    }
-
-    /**
-     * Whitespace is not part of the text.
-     *
-     * <p>The contract wraps its prose at a column and the Java source wraps it
-     * at another; both are renderings of one paragraph. Comparing them
-     * literally would turn every re-wrap into a red probe, which trains people
-     * to edit the copy instead of reading it.
-     */
-    private static String normalise(String text) {
-        return text == null ? null : text.replaceAll("\\s+", " ").trim();
-    }
-
-    // =======================================================================
-    // A1, second half — the schemas are closed at both levels
-    // =======================================================================
-
-    @Test
-    void every_schema_is_closed_at_the_top_level() {
-        for (McpTools.Tool tool : McpTools.declared()) {
-            assertThat(tool.inputSchema().get("additionalProperties"))
-                .as("%s accepts an argument it does not declare, which is how a caller "
-                    + "comes to depend on a value the server never read", tool.name())
-                .isEqualTo(false);
-        }
-    }
-
-    @Test
-    void every_fields_object_is_closed_too() {
-        for (McpTools.Tool tool : McpTools.declared()) {
-            Object fields = properties(tool).get("fields");
-            if (fields == null) {
-                continue;
-            }
-            @SuppressWarnings("unchecked")
-            Map<String, Object> schema = (Map<String, Object>) fields;
-            assertThat(schema.get("additionalProperties"))
-                .as("%s's fields object is open. One level of closure is exactly as much "
-                    + "use as none: measured on 2026-09-18, `draft` was rejected nowhere "
-                    + "because nothing looked inside", tool.name())
-                .isEqualTo(false);
-        }
-    }
-
-    /**
-     * A declared list argument publishes the rule its elements obey, and a
-     * lower bound.
-     *
-     * <p>Reads the expectation off the DECLARATION rather than writing the
-     * expression out again: what this asserts is that the schema and the check
-     * are one string, and a copy of the expression here would make the probe
-     * pass while the two drifted.
-     *
-     * <p>{@code minItems} is asserted because the requiredness alone is
-     * satisfied by an empty array, and an empty list of patterns is precisely
-     * the draw the argument exists to refuse. A schema that admitted it would
-     * describe a call the service rejects.
-     */
-    @Test
-    void every_list_argument_publishes_its_element_rule_and_a_lower_bound() {
-        int checked = 0;
-        for (ProcessVerb verb : ProcessVerb.values()) {
-            for (Argument argument : verb.topArguments()) {
-                if (argument.itemPattern() == null) {
-                    continue;
-                }
-                checked++;
-                @SuppressWarnings("unchecked")
-                Map<String, Object> property = (Map<String, Object>)
-                    properties(byName(verb.call())).get(argument.name());
-
-                assertThat(property.get("type")).isEqualTo(Argument.ARRAY);
-                assertThat(property.get("minItems"))
-                    .as("%s's %s is required, and an empty array satisfies required",
-                        verb.call(), argument.name())
-                    .isEqualTo(1);
-                @SuppressWarnings("unchecked")
-                Map<String, Object> items = (Map<String, Object>) property.get("items");
-                assertThat(items.get("pattern"))
-                    .as("the published element rule is the one the surface enforces. A "
-                        + "schema advertising a different rule is worse than none: a "
-                        + "caller that obeys it is still refused")
-                    .isEqualTo(argument.itemPattern());
-            }
-        }
-        assertThat(checked)
-            .as("no list argument is declared any more, so this probe asserts nothing. "
-                + "Remove it, or the surface has lost the argument it was written for")
-            .isPositive();
-    }
-
-    @Test
-    void the_calls_that_write_declare_a_fields_object() {
-        for (ProcessVerb verb : ProcessVerb.values()) {
-            if (!verb.hasFields()) {
-                continue;
-            }
-            assertThat(properties(byName(verb.call())))
-                .as("%s writes values into the exchange, and DEC-0040 puts those under "
-                    + "fields", verb.call())
-                .containsKey("fields");
-        }
-    }
-
-    @Test
-    void no_written_value_sits_at_the_top_level() {
-        for (ProcessVerb verb : ProcessVerb.values()) {
-            List<String> top = verb.topArguments().stream()
-                .map(a -> a.name())
-                .toList();
-            assertThat(top)
-                .as("%s carries a written value at the top level. The top level chooses "
-                    + "the target and carries transport artefacts; everything the call "
-                    + "writes lives under fields", verb.call())
-                .doesNotContain("title", "text", "reason", "message", "question", "into");
-        }
-    }
-
-    // =======================================================================
-    // A5 — the reason catalogue is the contract's
-    // =======================================================================
-
-    @Test
-    void every_reason_the_contract_declares_exists_in_the_catalogue() {
-        List<String> declared =
-            ReasonCatalogue.declared().stream().map(r -> r.code().name()).toList();
-
-        assertThat(declared)
-            .as("a reason the contract declares and the service cannot raise is a promise "
-                + "to a caller that nothing keeps")
-            .containsAll(Contract.declaredReasons());
-    }
-
-    @Test
-    void the_catalogue_declares_no_reason_the_contract_does_not() {
-        List<String> fromContract = Contract.declaredReasons();
-
+            .as("every reason of the table is declared, and no other")
+            .containsExactlyInAnyOrderElementsOf(Contract.declaredReasons());
         for (RefusalCode code : RefusalCode.values()) {
-            if (AHEAD_OF_THE_CONTRACT.contains(code.name())) {
-                continue;
-            }
-            assertThat(fromContract)
-                .as("%s can be returned and the contract's table does not list it. A "
-                    + "reason not in the table cannot be returned", code)
-                .contains(code.name());
+            assertThat(ReasonCatalogue.of(code).pattern())
+                .as("the pattern of %s", code)
+                .isEqualTo(Contract.patternOf(code.name()));
+            assertThat(ReasonCatalogue.of(code).remedy())
+                .as("the remedy of %s", code)
+                .isEqualTo(Contract.remedyOf(code.name()));
         }
-    }
-
-    /**
-     * The reasons this service raises that section 4.4 does not yet list.
-     *
-     * <p>Closed, named, and three. Dispatch 187.17 instructs this service to
-     * refuse a private scope, a locked scope and a scope without the write
-     * right, each with its own code — and it says in as many words which of
-     * the two documents gives way: "der Katalog wird angepasst, nicht die
-     * Plattform". The contract copy is a verbatim copy of a concept document
-     * that belongs to the concept apparatus and is not edited from here, so
-     * the divergence is declared rather than papered over, and reported for
-     * ratification.
-     *
-     * <p>A set and not a flag on the loop: a fourth code slipping in
-     * unnoticed is exactly what this probe exists to stop, and it still does.
-     * The set is also asserted from the other side below, so it cannot quietly
-     * outlive the ratification it is waiting for.
-     */
-    private static final java.util.Set<String> AHEAD_OF_THE_CONTRACT = java.util.Set.of(
-        "SCOPE_KIND_UNSUPPORTED", "SCOPE_READ_ONLY", "SCOPE_LOCKED");
-
-    /**
-     * The exception list expires by going red.
-     *
-     * <p>Every member of it must STILL be absent from the contract. When
-     * Concept adds the three to section 4.4 this probe turns red and the way
-     * to make it green again is to delete {@link #AHEAD_OF_THE_CONTRACT} — at
-     * which point the probe above starts checking them like everything else.
-     * Without this, a waiver written for one sprint outlives the reason for
-     * it, and nothing ever notices that the contract caught up.
-     */
-    @Test
-    void the_exception_list_holds_only_reasons_the_contract_still_omits() {
-        List<String> fromContract = Contract.declaredReasons();
-
-        for (String waived : AHEAD_OF_THE_CONTRACT) {
-            assertThat(fromContract)
-                .as("%s is in section 4.4 now, so the waiver it was given has outlived "
-                    + "its reason. Delete it from AHEAD_OF_THE_CONTRACT and let the "
-                    + "ordinary check cover it", waived)
-                .doesNotContain(waived);
-        }
-    }
-
-    @Test
-    void every_pattern_carries_the_placeholders_the_contract_names() {
-        for (RefusalCode code : RefusalCode.values()) {
-            if (code == RefusalCode.CHILDREN_NOT_FINISHED) {
-                // The one pattern whose contract text describes a REPEATED
-                // element rather than a value: "<address> (<state>), ..." is
-                // the shape of one entry in a list of unknown length, and the
-                // catalogue renders the whole list into a single {offenders}.
-                // Matching placeholder for placeholder would be asking the
-                // pattern to carry a value per child. What the contract
-                // actually requires of this refusal — that each child travels
-                // with its complete address, its state and its next — is a
-                // property of `data.offenders` and is asserted against a
-                // running service in MeasuredDefectsIT and ProcessSurfaceIT.
-                continue;
-            }
-
-            String contractPattern = Contract.patternOf(code.name());
-            if (contractPattern == null || !contractPattern.contains("<")) {
-                // 4.3's fixed text, and the two the table describes in prose
-                // rather than by pattern. Their shape is asserted where they
-                // are raised.
-                continue;
-            }
-
-            String ours = ReasonCatalogue.of(code).pattern();
-            for (String placeholder : placeholdersIn(contractPattern)) {
-                assertThat(named(ours, code.name(), placeholder))
-                    .as("%s's message must name %s: the contract's pattern does, and a "
-                        + "refusal that drops it stops naming what the caller needs",
-                        code, placeholder)
-                    .isTrue();
-            }
-        }
-    }
-
-    /**
-     * Whether our pattern carries the contract's placeholder, under either
-     * spelling.
-     *
-     * <p>The contract writes {@code <call>} and the service fills {@code
-     * {call}}; the second is a rendering decision and the first is the
-     * specification. A few are renamed where one document's word is another's
-     * — {@code <calls>} is the list and {@code {calls}} is the same list — and
-     * those are matched by the name, not by the brackets.
-     */
-    private static boolean named(String ourPattern, String code, String placeholder) {
-        if (ourPattern.contains("{" + placeholder + "}")) {
-            return true;
-        }
-        String scoped = ALIASES.get(code + "." + placeholder);
-        String plain = ALIASES.get(placeholder);
-        return (scoped != null && ourPattern.contains("{" + scoped + "}"))
-            || (plain != null && ourPattern.contains("{" + plain + "}"));
-    }
-
-    /**
-     * Where the contract's word for a value and the catalogue's differ.
-     *
-     * <p>Each of these is one value under two names, never two values. The pair
-     * that does most work is {@code scope} and {@code selector} against {@code
-     * collection}: the contract writes {@code dispatch://<scope>/<selector>},
-     * which IS the complete collection address, and section 3 requires the
-     * complete form everywhere — so rendering it from two halves would be the
-     * one place the service assembled an address by hand.
-     */
-    private static final Map<String, String> ALIASES = Map.ofEntries(
-        Map.entry("n", "count"),
-        // The contract names two distinct parts in one sentence — the part the
-        // call belongs to, and the part the caller actually has. They are two
-        // values and the catalogue keeps two placeholders for them; a single
-        // alias for both would let a pattern satisfy this probe while telling
-        // every caller it is a bystander, which is the finding that put the
-        // second one here.
-        Map.entry("required part", "role"),
-        Map.entry("your part", "participation"),
-        Map.entry("what the call does", "does"),
-        Map.entry("what it is", "what"),
-        Map.entry("claim expiry", "until"),
-        Map.entry("what it applies to", "applies"),
-        Map.entry("closed / cancelled", "ending"),
-        Map.entry("ref", "reference"),
-        Map.entry("scope", "collection"),
-        Map.entry("selector", "collection"),
-        // `<list>` means a different list in each of the two patterns that use
-        // it, so it is keyed by the reason. An unscoped alias would let a
-        // pattern satisfy this probe by naming the WRONG list — which is the
-        // failure the probe exists to catch, arriving through the probe itself.
-        Map.entry("ARGUMENT_UNKNOWN.list", "arguments"),
-        Map.entry("SELECTOR_UNKNOWN.list", "declared"));
-
-    private static List<String> placeholdersIn(String pattern) {
-        List<String> found = new java.util.ArrayList<>();
-        java.util.regex.Matcher m =
-            java.util.regex.Pattern.compile("<([a-z ]+)>").matcher(pattern);
-        while (m.find()) {
-            found.add(m.group(1));
-        }
-        return found;
-    }
-
-    /**
-     * The not-found message is the PLATFORM's, and it carries no values.
-     *
-     * <p>The expectation moved, and where it moved to is the point. It was
-     * this document's section 4.3, and the answers of this service all agreed
-     * with it and all differed from the router's — so DEC-0042's clause held
-     * inside the service and broke across the hop, and nothing went red. A
-     * caller reading two wordings for one condition learns which hop answered.
-     *
-     * <p>Transcribed here from {@code RouterException.NOT_FOUND_MESSAGE} on
-     * {@code main} of {@code Kumbuka-ai/platform} (lines 35-37, read
-     * 2026-09-21) rather than read from the catalogue under test: an
-     * expectation taken from the subject moves with the subject.
-     */
-    @Test
-    void the_not_found_message_is_the_platform_s_own_and_carries_no_values() {
-        assertThat(ReasonCatalogue.NOT_FOUND_MESSAGE)
-            .as("the one deliberately indistinguishable refusal must be byte-identical "
-                + "across its three causes, so it can carry nothing that differs between "
-                + "them — and byte-identical with the router's, or the hop is legible "
-                + "from the wording")
-            .doesNotContain("{")
-            .isEqualTo("nothing is addressed here. Check the address, and that you are "
-                + "a member of the scope it names.");
-    }
-
-    /**
-     * The contract copy still carries the wording the platform replaced.
-     *
-     * <p>The companion of the exception list above, for the one value rather
-     * than for the codes, and it expires the same way: when Concept brings
-     * section 4.3 in line with the router this probe goes red, and the repair
-     * is to delete it. Until then it is the record that the divergence is
-     * known and deliberate rather than an oversight — and that the document
-     * has not silently been edited from this side.
-     */
-    @Test
-    void the_contract_copy_still_carries_the_wording_the_platform_replaced() {
         assertThat(Contract.text())
-            .as("section 4.3 has been brought in line with the router. Delete this probe "
-                + "and the note on ReasonCatalogue.NOT_FOUND_MESSAGE: the divergence "
-                + "dispatch 187.17 reported is resolved")
-            .contains("Nothing is visible to you at the address you gave");
+            .as("and the terminal variant of the state refusal")
+            .contains(ReasonCatalogue.TERMINAL_STATE_PATTERN);
     }
 
-    // =======================================================================
-    // A8 — an undeclared reason stops the service
-    // =======================================================================
-
     @Test
-    void a_servable_declaration_starts() {
+    void the_declaration_is_servable() {
         SurfaceDeclaration.requireServable();
-    }
-
-    /**
-     * A8's red probe, run as a probe rather than described.
-     *
-     * <p>The catalogue is checked against a set of codes it does not cover, in
-     * exactly the shape the start-up guard checks the real one. What is
-     * asserted is the guard's behaviour, and the reason this can be asserted at
-     * all is that the completeness check takes the sets rather than reading two
-     * globals.
-     */
-    @Test
-    void a_reason_with_no_declared_pattern_refuses_to_start() {
-        assertThatThrownBy(() -> SurfaceDeclaration.requireServable(Map.of()))
-            .as("a service that came up with a reason it cannot word would answer a "
-                + "caller with an internal error for a rule the caller broke")
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("does not declare");
-    }
-
-    /**
-     * The guard is what has to refuse, not the check it delegates to.
-     *
-     * <p>Measured 2026-09-19 by the red probe for A8: with the call to the
-     * catalogue check deleted from {@code requireServable}, the earlier form of
-     * this probe stayed GREEN, because it called the check directly. It was
-     * asserting that the check works — which nothing was disputing — rather
-     * than that anything runs it. Both probes now go through the guard, which
-     * is the entry point the start-up observer calls.
-     */
-    @Test
-    void the_guard_itself_refuses_an_incomplete_catalogue() {
-        assertThatThrownBy(() -> SurfaceDeclaration.requireServable(Map.of()))
-            .as("the start-up guard calls requireServable and nothing else; a check it "
-                + "stopped delegating to would be a check nobody runs")
-            .isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test
-    void a_reason_declared_without_a_remedy_refuses_to_start() {
-        Map<RefusalCode, ReasonCatalogue.Reason> crippled =
-            new java.util.LinkedHashMap<>();
-        for (RefusalCode code : RefusalCode.values()) {
-            crippled.put(code, new ReasonCatalogue.Reason(code, "a pattern", ""));
-        }
-
-        assertThatThrownBy(() -> SurfaceDeclaration.requireServable(crippled))
-            .as("a refusal that cannot say what to do about it is not a declared refusal")
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("without a pattern or without a remedy");
-    }
-
-    // =======================================================================
-    // The declaration as a transportable artefact
-    // =======================================================================
-
-    @Test
-    void the_declaration_projects_to_plain_maps() {
-        Map<String, Object> declaration = SurfaceDeclaration.asMap();
-
-        assertThat(declaration).containsKeys("shape_version", "service", "calls", "reasons");
-        assertThat((List<?>) declaration.get("calls")).hasSize(14);
-        assertThat((List<?>) declaration.get("reasons"))
-            .hasSize(RefusalCode.values().length);
-    }
-
-    // =======================================================================
-    // Reading the schema
-    // =======================================================================
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> properties(McpTools.Tool tool) {
-        return (Map<String, Object>) tool.inputSchema().get("properties");
-    }
-
-    private static McpTools.Tool byName(String name) {
-        return McpTools.declared().stream()
-            .filter(t -> t.name().equals(name))
-            .findFirst()
-            .orElseThrow(() -> new AssertionError(name + " is not declared"));
+        assertThat(SurfaceDeclaration.calls()).hasSize(25);
     }
 }

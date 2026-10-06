@@ -52,13 +52,13 @@ public final class AddressParser {
     private static final Pattern SELECTOR = Pattern.compile("[a-z0-9]([a-z0-9-]*[a-z0-9])?");
 
     /**
-     * The id: {@code <number>.<sub>}, optionally one lower-case letter.
+     * The id: {@code <number>.<sub>}.
      *
      * <p>No leading zeroes on either part, and that is form rather than taste:
-     * {@code 07.1} and {@code 7.1} would be two strings for one exchange, which
+     * {@code 07.1} and {@code 7.1} would be two strings for one task, which
      * is the same identity-by-leniency the case rule refuses.
      */
-    private static final Pattern ID = Pattern.compile("(0|[1-9]\\d*)\\.(0|[1-9]\\d*)([a-z])?");
+    private static final Pattern ID = Pattern.compile("(0|[1-9]\\d*)\\.(0|[1-9]\\d*)");
 
     private AddressParser() {
     }
@@ -105,17 +105,16 @@ public final class AddressParser {
 
         Matcher m = ID.matcher(candidate);
         if (!m.matches()) {
-            throw malformed("the id '" + candidate + "' is not an exchange address. The form "
-                + "is <number>.<sub>, with one optional lower-case letter for an addendum — "
-                + "'149.2' or '149.0a'. A regular sub-number in place of the letter would "
-                + "make an addendum an ordinary child of the bracket.");
+            throw malformed("the id '" + candidate + "' is not a task address. The form is "
+                + "<number>.<sub>, such as '149.2'; an addendum is not addressed, it hangs on "
+                + "the text it supplements.");
         }
 
         return new ExchangeAddress(
             selector,
             Integer.parseInt(m.group(1)),
             Integer.parseInt(m.group(2)),
-            m.group(3));
+            null);
     }
 
     /**
@@ -126,8 +125,7 @@ public final class AddressParser {
      * {@code Location} header.
      */
     public static String render(ExchangeAddress address) {
-        return address.number() + "." + address.sub()
-            + (address.suffix() == null ? "" : address.suffix());
+        return address.number() + "." + address.sub();
     }
 
     /**

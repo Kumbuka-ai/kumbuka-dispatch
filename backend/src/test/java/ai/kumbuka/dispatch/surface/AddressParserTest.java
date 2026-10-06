@@ -31,31 +31,23 @@ class AddressParserTest {
         assertThat(address.selector()).isEqualTo("sprint");
         assertThat(address.number()).isEqualTo(164);
         assertThat(address.sub()).isEqualTo(1);
-        assertThat(address.suffix()).as("a plain child carries no suffix").isNull();
+        assertThat(address.suffix()).as("a task carries no suffix").isNull();
     }
 
     @Test
     void a_bracket_root_is_sub_zero_and_not_a_shorter_address() {
         assertThat(AddressParser.item("sprint", "164.0").sub())
-            .as("the bracket is an exchange, addressed like any other. It is not the "
+            .as("the bracket root is a task, addressed like any other. It is not the "
                 + "collection and it is not a truncation")
             .isZero();
     }
 
     @Test
-    void an_addendum_carries_exactly_one_lower_case_letter() {
-        ExchangeAddress address = AddressParser.item("sprint", "164.0a");
-
-        assertThat(address.suffix()).isEqualTo("a");
-        assertThat(address.isAddendum()).isTrue();
-    }
-
-    @Test
     void the_rendered_form_round_trips_the_parsed_one() {
-        assertThat(AddressParser.render(AddressParser.item("sprint", "164.0a")))
+        assertThat(AddressParser.render(AddressParser.item("sprint", "164.2")))
             .as("the canonical form is generated and never echoed, so what goes into a "
                 + "Location header is what this produces")
-            .isEqualTo("164.0a");
+            .isEqualTo("164.2");
     }
 
     // =======================================================================
@@ -68,9 +60,10 @@ class AddressParserTest {
         "164.",       // an occupied part that is empty is broken, not shorter
         "164.1.2",    // three numbers is not this scheme's id
         "164.1A",     // upper case, which is rejected and never folded
-        "164.1ab",    // a suffix is exactly one letter
+        "164.0a",     // an addendum is not addressed: it hangs on the text it supplements
+        "164.1ab",    // nor is anything after the sub
         "164.1-a",    // a separator the production does not have
-        "07.1",       // a leading zero would be a second string for one exchange
+        "07.1",       // a leading zero would be a second string for one task
         "164.01",     // and so would one on the sub
         "-1.2",       // there is no negative number in a circle
         "164.1 ",     // trailing space changes the string, so it changes identity

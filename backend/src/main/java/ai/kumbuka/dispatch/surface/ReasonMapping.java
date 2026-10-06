@@ -45,17 +45,23 @@ public final class ReasonMapping {
             // Not this caller, ever.
             case RATIFICATION_NOT_PERMITTED, ACTOR_UNKNOWN -> RefusalCode.ROLE_DOES_NOT_ALLOW;
 
-            // Somebody else holds it, or the proof is wrong.
-            case CLAIM_REQUIRED -> RefusalCode.NOT_THE_HOLDER;
-            case RECEIPT_ABSENT -> RefusalCode.RECEIPT_MISSING;
+            // The call is the holder's and the caller does not hold the task:
+            // another does, nobody does, or the caller's own lease ended.
+            case CLAIM_REQUIRED, LEASE_LAPSED -> RefusalCode.NOT_THE_HOLDER;
             case RECEIPT_MISMATCH -> RefusalCode.RECEIPT_WRONG;
 
-            // The exchange is real, the caller is entitled, and there is simply
-            // nothing delivered yet.
-            case RETURN_ABSENT -> RefusalCode.NO_ANSWER_DELIVERED;
+            // The kernel of the exchange lifecycle; nothing on the surface
+            // reaches it any longer.
+            case RETURN_ABSENT -> RefusalCode.STATE_DOES_NOT_ALLOW;
 
-            // The bracket's own gate.
-            case SIBLINGS_NON_TERMINAL -> RefusalCode.CHILDREN_NOT_FINISHED;
+            // The bracket's own gate: a root closes with unfinished children
+            // only on a confirmation, and one handed out goes stale when the
+            // set changes.
+            case SIBLINGS_NON_TERMINAL, CONFIRMATION_REQUIRED, CONFIRMATION_STALE ->
+                RefusalCode.CHILDREN_NOT_FINISHED;
+
+            // The condition on an attribute that a claim checks.
+            case DEFERRAL_PENDING -> RefusalCode.DEFERRAL_PENDING;
 
             // A set with nothing free in it.
             case NOTHING_TO_CLAIM -> RefusalCode.NOTHING_TO_TAKE;
@@ -89,17 +95,15 @@ public final class ReasonMapping {
             // different one.
             case IDEMPOTENCY_KEY_REUSED -> RefusalCode.IDEMPOTENCY_KEY_REUSED;
             case FILTER_FIELD_UNKNOWN -> RefusalCode.ARGUMENT_UNKNOWN;
-            case UPDATE_EMPTY, RETURN_DRAFT_REQUIRED, ADDENDUM_TEXT_MISSING ->
+            // A required argument: the surface refuses each of them by name
+            // before the kernel is called, so these arrive from it only if a
+            // declaration and the kernel disagree on what a call needs.
+            case UPDATE_EMPTY, RETURN_DRAFT_REQUIRED, ADDENDUM_TEXT_MISSING, RECEIPT_ABSENT,
+                 CONFLICT_TOKEN_MISSING ->
                 RefusalCode.ARGUMENT_MISSING;
 
-            // The task kernel's reasons. No caller reaches that kernel yet; the
-            // entries exist so the switch stays complete, and the verb surface
-            // that binds the kernel decides their wording.
-            case LEASE_LAPSED -> RefusalCode.NOT_THE_HOLDER;
-            case DEFERRAL_PENDING -> RefusalCode.STATE_DOES_NOT_ALLOW;
-            case CONFIRMATION_REQUIRED, CONFIRMATION_STALE -> RefusalCode.CHILDREN_NOT_FINISHED;
+            // The payload of an answer, and the two proofs of the commissioner.
             case ANSWER_NOT_AN_OPTION -> RefusalCode.ARGUMENT_INVALID;
-            case CONFLICT_TOKEN_MISSING -> RefusalCode.CONFLICT_TOKEN_MISSING;
             case CONFLICT_TOKEN_STALE -> RefusalCode.CONFLICT_TOKEN_STALE;
 
             // Ours, not the caller's.

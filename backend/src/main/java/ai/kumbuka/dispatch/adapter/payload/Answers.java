@@ -1,135 +1,147 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
-import ai.kumbuka.dispatch.surface.NextCalculator;
-import ai.kumbuka.dispatch.surface.Surface;
-import ai.kumbuka.dispatch.domain.ExchangeView;
-import ai.kumbuka.dispatch.surface.VerbSurface;
+import ai.kumbuka.dispatch.domain.HoldReason;
+import ai.kumbuka.dispatch.domain.TaskTextView;
+import ai.kumbuka.dispatch.domain.TaskView;
+import ai.kumbuka.dispatch.surface.CallRouter;
+import ai.kumbuka.dispatch.surface.NextList;
+import ai.kumbuka.dispatch.surface.Refused;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * The answer of section 3, built from a result and the surface that asked.
+ * Every answer of the verb surface, in the shape both surfaces put on the wire.
  *
- * <p>One builder for both expositions. What differs between them is the
- * vocabulary {@code next} speaks, and that is a parameter here rather than two
- * implementations — the shape of an answer is the contract's, and two builders
- * would be two places for it to be decided.
+ * <h2>Two sizes (concept section 3.3)</h2>
  *
- * <h2>Two projections of {@code fields}, and why the choice is not a flag</h2>
+ * A writing call answers lean: the address, the state with its attributes, the
+ * conflict token, the end of the lease for the holder, and {@code next}; a
+ * claim adds the receipt. {@code read} and {@code query} answer the full head:
+ * in addition the title, the apparatus, both metadata, the technical address as
+ * {@code identity}, whether the caller, another or nobody holds the task, and
+ * the list of the texts that exist, by type and suffix.
  *
- * A transition answers "the exchange is here now"; a read answers "here is the
- * exchange". The first does not need the bodies, and serialising them costs a
- * caller reading through a language model a large part of its context window
- * for no information — measured on 2026-09-07, a {@code send} followed by a
- * {@code close} handed back roughly 50 000 characters to say "status is now
- * closed".
- *
- * <p>So the projection is a property of the CALL, chosen at the call site, and
- * deliberately not a boolean the caller passes. A caller-settable flag gets set
- * the first time somebody wants a body out of a transition, which is exactly
- * what this exists to prevent.
+ * <p>No answer here carries a text of a task but {@link #text}: the head the
+ * answers are built from has no component that could hold one. No answer names
+ * the identity of an actor.
  */
 public final class Answers {
+
+    private static final String ADDRESS = "address";
+    private static final String FIELDS = "fields";
 
     private Answers() {
     }
 
-    /** Every field a caller may see, bodies included. For the two readers. */
-    public static Payloads.Answer full(VerbSurface.Result result, Surface surface) {
-        return answer(result, surface, fields(result.exchange(), true));
+    /** The wire shape of one outcome of a call. */
+    public static Object of(CallRouter.Outcome outcome) {
+        return switch (outcome) {
+            case CallRouter.Answered answered -> answer(answered);
+            case CallRouter.Listed listed -> listing(listed);
+            case CallRouter.TextRead read -> text(read);
+            case CallRouter.Deleted deleted -> Map.of(ADDRESS, deleted.address());
+            case CallRouter.Refusal refusal -> envelope(refusal.refused());
+        };
     }
 
-    /** The head fields only. For every transition and every listing entry. */
-    public static Payloads.Answer compact(VerbSurface.Result result, Surface surface) {
-        return answer(result, surface, fields(result.exchange(), false));
+    /** A refusal, in the envelope both surfaces answer it with. */
+    public static Payloads.RefusalEnvelope envelope(Refused refused) {
+        return new Payloads.RefusalEnvelope(refused.code().name(), refused.getMessage(),
+            refused.data());
     }
 
-    private static Payloads.Answer answer(VerbSurface.Result result, Surface surface,
-                                          Map<String, Object> fields) {
-        List<NextCalculator.Step> next = result.next(surface);
-        return new Payloads.Answer(
-            result.exchange().address(),
-            fields,
-            result.conflictToken(),
-            next.stream().map(Answers::step).toList(),
-            result.waitingFor(surface));
+    /** One task: lean for a writing call, the full head for a read or a listing. */
+    public static Map<String, Object> answer(CallRouter.Answered answered) {
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put(ADDRESS, answered.address());
+        answer.put(FIELDS, fields(answered.view(), answered.head()));
+        answer.put("conflict_token", answered.view().conflictToken());
+        answer.put("next", steps(answered.next()));
+        if (answered.waitingFor() != null) {
+            answer.put("waiting_for", answered.waitingFor());
+        }
+        if (answered.receipt() != null) {
+            answer.put("receipt", answered.receipt());
+        }
+        return answer;
     }
 
-    private static Map<String, String> step(NextCalculator.Step step) {
-        Map<String, String> rendered = new LinkedHashMap<>();
-        rendered.put("call", step.call());
-        rendered.put("does", step.does());
-        return Map.copyOf(rendered);
-    }
-
-    /**
-     * The exchange as this caller may see it.
-     *
-     * <p>A map rather than a record, because {@code fields} is where the
-     * exchange's own shape lives and that shape has withheld members: the
-     * dispatch body is absent, not null, for an executor that has not claimed
-     * it. A record with {@code NON_NULL} achieves the same thing and costs a
-     * second class per projection; the map is built once, here, from the view
-     * that already decided what is withheld.
-     *
-     * <p><strong>The address is NOT in here.</strong> It is the answer's own
-     * top-level member. Carrying it in both places would be two spellings of
-     * one fact, and the one that got updated would not be the one a caller
-     * read.
-     */
-    private static Map<String, Object> fields(ExchangeView v, boolean withBodies) {
+    private static Map<String, Object> fields(TaskView v, boolean head) {
         Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("selector", v.selector());
-        fields.put("number", v.number());
-        fields.put("sub", v.sub());
+        fields.put("state", v.state().wireName());
+        putIfPresent(fields, "hold_reason", v.holdReason() == null ? null
+            : v.holdReason().wireName());
+        putIfPresent(fields, "outcome", v.outcome() == null ? null : v.outcome().wireName());
+        putIfPresent(fields, "not_before", v.notBefore() == null ? null
+            : v.notBefore().toString());
+        putIfPresent(fields, "lease_expires_at", v.leaseExpiresAt() == null ? null
+            : v.leaseExpiresAt().toString());
+        if (!head) {
+            return fields;
+        }
         fields.put("title", v.title());
         fields.put("apparatus", v.apparatus());
-        fields.put("dispatch_date", String.valueOf(v.dispatchDate()));
-        fields.put("state", v.status().wireName());
-        fields.put("effective_holder", v.effectiveHolder());
-
-        putIfPresent(fields, "claim_expires_at",
-            v.claimExpiresAt() == null ? null : v.claimExpiresAt().toString());
-        putIfPresent(fields, "curated_into", v.curatedInto());
-        putIfPresent(fields, "termination_reason", v.terminationReason());
-
-        if (withBodies) {
-            putIfPresent(fields, "dispatch_text", v.dispatchBody());
-            putIfPresent(fields, "dispatch_metadata", v.dispatchMetadata());
-            putIfPresent(fields, "return_text", v.returnBody());
-            putIfPresent(fields, "return_metadata", v.returnMetadata());
-            putIfPresent(fields, "commissioner_message", v.commissionerMessage());
-            putIfPresent(fields, "executor_question", v.executorQuestion());
+        fields.put("identity", "dispatch://" + v.identity());
+        fields.put("holder", v.holder().wireName());
+        fields.put("lapse_count", v.lapseCount());
+        if (v.holdReason() == HoldReason.QUESTION && v.questionOptions() != null) {
+            fields.put("question", v.questionOptions());
         }
-
-        return Map.copyOf(fields);
+        putIfPresent(fields, "dispatch_metadata", v.dispatchMetadata());
+        putIfPresent(fields, "return_metadata", v.returnMetadata());
+        putIfPresent(fields, "curated_in", v.curatedIn());
+        fields.put("texts", v.texts().stream().map(Answers::textHead).toList());
+        return fields;
     }
 
-    /**
-     * Absent rather than null.
-     *
-     * <p>The difference is the one {@link ExchangeView} is built around: a null
-     * member is a field a caller reads and finds empty, and invites a later
-     * change to populate it; an absent one cannot be read by accident. The
-     * projection that decides WHICH are withheld is the view's; this only
-     * declines to write a key for what it withheld.
-     */
+    private static Map<String, Object> textHead(TaskView.TextHead head) {
+        Map<String, Object> rendered = new LinkedHashMap<>();
+        rendered.put("type", head.type().wireName());
+        putIfPresent(rendered, "suffix", head.addendumSuffix());
+        return rendered;
+    }
+
+    /** A listing: the heads, and whether the page bound cut it. */
+    public static Map<String, Object> listing(CallRouter.Listed listed) {
+        Map<String, Object> listing = new LinkedHashMap<>();
+        listing.put("tasks", listed.heads().stream().map(Answers::answer).toList());
+        listing.put("cut", listed.cut());
+        return listing;
+    }
+
+    /** One part of a task's text: the only answer that carries one. */
+    public static Map<String, Object> text(CallRouter.TextRead read) {
+        TaskTextView text = read.text();
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put(ADDRESS, read.address());
+        answer.put("part", text.part().wireName());
+        answer.put("texts", text.entries().stream().map(entry -> {
+            Map<String, Object> rendered = new LinkedHashMap<>();
+            rendered.put("type", entry.type().wireName());
+            putIfPresent(rendered, "suffix", entry.addendumSuffix());
+            rendered.put("text", entry.text());
+            putIfPresent(rendered, "created_at", entry.createdAt() == null ? null
+                : entry.createdAt().toString());
+            return rendered;
+        }).toList());
+        answer.put("addenda", text.addenda());
+        return answer;
+    }
+
+    private static List<Map<String, String>> steps(List<NextList.Step> next) {
+        return next.stream().map(step -> {
+            Map<String, String> rendered = new LinkedHashMap<>();
+            rendered.put("call", step.call());
+            rendered.put("does", step.does());
+            return rendered;
+        }).toList();
+    }
+
     private static void putIfPresent(Map<String, Object> fields, String name, Object value) {
         if (value != null) {
             fields.put(name, value);
         }
-    }
-
-    /** A listing, every entry carrying its own {@code next}. */
-    public static Payloads.AnswerListing listing(List<VerbSurface.Result> results,
-                                                 Surface surface) {
-        List<Payloads.Answer> answers = new ArrayList<>();
-        for (VerbSurface.Result result : results) {
-            answers.add(compact(result, surface));
-        }
-        return new Payloads.AnswerListing(List.copyOf(answers));
     }
 }

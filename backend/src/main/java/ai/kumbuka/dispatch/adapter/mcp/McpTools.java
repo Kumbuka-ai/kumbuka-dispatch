@@ -1,8 +1,8 @@
 package ai.kumbuka.dispatch.adapter.mcp;
 
 import ai.kumbuka.dispatch.surface.Argument;
+import ai.kumbuka.dispatch.surface.CallArguments;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
-import ai.kumbuka.dispatch.domain.QueryFilter;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -11,36 +11,29 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The fourteen tools of the assistant surface, generated from the declaration.
+ * The twenty-five tools of the assistant surface, generated from the
+ * declaration.
  *
- * <p><strong>Generated, not written.</strong> This file used to carry
- * hand-written names, descriptions and schemas beside a domain that carried
- * the same facts — and the two drifted in the way two copies do: the schema
- * here was closed while the router's was open, which is the path by which
- * {@code draft} reached the service and was silently dropped. The declaration
- * is now the one place, and this is a projection of it into the shape
- * {@code tools/list} asks for.
- *
- * <p>That does make the earlier reasoning here obsolete: this class argued
- * that writing the list out by hand was what kept the two expositions
- * share-nothing, and that a generated list would make the conformance probe
- * "an assertion that one copy equals itself". The argument was right about the
- * risk and wrong about where the second copy was. The probe now takes its
- * expected values from the CONTRACT DOCUMENT — a third thing, which neither
- * the declaration nor this class can edit — so generating from the declaration
- * removes a copy without making the probe circular.
+ * <p><strong>Generated, not written.</strong> Names, descriptions and schemas
+ * are a projection of {@link ProcessVerb} into the shape {@code tools/list}
+ * asks for. The tests that hold this list take their expected values from the
+ * target and the concept document, written into the tests and the contract
+ * copy by hand, so generating here removes a copy without making those tests
+ * circular.
  *
  * <h2>Two levels, both closed</h2>
  *
  * The schema has an inner {@code fields} object wherever the call writes
- * anything, and {@code additionalProperties: false} stands on both. One level
- * of closure is what the measured surface had, and it is exactly as much use
- * as none: {@code draft} was rejected nowhere because nothing looked inside.
+ * anything, and {@code additionalProperties: false} stands on both. The value
+ * of {@code metadata} is the caller's own keys and is an object with no
+ * declared members; it is a value under a closed level, not a level.
  */
 public final class McpTools {
 
     /** The JSON Schema member every argument carries, by its schema name. */
     private static final String KEY_DESCRIPTION = "description";
+    private static final String KEY_TYPE = "type";
+    private static final String OBJECT = "object";
 
     private McpTools() {
     }
@@ -49,31 +42,14 @@ public final class McpTools {
     public record Tool(String name, String description, Map<String, Object> inputSchema) {
     }
 
-    private static final String OBJECT = "object";
-
-    /**
-     * The fourteen, in the order of section 5 of the contract.
-     *
-     * <p>Declaration order is the contract's order, so the enum's own order is
-     * the answer and nothing sorts here. {@code toList} hands back an
-     * unmodifiable list, which is what the previous {@code List.copyOf} was
-     * for.
-     */
+    /** The twenty-five, in the order of the declaration. */
     public static List<Tool> declared() {
         return Arrays.stream(ProcessVerb.values())
             .map(verb -> new Tool(verb.call(), verb.description(), schemaOf(verb)))
             .toList();
     }
 
-    /**
-     * The input schema of one call: top-level arguments, plus {@code fields}
-     * where the call writes.
-     *
-     * <p>{@code dispatch_query} is the one call whose schema is not wholly from
-     * the declaration: its filters are the DOMAIN's, read from {@link
-     * QueryFilter.Field}. Declaring them a second time here is how a schema
-     * comes to advertise a filter the domain refuses, or hide one it accepts.
-     */
+    /** The input schema of one call: top-level arguments, plus {@code fields} where it writes. */
     private static Map<String, Object> schemaOf(ProcessVerb verb) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
@@ -85,33 +61,17 @@ public final class McpTools {
             }
         }
 
-        if (verb == ProcessVerb.QUERY) {
-            for (QueryFilter.Field field : QueryFilter.Field.values()) {
-                properties.put(field.wireName(), Map.of(
-                    "type", "string",
-                    KEY_DESCRIPTION, "Narrow by " + field.wireName()
-                        + ". Comma-separated values are read as alternatives."));
-            }
-        }
-
         if (verb.hasFields()) {
-            properties.put("fields", fieldsSchema(verb));
+            properties.put(CallArguments.FIELDS, fieldsSchema(verb));
             if (verb.fieldArguments().stream().anyMatch(Argument::required)) {
-                required.add("fields");
+                required.add(CallArguments.FIELDS);
             }
         }
 
         return closedObject(properties, required);
     }
 
-    /**
-     * The inner object: everything the call writes into the exchange.
-     *
-     * <p>Closed in its own right. That is the half the measured surface was
-     * missing, and it is not a smaller omission than the outer one — a caller
-     * that misspells a value it is writing loses the value, whereas one that
-     * misspells a target argument usually gets a refusal from the lookup.
-     */
+    /** The inner object: everything the call writes into the task, closed in its own right. */
     private static Map<String, Object> fieldsSchema(ProcessVerb verb) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
@@ -125,50 +85,42 @@ public final class McpTools {
 
         Map<String, Object> schema = new LinkedHashMap<>(closedObject(properties, required));
         schema.put(KEY_DESCRIPTION,
-            "What this call writes into the exchange. Values live here; the arguments that "
-                + "choose the target live beside it.");
+            "What this call writes into the task. Values live here; the arguments that "
+                + "name the target live beside it.");
         return Map.copyOf(schema);
     }
 
     /**
-     * One argument's schema.
-     *
-     * <p>A list argument carries its element rule with it: {@code items} with
-     * the declared pattern, and {@code minItems: 1}. The pattern is the same
-     * expression the surface enforces, read from the declaration rather than
-     * written again here — a schema that advertised a different rule from the
-     * one the service applies is worse than none, because a caller that obeys
-     * it is still refused.
-     *
-     * <p>{@code minItems} is not decoration either. The argument is required,
-     * which an empty array satisfies; the empty array is exactly the draw with
-     * no pattern, so without it the schema would admit the one call the
-     * argument exists to refuse.
+     * One argument's schema: its type and description, the closed set of its
+     * values where it has one, and for a list the rule every element obeys —
+     * the same rule the surface enforces, read from the declaration.
      */
     private static Map<String, Object> property(Argument argument) {
-        if (argument.itemPattern() == null) {
-            return Map.of("type", argument.type(), KEY_DESCRIPTION, argument.description());
+        Map<String, Object> property = new LinkedHashMap<>();
+        property.put(KEY_TYPE, argument.type());
+        if (Argument.ARRAY.equals(argument.type())) {
+            Map<String, Object> items = new LinkedHashMap<>();
+            items.put(KEY_TYPE, Argument.STRING);
+            if (argument.itemPattern() != null) {
+                items.put("pattern", argument.itemPattern());
+            }
+            property.put("items", Map.copyOf(items));
+            if (argument.required()) {
+                property.put("minItems", 1);
+            }
         }
-        return Map.of(
-            "type", argument.type(),
-            "items", Map.of("type", Argument.STRING, "pattern", argument.itemPattern()),
-            "minItems", 1,
-            KEY_DESCRIPTION, argument.description());
+        if (!argument.values().isEmpty()) {
+            property.put("enum", argument.values());
+        }
+        property.put(KEY_DESCRIPTION, argument.description());
+        return Map.copyOf(property);
     }
 
-    /**
-     * A JSON Schema object with {@code additionalProperties} closed.
-     *
-     * <p>Closed rather than open, deliberately: an argument this surface does
-     * not know is one a caller believes in. Accepting and ignoring it is how a
-     * client comes to depend on a field the server never read — and, measured
-     * on 2026-09-18, how a commission came to be created with an empty body
-     * while its author was told it had succeeded.
-     */
+    /** A JSON Schema object with {@code additionalProperties} closed. */
     private static Map<String, Object> closedObject(Map<String, Object> properties,
                                                     List<String> required) {
         Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("type", OBJECT);
+        schema.put(KEY_TYPE, OBJECT);
         schema.put("properties", Map.copyOf(properties));
         schema.put("required", List.copyOf(required));
         schema.put("additionalProperties", false);

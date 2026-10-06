@@ -78,7 +78,7 @@ class UnexpectedFailureReferenceTest {
     void the_reference_the_caller_is_told_to_report_is_in_the_log() {
         RuntimeException cause = new IllegalStateException("a defect, not a rule");
 
-        Refused refused = UnexpectedFailures.refuse(Surface.MCP, "dispatch_commission",
+        Refused refused = UnexpectedFailures.refuse("dispatch_create",
             "dispatch://kumbuka/sprint/1.0", cause);
 
         String reference = String.valueOf(refused.data().get("reference"));
@@ -101,7 +101,7 @@ class UnexpectedFailureReferenceTest {
     /** A failure with no cause is still recorded, and still carries its reference. */
     @Test
     void a_failure_with_no_cause_is_still_recorded() {
-        Refused refused = UnexpectedFailures.refuse(Surface.REST, "close",
+        Refused refused = UnexpectedFailures.refuse("withdraw",
             "dispatch://kumbuka/sprint/1.0", null);
 
         String reference = String.valueOf(refused.data().get("reference"));
