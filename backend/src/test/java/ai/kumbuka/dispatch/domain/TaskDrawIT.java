@@ -161,6 +161,68 @@ class TaskDrawIT {
     }
 
     // -----------------------------------------------------------------------
+    // The patterns, in a real draw
+    // -----------------------------------------------------------------------
+
+    @Test
+    void a_leading_star_matches_the_end_of_the_apparatus() {
+        TaskStage.Staged review = openFor("agent-review");
+        TaskStage.Staged code = openFor("agent-code");
+
+        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("*-code"), TaskCall.by(K));
+
+        assertThat(drawn.task().address())
+            .as("'*-code' ends in '-code' and 'agent-review' does not, though it comes first")
+            .isEqualTo(code.address());
+        assertThat(TaskStage.row(review.identity()).state()).isEqualTo("open");
+    }
+
+    @Test
+    void stars_on_both_sides_match_a_middle_and_not_an_end() {
+        TaskStage.Staged endsWithCode = openFor("agent-code");
+        TaskStage.Staged codeInside = openFor("x-code-y");
+
+        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("*-code-*"), TaskCall.by(K));
+
+        assertThat(drawn.task().address())
+            .as("'*-code-*' needs '-code-' inside, and 'agent-code' only ends in '-code'")
+            .isEqualTo(codeInside.address());
+        assertThat(TaskStage.row(endsWithCode.identity()).state()).isEqualTo("open");
+    }
+
+    @Test
+    void a_pattern_without_a_star_does_not_match_a_longer_apparatus() {
+        TaskStage.Staged forAgent = openFor("agent-code");
+
+        TaskHoldingIT.assertRefused(() -> tasks.claimNext(SCOPE, SELECTOR, List.of("code"),
+                TaskCall.by(K)),
+            DispatchException.Reason.NOTHING_TO_CLAIM);
+        assertThat(TaskStage.row(forAgent.identity()).state())
+            .as("'code' names one apparatus and is not a part of 'agent-code'").isEqualTo("open");
+    }
+
+    @Test
+    void the_comparison_tells_upper_from_lower_case() {
+        TaskStage.Staged capitalised = openFor("Agent-Code");
+
+        TaskHoldingIT.assertRefused(() -> tasks.claimNext(SCOPE, SELECTOR,
+                List.of("agent-*"), TaskCall.by(K)),
+            DispatchException.Reason.NOTHING_TO_CLAIM);
+        assertThat(TaskStage.row(capitalised.identity()).state())
+            .as("'Agent-Code' and 'agent-code' are two apparatus values").isEqualTo("open");
+    }
+
+    // -----------------------------------------------------------------------
+
+    /** A task addressed to {@code apparatus}, sent. */
+    private TaskStage.Staged openFor(String apparatus) {
+        TaskView v = tasks.create(SCOPE, SELECTOR, null,
+            new TaskService.Draft("for " + apparatus, apparatus, null, null), TaskStage.C,
+            IdempotencyKey.NONE);
+        tasks.act(SCOPE, v.address(), TaskVerb.SEND,
+            TaskCall.by(TaskStage.C).withConflictToken(v.conflictToken()));
+        return new TaskStage.Staged(v.address(), v.identity(), SELECTOR, null);
+    }
 
     private List<Drawn> drawConcurrently() throws Exception {
         CyclicBarrier together = new CyclicBarrier(2);

@@ -44,6 +44,9 @@ class RestSurfaceIT {
         String id = SurfaceFixture.idOf(created);
         assertThat(created.header("Location")).endsWith(SurfaceFixture.item(id));
         assertThat(created.header("ETag")).isNotBlank();
+        assertThat(created.header("ETag"))
+            .as("the conflict token in the body is the one in the ETag")
+            .isEqualTo("\"" + created.jsonPath().getString("conflict_token") + "\"");
         assertThat(created.asString()).doesNotContain("MARK-REST");
 
         Response updated = given().contentType(ContentType.JSON)
@@ -108,6 +111,11 @@ class RestSurfaceIT {
         Response onAWrite = given().contentType(ContentType.JSON)
             .body(Map.of("remark", "a remark at the wrong level"))
             .post(SurfaceFixture.item(id) + ":reject");
+        Response notJson = given().contentType(ContentType.JSON)
+            .body("{\"fields\": {\"title\": ").post(SurfaceFixture.collection());
+        assertThat(List.of(notJson.statusCode(), notJson.jsonPath().getString("reason")))
+            .as("a body that is no JSON is an invalid argument")
+            .isEqualTo(List.of(400, "ARGUMENT_INVALID"));
 
         for (Response refused : List.of(inBody, inFields, inQuery, onAWrite)) {
             assertThat(refused.statusCode()).isEqualTo(400);

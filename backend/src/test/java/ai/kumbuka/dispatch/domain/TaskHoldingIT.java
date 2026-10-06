@@ -134,6 +134,12 @@ class TaskHoldingIT {
             .as("the row holds the receipt's hash and never the receipt")
             .isEqualTo(Receipt.hash(next.receipt()))
             .isNotEqualTo(next.receipt());
+        byte[] material = java.util.Base64.getUrlDecoder().decode(next.receipt());
+        String decoded = new String(material, java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertThat(material).as("the receipt is 32 random bytes and nothing besides").hasSize(32);
+        assertThat(List.of(next.receipt(), decoded))
+            .as("carrying neither the subject nor the address")
+            .noneMatch(form -> form.contains(K.subject()) || form.contains(s.address().toString()));
         assertThat(taken.holder()).as("the next executor writes the transition").isEqualTo(K.subject());
         assertThat(taken.lapseCount()).isEqualTo(1);
         assertThat(next.receipt()).isNotEqualTo(s.receipt());

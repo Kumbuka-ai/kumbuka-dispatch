@@ -58,6 +58,16 @@ class EveryRefusalIT {
         assertThat(missing.jsonPath().getString("result.structuredContent"))
             .isEqualTo(unknownScope.jsonPath().getString("result.structuredContent"));
         given().get(SurfaceFixture.item("99999.0")).then().statusCode(404);
+
+        Response collection = given().get("/api/no-such-scope/" + SurfaceFixture.SELECTOR);
+        Response item = given().get("/api/no-such-scope/" + SurfaceFixture.SELECTOR + "/1.0");
+        assertThat(List.of(collection.statusCode(), collection.asString()))
+            .as("a scope the caller cannot see answers on the collection as on the item")
+            .isEqualTo(List.of(item.statusCode(), item.asString()));
+        assertThat(Mcp.call("dispatch_query", Map.of("scope", "no-such-scope",
+                "selector", SurfaceFixture.SELECTOR))
+            .jsonPath().getString("result.structuredContent"))
+            .isEqualTo(unknownScope.jsonPath().getString("result.structuredContent"));
     }
 
     @Test
@@ -133,6 +143,10 @@ class EveryRefusalIT {
         String receipt = receiptOf(Mcp.call("dispatch_claim", Map.of("address", address)));
 
         SurfaceFixture.asOtherExecutor(identity);
+        assertThat(Mcp.field(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", address))),
+                "holder"))
+            .as("the head says another holds it, and not who")
+            .isEqualTo("other");
         Map<String, Object> other = Mcp.refusal(Mcp.call("dispatch_deliver", Map.of(
             "address", address, "receipt", receipt, "fields", Map.of("text", "mine"))));
         assertThat(other.get("reason")).isEqualTo("NOT_THE_HOLDER");
@@ -163,12 +177,27 @@ class EveryRefusalIT {
             "selector", SurfaceFixture.SELECTOR, "parent", root,
             "fields", Map.of("title", "a child", "apparatus", "code")));
         String childAddress = String.valueOf(Mcp.answer(child).get("address"));
+        String sentChild = String.valueOf(Mcp.answer(Mcp.call("dispatch_create", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR, "parent", root,
+            "fields", Map.of("title", "a sent child", "apparatus", "code")))).get("address"));
+        Mcp.answer(Mcp.call("dispatch_send", Map.of("address", sentChild,
+            "conflict_token", token(sentChild))));
 
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_withdraw", Map.of(
             "address", root, "conflict_token", token(root))));
         assertThat(refusal.get("reason")).isEqualTo("CHILDREN_NOT_FINISHED");
         Map<String, Object> data = data(refusal);
         assertThat(String.valueOf(data.get("offenders"))).contains(childAddress, "draft");
+        assertThat(refusal).as("the offenders stand under data and not beside it")
+            .doesNotContainKey("offenders");
+        @SuppressWarnings("unchecked")
+        Map<Object, List<String>> nextOf = ((List<Map<String, Object>>) data.get("offenders"))
+            .stream().collect(java.util.stream.Collectors.toMap(o -> o.get("address"),
+                o -> Mcp.nextCalls(o)));
+        assertThat(nextOf.get(childAddress)).as("each unfinished child carries its own next")
+            .contains("dispatch_send");
+        assertThat(nextOf.get(sentChild)).doesNotContain("dispatch_send")
+            .contains("dispatch_withdraw");
         String confirmation = String.valueOf(data.get("confirmation"));
 
         Map<String, Object> closed = Mcp.answer(Mcp.call("dispatch_withdraw", Map.of(

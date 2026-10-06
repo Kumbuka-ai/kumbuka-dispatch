@@ -115,6 +115,11 @@ class TaskClaimRepeatIT {
         TaskClaim first = tasks.claim(SCOPE, open.address(), TaskCall.by(H), key);
         tasks.act(SCOPE, open.address(), TaskVerb.RELEASE,
             TaskCall.by(H).withReceipt(first.receipt()));
+        TaskStage.Row released = TaskStage.row(open.identity());
+        assertThat(java.util.Arrays.asList(released.holder(), released.receiptHash(),
+                released.leaseExpiresAt()))
+            .as("release takes holder, receipt hash and lease end away together")
+            .containsOnlyNulls();
 
         DispatchException refused = catchThrowableOfType(DispatchException.class, () ->
             tasks.claim(SCOPE, open.address(), TaskCall.by(H), key));
@@ -146,6 +151,35 @@ class TaskClaimRepeatIT {
     }
 
     @Test
+    void a_repeated_draw_after_the_lease_lapsed_is_refused_and_draws_and_writes_nothing() {
+        Drawn drawn = drawWithKey("draw-lapsed");
+        stage.lapse(drawn.first());
+
+        assertRepeatRefused(drawn, DispatchException.Reason.LEASE_LAPSED);
+    }
+
+    @Test
+    void a_repeated_draw_after_another_executor_took_the_task_is_refused_and_writes_nothing() {
+        Drawn drawn = drawWithKey("draw-taken");
+        stage.lapse(drawn.first());
+        tasks.claim(SCOPE, drawn.first().address(), TaskCall.by(TaskStage.K));
+
+        assertRepeatRefused(drawn, DispatchException.Reason.TRANSITION_NOT_PERMITTED);
+    }
+
+    @Test
+    void a_repeated_draw_after_the_task_closed_is_refused_and_draws_and_writes_nothing() {
+        Drawn drawn = drawWithKey("draw-closed");
+        TaskStage.Staged first = drawn.first();
+        tasks.act(SCOPE, first.address(), TaskVerb.DELIVER, TaskCall.by(H)
+            .withReceipt(first.receipt()).with(new TaskInput.Delivery("done", null)));
+        tasks.act(SCOPE, first.address(), TaskVerb.ACCEPT,
+            TaskCall.by(TaskStage.C).withConflictToken(stage.token(first)));
+
+        assertRepeatRefused(drawn, DispatchException.Reason.TRANSITION_NOT_PERMITTED);
+    }
+
+    @Test
     void the_same_key_on_another_call_or_other_arguments_is_refused() {
         TaskStage.Staged one = stage.open(SELECTOR);
         TaskStage.Staged other = stage.open(SELECTOR);
@@ -167,5 +201,37 @@ class TaskClaimRepeatIT {
         assertThat(otherCall.reason()).isEqualTo(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED);
         assertThat(TaskStage.row(other.identity()).state()).isEqualTo("open");
 
+    }
+
+    // -----------------------------------------------------------------------
+
+    /** A draw under a key, with a second drawable task behind the one it took. */
+    private record Drawn(IdempotencyKey key, TaskStage.Staged first, TaskStage.Staged second) {
+    }
+
+    private Drawn drawWithKey(String key) {
+        TaskStage.Staged first = stage.open(SELECTOR);
+        TaskStage.Staged second = stage.open(SELECTOR);
+        IdempotencyKey given = IdempotencyKey.of(key);
+        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), given);
+        assertThat(drawn.task().address()).isEqualTo(first.address());
+        return new Drawn(given, new TaskStage.Staged(first.address(), first.identity(), SELECTOR,
+            drawn.receipt()), second);
+    }
+
+    /** The repeat is refused with {@code reason}, draws nothing and writes nothing. */
+    private void assertRepeatRefused(Drawn drawn, DispatchException.Reason reason) {
+        TaskStage.Row first = TaskStage.row(drawn.first().identity());
+        TaskStage.Row second = TaskStage.row(drawn.second().identity());
+
+        DispatchException refused = catchThrowableOfType(DispatchException.class, () ->
+            tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), drawn.key()));
+
+        assertThat(refused).as("the repeat is refused").isNotNull();
+        assertThat(refused.reason()).isEqualTo(reason);
+        assertThat(TaskStage.row(drawn.second().identity()))
+            .as("nothing is drawn in its place").isEqualTo(second);
+        assertThat(TaskStage.row(drawn.first().identity()))
+            .as("and the task the key drew is not written").isEqualTo(first);
     }
 }

@@ -126,6 +126,9 @@ class ScopeIsolationIT {
             .isEqualTo(422);
         assertThat(collection.jsonPath().getString("reason"))
             .isEqualTo("SCOPE_KIND_UNSUPPORTED");
+        assertThat(collection.jsonPath().getMap("data"))
+            .as("a refusal about a scope names the call it refused and no offenders")
+            .containsKey("attempted").doesNotContainKey("offenders");
         assertThat(collection.jsonPath().getString("message"))
             .as("the pattern names the kind, which is what tells the caller WHICH of its "
                 + "scopes it reached rather than only that this one was wrong")

@@ -136,7 +136,9 @@ class McpProjectionIT {
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
             "holder", "self")));
         assertThat(refusal.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
-        assertThat(String.valueOf(refusal.get("message"))).contains("holder");
+        assertThat(String.valueOf(refusal.get("message"))).contains("holder")
+            .as("and names the filters it has instead")
+            .contains("state, apparatus, bracket, address");
 
         Map<String, Object> listed = Mcp.answer(Mcp.call("dispatch_query", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
@@ -145,6 +147,21 @@ class McpProjectionIT {
         List<Map<String, Object>> tasks = (List<Map<String, Object>>) listed.get("tasks");
         assertThat(tasks).extracting(t -> t.get("address")).containsExactly(open);
         assertThat(listed.get("cut")).isEqualTo(false);
+
+        String draft = String.valueOf(Mcp.answer(Mcp.call("dispatch_create", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "fields", Map.of("title", "a draft beside it", "apparatus", "code")))).get("address"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> both = (List<Map<String, Object>>) Mcp.answer(Mcp.call(
+            "dispatch_query", Map.of("scope", SurfaceFixture.SCOPE,
+                "selector", SurfaceFixture.SELECTOR, "address", open + "," + draft)))
+            .get("tasks");
+        assertThat(both).extracting(t -> t.get("address"), Mcp::nextCalls)
+            .as("each entry carries its own next")
+            .anySatisfy(t -> assertThat(t.toList()).containsExactly(draft,
+                Mcp.nextCalls(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", draft))))))
+            .anySatisfy(t -> assertThat(t.toList()).containsExactly(open,
+                Mcp.nextCalls(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", open))))));
     }
 
     @Test
@@ -154,6 +171,10 @@ class McpProjectionIT {
             "state", "needs_input")));
         assertThat(refusal.get("reason")).isEqualTo("ARGUMENT_INVALID");
         assertThat(String.valueOf(refusal.get("message"))).contains("state");
+        assertThat(Mcp.reason(Mcp.call("dispatch_query", Map.of(
+                "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+                "state", ""))))
+            .as("an empty value is refused too").isEqualTo("ARGUMENT_INVALID");
     }
 
     // -----------------------------------------------------------------------

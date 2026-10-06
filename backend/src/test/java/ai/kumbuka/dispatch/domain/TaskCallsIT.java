@@ -20,6 +20,8 @@ import static ai.kumbuka.dispatch.domain.TaskStage.C;
 import static ai.kumbuka.dispatch.domain.TaskStage.H;
 import static ai.kumbuka.dispatch.domain.TaskStage.K;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 /**
  * The nine calls that are not transitions (TAR-0004 section 3), and the
@@ -81,6 +83,25 @@ class TaskCallsIT {
             DispatchException.Reason.ACTOR_UNKNOWN);
     }
 
+    /**
+     * The number is taken in the creating transaction, so a create refused after
+     * it was taken gives it back. The kernel refuses nothing of its own after
+     * the number is taken; the database does, and a text with a NUL character
+     * is what it refuses there.
+     */
+    @Test
+    void a_refused_create_leaves_no_gap_in_the_numbers() {
+        TaskView first = create(null, "first");
+        assertThatThrownBy(() -> tasks.create(SCOPE, SELECTOR, null,
+                new TaskService.Draft("refused", "code", "a text the database refuses \u0000",
+                    null), C, IdempotencyKey.NONE))
+            .as("refused after its number was taken").isNotNull();
+        TaskView next = create(null, "next");
+
+        assertThat(next.address().number()).as("the next number follows the last one given out")
+            .isEqualTo(first.address().number() + 1);
+    }
+
     @Test
     void a_repeat_under_one_key_creates_nothing_and_the_key_on_another_call_is_refused() {
         IdempotencyKey key = IdempotencyKey.of("once");
@@ -104,15 +125,25 @@ class TaskCallsIT {
         assertThat(changed.title()).isEqualTo("second title");
         assertThat(TaskStage.texts(d.identity())).containsExactly("dispatch=" + MARK + "rewritten");
 
+        TaskView withMetadata = tasks.update(SCOPE, d.address(),
+            new TaskService.Draft(null, null, null, Map.of("pr", "https://example.org/pr/1")),
+            changed.conflictToken(), C);
+        assertThat(withMetadata.dispatchMetadata())
+            .as("metadata is written on the draft").containsEntry("pr", "https://example.org/pr/1");
+        assertThat(withMetadata.title()).as("what the update does not name stays")
+            .isEqualTo("second title");
+        assertThat(withMetadata.apparatus()).isEqualTo("code");
+        assertThat(TaskStage.texts(d.identity())).containsExactly("dispatch=" + MARK + "rewritten");
+
         assertRefused(() -> tasks.update(SCOPE, d.address(),
-                new TaskService.Draft(null, null, null, null), changed.conflictToken(), C),
+                new TaskService.Draft(null, null, null, null), withMetadata.conflictToken(), C),
             DispatchException.Reason.UPDATE_EMPTY);
         assertRefused(() -> tasks.update(SCOPE, d.address(),
                 new TaskService.Draft("x", null, null, null), d.conflictToken(), C),
             DispatchException.Reason.CONFLICT_TOKEN_STALE);
 
         tasks.act(SCOPE, d.address(), TaskVerb.SEND,
-            TaskCall.by(C).withConflictToken(changed.conflictToken()));
+            TaskCall.by(C).withConflictToken(withMetadata.conflictToken()));
         String token = tasks.read(SCOPE, d.address(), C).conflictToken();
         assertRefused(() -> tasks.update(SCOPE, d.address(),
                 new TaskService.Draft("third", null, null, null), token, C),
@@ -220,8 +251,13 @@ class TaskCallsIT {
             DispatchException.Reason.ACTOR_UNKNOWN);
         assertRefused(() -> note(s.address(), TextType.RETURN, "x", C),
             DispatchException.Reason.NOT_FOUND);
+        List<String> before = TaskStage.texts(s.identity());
         assertRefused(() -> note(s.address(), TextType.DISPATCH, " ", C),
             DispatchException.Reason.ADDENDUM_TEXT_MISSING);
+        assertRefused(() -> note(s.address(), TextType.DISPATCH, null, C),
+            DispatchException.Reason.ADDENDUM_TEXT_MISSING);
+        assertThat(TaskStage.texts(s.identity())).as("an addendum without text inserts nothing")
+            .isEqualTo(before);
         assertThat(note(s.address(), TextType.DISPATCH, "after the end", C)
                 .texts())
             .as("in every state after draft, closed included")
@@ -252,6 +288,17 @@ class TaskCallsIT {
             DispatchException.Reason.FILTER_FIELD_UNKNOWN);
         assertRefused(() -> TaskFilter.of(Map.of("state", "needs_input")),
             DispatchException.Reason.FILTER_VALUE_REFUSED);
+
+        DispatchException undeclared = catchThrowableOfType(DispatchException.class, () ->
+            TaskFilter.of(new java.util.TreeMap<>(Map.of("status", "open", "holder", "self"))));
+        assertThat(undeclared.offenders()).as("every undeclared field, in one refusal")
+            .containsExactlyInAnyOrder("status", "holder");
+        assertThat(undeclared.getMessage()).as("and the fields it has instead")
+            .contains("state, apparatus, bracket, address");
+        assertRefused(() -> TaskFilter.of(Map.of("state", "")),
+            DispatchException.Reason.FILTER_VALUE_REFUSED);
+        assertRefused(() -> TaskFilter.of(Map.of("apparatus", "code,")),
+            DispatchException.Reason.FILTER_VALUE_REFUSED);
     }
 
     @Test
@@ -278,12 +325,16 @@ class TaskCallsIT {
             DispatchException.Reason.TRANSITION_NOT_PERMITTED);
 
         TaskStage.Staged closed = stage.closed(SELECTOR);
+        String untouched = stage.token(closed);
         assertRefused(() -> tasks.relate(SCOPE, closed.address(), SCOPE, closed.address(),
-                stage.token(closed), C),
+                untouched, C),
             DispatchException.Reason.CURATION_TARGET_SELF);
         assertRefused(() -> tasks.relate(SCOPE, closed.address(), SCOPE,
-                ExchangeAddress.bracket(SELECTOR, 99), stage.token(closed), C),
+                ExchangeAddress.bracket(SELECTOR, 99), untouched, C),
             DispatchException.Reason.NOT_FOUND);
+        assertThat(TaskStage.row(closed.identity()).curatedIn())
+            .as("a refused curation writes no relation").isNull();
+        assertThat(stage.token(closed)).as("and nothing else").isEqualTo(untouched);
 
         tasks.relate(SCOPE, closed.address(), SCOPE, target.address(), stage.token(closed), C);
         assertThat(TaskStage.row(closed.identity()).curatedIn())
