@@ -1,5 +1,6 @@
 package ai.kumbuka.dispatch.surface;
 
+import io.quarkus.arc.properties.IfBuildProperty;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -20,7 +21,13 @@ import org.jboss.logging.Logger;
  * kind, and would then answer a caller with an internal error for a rule the
  * caller broke — which is the one failure this surface's whole contract is
  * about.
+ *
+ * <p>Built with the assistant surface it guards, under {@code
+ * kumbuka.local-mcp.enabled}. Off, the declaration is not checked at start;
+ * {@code DeclarationConformanceTest} and {@code SurfaceDeclarationGuardTest}
+ * hold the same properties in every build.
  */
+@IfBuildProperty(name = "kumbuka.local-mcp.enabled", stringValue = "true", enableIfMissing = true)
 @ApplicationScoped
 public class DeclarationGuard {
 

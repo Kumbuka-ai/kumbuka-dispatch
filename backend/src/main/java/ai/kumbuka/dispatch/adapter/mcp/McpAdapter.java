@@ -8,6 +8,7 @@ import ai.kumbuka.dispatch.surface.SurfaceDeclaration;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quarkus.arc.properties.IfBuildProperty;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -32,7 +33,13 @@ import java.util.Map;
  * the same way, and dresses what comes back. A refused call answers as {@code
  * isError} on a successful JSON-RPC response, never as a JSON-RPC error: every
  * refusal is a call that was made and answered.
+ *
+ * <p>Present only where the build says so: {@code kumbuka.local-mcp.enabled},
+ * on unless set to {@code false}. Off, neither {@code /mcp} nor {@code
+ * /mcp/declaration} exists; a deployment whose callers come through the
+ * router over REST carries no assistant surface of its own.
  */
+@IfBuildProperty(name = "kumbuka.local-mcp.enabled", stringValue = "true", enableIfMissing = true)
 @Path("/mcp")
 @Authenticated
 @TenantBound
