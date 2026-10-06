@@ -50,14 +50,14 @@ class LockedReadRefreshTest {
     private static final String REPOSITORY = "repository";
 
     private static final Pattern LOCKS = Pattern.compile(
-        "PESSIMISTIC_|setLockMode\\s*\\(|\\bFOR\\s+(?:NO\\s+KEY\\s+UPDATE|UPDATE|KEY\\s+SHARE|SHARE)\\b",
+        "PESSIMISTIC_|setLockMode\\s*+\\(|\\bFOR\\s++(?:NO\\s++KEY\\s++UPDATE|UPDATE|KEY\\s++SHARE|SHARE)\\b",
         Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern REFRESHES = Pattern.compile("\\bunderLock\\b|\\.refresh\\s*\\(");
+    private static final Pattern REFRESHES = Pattern.compile("\\bunderLock\\b|\\.refresh\\s*+\\(");
 
-    private static final Pattern ANNOTATION = Pattern.compile("@\\w+(?:\\s*\\([^)]*\\))?");
+    private static final Pattern ANNOTATION = Pattern.compile("@\\w++(?:\\s*+\\([^)]*+\\))?");
 
-    private static final Pattern CALLED_NAME = Pattern.compile("(\\w+)\\s*\\(");
+    private static final Pattern CALLED_NAME = Pattern.compile("(\\w++)\\s*+\\(");
 
     @Test
     void every_locking_read_of_the_repository_answers_the_row_under_the_lock() {
