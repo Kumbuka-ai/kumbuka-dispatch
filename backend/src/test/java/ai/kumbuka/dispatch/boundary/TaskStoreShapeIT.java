@@ -21,9 +21,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 
 /**
- * What the database secures about the store of the rebuilt lifecycle (V17):
- * the column order, the value sets, the shape of a row and the one guard after
- * the send. Each rule is proven by a statement in plain SQL that the database
+ * What the database secures about the store of the rebuilt lifecycle (V17,
+ * V18): the column order, the value sets, the shape of a row, the guard on the
+ * texts after the send and the freeze of a sent task's content. Each rule is proven by a statement in plain SQL that the database
  * refuses, issued under the runtime role with its real grants and the tenant
  * bound as the service binds it.
  *
@@ -198,6 +198,77 @@ class TaskStoreShapeIT {
     }
 
     // ------------------------------------------------------------------
+    // The content of a sent task (V18)
+    // ------------------------------------------------------------------
+
+    /** Each frozen column, with a value it does not have yet. */
+    private static final List<String> CONTENT_WRITES = List.of(
+        "title = 'rewritten'",
+        "apparatus = 'design'",
+        "dispatch_metadata = '{\"pr\": \"https://example.org/pr/1\"}'");
+
+    @Test
+    void a_sent_task_keeps_its_title_apparatus_and_metadata_and_a_draft_does_not() throws SQLException {
+        withServiceRole(c -> {
+            long sent = id(c, insertTask(50, "state", "'open'") + " RETURNING id");
+            long draft = id(c, insertTask(51, "state", "'draft'") + " RETURNING id");
+            for (String write : CONTENT_WRITES) {
+                refusedByContentFreeze(c, "UPDATE dispatch.task SET " + write + " WHERE id = " + sent,
+                    "title, apparatus and dispatch_metadata are changed only while it is a draft");
+                succeeds(c, "UPDATE dispatch.task SET " + write + " WHERE id = " + draft);
+            }
+        });
+    }
+
+    @Test
+    void the_change_that_sends_a_draft_still_sets_its_content() throws SQLException {
+        withServiceRole(c -> {
+            long draft = id(c, insertTask(52, "state", "'draft'") + " RETURNING id");
+            succeeds(c, "UPDATE dispatch.task SET state = 'open', title = 'as sent', "
+                + "apparatus = 'design', dispatch_metadata = '{\"date\": \"2026-10-06\"}' "
+                + "WHERE id = " + draft);
+        });
+    }
+
+    @Test
+    void the_creation_stamps_never_change_not_even_on_a_draft() throws SQLException {
+        withServiceRole(c -> {
+            long draft = id(c, insertTask(53, "state", "'draft'") + " RETURNING id");
+            long sent = id(c, insertTask(54, "state", "'open'") + " RETURNING id");
+            for (long task : new long[] {draft, sent}) {
+                refusedByContentFreeze(c, "UPDATE dispatch.task SET created_at = created_at - "
+                    + "interval '1 day' WHERE id = " + task, "created_at and created_by");
+                refusedByContentFreeze(c, "UPDATE dispatch.task SET created_by = 'someone else' "
+                    + "WHERE id = " + task, "created_at and created_by");
+            }
+        });
+    }
+
+    @Test
+    void the_lifecycle_of_a_sent_task_stays_writable() throws SQLException {
+        withServiceRole(c -> {
+            long target = id(c, insertTask(55, "state, outcome", "'closed', 'accepted'") + " RETURNING id");
+            long sent = id(c, insertTask(56, "state", "'open'") + " RETURNING id");
+            String at = " WHERE id = " + sent;
+
+            succeeds(c, "UPDATE dispatch.task SET return_metadata = '{\"pr\": \"x\"}'" + at);
+            succeeds(c, "UPDATE dispatch.task SET not_before = now(), lapse_count = 1" + at);
+            succeeds(c, "UPDATE dispatch.task SET state = 'active', not_before = NULL, "
+                + "holder_subject = 'exec', holder_receipt_hash = 'hash', lease_expires_at = now(), "
+                + "state_changed_at = now(), state_changed_by = 'exec'" + at);
+            succeeds(c, "UPDATE dispatch.task SET state = 'on_hold', hold_reason = 'question', "
+                + "question_options = '{\"options\": [], \"free_text\": true}', "
+                + "lease_expires_at = NULL" + at);
+            succeeds(c, "UPDATE dispatch.task SET state = 'delivered', hold_reason = NULL, "
+                + "question_options = NULL" + at);
+            succeeds(c, "UPDATE dispatch.task SET state = 'closed', outcome = 'accepted', "
+                + "holder_subject = NULL, holder_receipt_hash = NULL, curated_in_id = " + target + at);
+            succeeds(c, "UPDATE dispatch.task SET return_metadata = '{\"pr\": \"y\"}', "
+                + "updated_at = now(), updated_by = 'kernel'" + at);
+        });
+    }
+
+    // ------------------------------------------------------------------
 
     private interface Probe {
         void run(Connection c) throws SQLException;
@@ -260,6 +331,26 @@ class TaskStoreShapeIT {
                 .satisfies(e -> {
                     assertThat(((PSQLException) e).getSQLState()).isEqualTo("P0001");
                     assertThat(e.getMessage()).containsAnyOf("is frozen", "only a draft is deleted");
+                });
+        } finally {
+            c.rollback(sp);
+        }
+    }
+
+    /**
+     * The statement is refused by the content freeze of V18: the error class and
+     * form of the guard on the texts, with the sentence that names what is frozen.
+     */
+    private static void refusedByContentFreeze(Connection c, String sql, String frozen)
+            throws SQLException {
+        Savepoint sp = c.setSavepoint();
+        try {
+            assertThatThrownBy(() -> exec(c, sql))
+                .as("RED STATE expected: the content freeze must refuse%n  %s", sql)
+                .isInstanceOf(PSQLException.class)
+                .satisfies(e -> {
+                    assertThat(((PSQLException) e).getSQLState()).isEqualTo("P0001");
+                    assertThat(e.getMessage()).contains("is frozen").contains(frozen);
                 });
         } finally {
             c.rollback(sp);
