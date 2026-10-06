@@ -6,10 +6,14 @@ import io.quarkus.arc.Arc;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.ConfigProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -30,10 +34,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Two draws on two threads, released together from a barrier, as {@code
  * ClaimNextIT} does it for the exchange. With one drawable task exactly one
- * draw wins. With two, both win and take different ones: that is the case
- * the {@code SKIP LOCKED} carries, because a draw that waited on the locked
- * row instead would find it taken and come away empty while the other task
- * was free.
+ * draw wins; with two, both win and take different ones.
+ *
+ * <p>Neither of those is what {@code SKIP LOCKED} carries. Measured
+ * 2026-10-06 by removing it: both stay green, because a draw that waited on
+ * the locked row re-checks it, finds it taken and reads on to the next. What
+ * the clause carries is that a draw does not wait at all, and the case that
+ * shows it holds a row locked from another transaction for longer than the
+ * draw is given.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -87,6 +95,37 @@ class TaskDrawIT {
             .allMatch(Drawn::won);
         assertThat(outcomes.stream().map(Drawn::address).distinct().toList())
             .as("and the two draws took different tasks").hasSize(2);
+    }
+
+    @Test
+    void a_draw_steps_over_a_row_another_transaction_holds_instead_of_waiting()
+            throws Exception {
+        TaskStage.Staged first = stage.open(SELECTOR);
+        TaskStage.Staged second = stage.open(SELECTOR);
+
+        var config = ConfigProvider.getConfig();
+        ExecutorService thread = Executors.newSingleThreadExecutor();
+        try (Connection holder = DriverManager.getConnection(
+                config.getValue("test.db.url", String.class),
+                config.getValue("test.db.admin.username", String.class),
+                config.getValue("test.db.admin.password", String.class))) {
+            holder.setAutoCommit(false);
+            try (Statement s = holder.createStatement()) {
+                s.execute("SELECT id FROM dispatch.task WHERE uuid = '" + first.identity()
+                    + "' FOR UPDATE");
+            }
+            Future<Drawn> drawn = thread.submit(draw(K, new CyclicBarrier(1)));
+            try {
+                assertThat(drawn.get(10, TimeUnit.SECONDS).address())
+                    .as("the held row is stepped over and the next one taken, without waiting "
+                        + "for the transaction that holds it")
+                    .isEqualTo(second.address());
+            } finally {
+                holder.rollback();
+            }
+        } finally {
+            thread.shutdownNow();
+        }
     }
 
     @Test

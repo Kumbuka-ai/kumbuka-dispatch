@@ -166,10 +166,13 @@ public class TaskRepository {
      * wrongly is refused rather than taken.
      *
      * <p>Native because the lock is {@code SKIP LOCKED}, which JPA cannot
-     * express: {@code PESSIMISTIC_WRITE} waits for the other transaction
-     * instead of stepping over its row, and with {@code LIMIT 1} the waiting
-     * draw then finds the row taken and answers empty while another task was
-     * free.
+     * express: {@code PESSIMISTIC_WRITE} waits for the transaction holding the
+     * row. Measured 2026-10-06: without {@code SKIP LOCKED} two concurrent
+     * draws still take different tasks -- the waiting draw re-checks the row
+     * once the lock is released, finds it no longer drawable and reads on --
+     * but every draw queues behind every other. What {@code SKIP LOCKED} buys
+     * is that a draw steps over a row another transaction holds instead of
+     * waiting for it, which {@code TaskDrawIT} measures with a held lock.
      *
      * @param lapsesRecordedToPark the lapse count at which one more lapse parks
      */
