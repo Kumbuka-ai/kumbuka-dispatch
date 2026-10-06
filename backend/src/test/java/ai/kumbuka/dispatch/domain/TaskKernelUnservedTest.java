@@ -86,11 +86,7 @@ class TaskKernelUnservedTest {
     }
 
     static List<String> referencesIn(String name, String source) {
-        String code = source
-            .replaceAll("(?s)/\\*.*?\\*/", " ")
-            .replaceAll("//[^\\n]*", " ")
-            .replaceAll("(?s)\"\"\".*?\"\"\"", " ")
-            .replaceAll("\"(?:\\\\.|[^\"\\\\])*\"", " ");
+        String code = codeOnly(source);
         List<String> found = new ArrayList<>();
         for (String type : KERNEL_TYPES) {
             if (Pattern.compile("(?<![\\w.])(?:ai\\.kumbuka\\.dispatch\\.(?:domain|repository)\\.)?"
@@ -99,6 +95,55 @@ class TaskKernelUnservedTest {
             }
         }
         return found;
+    }
+
+    /**
+     * The source with comments, string and character literals and text blocks
+     * blanked out.
+     *
+     * <p>A scan rather than a regular expression: an alternation repeated per
+     * character recurses per character in {@code java.util.regex}, and on the
+     * CI runner's thread stack a long literal overflowed it.
+     */
+    static String codeOnly(String source) {
+        StringBuilder out = new StringBuilder(source.length());
+        int i = 0;
+        while (i < source.length()) {
+            int end = skippedFrom(source, i);
+            if (end > i) {
+                out.append(' ');
+                i = end;
+            } else {
+                out.append(source.charAt(i));
+                i++;
+            }
+        }
+        return out.toString();
+    }
+
+    /** Where a comment or literal starting at {@code i} ends, or {@code i} when none starts. */
+    private static int skippedFrom(String s, int i) {
+        if (s.startsWith("/*", i)) {
+            int close = s.indexOf("*/", i + 2);
+            return close < 0 ? s.length() : close + 2;
+        }
+        if (s.startsWith("//", i)) {
+            int close = s.indexOf('\n', i);
+            return close < 0 ? s.length() : close;
+        }
+        if (s.startsWith("\"\"\"", i)) {
+            int close = s.indexOf("\"\"\"", i + 3);
+            return close < 0 ? s.length() : close + 3;
+        }
+        char c = s.charAt(i);
+        if (c == '"' || c == '\'') {
+            int j = i + 1;
+            while (j < s.length() && s.charAt(j) != c) {
+                j += s.charAt(j) == '\\' ? 2 : 1;
+            }
+            return Math.min(j + 1, s.length());
+        }
+        return i;
     }
 
     private static Path sourceRoot() {
