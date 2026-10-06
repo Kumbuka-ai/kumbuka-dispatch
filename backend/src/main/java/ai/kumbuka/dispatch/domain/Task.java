@@ -160,14 +160,6 @@ public class Task {
         return Outcome.fromWireName(outcome);
     }
 
-    public Instant stateChangedAt() {
-        return stateChangedAt;
-    }
-
-    public String stateChangedBy() {
-        return stateChangedBy;
-    }
-
     public Map<String, Object> questionOptions() {
         return questionOptions;
     }

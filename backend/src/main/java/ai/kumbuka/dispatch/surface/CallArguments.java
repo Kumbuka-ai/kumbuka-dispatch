@@ -1,6 +1,5 @@
 package ai.kumbuka.dispatch.surface;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -184,11 +183,6 @@ public final class CallArguments {
         return integerOf(top.get(name));
     }
 
-    /** Whether a value under {@code fields} was given at all. */
-    public boolean hasField(String name) {
-        return written.containsKey(name) && written.get(name) != null;
-    }
-
     /** The metadata object under {@code fields}, or empty where it is absent. */
     @SuppressWarnings("unchecked")
     public java.util.Optional<Map<String, Object>> metadata() {
@@ -211,11 +205,6 @@ public final class CallArguments {
             }
         }
         return filters;
-    }
-
-    /** Every argument name that was given, at the top level. */
-    public List<String> givenTop() {
-        return new ArrayList<>(top.keySet());
     }
 
     private static Integer integerOf(Object value) {

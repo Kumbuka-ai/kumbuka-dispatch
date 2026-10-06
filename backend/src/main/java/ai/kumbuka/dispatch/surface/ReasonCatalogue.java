@@ -17,7 +17,7 @@ import java.util.Map;
  *
  * <p><strong>The start-up guard reads this.</strong> Every {@link RefusalCode}
  * must have an entry and every entry must have a code; {@link
- * #requireComplete()} is called at start-up and throws if either set has a
+ * #requireComplete(Map)} is called at start-up and throws if either set has a
  * member the other lacks. That is the mechanism behind "a reason not in the
  * table cannot be returned": not a rule somebody keeps, but a service that
  * does not come up.
@@ -289,13 +289,6 @@ public final class ReasonCatalogue {
      * differently: a code with no entry is a refusal that cannot be worded and
      * would escape as an unexpected failure the first time it is raised; an
      * entry with no code is a published promise that nothing can keep.
-     */
-    public static void requireComplete() {
-        requireComplete(DECLARED);
-    }
-
-    /**
-     * The same check, against a catalogue handed in.
      *
      * <p>Public so that A8's red probe is a probe rather than a description.
      * The rule "the service refuses to start with an undeclared reason" can

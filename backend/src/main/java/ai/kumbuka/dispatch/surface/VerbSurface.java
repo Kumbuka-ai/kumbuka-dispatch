@@ -135,9 +135,10 @@ public class VerbSurface {
      * Adds an addendum to a text of a sent task.
      *
      * <p>Refuses a part a sent task has no text of, by name, before the kernel
-     * is called; a draft is left to the kernel, which refuses it by its state: the kernel answers that case as not found, and an answer that
+     * is called: the kernel answers that case as not found, and an answer that
      * says "nothing is addressed here" about a task the caller just read sends
-     * it looking for a typo it does not have.
+     * it looking for a typo it does not have. A draft is left to the kernel,
+     * which refuses it by its state.
      */
     @Transactional
     public Result annotate(Actor actor, Item at, TextType part, String text, String call,

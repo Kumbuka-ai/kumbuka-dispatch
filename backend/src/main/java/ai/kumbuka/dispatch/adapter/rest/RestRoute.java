@@ -132,11 +132,6 @@ public enum RestRoute {
             .toList());
     }
 
-    /** Every call a route makes, in route order. */
-    public static List<String> calls() {
-        return Arrays.stream(values()).map(RestRoute::call).toList();
-    }
-
     /**
      * A path segment taken apart at its last colon: the address part and the
      * verb, or the segment and null where it carries no colon.

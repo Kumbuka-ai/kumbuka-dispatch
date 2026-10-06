@@ -28,10 +28,10 @@ public class DispatchException extends RuntimeException {
         /**
          * An addendum was attached without its text.
          *
-         * <p>Its own reason and not {@link #ADDENDUM_MALFORMED}, because the
-         * remedy is different and a refusal is only worth anything if it
-         * carries one: a malformed addendum is an address to correct, and
-         * this is an argument to supply. Under the shared reason the caller
+         * <p>Its own reason and not a malformed addendum, because the remedy
+         * is different and a refusal is only worth anything if it carries
+         * one: a malformed addendum is an address to correct, and this is an
+         * argument to supply. Under the shared reason the caller
          * was told "a value given is not a value this call takes" and sent
          * looking at the address, which was right.
          */
@@ -198,7 +198,6 @@ public class DispatchException extends RuntimeException {
          *
          * <p>Names each child and hands out a confirmation; the same call
          * repeated with it withdraws the children and closes the root.
-         * Replaces {@link #SIBLINGS_NON_TERMINAL} for the task kernel.
          */
         CONFIRMATION_REQUIRED,
 
