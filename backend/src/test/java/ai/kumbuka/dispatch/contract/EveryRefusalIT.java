@@ -193,7 +193,7 @@ class EveryRefusalIT {
         @SuppressWarnings("unchecked")
         Map<Object, List<String>> nextOf = ((List<Map<String, Object>>) data.get("offenders"))
             .stream().collect(java.util.stream.Collectors.toMap(o -> o.get("address"),
-                o -> Mcp.nextCalls(o)));
+                Mcp::nextCalls));
         assertThat(nextOf.get(childAddress)).as("each unfinished child carries its own next")
             .contains("dispatch_send");
         assertThat(nextOf.get(sentChild)).doesNotContain("dispatch_send")

@@ -8,8 +8,10 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Whether one transaction waits on a lock another holds, as the database
@@ -24,7 +26,7 @@ import java.util.concurrent.TimeUnit;
  */
 final class LockWaits {
 
-    /** How often the database is asked while the second transaction runs. */
+    /** How long the second transaction is given to end between two questions to the database. */
     private static final long POLL_MILLIS = 10;
 
     /** A guard against a hung run, never the measure of a wait. */
@@ -75,13 +77,24 @@ final class LockWaits {
                         return true;
                     }
                 }
-                if (second.isDone()) {
+                if (ended(second)) {
                     return false;
                 }
-                Thread.sleep(POLL_MILLIS);
             }
         }
         throw new AssertionError("the second transaction neither waited on session " + holder
             + " nor ended within " + GIVE_UP_SECONDS + " s");
+    }
+
+    /** Whether {@code second} ended, given one poll interval to do so. */
+    private static boolean ended(Future<?> second) throws InterruptedException {
+        try {
+            second.get(POLL_MILLIS, TimeUnit.MILLISECONDS);
+            return true;
+        } catch (ExecutionException refusedOrFailed) {
+            return true;
+        } catch (TimeoutException stillRunning) {
+            return false;
+        }
     }
 }
