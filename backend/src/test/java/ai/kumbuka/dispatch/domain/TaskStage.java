@@ -203,6 +203,24 @@ final class TaskStage {
         }
     }
 
+    /** The bracket counter of a selector, read as the administrator. */
+    static int nextNumber(UUID tenant, UUID scope, String selector) {
+        var config = ConfigProvider.getConfig();
+        try (Connection c = DriverManager.getConnection(
+                config.getValue("test.db.url", String.class),
+                config.getValue("test.db.admin.username", String.class),
+                config.getValue("test.db.admin.password", String.class));
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT next_number FROM dispatch.selector "
+                 + "WHERE tenant_id = '" + tenant + "' AND scope_id = '" + scope
+                 + "' AND name = '" + selector + "'")) {
+            rs.next();
+            return rs.getInt(1);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** The text rows of a task, as {@code type[suffix]=text}, in the order written. */
     static List<String> texts(UUID identity) {
         var config = ConfigProvider.getConfig();

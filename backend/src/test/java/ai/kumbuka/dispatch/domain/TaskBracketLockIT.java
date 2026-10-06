@@ -38,7 +38,10 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
  * <p>Red probes, observed: with {@code TaskService.requireOpenBracket} reading
  * the root without a lock, the first case ends with a closed root and a draft
  * child; with {@code TaskRepository.lockChildren} reading without a lock, the
- * second ends with the accepted child overwritten as withdrawn.
+ * second ends with the accepted child overwritten as withdrawn; with {@code
+ * TaskRepository.lockSelector} answering the selector the creation read before
+ * its lock, the second creation of the third case takes the first's number and
+ * fails on the unique address of the task table.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -142,6 +145,43 @@ class TaskBracketLockIT {
                 .isEqualTo("accepted");
             assertThat(TaskStage.unfinishedChildren(root.identity())).isEmpty();
             assertThat(waited).as("the closing waited at the child the acceptance held").isTrue();
+        } finally {
+            thread.shutdownNow();
+        }
+    }
+
+    @Test
+    void two_roots_created_at_once_take_consecutive_numbers() throws Exception {
+        int before = TaskStage.nextNumber(tenant, SCOPE, SELECTOR);
+
+        ExecutorService thread = Executors.newSingleThreadExecutor();
+        try {
+            QuarkusTransaction.begin();
+            TaskView first;
+            Future<Object> creating;
+            boolean waited;
+            try {
+                first = tasks.create(SCOPE, SELECTOR, null,
+                    new TaskService.Draft("first", "code", null, null), C, IdempotencyKey.NONE);
+                int holder = LockWaits.sessionOf(em);
+                creating = thread.submit(onItsOwn(() -> tasks.create(SCOPE, SELECTOR, null,
+                    new TaskService.Draft("second", "code", null, null), C,
+                    IdempotencyKey.NONE)));
+                waited = LockWaits.waitsOn(holder, creating);
+            } finally {
+                QuarkusTransaction.commit();
+            }
+            Object second = creating.get(30, TimeUnit.SECONDS);
+
+            assertThat(second)
+                .as("the second creation read the selector before it waited for its lock, "
+                    + "and took its number from the row under the lock")
+                .isInstanceOf(TaskView.class);
+            assertThat(first.address().number()).isEqualTo(before);
+            assertThat(((TaskView) second).address().number()).isEqualTo(before + 1);
+            assertThat(TaskStage.nextNumber(tenant, SCOPE, SELECTOR)).isEqualTo(before + 2);
+            assertThat(waited).as("the second creation waited at the selector the first held")
+                .isTrue();
         } finally {
             thread.shutdownNow();
         }
