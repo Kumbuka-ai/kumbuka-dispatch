@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 /**
- * The locks of a bracket under concurrency (dispatch 200.7, part A1).
+ * The locks of a bracket under concurrency.
  *
  * <p>Two transactions meet in each case. The first is held open in the test
  * thread while the second runs on a thread of its own. The first commits only

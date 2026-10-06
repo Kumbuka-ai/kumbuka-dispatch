@@ -13,7 +13,7 @@ This document is the expectation the service's conformance tests read: the calls
 says about itself, and the refusals. It is written by hand from TAR-0004 and from the concept
 document named above, and never generated from the service's declaration. Where those two
 documents fix a text, it stands here word for word and is marked so; where they leave the wording
-to the service, the text below was written with this surface (dispatch 200.7) and is the service's
+to the service, the text below was written with this surface and is the service's
 proposal until the concept apparatus ratifies it.
 
 ## 1. What the service holds

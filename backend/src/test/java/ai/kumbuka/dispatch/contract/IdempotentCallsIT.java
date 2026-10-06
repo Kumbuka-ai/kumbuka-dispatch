@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>A repeated create creates nothing and answers the first task. A
  * repeated claim answers the same task with a new receipt, with which the next
  * write succeeds, while the earlier receipt is refused; a repeated draw draws
- * nothing second (dispatch 200.7, part A2, criterion 8, on the wire). A
+ * nothing second (on the wire). A
  * repeated addendum attaches nothing second and answers the task, on both
  * surfaces: an addendum cannot be removed, so a duplicate would be permanent.
  *

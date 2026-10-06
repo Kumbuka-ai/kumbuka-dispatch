@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 /**
- * A claim repeated under its idempotency key (dispatch 200.7, part A2).
+ * A claim repeated under its idempotency key.
  *
  * <p>The repeat answers the same task with a new receipt; the earlier receipt
  * stops matching, because the service keeps only the hash and replaces it.

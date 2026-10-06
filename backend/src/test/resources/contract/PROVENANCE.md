@@ -6,7 +6,7 @@
     docs/architecture/targets/TAR-0004-the-dispatch-service-carries-commissioned-work-from-issue-to-acceptance.md
     docs/concepts/concept-dispatch-store-kernel-and-surface.md
 
-on 2026-10-06, for dispatch 200.7. It replaces the verbatim copy of the
+on 2026-10-06. It replaces the verbatim copy of the
 earlier contract of the assistant surface, whose process verbs this surface no
 longer carries.
 

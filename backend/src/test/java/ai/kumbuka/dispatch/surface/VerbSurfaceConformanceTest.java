@@ -35,8 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * annotations against {@code verb-surface.tsv}. Whether the routes of
  * {@link RestRoute}, written by hand, are exactly the calls of the declaration
  * -- one route per call, no route without a call -- is the test that holds the
- * two statements together while REST is not generated (dispatch 200.7, part B,
- * point 7). And whether those routes take the outward forms the specification
+ * two statements together while REST is not generated. And whether those routes take the outward forms the specification
  * writes is read against the file again.
  *
  * <p>Red probes, observed: a route in {@link RestRoute} for a name the
