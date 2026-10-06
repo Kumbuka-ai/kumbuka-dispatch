@@ -40,8 +40,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 2026-10-06 by removing it: both stay green, because a draw that waited on
  * the locked row re-checks it, finds it taken and reads on to the next. What
  * the clause carries is that a draw does not wait at all, and the case that
- * shows it holds a row locked from another transaction for longer than the
- * draw is given.
+ * shows it holds a row locked from another transaction and asks the database
+ * whether the draw waits on it ({@link LockWaits}).
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -114,11 +114,14 @@ class TaskDrawIT {
                 s.execute("SELECT id FROM dispatch.task WHERE uuid = '" + first.identity()
                     + "' FOR UPDATE");
             }
+            int holding = LockWaits.sessionOf(holder);
             Future<Drawn> drawn = thread.submit(draw(K, new CyclicBarrier(1)));
             try {
-                assertThat(drawn.get(10, TimeUnit.SECONDS).address())
-                    .as("the held row is stepped over and the next one taken, without waiting "
-                        + "for the transaction that holds it")
+                assertThat(LockWaits.waitsOn(holding, drawn))
+                    .as("the draw does not wait for the transaction that holds the row")
+                    .isFalse();
+                assertThat(drawn.get().address())
+                    .as("it steps over the held row and takes the next one")
                     .isEqualTo(second.address());
             } finally {
                 holder.rollback();
