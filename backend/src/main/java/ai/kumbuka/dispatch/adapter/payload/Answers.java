@@ -7,6 +7,8 @@ import ai.kumbuka.dispatch.surface.CallRouter;
 import ai.kumbuka.dispatch.surface.NextList;
 import ai.kumbuka.dispatch.surface.Refused;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,10 +76,8 @@ public final class Answers {
         putIfPresent(fields, "hold_reason", v.holdReason() == null ? null
             : v.holdReason().wireName());
         putIfPresent(fields, "outcome", v.outcome() == null ? null : v.outcome().wireName());
-        putIfPresent(fields, "not_before", v.notBefore() == null ? null
-            : v.notBefore().toString());
-        putIfPresent(fields, "lease_expires_at", v.leaseExpiresAt() == null ? null
-            : v.leaseExpiresAt().toString());
+        putIfPresent(fields, "not_before", stored(v.notBefore()));
+        putIfPresent(fields, "lease_expires_at", stored(v.leaseExpiresAt()));
         if (!head) {
             return fields;
         }
@@ -122,8 +122,7 @@ public final class Answers {
             rendered.put("type", entry.type().wireName());
             putIfPresent(rendered, "suffix", entry.addendumSuffix());
             rendered.put("text", entry.text());
-            putIfPresent(rendered, "created_at", entry.createdAt() == null ? null
-                : entry.createdAt().toString());
+            putIfPresent(rendered, "created_at", stored(entry.createdAt()));
             return rendered;
         }).toList());
         answer.put("addenda", text.addenda());
@@ -137,6 +136,15 @@ public final class Answers {
             rendered.put("does", step.does());
             return rendered;
         }).toList();
+    }
+
+    /**
+     * An instant as the database holds it: to the microsecond. The answer to
+     * the write that set it would otherwise carry the clock's nanoseconds and
+     * differ from every later read of the same, unchanged value.
+     */
+    private static String stored(Instant instant) {
+        return instant == null ? null : instant.truncatedTo(ChronoUnit.MICROS).toString();
     }
 
     private static void putIfPresent(Map<String, Object> fields, String name, Object value) {
