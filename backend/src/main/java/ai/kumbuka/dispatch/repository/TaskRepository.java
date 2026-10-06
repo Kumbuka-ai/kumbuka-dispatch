@@ -161,7 +161,8 @@ public class TaskRepository {
 
     /**
      * The entity as its row stands now that this transaction holds the lock.
-     * Every locking read of this repository answers through here.
+     * Every locking read of this repository answers through here, which
+     * {@code LockedReadRefreshTest} holds.
      *
      * <p>A locking query takes the lock on the current row, but where the
      * transaction already holds the entity -- an earlier read without a lock
