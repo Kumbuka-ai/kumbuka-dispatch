@@ -79,12 +79,16 @@ class ServiceRolePrivilegeIT {
     /** What a domain table of this schema grants the runtime role. */
     private static final Set<String> DOMAIN_PRIVILEGES = Set.of("SELECT", "INSERT", "UPDATE");
 
+    /** What a table of the rebuilt store grants: the domain set and DELETE. */
+    private static final Set<String> TASK_PRIVILEGES =
+        Set.of("SELECT", "INSERT", "UPDATE", "DELETE");
+
     /**
      * The entitlement, relation by relation. Every relation of this schema
      * appears, including the one whose entitlement is nothing at all — an
      * absence stated is checkable, an absence omitted is not.
      *
-     * <p>No DELETE. The thirteen verbs are create, read, update, append, send,
+     * <p>No DELETE on the exchange store. The thirteen verbs are create, read, update, append, send,
      * accept, claim, release, abandon, block, resume, close and consume, and
      * none of them deletes: {@code revert} discards an unratified return
      * draft by nulling two columns, which is an UPDATE. No path in this
@@ -99,6 +103,12 @@ class ServiceRolePrivilegeIT {
         // is named after — a new relation that nobody granted is a 500 on the
         // first call that touches it, and mocked tests stay green through it.
         "idempotency_key", DOMAIN_PRIVILEGES,
+        // The store of the rebuilt lifecycle (V17). DELETE joins the three,
+        // because a draft is hard-deleted; the guard trigger of V17 confines
+        // it to drafts, which TaskStoreShapeIT proves in plain SQL.
+        "task", TASK_PRIVILEGES,
+        "task_text", TASK_PRIVILEGES,
+        "task_idempotency_key", TASK_PRIVILEGES,
         HISTORY_TABLE, Set.of());
 
     /**
