@@ -162,7 +162,7 @@ public class TaskRepository {
      * {@code active} with a lapsed lease short of the lapse that parks it. The
      * SQL states that set because the lock has to be taken in the statement
      * that selects; the kernel decides on the locked row again with {@code
-     * Situation} and {@code Decision}, so a row this predicate let through
+     * TaskSituation} and {@code Decision}, so a row this predicate let through
      * wrongly is refused rather than taken.
      *
      * <p>Native because the lock is {@code SKIP LOCKED}, which JPA cannot
