@@ -170,7 +170,6 @@ public final class SurfaceFixture {
         return "/api/" + SCOPE + "/" + SELECTOR;
     }
 
-    /** The complete address of an exchange, as the MCP form spells one. */
     /**
      * Creates a draft over REST as the current identity, with the fields
      * given, and answers the response.
@@ -204,6 +203,7 @@ public final class SurfaceFixture {
         return id;
     }
 
+    /** The complete address of a task, as the MCP form spells one. */
     public static String address(String id) {
         return "dispatch://" + SCOPE + "/" + SELECTOR + "/" + id;
     }

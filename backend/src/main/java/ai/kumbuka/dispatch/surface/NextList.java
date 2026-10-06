@@ -55,9 +55,9 @@ public final class NextList {
         } else if (caller.isConsole() && view.state() == TaskState.DELIVERED) {
             steps.add(new Step(ProcessVerb.READ_TEXT.on(surface), READ_THE_ANSWER));
         }
-        for (TaskVerb verb : view.next()) {
-            steps.add(new Step(ProcessVerb.of(verb).on(surface), verb.nextSentence()));
-        }
+        view.next().stream()
+            .map(verb -> new Step(ProcessVerb.of(verb).on(surface), verb.nextSentence()))
+            .forEach(steps::add);
         return List.copyOf(steps);
     }
 

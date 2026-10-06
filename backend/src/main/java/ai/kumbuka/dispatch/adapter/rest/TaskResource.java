@@ -69,7 +69,7 @@ public class TaskResource {
     public Response collectionPost(@PathParam("scope") String scope,
                                    @PathParam("selector") String segment,
                                    @Context UriInfo uri, String body) {
-        return route("POST", RestRoute.Depth.COLLECTION, scope, segment, null, null, uri, body);
+        return route("POST", new At(RestRoute.Depth.COLLECTION, scope, segment, null), null, uri, body);
     }
 
     @GET
@@ -77,7 +77,7 @@ public class TaskResource {
     public Response collectionGet(@PathParam("scope") String scope,
                                   @PathParam("selector") String segment,
                                   @Context UriInfo uri) {
-        return route("GET", RestRoute.Depth.COLLECTION, scope, segment, null, null, uri, null);
+        return route("GET", new At(RestRoute.Depth.COLLECTION, scope, segment, null), null, uri, null);
     }
 
     @GET
@@ -87,7 +87,7 @@ public class TaskResource {
                             @PathParam("id") String segment,
                             @HeaderParam(IF_MATCH) String ifMatch,
                             @Context UriInfo uri) {
-        return route("GET", RestRoute.Depth.ITEM, scope, selector, segment, ifMatch, uri, null);
+        return route("GET", new At(RestRoute.Depth.ITEM, scope, selector, segment), ifMatch, uri, null);
     }
 
     @PATCH
@@ -97,7 +97,7 @@ public class TaskResource {
                               @PathParam("id") String segment,
                               @HeaderParam(IF_MATCH) String ifMatch,
                               @Context UriInfo uri, String body) {
-        return route("PATCH", RestRoute.Depth.ITEM, scope, selector, segment, ifMatch, uri,
+        return route("PATCH", new At(RestRoute.Depth.ITEM, scope, selector, segment), ifMatch, uri,
             body);
     }
 
@@ -108,7 +108,7 @@ public class TaskResource {
                                @PathParam("id") String segment,
                                @HeaderParam(IF_MATCH) String ifMatch,
                                @Context UriInfo uri) {
-        return route("DELETE", RestRoute.Depth.ITEM, scope, selector, segment, ifMatch, uri,
+        return route("DELETE", new At(RestRoute.Depth.ITEM, scope, selector, segment), ifMatch, uri,
             null);
     }
 
@@ -119,7 +119,7 @@ public class TaskResource {
                              @PathParam("id") String segment,
                              @HeaderParam(IF_MATCH) String ifMatch,
                              @Context UriInfo uri, String body) {
-        return route("POST", RestRoute.Depth.ITEM, scope, selector, segment, ifMatch, uri,
+        return route("POST", new At(RestRoute.Depth.ITEM, scope, selector, segment), ifMatch, uri,
             body);
     }
 
@@ -127,9 +127,16 @@ public class TaskResource {
     // A request, as a call
     // ======================================================================
 
-    private Response route(String method, RestRoute.Depth depth, String scope,
-                           String selectorSegment, String idSegment, String ifMatch,
-                           UriInfo uri, String body) {
+    /** Where a request is addressed: the depth and the path segments as they arrived. */
+    private record At(RestRoute.Depth depth, String scope, String selectorSegment,
+                      String idSegment) {
+    }
+
+    private Response route(String method, At where, String ifMatch, UriInfo uri, String body) {
+        RestRoute.Depth depth = where.depth();
+        String scope = where.scope();
+        String selectorSegment = where.selectorSegment();
+        String idSegment = where.idSegment();
         String[] at = RestRoute.split(depth == RestRoute.Depth.COLLECTION
             ? selectorSegment : idSegment);
         RestRoute route = RestRoute.find(method, depth, at[1]).orElse(null);

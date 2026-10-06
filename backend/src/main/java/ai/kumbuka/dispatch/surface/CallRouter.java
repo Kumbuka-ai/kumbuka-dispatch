@@ -72,6 +72,9 @@ public class CallRouter {
     private static final String TEXT = "text";
     private static final String PART = "part";
     private static final String NOT_VISIBLE = "not visible to you";
+    private static final String PARENT = "parent";
+    private static final String CURATED_IN = "curated_in";
+    private static final String APPARATUS = "apparatus";
 
     /** The filters of a listing, by the names the kernel and the declaration share. */
     private static final List<String> FILTERS = TaskFilter.Field.wireNames();
@@ -167,7 +170,7 @@ public class CallRouter {
                 item(in, ADDRESS), TextType.fromWireName(in.field(PART)), in.field(TEXT),
                 in.call()), false, null);
             case RELATE -> answered(surface, actor, verb, verbs.relate(actor, item(in, ADDRESS),
-                item(in, "curated_in", in.field("curated_in")), in.top(CONFLICT_TOKEN)),
+                item(in, CURATED_IN, in.field(CURATED_IN)), in.top(CONFLICT_TOKEN)),
                 false, null);
             case UNRELATE -> answered(surface, actor, verb, verbs.unrelate(actor,
                 item(in, ADDRESS), in.top(CONFLICT_TOKEN)), false, null);
@@ -187,38 +190,38 @@ public class CallRouter {
         String scope = scope(in, in.top(SCOPE));
         String selector = selector(in, in.top(SELECTOR));
         Integer parentNumber = null;
-        String parent = in.top("parent");
+        String parent = in.top(PARENT);
         if (parent != null) {
-            VerbSurface.Item root = item(in, "parent", parent);
+            VerbSurface.Item root = item(in, PARENT, parent);
             if (!root.scope().equals(scope) || !root.address().selector().equals(selector)) {
-                throw Refused.argumentInvalid(in.call(), "parent", parent,
+                throw Refused.argumentInvalid(in.call(), PARENT, parent,
                     "it names another scope or bracket kind than the call does, and a child "
                         + "is created in its root's bracket");
             }
             if (root.address().sub() != 0) {
-                throw Refused.argumentInvalid(in.call(), "parent", parent,
+                throw Refused.argumentInvalid(in.call(), PARENT, parent,
                     "a parent is a bracket root, the <number>.0 of its bracket");
             }
             parentNumber = root.address().number();
         }
         TaskService.Draft draft = new TaskService.Draft(in.field("title"),
-            in.field("apparatus"), in.field(TEXT), in.metadata());
+            in.field(APPARATUS), in.field(TEXT), in.metadata().orElse(null));
         return answered(surface, actor, ProcessVerb.CREATE, verbs.create(actor, scope, selector,
             parentNumber, draft, IdempotencyKey.of(in.top(KEY))), false, null);
     }
 
     private Outcome claimNext(Surface surface, Actor actor, CallArguments in) {
-        List<String> patterns = in.list("apparatus", Argument.Placement.TOP);
+        List<String> patterns = in.list(APPARATUS, Argument.Placement.TOP);
         String malformed = ApparatusPatterns.firstMalformed(patterns);
         if (malformed != null) {
-            throw Refused.argumentInvalid(in.call(), "apparatus", malformed,
+            throw Refused.argumentInvalid(in.call(), APPARATUS, malformed,
                 "a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*', and '*' is the "
                     + "only wildcard; the underscore and the percent sign carry a meaning of "
                     + "their own in the comparison and are excluded");
         }
         String unbounded = ApparatusPatterns.firstUnbounded(patterns);
         if (unbounded != null) {
-            throw Refused.argumentInvalid(in.call(), "apparatus", unbounded,
+            throw Refused.argumentInvalid(in.call(), APPARATUS, unbounded,
                 "a pattern of nothing but '*' matches every apparatus, which is the blind "
                     + "draw the argument exists to refuse");
         }
@@ -263,12 +266,11 @@ public class CallRouter {
         }
         VerbSurface.Listing listing = verbs.query(actor, scope, selector,
             TaskFilter.of(filters), limit == null ? DEFAULT_PAGE : limit);
-        List<Answered> heads = new ArrayList<>();
-        for (TaskView view : listing.listing().tasks()) {
-            heads.add(answered(surface, actor, ProcessVerb.QUERY,
-                new VerbSurface.Result(listing.scope(), view), true, null));
-        }
-        return new Listed(List.copyOf(heads), listing.listing().cut());
+        List<Answered> heads = listing.listing().tasks().stream()
+            .map(view -> answered(surface, actor, ProcessVerb.QUERY,
+                new VerbSurface.Result(listing.scope(), view), true, null))
+            .toList();
+        return new Listed(heads, listing.listing().cut());
     }
 
     /** An address filter: complete addresses in, the kernel's short form out. */
@@ -313,7 +315,7 @@ public class CallRouter {
             case HOLD -> new TaskInput.Pause(
                 HoldReason.valueOf(in.field("reason").toUpperCase(Locale.ROOT)),
                 in.field(REMARK));
-            case DELIVER -> new TaskInput.Delivery(in.field(TEXT), in.metadata());
+            case DELIVER -> new TaskInput.Delivery(in.field(TEXT), in.metadata().orElse(null));
         };
     }
 
@@ -371,7 +373,7 @@ public class CallRouter {
 
     private static TaskService.Draft changes(CallArguments in) {
         TaskService.Draft changes = new TaskService.Draft(in.field("title"),
-            in.field("apparatus"), in.field(TEXT), in.metadata());
+            in.field(APPARATUS), in.field(TEXT), in.metadata().orElse(null));
         if (changes.title() == null && changes.apparatus() == null && changes.text() == null
                 && changes.metadata() == null) {
             throw Refused.argumentMissing(in.call(), CallArguments.FIELDS,
@@ -462,7 +464,7 @@ public class CallRouter {
             case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(name, name, "argument",
                 e.offenders().isEmpty() ? "an argument" : String.join(", ", e.offenders()),
                 verb.topNames());
-            case ARGUMENT_INVALID -> invalid(surface, actor, name, given, e);
+            case ARGUMENT_INVALID -> invalid(actor, name, given, e);
             default -> about(surface, actor, verb, name, given, e, code);
         };
     }
@@ -524,7 +526,7 @@ public class CallRouter {
         };
     }
 
-    private Refused invalid(Surface surface, Actor actor, String name,
+    private Refused invalid(Actor actor, String name,
                             Map<String, Object> given, DispatchException e) {
         return switch (e.reason()) {
             case METADATA_REFUSED -> Refused.argumentInvalid(name,
@@ -533,7 +535,7 @@ public class CallRouter {
                     + "at most 512 characters, and no URL carrying credentials");
             case CURATION_TARGET_SELF -> Refused.argumentInvalid(name,
                 CallArguments.FIELDS + ".curated_in", String.valueOf(fieldIn(given,
-                    "curated_in")), "a task cannot be curated into itself");
+                    CURATED_IN)), "a task cannot be curated into itself");
             case ADDENDUM_SUFFIX_EXHAUSTED -> Refused.argumentInvalid(name,
                 CallArguments.FIELDS + "." + PART, String.valueOf(fieldIn(given, PART)),
                 "that text already carries addenda a to z, and a further letter would "
@@ -652,7 +654,7 @@ public class CallRouter {
 
     /** The task a refused call was about: its address, or a create's parent. */
     private static String targetIn(ProcessVerb verb, Map<String, Object> given) {
-        Object target = verb == ProcessVerb.CREATE ? given.get("parent") : given.get(ADDRESS);
+        Object target = given.get(verb == ProcessVerb.CREATE ? PARENT : ADDRESS);
         return target == null ? null : String.valueOf(target);
     }
 

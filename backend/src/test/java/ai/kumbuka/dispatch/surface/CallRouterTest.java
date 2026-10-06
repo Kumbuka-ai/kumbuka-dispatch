@@ -242,8 +242,7 @@ class CallRouterTest {
                 case Argument.OBJECT -> Map.of();
                 default -> argument.values().isEmpty()
                     ? valueFor(argument.name())
-                    : argument.values().get(0).equals("question")
-                        ? argument.values().get(1) : argument.values().get(0);
+                    : argument.values().get(0);
             };
             (argument.isField() ? fields : arguments).put(argument.name(), value);
         }

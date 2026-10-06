@@ -216,7 +216,7 @@ class ProcessSurfaceIT {
 
     @Test
     void a_closed_task_is_related_to_what_it_was_curated_into_and_back() {
-        String record = SurfaceFixture.address(SurfaceFixture.open("the record", "code"));
+        String target = SurfaceFixture.address(SurfaceFixture.open("the record", "code"));
         String done = SurfaceFixture.address(SurfaceFixture.open("curated", "code"));
         Mcp.answer(Mcp.call("dispatch_withdraw", Map.of("address", done,
             "conflict_token", token(Mcp.call("dispatch_read", Map.of("address", done))))));
@@ -228,10 +228,10 @@ class ProcessSurfaceIT {
 
         Mcp.answer(Mcp.call("dispatch_relate", Map.of("address", done,
             "conflict_token", token(Mcp.call("dispatch_read", Map.of("address", done))),
-            "fields", Map.of("curated_in", record))));
+            "fields", Map.of("curated_in", target))));
         Map<String, Object> related = Mcp.answer(Mcp.call("dispatch_read",
             Map.of("address", done)));
-        assertThat(Mcp.field(related, "curated_in")).isEqualTo(record);
+        assertThat(Mcp.field(related, "curated_in")).isEqualTo(target);
         assertThat(Mcp.field(related, "state")).as("the task stays closed").isEqualTo("closed");
 
         Mcp.answer(Mcp.call("dispatch_unrelate", Map.of("address", done,

@@ -103,7 +103,6 @@ public final class VerbSurfaceSpecification {
             .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    /** The verbs written in colon notation at one address depth. */
     /** The calls the expectation names, in its order. */
     public static List<String> calls() {
         return of("call").stream().map(Row::verb).toList();

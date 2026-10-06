@@ -29,7 +29,7 @@ public final class CallArguments {
     private final ProcessVerb verb;
     private final String call;
     private final Map<String, Object> top;
-    private final Map<String, Object> fields;
+    private final Map<String, Object> written;
 
     /**
      * Reads the arguments of one call, refusing anything the declaration does
@@ -43,7 +43,7 @@ public final class CallArguments {
         this.verb = verb;
         this.call = call;
         this.top = arguments == null ? Map.of() : new LinkedHashMap<>(arguments);
-        this.fields = nestedFields();
+        this.written = nestedFields();
 
         refuseUndeclared();
         refuseMistyped();
@@ -73,7 +73,7 @@ public final class CallArguments {
             }
         }
         List<String> declaredFields = verb.fieldArguments().stream().map(Argument::name).toList();
-        for (String name : fields.keySet()) {
+        for (String name : written.keySet()) {
             if (!declaredFields.contains(name)) {
                 throw Refused.argumentUnknown(call, call, "argument under fields", name,
                     declaredFields);
@@ -107,7 +107,7 @@ public final class CallArguments {
                 yield null;
             }
             case Argument.ARRAY -> value instanceof List<?> list
-                    && list.stream().allMatch(e -> e instanceof String)
+                    && list.stream().allMatch(String.class::isInstance)
                 ? null
                 : "it is a list of strings, even when it carries one value";
             case Argument.OBJECT -> value instanceof Map ? null : "it is an object";
@@ -138,7 +138,7 @@ public final class CallArguments {
     }
 
     private Map<String, Object> levelOf(Argument argument) {
-        return argument.isField() ? fields : top;
+        return argument.isField() ? written : top;
     }
 
     // ======================================================================
@@ -161,12 +161,12 @@ public final class CallArguments {
 
     /** A string under {@code fields}, or null where it is absent. */
     public String field(String name) {
-        return string(fields.get(name));
+        return string(written.get(name));
     }
 
     /** A list of strings at either level, empty where it is absent. */
     public List<String> list(String name, Argument.Placement placement) {
-        Object raw = (placement == Argument.Placement.FIELDS ? fields : top).get(name);
+        Object raw = (placement == Argument.Placement.FIELDS ? written : top).get(name);
         if (!(raw instanceof List<?> values)) {
             return List.of();
         }
@@ -175,7 +175,7 @@ public final class CallArguments {
 
     /** A yes or no under {@code fields}, false where it is absent. */
     public boolean flag(String name) {
-        Object raw = fields.get(name);
+        Object raw = written.get(name);
         return Boolean.TRUE.equals(raw) || "true".equals(raw);
     }
 
@@ -186,19 +186,19 @@ public final class CallArguments {
 
     /** Whether a value under {@code fields} was given at all. */
     public boolean hasField(String name) {
-        return fields.containsKey(name) && fields.get(name) != null;
+        return written.containsKey(name) && written.get(name) != null;
     }
 
-    /** The metadata object under {@code fields}, or null where it is absent. */
+    /** The metadata object under {@code fields}, or empty where it is absent. */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> metadata() {
-        Object raw = fields.get("metadata");
+    public java.util.Optional<Map<String, Object>> metadata() {
+        Object raw = written.get("metadata");
         if (!(raw instanceof Map)) {
-            return null;
+            return java.util.Optional.empty();
         }
         Map<String, Object> carried = new LinkedHashMap<>();
         ((Map<Object, Object>) raw).forEach((k, v) -> carried.put(String.valueOf(k), v));
-        return carried;
+        return java.util.Optional.of(carried);
     }
 
     /** The top-level arguments of a listing's filters, as the kernel reads them. */

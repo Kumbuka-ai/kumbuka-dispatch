@@ -64,7 +64,7 @@ public enum ProcessVerb {
             + Shared.THE_TEXT_IS_NOT_IN_THE_ANSWER + "\n\n"
             + "If nothing matches, nothing is taken.",
         List.of(scope(), selector(),
-            Argument.topList("apparatus", true, ApparatusPatterns.CHARACTER_RULE,
+            Argument.topList(Shared.APPARATUS, true, ApparatusPatterns.CHARACTER_RULE,
                 "Which apparatus you draw for. Every task is addressed to an apparatus: the "
                     + "kind of executor it is meant for, such as \"code\" or \"review\". Give "
                     + "one or more patterns, matched as alternatives. \"*\" stands for any run "
@@ -212,7 +212,7 @@ public enum ProcessVerb {
                 "the complete address of a bracket root, to add a child to that bracket"),
             idempotencyKey("a key of your own, so a retried create does not create twice"),
             Argument.field("title", Argument.STRING, true, "the task's title"),
-            Argument.field("apparatus", Argument.STRING, true,
+            Argument.field(Shared.APPARATUS, Argument.STRING, true,
                 "the kind of executor the task is addressed to, such as \"code\""),
             Argument.field("text", Argument.STRING, false, "the commission's text"),
             metadata("your own keys on the task"))),
@@ -224,7 +224,7 @@ public enum ProcessVerb {
             + "A sent task cannot be changed; add to its text with dispatch_annotate.",
         List.of(address(), conflictToken(),
             Argument.field("title", Argument.STRING, false, "the new title"),
-            Argument.field("apparatus", Argument.STRING, false, "the new apparatus"),
+            Argument.field(Shared.APPARATUS, Argument.STRING, false, "the new apparatus"),
             Argument.field("text", Argument.STRING, false, "the new text of the commission"),
             metadata("your own keys on the task, replacing the ones it has"))),
 
@@ -265,7 +265,7 @@ public enum ProcessVerb {
             Argument.top("state", Argument.STRING, false,
                 "states to list, comma-separated: draft, open, active, on_hold, delivered, "
                     + "closed"),
-            Argument.top("apparatus", Argument.STRING, false,
+            Argument.top(Shared.APPARATUS, Argument.STRING, false,
                 "apparatus patterns, comma-separated; \"*\" stands for any run of characters"),
             Argument.top("bracket", Argument.STRING, false, "bracket numbers, comma-separated"),
             Argument.top("address", Argument.STRING, false,
@@ -309,6 +309,8 @@ public enum ProcessVerb {
     private static final class Shared {
 
         /** The sentence about the text, word for word the same in both claim descriptions. */
+        static final String APPARATUS = "apparatus";
+
         static final String THE_TEXT_IS_NOT_IN_THE_ANSWER =
             "The answer does NOT contain the task's text. Read it next with dispatch_read_text, "
                 + "part \"dispatch\", before you start working.";
