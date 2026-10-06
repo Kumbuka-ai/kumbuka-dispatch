@@ -714,8 +714,15 @@ public class TaskService {
         return new DispatchException(DispatchException.Reason.NOT_FOUND, "no task at " + address);
     }
 
+    /**
+     * Now, to the microsecond: the precision the columns store. An instant
+     * this class writes -- a lease end above all -- is answered as it is
+     * stored; with the clock's nanoseconds the answer to a claim and every
+     * later read of the same lease would differ (measured on the CI runner,
+     * where the database rounds the nanoseconds rather than cutting them).
+     */
     private Instant now() {
-        return Instant.now(clock);
+        return Instant.now(clock).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
     }
 
     // ----------------------------------------------------------------------
