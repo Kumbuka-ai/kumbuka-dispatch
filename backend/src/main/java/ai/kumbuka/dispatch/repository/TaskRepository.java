@@ -56,7 +56,9 @@ public class TaskRepository {
      *
      * <p>A transition locks the row before it computes the effective state, so
      * two calls on one task decide one after the other and the second decides
-     * on what the first wrote.
+     * on what the first wrote. The task answered is the row as it stands under
+     * the lock, also where this transaction read it earlier: see {@link
+     * #underLock}.
      */
     @Transactional
     public Optional<Task> lock(UUID scopeId, ExchangeAddress address) {
@@ -64,7 +66,7 @@ public class TaskRepository {
     }
 
     private Optional<Task> at(UUID scopeId, ExchangeAddress address, LockModeType mode) {
-        return em.createQuery("""
+        Optional<Task> found = em.createQuery("""
                 SELECT t FROM Task t
                 WHERE t.scopeId = :scope AND t.selector.name = :sel
                   AND t.number = :num AND t.sub = :sub
@@ -77,6 +79,7 @@ public class TaskRepository {
             .getResultList()
             .stream()
             .findFirst();
+        return mode == LockModeType.NONE ? found : found.map(this::underLock);
     }
 
     /** The task with this surrogate in one scope. */
@@ -92,7 +95,10 @@ public class TaskRepository {
             .findFirst();
     }
 
-    /** The task with this surrogate in one scope, locked for the caller's transaction. */
+    /**
+     * The task with this surrogate in one scope, locked for the caller's
+     * transaction, as the row stands under the lock: see {@link #underLock}.
+     */
     @Transactional
     public Optional<Task> lockById(UUID scopeId, Long id) {
         return em.createQuery("""
@@ -103,7 +109,8 @@ public class TaskRepository {
             .setLockMode(LockModeType.PESSIMISTIC_WRITE)
             .getResultList()
             .stream()
-            .findFirst();
+            .findFirst()
+            .map(this::underLock);
     }
 
     /**
@@ -130,8 +137,9 @@ public class TaskRepository {
      * <p>Locked in the order of the address, so two transactions that lock the
      * children of one root take them in the same order. The caller holds the
      * root's lock first: the order is root before child wherever a call touches
-     * both. A child that another transaction finished while this one waited is
-     * read as that transaction left it.
+     * both. A child that another transaction finished while this one waited,
+     * or after this one read it without a lock, is read as that transaction
+     * left it: see {@link #underLock}.
      */
     @Transactional
     public List<Task> lockChildren(UUID scopeId, Long selectorId, int number) {
@@ -145,7 +153,29 @@ public class TaskRepository {
             .setParameter(P_SELECTOR, selectorId)
             .setParameter(P_NUMBER, number)
             .setLockMode(LockModeType.PESSIMISTIC_WRITE)
-            .getResultList();
+            .getResultList()
+            .stream()
+            .map(this::underLock)
+            .toList();
+    }
+
+    /**
+     * The task as its row stands now that this transaction holds the lock.
+     *
+     * <p>A locking query takes the lock on the current row, but where the
+     * transaction already holds the task -- an earlier read without a lock put
+     * it there -- the persistence context answers that earlier object and not
+     * what the query found. Measured 2026-10-06 ({@code TaskLockedRowIT}):
+     * without this a claim after such a read took over a task another
+     * executor had claimed meanwhile, and the closing of a root overwrote a
+     * child accepted meanwhile as withdrawn. The refresh reads the locked row
+     * again, at the cost of one more read per locked row; it would drop a
+     * change not yet flushed, and every write of the kernel flushes in the
+     * call that makes it.
+     */
+    private Task underLock(Task task) {
+        em.refresh(task);
+        return task;
     }
 
     /**
