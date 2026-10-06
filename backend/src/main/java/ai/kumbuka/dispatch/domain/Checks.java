@@ -156,19 +156,19 @@ final class Checks {
 
     /** Check 7: what the payload carries is admissible for this task. */
     static Optional<Refused> payload(TaskVerb verb, TaskSituation s, TaskCall call) {
-        TaskPayload payload = verb.payloadOf(call);
+        TaskInput payload = verb.payloadOf(call);
         try {
             return switch (payload) {
-                case TaskPayload.Sending sending -> metadata(sending.metadata());
-                case TaskPayload.Delivery delivery -> metadata(delivery.metadata());
-                case TaskPayload.Lease lease -> positive(lease);
-                case TaskPayload.Reply reply -> option(s, reply);
-                case TaskPayload.Nothing ignored -> Optional.empty();
-                case TaskPayload.Remark ignored -> Optional.empty();
-                case TaskPayload.RequiredRemark ignored -> Optional.empty();
-                case TaskPayload.Deferral ignored -> Optional.empty();
-                case TaskPayload.Question ignored -> Optional.empty();
-                case TaskPayload.Pause ignored -> Optional.empty();
+                case TaskInput.Sending sending -> metadata(sending.metadata());
+                case TaskInput.Delivery delivery -> metadata(delivery.metadata());
+                case TaskInput.Lease lease -> positive(lease);
+                case TaskInput.Reply reply -> option(s, reply);
+                case TaskInput.Nothing ignored -> Optional.empty();
+                case TaskInput.Remark ignored -> Optional.empty();
+                case TaskInput.RequiredRemark ignored -> Optional.empty();
+                case TaskInput.Deferral ignored -> Optional.empty();
+                case TaskInput.Question ignored -> Optional.empty();
+                case TaskInput.Pause ignored -> Optional.empty();
             };
         } catch (DispatchException refused) {
             return refuse(Check.PAYLOAD, refused.reason(), refused.getMessage());
@@ -180,7 +180,7 @@ final class Checks {
         return Optional.empty();
     }
 
-    private static Optional<Refused> positive(TaskPayload.Lease lease) {
+    private static Optional<Refused> positive(TaskInput.Lease lease) {
         if (lease.duration().isZero() || lease.duration().isNegative()) {
             return refuse(Check.PAYLOAD, Reason.CLAIM_DURATION_NOT_POSITIVE, "a lease must "
                 + "be positive, was " + lease.duration() + ".");
@@ -188,7 +188,7 @@ final class Checks {
         return Optional.empty();
     }
 
-    private static Optional<Refused> option(TaskSituation s, TaskPayload.Reply reply) {
+    private static Optional<Refused> option(TaskSituation s, TaskInput.Reply reply) {
         Map<String, Object> asked = s.questionOptions() == null ? Map.of() : s.questionOptions();
         List<?> options = asked.get("options") instanceof List<?> l ? l : List.of();
         boolean freeText = Boolean.TRUE.equals(asked.get("free_text"));

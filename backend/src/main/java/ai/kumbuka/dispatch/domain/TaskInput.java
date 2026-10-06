@@ -17,24 +17,24 @@ import java.util.Objects;
  * What only the task can judge -- whether an answer names one of the
  * question's options -- is check 7 of {@link Decision}.
  */
-public sealed interface TaskPayload {
+public sealed interface TaskInput {
 
     /** The lease a claim, a renewal and a resumption start without a stated duration. */
     Duration DEFAULT_LEASE = Duration.ofMinutes(30);
 
     /** Nothing: the call carries no payload. */
-    record Nothing() implements TaskPayload {
+    record Nothing() implements TaskInput {
     }
 
     /** The one instance of {@link Nothing}. */
-    TaskPayload NONE = new Nothing();
+    TaskInput NONE = new Nothing();
 
     /** {@code send}: dispatch metadata frozen at the gate, or null to keep the draft's. */
-    record Sending(Map<String, Object> metadata) implements TaskPayload {
+    record Sending(Map<String, Object> metadata) implements TaskInput {
     }
 
     /** {@code claim}, {@code claim_next}, {@code renew}, {@code resume}: the lease's length. */
-    record Lease(Duration duration) implements TaskPayload {
+    record Lease(Duration duration) implements TaskInput {
 
         public Lease {
             Objects.requireNonNull(duration, "duration");
@@ -47,11 +47,11 @@ public sealed interface TaskPayload {
     }
 
     /** {@code release}, {@code withdraw}: a remark the caller may give, or null. */
-    record Remark(String text) implements TaskPayload {
+    record Remark(String text) implements TaskInput {
     }
 
     /** {@code reject}, {@code fail}, {@code rework}: the remark is mandatory. */
-    record RequiredRemark(String text) implements TaskPayload {
+    record RequiredRemark(String text) implements TaskInput {
 
         public RequiredRemark {
             requireText(text, "remark");
@@ -59,7 +59,7 @@ public sealed interface TaskPayload {
     }
 
     /** {@code defer}: the instant before which nobody draws the task, and a remark or null. */
-    record Deferral(Instant notBefore, String remark) implements TaskPayload {
+    record Deferral(Instant notBefore, String remark) implements TaskInput {
 
         public Deferral {
             Objects.requireNonNull(notBefore, "notBefore");
@@ -67,7 +67,7 @@ public sealed interface TaskPayload {
     }
 
     /** {@code ask}: the question, its options, and whether free text is admitted. */
-    record Question(String text, List<String> options, boolean freeText) implements TaskPayload {
+    record Question(String text, List<String> options, boolean freeText) implements TaskInput {
 
         public Question {
             requireText(text, "question");
@@ -85,7 +85,7 @@ public sealed interface TaskPayload {
     }
 
     /** {@code answer}: one option of the question, or free text; exactly one of the two. */
-    record Reply(String option, String text) implements TaskPayload {
+    record Reply(String option, String text) implements TaskInput {
 
         public Reply {
             if ((option == null) == (text == null)) {
@@ -101,7 +101,7 @@ public sealed interface TaskPayload {
     }
 
     /** {@code hold}: why the holder pauses -- a dependency or something external. */
-    record Pause(HoldReason reason, String remark) implements TaskPayload {
+    record Pause(HoldReason reason, String remark) implements TaskInput {
 
         public Pause {
             Objects.requireNonNull(reason, "reason");
@@ -114,7 +114,7 @@ public sealed interface TaskPayload {
     }
 
     /** {@code deliver}: the answer text and the return metadata, in one act. */
-    record Delivery(String text, Map<String, Object> metadata) implements TaskPayload {
+    record Delivery(String text, Map<String, Object> metadata) implements TaskInput {
 
         public Delivery {
             requireText(text, "answer text");

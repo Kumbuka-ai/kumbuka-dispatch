@@ -34,7 +34,7 @@ class TaskKernelUnservedTest {
     /** The types of the new kernel, under domain/ and repository/. */
     static final List<String> KERNEL_TYPES = List.of(
         "Task", "TaskText", "SpentTaskKey", "TaskState", "HoldReason", "Outcome", "TextType",
-        "TextPart", "TaskVerb", "TaskSituation", "Decision", "Checks", "TaskCall", "TaskPayload",
+        "TextPart", "TaskVerb", "TaskSituation", "Decision", "Checks", "TaskCall", "TaskInput",
         "TaskService", "TaskView", "TaskClaim", "TaskListing", "TaskTextView", "TaskTexts",
         "TaskFilter", "TaskRepository");
 

@@ -32,6 +32,7 @@ import java.util.UUID;
  * @param address            where the task lives in its scope
  * @param state              the effective state
  * @param holdReason         set exactly in {@code on_hold}
+ * @param outcome            set exactly in {@code closed}
  * @param holder             the effective holder's subject, or null
  * @param storedHolder       the holder the row names, lapsed or not; the lock on
  *                           acceptance compares with it in {@code delivered}
@@ -49,6 +50,7 @@ public record TaskSituation(
     ExchangeAddress address,
     TaskState state,
     HoldReason holdReason,
+    Outcome outcome,
     String holder,
     String storedHolder,
     boolean lapsed,
@@ -105,7 +107,7 @@ public record TaskSituation(
                 .toList()
             : List.of();
 
-        return new TaskSituation(task.uuid, task.address(), state, reason, holder,
+        return new TaskSituation(task.uuid, task.address(), state, reason, task.outcome(), holder,
             task.storedHolder(), lapsed, task.receiptHash(), task.conflictToken(),
             task.notBefore(), task.questionOptions(), task.isBracketRoot(), unfinished, now);
     }

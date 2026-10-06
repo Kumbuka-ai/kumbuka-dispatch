@@ -122,7 +122,7 @@ class TaskHoldingIT {
 
         assertRefused(() -> tasks.act(SCOPE, s.address(), TaskVerb.DELIVER,
                 TaskCall.by(H).withReceipt(s.receipt())
-                    .with(new TaskPayload.Delivery("late", null))),
+                    .with(new TaskInput.Delivery("late", null))),
             DispatchException.Reason.LEASE_LAPSED);
         assertThat(TaskStage.texts(s.identity()))
             .as("and the late answer was not written")
@@ -130,6 +130,10 @@ class TaskHoldingIT {
 
         TaskClaim next = tasks.claim(SCOPE, s.address(), TaskCall.by(K));
         TaskStage.Row taken = TaskStage.row(s.identity());
+        assertThat(taken.receiptHash())
+            .as("the row holds the receipt's hash and never the receipt")
+            .isEqualTo(Receipt.hash(next.receipt()))
+            .isNotEqualTo(next.receipt());
         assertThat(taken.holder()).as("the next executor writes the transition").isEqualTo(K.subject());
         assertThat(taken.lapseCount()).isEqualTo(1);
         assertThat(next.receipt()).isNotEqualTo(s.receipt());
@@ -151,7 +155,7 @@ class TaskHoldingIT {
 
         TaskStage.Staged b = stage.open(SELECTOR);
         TaskView week = tasks.claim(SCOPE, b.address(),
-            TaskCall.by(H).with(new TaskPayload.Lease(Duration.ofDays(7)))).task();
+            TaskCall.by(H).with(new TaskInput.Lease(Duration.ofDays(7)))).task();
         assertThat(week.leaseExpiresAt()).as("no upper bound")
             .isCloseTo(Instant.now().plus(Duration.ofDays(7)), within(Duration.ofSeconds(30)));
         assertThat(tasks.read(SCOPE, b.address(), K).leaseExpiresAt())
@@ -162,21 +166,21 @@ class TaskHoldingIT {
     void renew_extends_and_an_answer_restarts_thirty_minutes_whatever_the_claim_said() {
         TaskStage.Staged s = stage.open(SELECTOR);
         TaskClaim claim = tasks.claim(SCOPE, s.address(),
-            TaskCall.by(H).with(new TaskPayload.Lease(Duration.ofHours(5))));
+            TaskCall.by(H).with(new TaskInput.Lease(Duration.ofHours(5))));
         TaskView renewed = tasks.act(SCOPE, s.address(), TaskVerb.RENEW,
             TaskCall.by(H).withReceipt(claim.receipt())
-                .with(new TaskPayload.Lease(Duration.ofHours(9))));
+                .with(new TaskInput.Lease(Duration.ofHours(9))));
         assertThat(renewed.leaseExpiresAt())
             .isCloseTo(Instant.now().plus(Duration.ofHours(9)), within(Duration.ofSeconds(30)));
         assertThat(TaskStage.row(s.identity()).state()).isEqualTo("active");
 
         tasks.act(SCOPE, s.address(), TaskVerb.ASK, TaskCall.by(H).withReceipt(claim.receipt())
-            .with(new TaskPayload.Question("left or right?", List.of("left", "right"), false)));
+            .with(new TaskInput.Question("left or right?", List.of("left", "right"), false)));
         assertThat(TaskStage.row(s.identity()).leaseExpiresAt())
             .as("the lease runs only in active").isNull();
         TaskView asked = tasks.read(SCOPE, s.address(), C);
         tasks.act(SCOPE, s.address(), TaskVerb.ANSWER, TaskCall.by(C)
-            .withConflictToken(asked.conflictToken()).with(new TaskPayload.Reply("left", null)));
+            .withConflictToken(asked.conflictToken()).with(new TaskInput.Reply("left", null)));
 
         TaskView answered = tasks.read(SCOPE, s.address(), H);
         assertThat(answered.state()).isEqualTo(TaskState.ACTIVE);
@@ -196,11 +200,11 @@ class TaskHoldingIT {
         TaskStage.Staged s = stage.active(SELECTOR);
 
         assertRefused(() -> tasks.act(SCOPE, s.address(), TaskVerb.DELIVER,
-                TaskCall.by(H).with(new TaskPayload.Delivery("an answer", null))),
+                TaskCall.by(H).with(new TaskInput.Delivery("an answer", null))),
             DispatchException.Reason.RECEIPT_ABSENT);
         assertRefused(() -> tasks.act(SCOPE, s.address(), TaskVerb.DELIVER,
                 TaskCall.by(H).withReceipt("forged")
-                    .with(new TaskPayload.Delivery("an answer", null))),
+                    .with(new TaskInput.Delivery("an answer", null))),
             DispatchException.Reason.RECEIPT_MISMATCH);
 
         assertThat(TaskStage.row(s.identity()).state()).isEqualTo("active");
@@ -256,11 +260,11 @@ class TaskHoldingIT {
     void rework_sends_the_answer_back_and_the_second_delivery_is_the_valid_one() {
         TaskStage.Staged s = stage.stage("delivered", SELECTOR);
         tasks.act(SCOPE, s.address(), TaskVerb.REWORK, TaskCall.by(C)
-            .withConflictToken(stage.token(s)).with(new TaskPayload.RequiredRemark("shorter")));
+            .withConflictToken(stage.token(s)).with(new TaskInput.RequiredRemark("shorter")));
         assertThat(tasks.read(SCOPE, s.address(), H).holder())
             .as("same holder").isEqualTo(HolderState.SELF);
         tasks.act(SCOPE, s.address(), TaskVerb.DELIVER, TaskCall.by(H).withReceipt(s.receipt())
-            .with(new TaskPayload.Delivery("the shorter answer", null)));
+            .with(new TaskInput.Delivery("the shorter answer", null)));
 
         TaskTextView answer = tasks.readText(SCOPE, s.address(), TextPart.RETURN, C);
         assertThat(answer.entries()).extracting(TaskTextView.Entry::text)

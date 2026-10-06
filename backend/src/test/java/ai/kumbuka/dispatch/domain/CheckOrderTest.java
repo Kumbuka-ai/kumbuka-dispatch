@@ -36,7 +36,7 @@ class CheckOrderTest {
         // answer applies in on_hold and only for a question; an active task
         // is in neither, so both checks fail.
         Decision d = Decision.of(TaskVerb.ANSWER, situation("active"),
-            TaskCall.by(C).withConflictToken(TOKEN).with(new TaskPayload.Reply("yes", null)));
+            TaskCall.by(C).withConflictToken(TOKEN).with(new TaskInput.Reply("yes", null)));
         assertRefused(d, Check.STATE, Reason.TRANSITION_NOT_PERMITTED);
     }
 
@@ -81,7 +81,7 @@ class CheckOrderTest {
         // not refuse but throw; that it never runs is the point.
         Decision d = Decision.of(TaskVerb.WITHDRAW, rootWithUnfinishedChild(),
             TaskCall.by(C).withConflictToken(TOKEN)
-                .with(new TaskPayload.Lease(Duration.ofMinutes(5))));
+                .with(new TaskInput.Lease(Duration.ofMinutes(5))));
         assertRefused(d, Check.CONFIRMATION, Reason.CONFIRMATION_REQUIRED);
     }
 
@@ -116,17 +116,17 @@ class CheckOrderTest {
     void an_answer_names_an_option_or_free_text_where_admitted() {
         TaskSituation asked = situation("asked");
         Decision none = Decision.of(TaskVerb.ANSWER, asked,
-            TaskCall.by(C).withConflictToken(TOKEN).with(new TaskPayload.Reply("maybe", null)));
+            TaskCall.by(C).withConflictToken(TOKEN).with(new TaskInput.Reply("maybe", null)));
         assertRefused(none, Check.PAYLOAD, Reason.ANSWER_NOT_AN_OPTION);
         Decision text = Decision.of(TaskVerb.ANSWER, asked,
-            TaskCall.by(C).withConflictToken(TOKEN).with(new TaskPayload.Reply(null, "free")));
+            TaskCall.by(C).withConflictToken(TOKEN).with(new TaskInput.Reply(null, "free")));
         assertRefused(text, Check.PAYLOAD, Reason.ANSWER_NOT_AN_OPTION);
     }
 
     @Test
     void a_lease_is_positive() {
         Decision d = Decision.of(TaskVerb.CLAIM, situation("open"),
-            TaskCall.by(H).with(new TaskPayload.Lease(Duration.ZERO)));
+            TaskCall.by(H).with(new TaskInput.Lease(Duration.ZERO)));
         assertRefused(d, Check.PAYLOAD, Reason.CLAIM_DURATION_NOT_POSITIVE);
     }
 
@@ -135,6 +135,7 @@ class CheckOrderTest {
     static TaskSituation rootWithUnfinishedChild() {
         TaskSituation open = situation("open");
         return new TaskSituation(open.identity(), open.address(), open.state(), null, null, null,
+            null,
             false, null, TOKEN, null, null, true,
             List.of(new TaskSituation.Child(UUID.fromString("00000000-0000-0000-0000-0000000000bb"),
                 ExchangeAddress.child("sprint", 1, 1), TaskState.ACTIVE)),

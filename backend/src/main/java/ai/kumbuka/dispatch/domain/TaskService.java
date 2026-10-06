@@ -41,8 +41,9 @@ public class TaskService {
     /** Says verb, address, state and reason; never a text, metadata or who called. */
     private static final Logger LOG = Logger.getLogger(TaskService.class);
 
-    /** The call name an idempotency key is spent on by {@link #create}. */
+    /** The call names an idempotency key is spent on. */
     static final String CREATE = "dispatch_create";
+    static final String ANNOTATE = "dispatch_annotate";
 
     /** The last letter an addendum suffix may take; past it is refused, never wrapped. */
     private static final char LAST_SUFFIX = 'z';
@@ -96,7 +97,7 @@ public class TaskService {
         String digest = IdempotencyService.digestOf(Arrays.asList(selector,
             parentNumber == null ? null : String.valueOf(parentNumber), draft.title(),
             draft.apparatus(), draft.text(), String.valueOf(draft.metadata())));
-        Optional<Task> repeat = firstAnswerFor(scopeId, caller, key, digest)
+        Optional<Task> repeat = firstAnswerFor(scopeId, caller, key, CREATE, digest)
             .flatMap(id -> tasks.findById(scopeId, id));
         if (repeat.isPresent()) {
             return view(repeat.get(), caller);
@@ -123,7 +124,7 @@ public class TaskService {
         if (draft.text() != null) {
             insertText(task, TextType.DISPATCH, null, draft.text(), caller);
         }
-        remember(scopeId, caller, key, digest, task);
+        remember(scopeId, caller, key, CREATE, digest, task);
 
         LOG.infof("create %s -> %s", task.address(), TaskState.DRAFT.wireName());
         return view(task, caller);
@@ -242,15 +243,23 @@ public class TaskService {
      * <p>Only the identity that wrote the supplemented text adds to it; the
      * addendum hangs on the youngest text of that type, takes the next free
      * letter of that type, and has no title.
+     *
+     * <p>Under an idempotency key a repeat attaches nothing and answers the
+     * task: an addendum cannot be removed, so a duplicate would be permanent.
      */
     @Transactional
     public TaskView annotate(UUID scopeId, ExchangeAddress address, TextType part, String text,
-                             Actor caller) {
+                             Actor caller, IdempotencyKey key) {
         if (text == null || text.isBlank()) {
             throw new DispatchException(DispatchException.Reason.ADDENDUM_TEXT_MISSING,
                 "an addendum carries its text, and it arrives with this call or never.");
         }
         Task task = lockOrRefuse(scopeId, address);
+        String digest = IdempotencyService.digestOf(
+            Arrays.asList(address.toString(), part.wireName(), text));
+        if (firstAnswerFor(scopeId, caller, key, ANNOTATE, digest).isPresent()) {
+            return view(task, caller);
+        }
         TaskSituation s = situation(task);
         if (s.state() == TaskState.DRAFT) {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
@@ -264,6 +273,7 @@ public class TaskService {
                 "an addendum is added by the identity that wrote the text it supplements.");
         }
         insertText(task, part, nextSuffix(task, part, address), text, caller);
+        remember(scopeId, caller, key, ANNOTATE, digest, task);
         LOG.infof("annotate %s %s", address, part.wireName());
         return view(task, caller);
     }
@@ -321,7 +331,11 @@ public class TaskService {
             ? tasks.children(scopeId, task.selector.id, task.number)
             : List.of();
         TaskSituation s = TaskSituation.of(task, now, children);
-        TaskPayload payload = decide(verb, s, call);
+        if (Decision.of(verb, s, call) instanceof Decision.AlreadyThere) {
+            LOG.debugf("%s on %s: already %s", verb.wireName(), address, verb.outcome().wireName());
+            return view(task, call.caller());
+        }
+        TaskInput payload = decide(verb, s, call);
 
         String by = call.caller().subject();
         if (!s.unfinishedChildren().isEmpty()) {
@@ -368,7 +382,7 @@ public class TaskService {
     private TaskClaim take(UUID scopeId, Task task, TaskVerb verb, TaskCall call) {
         Instant now = now();
         TaskSituation s = TaskSituation.of(task, now, List.of());
-        TaskPayload.Lease lease = (TaskPayload.Lease) decide(verb, s, call);
+        TaskInput.Lease lease = (TaskInput.Lease) decide(verb, s, call);
 
         String by = call.caller().subject();
         if (s.lapsed()) {
@@ -385,8 +399,11 @@ public class TaskService {
     }
 
     /** Decides, and refuses with the decision's reason; answers the payload to apply. */
-    private static TaskPayload decide(TaskVerb verb, TaskSituation s, TaskCall call) {
+    private static TaskInput decide(TaskVerb verb, TaskSituation s, TaskCall call) {
         Decision decision = Decision.of(verb, s, call);
+        if (decision instanceof Decision.AlreadyThere) {
+            throw new IllegalStateException(verb.wireName() + " never closes a task");
+        }
         if (decision instanceof Decision.Refused refused) {
             LOG.debugf("%s on %s refused at %s: %s", verb.wireName(), s.address(),
                 refused.check(), refused.reason());
@@ -396,13 +413,13 @@ public class TaskService {
     }
 
     /** Sets what the row names: state, attributes, holder, lease, payload attributes. */
-    private static void apply(Task task, TaskVerb verb, TaskSituation s, TaskPayload payload,
+    private static void apply(Task task, TaskVerb verb, TaskSituation s, TaskInput payload,
                               Instant now, String by) {
-        if (payload instanceof TaskPayload.Sending sending && sending.metadata() != null) {
+        if (payload instanceof TaskInput.Sending sending && sending.metadata() != null) {
             task.dispatchMetadata = sending.metadata();
         }
         if (verb.target() != s.state()) {
-            HoldReason reason = payload instanceof TaskPayload.Pause pause
+            HoldReason reason = payload instanceof TaskInput.Pause pause
                 ? pause.reason()
                 : verb.holdReason();
             task.enter(verb.target(), reason, verb.outcome(), now, by);
@@ -411,15 +428,15 @@ public class TaskService {
             case NONE, TAKE -> {
                 // TAKE is applied by take(), which mints the receipt.
             }
-            case LEASE -> task.lease(now.plus(((TaskPayload.Lease) payload).duration()));
+            case LEASE -> task.lease(now.plus(((TaskInput.Lease) payload).duration()));
             case PAUSE -> task.pause();
-            case RESTART -> task.lease(now.plus(TaskPayload.DEFAULT_LEASE));
+            case RESTART -> task.lease(now.plus(TaskInput.DEFAULT_LEASE));
             case DROP -> task.dropHolder();
         }
         switch (payload) {
-            case TaskPayload.Deferral deferral -> task.deferUntil(deferral.notBefore());
-            case TaskPayload.Question question -> task.ask(question.asOptions());
-            case TaskPayload.Delivery delivery -> task.writeReturnMetadata(delivery.metadata());
+            case TaskInput.Deferral deferral -> task.deferUntil(deferral.notBefore());
+            case TaskInput.Question question -> task.ask(question.asOptions());
+            case TaskInput.Delivery delivery -> task.writeReturnMetadata(delivery.metadata());
             default -> {
                 // The other payloads set no attribute of the task.
             }
@@ -428,21 +445,21 @@ public class TaskService {
     }
 
     /** Inserts the text row the verb names, where the payload carries its text. */
-    private void writeText(Task task, TaskVerb verb, TaskPayload payload, Actor caller) {
+    private void writeText(Task task, TaskVerb verb, TaskInput payload, Actor caller) {
         if (verb.text() == null) {
             return;
         }
         String text = switch (payload) {
-            case TaskPayload.Remark remark -> remark.text();
-            case TaskPayload.RequiredRemark remark -> remark.text();
-            case TaskPayload.Deferral deferral -> deferral.remark();
-            case TaskPayload.Question question -> question.text();
-            case TaskPayload.Reply reply -> reply.recorded();
-            case TaskPayload.Pause pause -> pause.remark();
-            case TaskPayload.Delivery delivery -> delivery.text();
-            case TaskPayload.Nothing ignored -> null;
-            case TaskPayload.Sending ignored -> null;
-            case TaskPayload.Lease ignored -> null;
+            case TaskInput.Remark remark -> remark.text();
+            case TaskInput.RequiredRemark remark -> remark.text();
+            case TaskInput.Deferral deferral -> deferral.remark();
+            case TaskInput.Question question -> question.text();
+            case TaskInput.Reply reply -> reply.recorded();
+            case TaskInput.Pause pause -> pause.remark();
+            case TaskInput.Delivery delivery -> delivery.text();
+            case TaskInput.Nothing ignored -> null;
+            case TaskInput.Sending ignored -> null;
+            case TaskInput.Lease ignored -> null;
         };
         if (text != null && !text.isBlank()) {
             insertText(task, verb.text(), null, text, caller);
@@ -608,12 +625,12 @@ public class TaskService {
     // ----------------------------------------------------------------------
 
     /**
-     * The task a repeat of {@code create} answers with, if it is one; refuses
-     * the key spent on another call. The rule of {@link IdempotencyService},
-     * on the task's own ledger.
+     * The task a repeat of a call answers with, if it is one; refuses the key
+     * spent on another call. The rule of {@link IdempotencyService}, on the
+     * task's own ledger.
      */
     private Optional<Long> firstAnswerFor(UUID scopeId, Actor caller, IdempotencyKey key,
-                                          String digest) {
+                                          String call, String digest) {
         if (!(key instanceof IdempotencyKey.Given given)) {
             return Optional.empty();
         }
@@ -621,15 +638,15 @@ public class TaskService {
         if (held.isEmpty() || !held.get().stillStandsAt(now())) {
             return Optional.empty();
         }
-        if (!held.get().records(CREATE, digest)) {
+        if (!held.get().records(call, digest)) {
             throw new DispatchException(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED,
                 "the key was already spent on a different call in this scope");
         }
         return Optional.of(held.get().taskId);
     }
 
-    private void remember(UUID scopeId, Actor caller, IdempotencyKey key, String digest,
-                          Task produced) {
+    private void remember(UUID scopeId, Actor caller, IdempotencyKey key, String call,
+                          String digest, Task produced) {
         if (!(key instanceof IdempotencyKey.Given given)) {
             return;
         }
@@ -638,7 +655,7 @@ public class TaskService {
         row.scopeId = scopeId;
         row.callerSubject = caller.subject();
         row.key = given.value();
-        row.callName = CREATE;
+        row.callName = call;
         row.argumentDigest = digest;
         row.taskId = produced.id;
         row.firstSeenAt = now();

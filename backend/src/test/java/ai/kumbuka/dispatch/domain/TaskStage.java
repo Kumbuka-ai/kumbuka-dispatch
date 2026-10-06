@@ -52,14 +52,14 @@ final class TaskStage {
             case "active" -> active(selector);
             case "lapsed" -> lapse(active(selector));
             case "asked" -> after(active(selector), TaskVerb.ASK,
-                new TaskPayload.Question("which one?", List.of("yes", "no"), true));
+                new TaskInput.Question("which one?", List.of("yes", "no"), true));
             case "waiting" -> after(active(selector), TaskVerb.HOLD,
-                new TaskPayload.Pause(HoldReason.DEPENDENCY, null));
+                new TaskInput.Pause(HoldReason.DEPENDENCY, null));
             case "blocked" -> after(active(selector), TaskVerb.HOLD,
-                new TaskPayload.Pause(HoldReason.EXTERNAL, null));
+                new TaskInput.Pause(HoldReason.EXTERNAL, null));
             case "parked" -> parked(selector);
             case "delivered" -> after(active(selector), TaskVerb.DELIVER,
-                new TaskPayload.Delivery("the answer", null));
+                new TaskInput.Delivery("the answer", null));
             case "closed" -> closed(selector);
             default -> throw new IllegalArgumentException(situation);
         };
@@ -90,7 +90,7 @@ final class TaskStage {
     Staged deferred(String selector) {
         Staged a = active(selector);
         tasks.act(scope, a.address(), TaskVerb.DEFER, TaskCall.by(H).withReceipt(a.receipt())
-            .with(new TaskPayload.Deferral(Instant.now().plusSeconds(3600), null)));
+            .with(new TaskInput.Deferral(Instant.now().plusSeconds(3600), null)));
         return a;
     }
 
@@ -115,7 +115,7 @@ final class TaskStage {
         return o;
     }
 
-    Staged after(Staged s, TaskVerb verb, TaskPayload payload) {
+    Staged after(Staged s, TaskVerb verb, TaskInput payload) {
         tasks.act(scope, s.address(), verb, TaskCall.by(H).withReceipt(s.receipt()).with(payload));
         return s;
     }
@@ -135,7 +135,8 @@ final class TaskStage {
     /** What the row stores, read as the administrator: the stored side of the gap. */
     record Row(long id, String state, String holdReason, String outcome, String holder,
                Instant leaseExpiresAt, int lapseCount, Instant notBefore,
-               String stateChangedBy, Long curatedIn) {
+               String stateChangedBy, Long curatedIn, String receiptHash, String createdBy,
+               String updatedBy) {
     }
 
     static Row row(UUID identity) {
@@ -146,14 +147,16 @@ final class TaskStage {
                 config.getValue("test.db.admin.password", String.class));
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery("SELECT id, state, hold_reason, outcome, holder_subject, "
-                 + "lease_expires_at, lapse_count, not_before, state_changed_by, curated_in_id "
+                 + "lease_expires_at, lapse_count, not_before, state_changed_by, curated_in_id, "
+                 + "holder_receipt_hash, created_by, updated_by "
                  + "FROM dispatch.task WHERE uuid = '" + identity + "'")) {
             if (!rs.next()) {
                 return null;
             }
             return new Row(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
                 rs.getString(5), instant(rs.getTimestamp(6)), rs.getInt(7),
-                instant(rs.getTimestamp(8)), rs.getString(9), (Long) rs.getObject(10));
+                instant(rs.getTimestamp(8)), rs.getString(9), (Long) rs.getObject(10),
+                rs.getString(11), rs.getString(12), rs.getString(13));
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }

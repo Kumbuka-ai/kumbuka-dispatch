@@ -33,6 +33,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * what a well-formed request presents -- H's receipt, the current conflict
  * token, a valid payload -- so a refusal that is about the request rather
  * than the situation shows up as a failure here.
+ *
+ * <p>One unlisted call succeeds: closing a task with the outcome it already
+ * closed with, which writes nothing (the running service's rule, carried).
+ * It is admitted only where it wrote nothing -- the conflict token did not
+ * move -- and only on the closed task.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -100,7 +105,8 @@ class TaskLifecycleIT {
                     if (open.contains(verb) && !"ok".equals(outcome)) {
                         wrong.add(where + " is listed as open and was refused: " + outcome);
                     }
-                    if (!open.contains(verb) && !refusedForStateOrEntitlement(verb, outcome)) {
+                    if (!open.contains(verb) && !refusedForStateOrEntitlement(verb, outcome)
+                            && !("noop".equals(outcome) && situation.equals("closed"))) {
                         wrong.add(where + " is not listed and ended: " + outcome);
                     }
                 }
@@ -127,8 +133,9 @@ class TaskLifecycleIT {
 
     /** One well-formed call of {@code verb} on a staged task; "ok" or the reason. */
     private String attempt(TaskVerb verb, TaskStage.Staged s, Actor caller) {
+        String before = stage.token(s);
         TaskCall call = TaskCall.by(caller).withReceipt(s.receipt())
-            .withConflictToken(stage.token(s)).with(payload(verb));
+            .withConflictToken(before).with(payload(verb));
         try {
             switch (verb) {
                 case CLAIM -> tasks.claim(SCOPE, s.address(), call);
@@ -138,7 +145,11 @@ class TaskLifecycleIT {
                         return "drew " + drawn.task().address();
                     }
                 }
-                default -> tasks.act(SCOPE, s.address(), verb, call);
+                default -> {
+                    if (tasks.act(SCOPE, s.address(), verb, call).conflictToken().equals(before)) {
+                        return "noop";
+                    }
+                }
             }
             return "ok";
         } catch (DispatchException refused) {
@@ -146,9 +157,9 @@ class TaskLifecycleIT {
         }
     }
 
-    private static TaskPayload payload(TaskVerb verb) {
+    private static TaskInput payload(TaskVerb verb) {
         return verb == TaskVerb.DEFER
-            ? new TaskPayload.Deferral(Instant.now().plusSeconds(3600), null)
+            ? new TaskInput.Deferral(Instant.now().plusSeconds(3600), null)
             : TransitionMatrixTest.validPayload(verb);
     }
 

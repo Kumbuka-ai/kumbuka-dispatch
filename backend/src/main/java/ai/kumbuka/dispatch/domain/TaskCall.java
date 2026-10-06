@@ -13,19 +13,19 @@ import java.util.Objects;
  * @param receipt       the receipt a claim handed out, or null
  * @param conflictToken the token of the caller's last read, or null
  * @param confirmation  the confirmation a refusal handed out, or null
- * @param payload       what the verb carries; {@link TaskPayload#NONE} for nothing
+ * @param payload       what the verb carries; {@link TaskInput#NONE} for nothing
  */
 public record TaskCall(Actor caller, String receipt, String conflictToken,
-                       String confirmation, TaskPayload payload) {
+                       String confirmation, TaskInput payload) {
 
     public TaskCall {
         Objects.requireNonNull(caller, "caller");
-        payload = payload == null ? TaskPayload.NONE : payload;
+        payload = payload == null ? TaskInput.NONE : payload;
     }
 
     /** A call by {@code caller} presenting nothing yet. */
     public static TaskCall by(Actor caller) {
-        return new TaskCall(caller, null, null, null, TaskPayload.NONE);
+        return new TaskCall(caller, null, null, null, TaskInput.NONE);
     }
 
     public TaskCall withReceipt(String value) {
@@ -40,7 +40,7 @@ public record TaskCall(Actor caller, String receipt, String conflictToken,
         return new TaskCall(caller, receipt, conflictToken, value, payload);
     }
 
-    public TaskCall with(TaskPayload value) {
+    public TaskCall with(TaskInput value) {
         return new TaskCall(caller, receipt, conflictToken, confirmation, value);
     }
 }

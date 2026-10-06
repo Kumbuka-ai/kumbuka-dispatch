@@ -112,7 +112,7 @@ class TaskBracketIT {
 
         DispatchException other = catchThrowableOfType(DispatchException.class, () ->
             tasks.act(SCOPE, root.address(), TaskVerb.REJECT, TaskCall.by(H)
-                .withConfirmation(forWithdraw).with(new TaskPayload.RequiredRemark("no"))));
+                .withConfirmation(forWithdraw).with(new TaskInput.RequiredRemark("no"))));
         assertThat(other.reason()).isEqualTo(DispatchException.Reason.CONFIRMATION_STALE);
     }
 

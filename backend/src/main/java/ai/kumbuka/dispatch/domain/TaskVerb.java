@@ -29,83 +29,83 @@ import static ai.kumbuka.dispatch.domain.TaskState.OPEN;
 public enum TaskVerb {
 
     SEND("send", EnumSet.of(DRAFT), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
-        Proof.CONFLICT_TOKEN, TaskPayload.Sending.class, new TaskPayload.Sending(null),
+        Proof.CONFLICT_TOKEN, TaskInput.Sending.class, new TaskInput.Sending(null),
         OPEN, null, null, Holding.NONE, null,
         "Sends the draft: the task is frozen and open to executors."),
 
     CLAIM("claim", EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE, Lock.NONE,
-        Proof.NONE, TaskPayload.Lease.class, TaskPayload.Lease.standard(),
+        Proof.NONE, TaskInput.Lease.class, TaskInput.Lease.standard(),
         ACTIVE, null, null, Holding.TAKE, null,
         "Takes up this task; you become its holder."),
 
     CLAIM_NEXT("claim_next", EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE,
-        Lock.NONE, Proof.NONE, TaskPayload.Lease.class, TaskPayload.Lease.standard(),
+        Lock.NONE, Proof.NONE, TaskInput.Lease.class, TaskInput.Lease.standard(),
         ACTIVE, null, null, Holding.TAKE, null,
         "Takes up the next open task addressed to you, without naming one."),
 
     RELEASE("release", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskPayload.Remark.class, new TaskPayload.Remark(null),
+        Proof.RECEIPT, TaskInput.Remark.class, new TaskInput.Remark(null),
         OPEN, null, null, Holding.DROP, TextType.REMARK,
         "Gives the task back; it is open to be taken again."),
 
     DEFER("defer", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskPayload.Deferral.class, null,
+        Proof.RECEIPT, TaskInput.Deferral.class, null,
         OPEN, null, null, Holding.DROP, TextType.REMARK,
         "Gives the task back until an instant you name; nobody can take it before."),
 
     RENEW("renew", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskPayload.Lease.class, TaskPayload.Lease.standard(),
+        Proof.RECEIPT, TaskInput.Lease.class, TaskInput.Lease.standard(),
         ACTIVE, null, null, Holding.LEASE, null,
         "Extends your hold."),
 
     ASK("ask", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskPayload.Question.class, null,
+        Proof.RECEIPT, TaskInput.Question.class, null,
         ON_HOLD, HoldReason.QUESTION, null, Holding.PAUSE, TextType.QUESTION,
         "Pauses the task and asks the commissioner a question."),
 
     ANSWER("answer", EnumSet.of(ON_HOLD), Condition.QUESTION_PENDING, Relation.COMMISSIONER,
-        Lock.NONE, Proof.CONFLICT_TOKEN, TaskPayload.Reply.class, null,
+        Lock.NONE, Proof.CONFLICT_TOKEN, TaskInput.Reply.class, null,
         ACTIVE, null, null, Holding.RESTART, TextType.ANSWER,
         "Answers the executor's question; the work continues."),
 
     HOLD("hold", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskPayload.Pause.class, null,
+        Proof.RECEIPT, TaskInput.Pause.class, null,
         ON_HOLD, null, null, Holding.PAUSE, TextType.REMARK,
         "Pauses the task while it waits on a dependency or on something external."),
 
     RESUME("resume", EnumSet.of(ON_HOLD), Condition.PAUSED_BY_HOLDER, Relation.HOLDER,
-        Lock.NONE, Proof.RECEIPT, TaskPayload.Lease.class, TaskPayload.Lease.standard(),
+        Lock.NONE, Proof.RECEIPT, TaskInput.Lease.class, TaskInput.Lease.standard(),
         ACTIVE, null, null, Holding.LEASE, null,
         "Continues the paused task."),
 
     DELIVER("deliver", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskPayload.Delivery.class, null,
+        Proof.RECEIPT, TaskInput.Delivery.class, null,
         DELIVERED, null, null, Holding.PAUSE, TextType.RETURN,
         "Delivers the answer and its metadata for acceptance."),
 
     REWORK("rework", EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
-        Proof.CONFLICT_TOKEN, TaskPayload.RequiredRemark.class, null,
+        Proof.CONFLICT_TOKEN, TaskInput.RequiredRemark.class, null,
         ACTIVE, null, null, Holding.RESTART, TextType.REMARK,
         "Sends the delivered answer back to its holder with a remark."),
 
     ACCEPT("accept", EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER,
-        Lock.NOT_THE_DELIVERER, Proof.CONFLICT_TOKEN, TaskPayload.Nothing.class,
-        TaskPayload.NONE, CLOSED, null, Outcome.ACCEPTED, Holding.DROP, null,
+        Lock.NOT_THE_DELIVERER, Proof.CONFLICT_TOKEN, TaskInput.Nothing.class,
+        TaskInput.NONE, CLOSED, null, Outcome.ACCEPTED, Holding.DROP, null,
         "Accepts the delivered answer and closes the task."),
 
     REJECT("reject", EnumSet.of(OPEN), Condition.NONE, Relation.CANDIDATE, Lock.NONE,
-        Proof.NONE, TaskPayload.RequiredRemark.class, null,
+        Proof.NONE, TaskInput.RequiredRemark.class, null,
         CLOSED, null, Outcome.REJECTED, Holding.DROP, TextType.REMARK,
         "Declines the commission and closes the task."),
 
     FAIL("fail", EnumSet.of(ACTIVE, ON_HOLD), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskPayload.RequiredRemark.class, null,
+        Proof.RECEIPT, TaskInput.RequiredRemark.class, null,
         CLOSED, null, Outcome.FAILED, Holding.DROP, TextType.REMARK,
         "Closes the task as failed, with a remark."),
 
     WITHDRAW("withdraw", EnumSet.of(OPEN, ACTIVE, ON_HOLD, DELIVERED), Condition.NONE,
-        Relation.COMMISSIONER, Lock.NONE, Proof.CONFLICT_TOKEN, TaskPayload.Remark.class,
-        new TaskPayload.Remark(null), CLOSED, null, Outcome.WITHDRAWN, Holding.DROP, TextType.REMARK,
+        Relation.COMMISSIONER, Lock.NONE, Proof.CONFLICT_TOKEN, TaskInput.Remark.class,
+        new TaskInput.Remark(null), CLOSED, null, Outcome.WITHDRAWN, Holding.DROP, TextType.REMARK,
         "Withdraws the commission and closes the task.");
 
     /** The condition on an attribute, beyond the state (check 2). */
@@ -167,8 +167,8 @@ public enum TaskVerb {
     private final Relation relation;
     private final Lock lock;
     private final Proof proof;
-    private final Class<? extends TaskPayload> payload;
-    private final TaskPayload fallback;
+    private final Class<? extends TaskInput> payload;
+    private final TaskInput fallback;
     private final TaskState target;
     private final HoldReason holdReason;
     private final Outcome outcome;
@@ -177,7 +177,7 @@ public enum TaskVerb {
     private final String nextSentence;
 
     TaskVerb(String wireName, Set<TaskState> states, Condition condition, Relation relation,
-             Lock lock, Proof proof, Class<? extends TaskPayload> payload, TaskPayload fallback,
+             Lock lock, Proof proof, Class<? extends TaskInput> payload, TaskInput fallback,
              TaskState target, HoldReason holdReason, Outcome outcome, Holding holding,
              TextType text, String nextSentence) {
         this.wireName = wireName;
@@ -262,9 +262,9 @@ public enum TaskVerb {
      *         or a mandatory one is absent -- a defect of the caller of the
      *         kernel, which the verb surface refuses by name before it gets here
      */
-    TaskPayload payloadOf(TaskCall call) {
-        TaskPayload given = call.payload();
-        if (given instanceof TaskPayload.Nothing && fallback != null) {
+    TaskInput payloadOf(TaskCall call) {
+        TaskInput given = call.payload();
+        if (given instanceof TaskInput.Nothing && fallback != null) {
             return fallback;
         }
         if (!payload.isInstance(given)) {

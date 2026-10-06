@@ -84,6 +84,25 @@ class EffectiveStateTest {
             .containsExactly(ExchangeAddress.child("sprint", 1, 1));
     }
 
+    /**
+     * There is no write that takes a state: the entity's public methods read,
+     * and the one that enters a state is the kernel's own, after a decision.
+     */
+    @Test
+    void the_task_offers_no_public_write_of_its_state() {
+        assertThat(java.util.Arrays.stream(Task.class.getDeclaredMethods())
+                .filter(m -> java.lang.reflect.Modifier.isPublic(m.getModifiers()))
+                .filter(m -> m.getParameterCount() > 0)
+                .map(java.lang.reflect.Method::getName))
+            .as("a public method of Task that takes an argument would be a write around the "
+                + "decision")
+            .isEmpty();
+        assertThat(java.util.Arrays.stream(Task.class.getFields())
+                .map(java.lang.reflect.Field::getName))
+            .doesNotContain("state", "holdReason", "outcome", "holderSubject",
+                "holderReceiptHash", "leaseExpiresAt", "lapseCount", "notBefore");
+    }
+
     // -----------------------------------------------------------------------
 
     static Task active(Instant leaseEnd, int lapsesRecorded) {

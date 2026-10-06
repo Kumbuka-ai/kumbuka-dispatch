@@ -152,14 +152,14 @@ class TaskCallsIT {
         answers.add(claim);
         answers.add(tasks.act(SCOPE, d.address(), TaskVerb.ASK, TaskCall.by(H)
             .withReceipt(claim.receipt())
-            .with(new TaskPayload.Question(MARK + "question", List.of(), true))));
+            .with(new TaskInput.Question(MARK + "question", List.of(), true))));
         answers.add(tasks.act(SCOPE, d.address(), TaskVerb.ANSWER, TaskCall.by(C)
-            .withConflictToken(stage.token(s)).with(new TaskPayload.Reply(null, MARK + "reply"))));
+            .withConflictToken(stage.token(s)).with(new TaskInput.Reply(null, MARK + "reply"))));
         answers.add(tasks.act(SCOPE, d.address(), TaskVerb.DELIVER, TaskCall.by(H)
-            .withReceipt(claim.receipt()).with(new TaskPayload.Delivery(MARK + "answer", null))));
-        answers.add(tasks.annotate(SCOPE, d.address(), TextType.RETURN, MARK + "addendum", H));
+            .withReceipt(claim.receipt()).with(new TaskInput.Delivery(MARK + "answer", null))));
+        answers.add(note(d.address(), TextType.RETURN, MARK + "addendum", H));
         answers.add(tasks.act(SCOPE, d.address(), TaskVerb.REWORK, TaskCall.by(C)
-            .withConflictToken(stage.token(s)).with(new TaskPayload.RequiredRemark(MARK + "remark"))));
+            .withConflictToken(stage.token(s)).with(new TaskInput.RequiredRemark(MARK + "remark"))));
         answers.add(tasks.read(SCOPE, d.address(), C));
         answers.add(tasks.query(SCOPE, SELECTOR, TaskFilter.none(), 10, C));
 
@@ -192,8 +192,8 @@ class TaskCallsIT {
     @Test
     void read_text_answers_one_part_and_counts_the_addenda_of_it() {
         TaskStage.Staged s = stage.open(SELECTOR);
-        tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, "a correction", C);
-        tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, "another", C);
+        note(s.address(), TextType.DISPATCH, "a correction", C);
+        note(s.address(), TextType.DISPATCH, "another", C);
 
         TaskTextView dispatch = tasks.readText(SCOPE, s.address(), TextPart.DISPATCH, C);
         assertThat(dispatch.entries()).extracting(TaskTextView.Entry::text)
@@ -212,17 +212,17 @@ class TaskCallsIT {
     @Test
     void annotate_is_the_writer_of_the_text_and_never_on_a_draft() {
         TaskView d = create(null, "draft");
-        assertRefused(() -> tasks.annotate(SCOPE, d.address(), TextType.DISPATCH, "x", C),
+        assertRefused(() -> note(d.address(), TextType.DISPATCH, "x", C),
             DispatchException.Reason.TRANSITION_NOT_PERMITTED);
 
         TaskStage.Staged s = stage.stage("closed", SELECTOR);
-        assertRefused(() -> tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, "x", K),
+        assertRefused(() -> note(s.address(), TextType.DISPATCH, "x", K),
             DispatchException.Reason.ACTOR_UNKNOWN);
-        assertRefused(() -> tasks.annotate(SCOPE, s.address(), TextType.RETURN, "x", C),
+        assertRefused(() -> note(s.address(), TextType.RETURN, "x", C),
             DispatchException.Reason.NOT_FOUND);
-        assertRefused(() -> tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, " ", C),
+        assertRefused(() -> note(s.address(), TextType.DISPATCH, " ", C),
             DispatchException.Reason.ADDENDUM_TEXT_MISSING);
-        assertThat(tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, "after the end", C)
+        assertThat(note(s.address(), TextType.DISPATCH, "after the end", C)
                 .texts())
             .as("in every state after draft, closed included")
             .contains(new TaskView.TextHead(TextType.DISPATCH, "a"));
@@ -308,7 +308,96 @@ class TaskCallsIT {
         assertThat(unrelated.state()).isEqualTo(TaskState.CLOSED);
     }
 
+
+    // =======================================================================
+    // Rules of the running service the target is silent on, carried
+    // =======================================================================
+
+    @Test
+    void send_freezes_metadata_given_at_the_gate_and_metadata_is_validated_everywhere() {
+        TaskView d = create(null, "with metadata at the gate");
+        TaskView sent = tasks.act(SCOPE, d.address(), TaskVerb.SEND, TaskCall.by(C)
+            .withConflictToken(d.conflictToken())
+            .with(new TaskInput.Sending(Map.of("pr", "https://example.org/pr/1"))));
+        assertThat(sent.dispatchMetadata()).containsEntry("pr", "https://example.org/pr/1");
+
+        TaskView other = create(null, "with a credential");
+        assertRefused(() -> tasks.act(SCOPE, other.address(), TaskVerb.SEND, TaskCall.by(C)
+                .withConflictToken(other.conflictToken())
+                .with(new TaskInput.Sending(Map.of("u", "https://a:b@example.org")))),
+            DispatchException.Reason.METADATA_REFUSED);
+        assertRefused(() -> tasks.create(SCOPE, SELECTOR, null, new TaskService.Draft("t",
+                "code", null, Map.of("n", List.of("ok", "x".repeat(600)))), C,
+                IdempotencyKey.NONE),
+            DispatchException.Reason.METADATA_REFUSED);
+    }
+
+    @Test
+    void create_needs_a_declared_selector_and_an_existing_root() {
+        assertRefused(() -> tasks.create(SCOPE, "undeclared", null,
+                new TaskService.Draft("t", "code", null, null), C, IdempotencyKey.NONE),
+            DispatchException.Reason.SELECTOR_NOT_DECLARED);
+        assertRefused(() -> tasks.create(SCOPE, SELECTOR, 99,
+                new TaskService.Draft("t", "code", null, null), C, IdempotencyKey.NONE),
+            DispatchException.Reason.NOT_FOUND);
+    }
+
+    @Test
+    void the_stamps_name_the_caller_and_reading_writes_nothing() {
+        TaskStage.Staged s = stage.active(SELECTOR);
+        TaskStage.Row row = TaskStage.row(s.identity());
+        assertThat(row.createdBy()).isEqualTo(C.subject());
+        assertThat(row.updatedBy()).as("the last writer: the claim").isEqualTo(H.subject());
+
+        String token = stage.token(s);
+        tasks.read(SCOPE, s.address(), K);
+        tasks.readText(SCOPE, s.address(), TextPart.DISPATCH, H);
+        tasks.query(SCOPE, SELECTOR, TaskFilter.none(), 10, K);
+        assertThat(stage.token(s)).as("read, read_text and query write nothing").isEqualTo(token);
+        assertThat(TaskStage.row(s.identity()).updatedBy()).isEqualTo(H.subject());
+    }
+
+    @Test
+    void a_suffix_past_z_is_refused_and_never_wrapped() {
+        TaskStage.Staged s = stage.open(SELECTOR);
+        for (char letter = 'a'; letter <= 'z'; letter++) {
+            note(s.address(), TextType.DISPATCH, "correction " + letter, C);
+        }
+        assertRefused(() -> note(s.address(), TextType.DISPATCH, "one too many", C),
+            DispatchException.Reason.ADDENDUM_SUFFIX_EXHAUSTED);
+    }
+
+    @Test
+    void a_repeated_annotation_under_one_key_attaches_once() {
+        TaskStage.Staged s = stage.open(SELECTOR);
+        IdempotencyKey key = IdempotencyKey.of("correct-once");
+        tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, "the correction", C, key);
+        tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, "the correction", C, key);
+        assertThat(TaskStage.texts(s.identity())).containsExactly(
+            "dispatch=the commission", "dispatch[a]=the correction");
+        assertRefused(() -> tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, "another",
+                C, key),
+            DispatchException.Reason.IDEMPOTENCY_KEY_REUSED);
+    }
+
+    @Test
+    void a_spent_key_is_remembered_for_twenty_four_hours_and_no_longer() {
+        IdempotencyKey key = IdempotencyKey.of("daily");
+        TaskService.Draft draft = new TaskService.Draft("t", "code", null, null);
+        TaskView first = tasks.create(SCOPE, SELECTOR, null, draft, C, key);
+        ai.kumbuka.dispatch.platform.PlatformFixture.run("UPDATE dispatch.task_idempotency_key "
+            + "SET first_seen_at = now() - interval '25 hours' WHERE idempotency_key = 'daily' "
+            + "AND task_id = " + TaskStage.row(first.identity()).id());
+        TaskView second = tasks.create(SCOPE, SELECTOR, null, draft, C, key);
+        assertThat(second.address()).as("past the window the key is the caller's again")
+            .isNotEqualTo(first.address());
+    }
+
     // -----------------------------------------------------------------------
+
+    private TaskView note(ExchangeAddress address, TextType part, String text, Actor caller) {
+        return tasks.annotate(SCOPE, address, part, text, caller, IdempotencyKey.NONE);
+    }
 
     private TaskView create(Integer parent, String title) {
         return tasks.create(SCOPE, SELECTOR, parent,

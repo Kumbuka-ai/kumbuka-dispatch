@@ -43,7 +43,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <h2>The cells</h2>
  *
- * {@code ok} permitted. {@code S} refused at the state, {@code
+ * {@code ok} permitted. {@code =} succeeds without a write: the task is
+ * already closed with the outcome the verb closes with (the closed situation
+ * here is withdrawn), the rule of the running service the target is silent
+ * on. {@code S} refused at the state, {@code
  * TRANSITION_NOT_PERMITTED}. {@code SL} refused at the state, {@code
  * LEASE_LAPSED}: a former holder calling the holder's verb. {@code CD} refused
  * at the condition, the deferral ({@code DEFERRAL_PENDING}). {@code CT}
@@ -246,7 +249,7 @@ class TransitionMatrixTest {
             withdraw   | blocked   | ok | RA | RA
             withdraw   | parked    | ok | RA | RA
             withdraw   | delivered | ok | RA | RA
-            withdraw   | closed    | S  | S  | S
+            withdraw   | closed    | =  | =  | =
             """;
 
     @Test
@@ -308,6 +311,9 @@ class TransitionMatrixTest {
         if (decision instanceof Decision.Permitted) {
             return "ok";
         }
+        if (decision instanceof Decision.AlreadyThere) {
+            return "=";
+        }
         Decision.Refused r = (Decision.Refused) decision;
         return switch (r.check()) {
             case STATE -> r.reason() == Reason.LEASE_LAPSED ? "SL"
@@ -340,18 +346,18 @@ class TransitionMatrixTest {
             .with(validPayload(verb));
     }
 
-    static TaskPayload validPayload(TaskVerb verb) {
+    static TaskInput validPayload(TaskVerb verb) {
         return switch (verb) {
             case SEND, CLAIM, CLAIM_NEXT, RELEASE, RENEW, RESUME, ACCEPT, WITHDRAW ->
-                TaskPayload.NONE;
-            case DEFER -> new TaskPayload.Deferral(NOW.plusSeconds(3600), null);
-            case ASK -> new TaskPayload.Question("which one?", List.of("yes", "no"), true);
-            case ANSWER -> new TaskPayload.Reply("yes", null);
-            case HOLD -> new TaskPayload.Pause(HoldReason.DEPENDENCY, null);
-            case DELIVER -> new TaskPayload.Delivery("the answer", null);
-            case REWORK -> new TaskPayload.RequiredRemark("once more");
-            case REJECT -> new TaskPayload.RequiredRemark("not ours");
-            case FAIL -> new TaskPayload.RequiredRemark("it broke");
+                TaskInput.NONE;
+            case DEFER -> new TaskInput.Deferral(NOW.plusSeconds(3600), null);
+            case ASK -> new TaskInput.Question("which one?", List.of("yes", "no"), true);
+            case ANSWER -> new TaskInput.Reply("yes", null);
+            case HOLD -> new TaskInput.Pause(HoldReason.DEPENDENCY, null);
+            case DELIVER -> new TaskInput.Delivery("the answer", null);
+            case REWORK -> new TaskInput.RequiredRemark("once more");
+            case REJECT -> new TaskInput.RequiredRemark("not ours");
+            case FAIL -> new TaskInput.RequiredRemark("it broke");
         };
     }
 
@@ -368,7 +374,7 @@ class TransitionMatrixTest {
             case "blocked" -> of(TaskState.ON_HOLD, HoldReason.EXTERNAL, H, H, false, null);
             case "parked" -> of(TaskState.ON_HOLD, HoldReason.EXTERNAL, null, H, true, null);
             case "delivered" -> of(TaskState.DELIVERED, null, H, H, false, null);
-            case "closed" -> of(TaskState.CLOSED, null, null, null, false, null);
+            case "closed" -> of(TaskState.CLOSED, null, null, null, false, null);  // withdrawn
             default -> throw new IllegalArgumentException(name);
         };
     }
@@ -377,6 +383,7 @@ class TransitionMatrixTest {
                         boolean lapsed, Instant notBefore) {
         return new TaskSituation(UUID.fromString("00000000-0000-0000-0000-0000000000aa"),
             ExchangeAddress.bracket("sprint", 1), state, reason,
+            state == TaskState.CLOSED ? Outcome.WITHDRAWN : null,
             holder == null ? null : holder.subject(),
             stored == null ? null : stored.subject(), lapsed,
             stored == null ? null : Receipt.hash(RECEIPT), TOKEN, notBefore,

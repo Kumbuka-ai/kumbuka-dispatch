@@ -58,6 +58,18 @@ public sealed interface Decision {
     }
 
     /**
+     * The call would close the task with the outcome it already closed with.
+     *
+     * <p>It succeeds and writes nothing. A sequence across two services that
+     * is retried after a partial failure finds the task it already closed;
+     * told that it is too late, it could never complete. The rule of the
+     * running service, carried unchanged by the operator's decision on the
+     * rules the target is silent on. Never listed as open: it does nothing.
+     */
+    record AlreadyThere() implements Decision {
+    }
+
+    /**
      * The call is refused.
      *
      * @param check        the check that failed
@@ -81,6 +93,10 @@ public sealed interface Decision {
 
     /** Decides one call of {@code verb} on {@code situation}. */
     static Decision of(TaskVerb verb, TaskSituation situation, TaskCall call) {
+        if (verb.closes() && situation.state() == TaskState.CLOSED
+                && situation.outcome() == verb.outcome()) {
+            return new AlreadyThere();
+        }
         for (Check check : ORDER) {
             Optional<Refused> refused = run(check, verb, situation, call);
             if (refused.isPresent()) {
