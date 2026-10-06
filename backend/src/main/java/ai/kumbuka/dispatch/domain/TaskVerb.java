@@ -28,84 +28,116 @@ import static ai.kumbuka.dispatch.domain.TaskState.OPEN;
  */
 public enum TaskVerb {
 
-    SEND("send", EnumSet.of(DRAFT), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
-        Proof.CONFLICT_TOKEN, TaskInput.Sending.class, new TaskInput.Sending(null),
-        OPEN, null, null, Holding.NONE, null,
+    SEND("send",
+        when(EnumSet.of(DRAFT), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
+            Proof.CONFLICT_TOKEN),
+        takes(TaskInput.Sending.class, new TaskInput.Sending(null)),
+        moves(OPEN, null, null, Holding.NONE, null),
         "Sends the draft: the task is frozen and open to executors."),
 
-    CLAIM("claim", EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE, Lock.NONE,
-        Proof.NONE, TaskInput.Lease.class, TaskInput.Lease.standard(),
-        ACTIVE, null, null, Holding.TAKE, null,
+    CLAIM("claim",
+        when(EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE, Lock.NONE,
+            Proof.NONE),
+        takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
+        moves(ACTIVE, null, null, Holding.TAKE, null),
         "Takes up this task; you become its holder."),
 
-    CLAIM_NEXT("claim_next", EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE,
-        Lock.NONE, Proof.NONE, TaskInput.Lease.class, TaskInput.Lease.standard(),
-        ACTIVE, null, null, Holding.TAKE, null,
+    CLAIM_NEXT("claim_next",
+        when(EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE, Lock.NONE,
+            Proof.NONE),
+        takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
+        moves(ACTIVE, null, null, Holding.TAKE, null),
         "Takes up the next open task addressed to you, without naming one."),
 
-    RELEASE("release", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskInput.Remark.class, new TaskInput.Remark(null),
-        OPEN, null, null, Holding.DROP, TextType.REMARK,
+    RELEASE("release",
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+            Proof.RECEIPT),
+        takes(TaskInput.Remark.class, new TaskInput.Remark(null)),
+        moves(OPEN, null, null, Holding.DROP, TextType.REMARK),
         "Gives the task back; it is open to be taken again."),
 
-    DEFER("defer", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskInput.Deferral.class, null,
-        OPEN, null, null, Holding.DROP, TextType.REMARK,
+    DEFER("defer",
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+            Proof.RECEIPT),
+        takes(TaskInput.Deferral.class, null),
+        moves(OPEN, null, null, Holding.DROP, TextType.REMARK),
         "Gives the task back until an instant you name; nobody can take it before."),
 
-    RENEW("renew", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskInput.Lease.class, TaskInput.Lease.standard(),
-        ACTIVE, null, null, Holding.LEASE, null,
+    RENEW("renew",
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+            Proof.RECEIPT),
+        takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
+        moves(ACTIVE, null, null, Holding.LEASE, null),
         "Extends your hold."),
 
-    ASK("ask", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskInput.Question.class, null,
-        ON_HOLD, HoldReason.QUESTION, null, Holding.PAUSE, TextType.QUESTION,
+    ASK("ask",
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+            Proof.RECEIPT),
+        takes(TaskInput.Question.class, null),
+        moves(ON_HOLD, HoldReason.QUESTION, null, Holding.PAUSE, TextType.QUESTION),
         "Pauses the task and asks the commissioner a question."),
 
-    ANSWER("answer", EnumSet.of(ON_HOLD), Condition.QUESTION_PENDING, Relation.COMMISSIONER,
-        Lock.NONE, Proof.CONFLICT_TOKEN, TaskInput.Reply.class, null,
-        ACTIVE, null, null, Holding.RESTART, TextType.ANSWER,
+    ANSWER("answer",
+        when(EnumSet.of(ON_HOLD), Condition.QUESTION_PENDING, Relation.COMMISSIONER, Lock.NONE,
+            Proof.CONFLICT_TOKEN),
+        takes(TaskInput.Reply.class, null),
+        moves(ACTIVE, null, null, Holding.RESTART, TextType.ANSWER),
         "Answers the executor's question; the work continues."),
 
-    HOLD("hold", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskInput.Pause.class, null,
-        ON_HOLD, null, null, Holding.PAUSE, TextType.REMARK,
+    HOLD("hold",
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+            Proof.RECEIPT),
+        takes(TaskInput.Pause.class, null),
+        moves(ON_HOLD, null, null, Holding.PAUSE, TextType.REMARK),
         "Pauses the task while it waits on a dependency or on something external."),
 
-    RESUME("resume", EnumSet.of(ON_HOLD), Condition.PAUSED_BY_HOLDER, Relation.HOLDER,
-        Lock.NONE, Proof.RECEIPT, TaskInput.Lease.class, TaskInput.Lease.standard(),
-        ACTIVE, null, null, Holding.LEASE, null,
+    RESUME("resume",
+        when(EnumSet.of(ON_HOLD), Condition.PAUSED_BY_HOLDER, Relation.HOLDER, Lock.NONE,
+            Proof.RECEIPT),
+        takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
+        moves(ACTIVE, null, null, Holding.LEASE, null),
         "Continues the paused task."),
 
-    DELIVER("deliver", EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskInput.Delivery.class, null,
-        DELIVERED, null, null, Holding.PAUSE, TextType.RETURN,
+    DELIVER("deliver",
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+            Proof.RECEIPT),
+        takes(TaskInput.Delivery.class, null),
+        moves(DELIVERED, null, null, Holding.PAUSE, TextType.RETURN),
         "Delivers the answer and its metadata for acceptance."),
 
-    REWORK("rework", EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
-        Proof.CONFLICT_TOKEN, TaskInput.RequiredRemark.class, null,
-        ACTIVE, null, null, Holding.RESTART, TextType.REMARK,
+    REWORK("rework",
+        when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
+            Proof.CONFLICT_TOKEN),
+        takes(TaskInput.RequiredRemark.class, null),
+        moves(ACTIVE, null, null, Holding.RESTART, TextType.REMARK),
         "Sends the delivered answer back to its holder with a remark."),
 
-    ACCEPT("accept", EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER,
-        Lock.NOT_THE_DELIVERER, Proof.CONFLICT_TOKEN, TaskInput.Nothing.class,
-        TaskInput.NONE, CLOSED, null, Outcome.ACCEPTED, Holding.DROP, null,
+    ACCEPT("accept",
+        when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.NOT_THE_DELIVERER,
+            Proof.CONFLICT_TOKEN),
+        takes(TaskInput.Nothing.class, TaskInput.NONE),
+        moves(CLOSED, null, Outcome.ACCEPTED, Holding.DROP, null),
         "Accepts the delivered answer and closes the task."),
 
-    REJECT("reject", EnumSet.of(OPEN), Condition.NONE, Relation.CANDIDATE, Lock.NONE,
-        Proof.NONE, TaskInput.RequiredRemark.class, null,
-        CLOSED, null, Outcome.REJECTED, Holding.DROP, TextType.REMARK,
+    REJECT("reject",
+        when(EnumSet.of(OPEN), Condition.NONE, Relation.CANDIDATE, Lock.NONE,
+            Proof.NONE),
+        takes(TaskInput.RequiredRemark.class, null),
+        moves(CLOSED, null, Outcome.REJECTED, Holding.DROP, TextType.REMARK),
         "Declines the commission and closes the task."),
 
-    FAIL("fail", EnumSet.of(ACTIVE, ON_HOLD), Condition.NONE, Relation.HOLDER, Lock.NONE,
-        Proof.RECEIPT, TaskInput.RequiredRemark.class, null,
-        CLOSED, null, Outcome.FAILED, Holding.DROP, TextType.REMARK,
+    FAIL("fail",
+        when(EnumSet.of(ACTIVE, ON_HOLD), Condition.NONE, Relation.HOLDER, Lock.NONE,
+            Proof.RECEIPT),
+        takes(TaskInput.RequiredRemark.class, null),
+        moves(CLOSED, null, Outcome.FAILED, Holding.DROP, TextType.REMARK),
         "Closes the task as failed, with a remark."),
 
-    WITHDRAW("withdraw", EnumSet.of(OPEN, ACTIVE, ON_HOLD, DELIVERED), Condition.NONE,
-        Relation.COMMISSIONER, Lock.NONE, Proof.CONFLICT_TOKEN, TaskInput.Remark.class,
-        new TaskInput.Remark(null), CLOSED, null, Outcome.WITHDRAWN, Holding.DROP, TextType.REMARK,
+    WITHDRAW("withdraw",
+        when(EnumSet.of(OPEN, ACTIVE, ON_HOLD, DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
+            Proof.CONFLICT_TOKEN),
+        takes(TaskInput.Remark.class, new TaskInput.Remark(null)),
+        moves(CLOSED, null, Outcome.WITHDRAWN, Holding.DROP, TextType.REMARK),
         "Withdraws the commission and closes the task.");
 
     /** The condition on an attribute, beyond the state (check 2). */
@@ -161,38 +193,45 @@ public enum TaskVerb {
         DROP
     }
 
+    /** Checks 1 to 5 of a row: where it applies, who calls, what proves the call. */
+    record When(Set<TaskState> states, Condition condition, Relation relation, Lock lock,
+                Proof proof) {
+    }
+
+    /** Check 7 of a row: the payload shape, and what stands in for an absent one. */
+    record Takes(Class<? extends TaskInput> shape, TaskInput fallback) {
+    }
+
+    /** The effect of a row: target state, attributes set, holding, text row. */
+    record Moves(TaskState target, HoldReason holdReason, Outcome outcome, Holding holding,
+                 TextType text) {
+    }
+
+    private static When when(Set<TaskState> states, Condition condition, Relation relation,
+                             Lock lock, Proof proof) {
+        return new When(Set.copyOf(states), condition, relation, lock, proof);
+    }
+
+    private static Takes takes(Class<? extends TaskInput> shape, TaskInput fallback) {
+        return new Takes(shape, fallback);
+    }
+
+    private static Moves moves(TaskState target, HoldReason holdReason, Outcome outcome,
+                               Holding holding, TextType text) {
+        return new Moves(target, holdReason, outcome, holding, text);
+    }
+
     private final String wireName;
-    private final Set<TaskState> states;
-    private final Condition condition;
-    private final Relation relation;
-    private final Lock lock;
-    private final Proof proof;
-    private final Class<? extends TaskInput> payload;
-    private final TaskInput fallback;
-    private final TaskState target;
-    private final HoldReason holdReason;
-    private final Outcome outcome;
-    private final Holding holding;
-    private final TextType text;
+    private final When when;
+    private final Takes takes;
+    private final Moves moves;
     private final String nextSentence;
 
-    TaskVerb(String wireName, Set<TaskState> states, Condition condition, Relation relation,
-             Lock lock, Proof proof, Class<? extends TaskInput> payload, TaskInput fallback,
-             TaskState target, HoldReason holdReason, Outcome outcome, Holding holding,
-             TextType text, String nextSentence) {
+    TaskVerb(String wireName, When when, Takes takes, Moves moves, String nextSentence) {
         this.wireName = wireName;
-        this.states = Set.copyOf(states);
-        this.condition = condition;
-        this.relation = relation;
-        this.lock = lock;
-        this.proof = proof;
-        this.payload = payload;
-        this.fallback = fallback;
-        this.target = target;
-        this.holdReason = holdReason;
-        this.outcome = outcome;
-        this.holding = holding;
-        this.text = text;
+        this.when = when;
+        this.takes = takes;
+        this.moves = moves;
         this.nextSentence = nextSentence;
     }
 
@@ -203,46 +242,46 @@ public enum TaskVerb {
 
     /** The effective states the row applies in (check 1). */
     public Set<TaskState> states() {
-        return states;
+        return when.states();
     }
 
     public Condition condition() {
-        return condition;
+        return when.condition();
     }
 
     public Relation relation() {
-        return relation;
+        return when.relation();
     }
 
     public Lock lock() {
-        return lock;
+        return when.lock();
     }
 
     public Proof proof() {
-        return proof;
+        return when.proof();
     }
 
     public TaskState target() {
-        return target;
+        return moves.target();
     }
 
     /** The hold reason the row sets itself, or null where the payload or nothing sets it. */
     public HoldReason holdReason() {
-        return holdReason;
+        return moves.holdReason();
     }
 
     /** The outcome the row closes with, or null where it does not close. */
     public Outcome outcome() {
-        return outcome;
+        return moves.outcome();
     }
 
     public Holding holding() {
-        return holding;
+        return moves.holding();
     }
 
     /** The text row the verb inserts, or null. */
     public TextType text() {
-        return text;
+        return moves.text();
     }
 
     /** The sentence {@code next} carries for this verb. */
@@ -252,7 +291,7 @@ public enum TaskVerb {
 
     /** Whether the verb would close the task: on a bracket root it needs a confirmation. */
     public boolean closes() {
-        return target == CLOSED;
+        return moves.target() == CLOSED;
     }
 
     /**
@@ -264,11 +303,11 @@ public enum TaskVerb {
      */
     TaskInput payloadOf(TaskCall call) {
         TaskInput given = call.payload();
-        if (given instanceof TaskInput.Nothing && fallback != null) {
-            return fallback;
+        if (given instanceof TaskInput.Nothing && takes.fallback() != null) {
+            return takes.fallback();
         }
-        if (!payload.isInstance(given)) {
-            throw new IllegalArgumentException(wireName + " takes a " + payload.getSimpleName()
+        if (!takes.shape().isInstance(given)) {
+            throw new IllegalArgumentException(wireName + " takes a " + takes.shape().getSimpleName()
                 + ", not a " + given.getClass().getSimpleName());
         }
         return given;

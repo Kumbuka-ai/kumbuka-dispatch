@@ -353,7 +353,7 @@ public class TaskService {
     @Transactional
     public TaskClaim claim(UUID scopeId, ExchangeAddress address, TaskCall call) {
         Task task = lockOrRefuse(scopeId, address);
-        return take(scopeId, task, TaskVerb.CLAIM, call);
+        return take(task, TaskVerb.CLAIM, call);
     }
 
     /**
@@ -376,10 +376,10 @@ public class TaskService {
                     + " is drawable: every task there those patterns match is a draft, "
                     + "held, paused, delivered, closed or deferred. The selector exists; "
                     + "this is an empty draw, not a missing address."));
-        return take(scopeId, task, TaskVerb.CLAIM_NEXT, call);
+        return take(task, TaskVerb.CLAIM_NEXT, call);
     }
 
-    private TaskClaim take(UUID scopeId, Task task, TaskVerb verb, TaskCall call) {
+    private TaskClaim take(Task task, TaskVerb verb, TaskCall call) {
         Instant now = now();
         TaskSituation s = TaskSituation.of(task, now, List.of());
         TaskInput.Lease lease = (TaskInput.Lease) decide(verb, s, call);
