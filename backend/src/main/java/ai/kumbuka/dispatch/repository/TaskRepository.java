@@ -112,9 +112,18 @@ public class TaskRepository {
             .findFirst());
     }
 
-    /** The children of a bracket, in sub order. */
+    /**
+     * The children of a bracket, each locked for the caller's transaction, in
+     * sub order.
+     *
+     * <p>Locked in the order of the address, so two transactions that lock the
+     * children of one root take them in the same order. The caller holds the
+     * root's lock first: the order is root before child wherever a call touches
+     * both. A child that another transaction finished while this one waited is
+     * read as that transaction left it.
+     */
     @Transactional
-    public List<Task> children(UUID scopeId, Long selectorId, int number) {
+    public List<Task> lockChildren(UUID scopeId, Long selectorId, int number) {
         return em.createQuery("""
                 SELECT t FROM Task t
                 WHERE t.scopeId = :scope AND t.selector.id = :sel AND t.number = :num
@@ -124,6 +133,7 @@ public class TaskRepository {
             .setParameter(P_SCOPE, scopeId)
             .setParameter(P_SELECTOR, selectorId)
             .setParameter(P_NUMBER, number)
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
             .getResultList();
     }
 

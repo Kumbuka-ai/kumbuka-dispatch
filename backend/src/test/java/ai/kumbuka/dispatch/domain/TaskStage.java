@@ -162,6 +162,31 @@ final class TaskStage {
         }
     }
 
+    /**
+     * The children of a bracket root that are not closed, as {@code sub:state},
+     * read as the administrator: what every transaction has committed.
+     */
+    static List<String> unfinishedChildren(UUID rootIdentity) {
+        var config = ConfigProvider.getConfig();
+        try (Connection c = DriverManager.getConnection(
+                config.getValue("test.db.url", String.class),
+                config.getValue("test.db.admin.username", String.class),
+                config.getValue("test.db.admin.password", String.class));
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT c.sub, c.state FROM dispatch.task r "
+                 + "JOIN dispatch.task c ON c.tenant_id = r.tenant_id AND c.scope_id = r.scope_id "
+                 + "AND c.selector_id = r.selector_id AND c.number = r.number AND c.sub > 0 "
+                 + "WHERE r.uuid = '" + rootIdentity + "' AND c.state <> 'closed' ORDER BY c.sub")) {
+            List<String> out = new java.util.ArrayList<>();
+            while (rs.next()) {
+                out.add(rs.getInt(1) + ":" + rs.getString(2));
+            }
+            return out;
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** The text rows of a task, as {@code type[suffix]=text}, in the order written. */
     static List<String> texts(UUID identity) {
         var config = ConfigProvider.getConfig();

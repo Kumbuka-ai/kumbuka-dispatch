@@ -318,6 +318,13 @@ public class TaskService {
      * <p>On a bracket root, a closing verb confirmed by the caller withdraws
      * the unfinished children first and then closes the root, in this
      * transaction.
+     *
+     * <p>A closing verb on a root locks the root, then each child in the order
+     * of the address, and reads the unfinished set under those locks. A child
+     * another transaction finished meanwhile is read as finished and keeps its
+     * outcome; a child another transaction is creating waits on the root's
+     * lock in {@link #create} and finds the root closed. A transition on a
+     * child locks its own row only.
      */
     @Transactional
     public TaskView act(UUID scopeId, ExchangeAddress address, TaskVerb verb, TaskCall call) {
@@ -328,7 +335,7 @@ public class TaskService {
         Task task = lockOrRefuse(scopeId, address);
         Instant now = now();
         List<Task> children = task.isBracketRoot() && verb.closes()
-            ? tasks.children(scopeId, task.selector.id, task.number)
+            ? tasks.lockChildren(scopeId, task.selector.id, task.number)
             : List.of();
         TaskSituation s = TaskSituation.of(task, now, children);
         if (Decision.of(verb, s, call) instanceof Decision.AlreadyThere) {
@@ -549,8 +556,16 @@ public class TaskService {
         });
     }
 
+    /**
+     * Locks the bracket root and refuses a closed one.
+     *
+     * <p>Locked, so the check and the insert of the child stand in one order
+     * with the closing of the root: a root that is being closed is read once
+     * that transaction ended, and a child is never created under a root that
+     * closes past it.
+     */
     private void requireOpenBracket(UUID scopeId, Selector selector, int number) {
-        Task root = tasks.find(scopeId, ExchangeAddress.bracket(selector.name, number))
+        Task root = tasks.lock(scopeId, ExchangeAddress.bracket(selector.name, number))
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
                 "no bracket " + selector.name + "/" + number + "; a bracket opens with its "
                     + "root."));
