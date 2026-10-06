@@ -57,7 +57,7 @@ public class Task {
     @Column(name = "scope_id", nullable = false, updatable = false)
     public UUID scopeId;
 
-    /** Eager for the reason {@link Exchange#selector} is: every address renders its name. */
+    /** Eager, because every address renders the selector's name. */
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "selector_id", nullable = false, updatable = false)
     public Selector selector;
@@ -207,14 +207,14 @@ public class Task {
 
     /** {@code sprint/149.2}; a task has no suffix. */
     public ExchangeAddress address() {
-        return new ExchangeAddress(selector.name, number, sub, null);
+        return new ExchangeAddress(selector.name, number, sub);
     }
 
     /**
      * The conflict token: the last write, truncated to what the column stores.
      *
-     * <p>Null before the first flush, for the reason {@link
-     * Exchange#conflictToken()} gives.
+     * <p>Null before the first flush: the database writes {@code updated_at},
+     * and a task not yet inserted has none.
      */
     public String conflictToken() {
         return updatedAt == null ? null : updatedAt.truncatedTo(ChronoUnit.MICROS).toString();

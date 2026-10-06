@@ -31,7 +31,6 @@ class AddressParserTest {
         assertThat(address.selector()).isEqualTo("sprint");
         assertThat(address.number()).isEqualTo(164);
         assertThat(address.sub()).isEqualTo(1);
-        assertThat(address.suffix()).as("a task carries no suffix").isNull();
     }
 
     @Test

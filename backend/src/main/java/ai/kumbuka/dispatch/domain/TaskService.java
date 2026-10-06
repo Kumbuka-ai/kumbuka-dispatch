@@ -27,9 +27,8 @@ import java.util.UUID;
  * state_changed_at} and {@code state_changed_by}. Nothing here decides
  * whether a transition is permitted; the row and the decision do.
  *
- * <p>Stands beside {@link ExchangeService} and serves no caller yet: neither
- * {@code surface} nor {@code adapter} reaches it, which a test holds. The verb
- * surface binds it in step 4 of REA-0009.
+ * <p>The verb surface binds it: every call of both surfaces reaches the
+ * kernel through one method of this class.
  *
  * <p>No answer of this class carries a text of a task except {@link
  * #readText}, which carries exactly one part.
@@ -725,8 +724,7 @@ public class TaskService {
 
     /**
      * The task a repeat of a call answers with, if it is one; refuses the key
-     * spent on another call. The rule of {@link IdempotencyService}, on the
-     * task's own ledger.
+     * spent on another call or other arguments, on the task's own ledger.
      */
     private Optional<Long> firstAnswerFor(UUID scopeId, Actor caller, IdempotencyKey key,
                                           String call, String digest) {

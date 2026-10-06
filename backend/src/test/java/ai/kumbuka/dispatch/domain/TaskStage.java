@@ -187,6 +187,22 @@ final class TaskStage {
         }
     }
 
+    /** How many tasks exist across every tenant, read as the administrator. */
+    static int rowCount() {
+        var config = ConfigProvider.getConfig();
+        try (Connection c = DriverManager.getConnection(
+                config.getValue("test.db.url", String.class),
+                config.getValue("test.db.admin.username", String.class),
+                config.getValue("test.db.admin.password", String.class));
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT count(*) FROM dispatch.task")) {
+            rs.next();
+            return rs.getInt(1);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** The text rows of a task, as {@code type[suffix]=text}, in the order written. */
     static List<String> texts(UUID identity) {
         var config = ConfigProvider.getConfig();

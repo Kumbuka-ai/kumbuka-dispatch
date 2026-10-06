@@ -120,8 +120,8 @@ class MigratorAttributeProbeIT {
                 .isEmpty();
 
             assertThat(scalar(c, "SELECT has_table_privilege('"
-                + SubstrateDatabaseResource.SERVICE_ROLE + "', 'dispatch.exchange', 'TRUNCATE')"))
-                .as("while the runtime role holds only what V8 wrote out — TRUNCATE is "
+                + SubstrateDatabaseResource.SERVICE_ROLE + "', 'dispatch.task', 'TRUNCATE')"))
+                .as("while the runtime role holds only what V8 and V17 wrote out — TRUNCATE is "
                     + "the one an owner would have had implicitly")
                 .isEqualTo("f");
         }

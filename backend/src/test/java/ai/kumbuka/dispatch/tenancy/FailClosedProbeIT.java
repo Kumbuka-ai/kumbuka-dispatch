@@ -1,8 +1,10 @@
 package ai.kumbuka.dispatch.tenancy;
 
 import ai.kumbuka.dispatch.domain.DomainFixture;
-import ai.kumbuka.dispatch.domain.Exchange;
-import ai.kumbuka.dispatch.domain.ExchangeService;
+import ai.kumbuka.dispatch.domain.IdempotencyKey;
+import ai.kumbuka.dispatch.domain.TaskFilter;
+import ai.kumbuka.dispatch.domain.TaskService;
+import ai.kumbuka.dispatch.domain.TaskView;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -11,7 +13,6 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -59,21 +60,21 @@ class FailClosedProbeIT {
     static final ai.kumbuka.dispatch.domain.Actor PROBE =
         new ai.kumbuka.dispatch.domain.Actor("probe", ai.kumbuka.dispatch.domain.Actor.Kind.CONSOLE);
 
-    @Inject ExchangeService exchanges;
+    @Inject TaskService tasks;
     @Inject TenantContext tenantContext;
 
     @Test
     void an_unbound_read_returns_nothing_and_the_rows_are_still_there() throws SQLException {
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
-            Db.insertExchange(c, tenantA, "fail-closed-a");
+            Db.insertTask(c, tenantA, "fail-closed-a");
             c.commit();
 
             // First half: no binding, no rows. The predicate compares against
             // NULL, which a policy treats as failing, so the table is closed
             // rather than open.
             Db.bindTenant(c, null);
-            assertThat(Db.countExchanges(c))
+            assertThat(Db.countTasks(c))
                 .as("a transaction that never bound a tenant must see nothing at all — "
                     + "the predicate fails closed, and this is the half that is the guarantee")
                 .isZero();
@@ -82,7 +83,7 @@ class FailClosedProbeIT {
             // assertion above would hold just as well against a table that is
             // simply empty, and an empty table proves nothing about a policy.
             Db.bindTenant(c, tenantA);
-            assertThat(Db.countExchanges(c))
+            assertThat(Db.countTasks(c))
                 .as("and with the tenant bound the row is present and unchanged — which is "
                     + "what makes the emptiness above a lock rather than an absence")
                 .isEqualTo(1);
@@ -107,31 +108,27 @@ class FailClosedProbeIT {
                 // role owns nothing any more and may not reconfigure
                 // a policy; the measurement below is still its own, which is
                 // the half that matters.
-                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.exchange DISABLE ROW LEVEL SECURITY");
+                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.task DISABLE ROW LEVEL SECURITY");
 
                 try (AutoCloseable ignored = tenantContext.bind(tenantA)) {
-                    List<Exchange> rows = exchanges.children(SCOPE, "sprint", 1);
-                    // The bracket itself, read back through the ORM.
-                    Exchange bracket = exchanges.read(SCOPE,
-                        ai.kumbuka.dispatch.domain.ExchangeAddress.bracket("sprint", 1));
-                    assertThat(bracket.tenantId)
+                    List<TaskView> listed = tasks.query(SCOPE, "sprint", TaskFilter.none(), 100,
+                        PROBE).tasks();
+                    assertThat(listed).extracting(TaskView::title)
                         .as("with the policy disabled, the ORM filter is the only thing "
                             + "scoping this read — and it must still scope it")
-                        .isEqualTo(tenantA.toString());
-                    assertThat(rows).isEmpty();
+                        .containsExactly("layers-a");
                 }
-
                 // The other side of the same observation: raw SQL, which the
                 // ORM never rewrote, now sees everything. That is precisely
                 // the gap layer 2 exists to close, and it is visible here.
                 Db.bindTenant(c, tenantA);
-                assertThat(Db.countExchanges(c))
+                assertThat(Db.countTasks(c))
                     .as("RED STATE, observed: with the policy off, raw SQL under tenant A "
                         + "reads tenant B's row too. The ORM filter cannot reach a statement "
                         + "it did not build, which is the whole reason for a second layer")
                     .isEqualTo(2);
             } finally {
-                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.exchange ENABLE ROW LEVEL SECURITY");
+                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.task ENABLE ROW LEVEL SECURITY");
             }
         }
     }
@@ -147,7 +144,7 @@ class FailClosedProbeIT {
 
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
-            assertThat(Db.countExchanges(c))
+            assertThat(Db.countTasks(c))
                 .as("raw SQL bypasses the ORM filter entirely, so this count is the policy's "
                     + "work and nobody else's")
                 .isEqualTo(1);
@@ -159,10 +156,12 @@ class FailClosedProbeIT {
         DomainFixture.declareSelector(tenantA, SCOPE, "sprint");
         DomainFixture.declareSelector(tenantB, SCOPE, "sprint");
         try (AutoCloseable ignored = tenantContext.bind(tenantA)) {
-            exchanges.openBracket(SCOPE, "sprint", "layers-a", "code", LocalDate.now(), PROBE);
+            tasks.create(SCOPE, "sprint", null,
+                new TaskService.Draft("layers-a", "code", null, null), PROBE, IdempotencyKey.NONE);
         }
         try (AutoCloseable ignored = tenantContext.bind(tenantB)) {
-            exchanges.openBracket(SCOPE, "sprint", "layers-b", "code", LocalDate.now(), PROBE);
+            tasks.create(SCOPE, "sprint", null,
+                new TaskService.Draft("layers-b", "code", null, null), PROBE, IdempotencyKey.NONE);
         }
     }
 }

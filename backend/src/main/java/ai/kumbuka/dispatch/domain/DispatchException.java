@@ -19,18 +19,12 @@ public class DispatchException extends RuntimeException {
     public enum Reason {
         /** The verb is not permitted from the current status. */
         TRANSITION_NOT_PERMITTED,
-        /** A field frozen at send or at ratification was written. */
-        FROZEN,
-        /** The bracket cannot terminate: a sibling is still non-terminal. */
-        SIBLINGS_NON_TERMINAL,
         /** The selector was never declared in this scope. */
         SELECTOR_NOT_DECLARED,
         /** The selector exists but was withdrawn. */
         SELECTOR_WITHDRAWN,
         /** A selector that has been used cannot be withdrawn. */
         SELECTOR_IN_USE,
-        /** An addendum was addressed with a regular sub-number instead of a letter. */
-        ADDENDUM_MALFORMED,
         /**
          * An addendum was attached without its text.
          *
@@ -42,12 +36,8 @@ public class DispatchException extends RuntimeException {
          * looking at the address, which was right.
          */
         ADDENDUM_TEXT_MISSING,
-        /** An addendum was asked for on its own. It is never independently drawable. */
-        ADDENDUM_NOT_DRAWABLE,
         /** Letter suffixes past `z` are deferred, so this is refused rather than wrapped. */
         ADDENDUM_SUFFIX_EXHAUSTED,
-        /** A caller supplied a number. Numbers are allocated, never accepted. */
-        NUMBER_NOT_ACCEPTED,
         /** The scope could not be resolved against the platform's read contract. */
         SCOPE_UNRESOLVED,
 
@@ -57,7 +47,7 @@ public class DispatchException extends RuntimeException {
          * <p>A category statement and not a permission one. The platform's
          * read contract answers for every service, so it publishes private
          * scopes too; a private scope is a per-tenant container for memory
-         * content and an exchange has no meaning in one. The caller is told
+         * content and a task has no meaning in one. The caller is told
          * what the scheme carries, so that it stops rather than retries with
          * another token.
          *
@@ -71,7 +61,7 @@ public class DispatchException extends RuntimeException {
          * The caller may read this scope but not write to it.
          *
          * <p>The write right is the platform's answer about the membership,
-         * over a service channel. It is not about the exchange, not about the
+         * over a service channel. It is not about the task, not about the
          * caller's capacity, and not lifted by anything this service offers —
          * which is why it is its own reason rather than a reuse of the
          * transition refusal that would send the caller back to retry.
@@ -92,7 +82,7 @@ public class DispatchException extends RuntimeException {
         SCOPE_LOCKED,
         /** The session settings the read contract needs were not bound. */
         SESSION_NOT_BOUND,
-        /** No exchange at that address. */
+        /** No task at that address. */
         NOT_FOUND,
         /** The caller has no subject, or no capacity the core can act on. */
         ACTOR_UNKNOWN,
@@ -107,14 +97,10 @@ public class DispatchException extends RuntimeException {
         RATIFICATION_NOT_PERMITTED,
         /** A claim is required for what was asked, and the caller holds none. */
         CLAIM_REQUIRED,
-        /** The receipt presented does not match the one held on the exchange. */
+        /** The receipt presented does not match the one held on the task. */
         RECEIPT_MISMATCH,
-        /** A caller supplied a holder identifier. Holders are minted, never accepted. */
-        HOLDER_NOT_ACCEPTED,
         /** A claim duration was zero or negative. */
         CLAIM_DURATION_NOT_POSITIVE,
-        /** The exchange already carries a ratified return. */
-        RETURN_ALREADY_RATIFIED,
         /** Metadata carried an assertion, or a URL carrying credentials. */
         METADATA_REFUSED,
 
@@ -139,7 +125,7 @@ public class DispatchException extends RuntimeException {
         FILTER_VALUE_REFUSED,
 
         /**
-         * A curation named the exchange being curated as its own target.
+         * A curation named the task being curated as its own target.
          *
          * <p>Its own reason rather than a reuse of a filter refusal, which is
          * what it borrowed before. A surface has to word this one specifically
@@ -179,17 +165,6 @@ public class DispatchException extends RuntimeException {
         UPDATE_EMPTY,
 
         /**
-         * There is no delivered answer to ratify.
-         *
-         * <p>Its own reason rather than a reuse of the transition refusal,
-         * because the transition IS permitted from this state — the exchange
-         * is simply carrying a question rather than an answer. A caller told
-         * "the state does not allow it" would read that as "not yet from
-         * here", when the truth is "not until the executor delivers".
-         */
-        RETURN_ABSENT,
-
-        /**
          * A call that needs the receipt from the takeup arrived without one.
          *
          * <p>Split from {@link #CLAIM_REQUIRED}, which says the caller holds
@@ -198,16 +173,6 @@ public class DispatchException extends RuntimeException {
          * it, and the surface contract declares a separate code for each.
          */
         RECEIPT_ABSENT,
-
-        /**
-         * An update after send needs a return draft to write.
-         *
-         * <p>After send the update verb writes the return role, and the
-         * return role has one text-carrying field. An update that carries
-         * only metadata has no answer to write; refusing it is more useful
-         * than storing null in place of what the caller meant to say.
-         */
-        RETURN_DRAFT_REQUIRED,
 
         /**
          * A former holder called after its lease ended.

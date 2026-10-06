@@ -36,11 +36,10 @@ public final class ReasonMapping {
     public static RefusalCode of(DispatchException.Reason reason) {
         return switch (reason) {
             // Nothing is visible there — and the three causes stay blurred.
-            case NOT_FOUND, SCOPE_UNRESOLVED, ADDENDUM_NOT_DRAWABLE -> RefusalCode.NOT_FOUND;
+            case NOT_FOUND, SCOPE_UNRESOLVED -> RefusalCode.NOT_FOUND;
 
             // The object is real and its state says no.
-            case TRANSITION_NOT_PERMITTED, FROZEN, RETURN_ALREADY_RATIFIED ->
-                RefusalCode.STATE_DOES_NOT_ALLOW;
+            case TRANSITION_NOT_PERMITTED -> RefusalCode.STATE_DOES_NOT_ALLOW;
 
             // Not this caller, ever.
             case RATIFICATION_NOT_PERMITTED, ACTOR_UNKNOWN -> RefusalCode.ROLE_DOES_NOT_ALLOW;
@@ -50,14 +49,10 @@ public final class ReasonMapping {
             case CLAIM_REQUIRED, LEASE_LAPSED -> RefusalCode.NOT_THE_HOLDER;
             case RECEIPT_MISMATCH -> RefusalCode.RECEIPT_WRONG;
 
-            // The kernel of the exchange lifecycle; nothing on the surface
-            // reaches it any longer.
-            case RETURN_ABSENT -> RefusalCode.STATE_DOES_NOT_ALLOW;
-
             // The bracket's own gate: a root closes with unfinished children
             // only on a confirmation, and one handed out goes stale when the
             // set changes.
-            case SIBLINGS_NON_TERMINAL, CONFIRMATION_REQUIRED, CONFIRMATION_STALE ->
+            case CONFIRMATION_REQUIRED, CONFIRMATION_STALE ->
                 RefusalCode.CHILDREN_NOT_FINISHED;
 
             // The condition on an attribute that a claim checks.
@@ -86,8 +81,7 @@ public final class ReasonMapping {
 
             // Form faults: an argument named, typed or shaped wrongly. Nothing
             // was written, so none of them carries a state.
-            case NUMBER_NOT_ACCEPTED, HOLDER_NOT_ACCEPTED -> RefusalCode.ARGUMENT_UNKNOWN;
-            case ADDENDUM_MALFORMED, ADDENDUM_SUFFIX_EXHAUSTED, METADATA_REFUSED,
+            case ADDENDUM_SUFFIX_EXHAUSTED, METADATA_REFUSED,
                  FILTER_VALUE_REFUSED, CURATION_TARGET_SELF ->
                 RefusalCode.ARGUMENT_INVALID;
 
@@ -98,7 +92,7 @@ public final class ReasonMapping {
             // A required argument: the surface refuses each of them by name
             // before the kernel is called, so these arrive from it only if a
             // declaration and the kernel disagree on what a call needs.
-            case UPDATE_EMPTY, RETURN_DRAFT_REQUIRED, ADDENDUM_TEXT_MISSING, RECEIPT_ABSENT,
+            case UPDATE_EMPTY, ADDENDUM_TEXT_MISSING, RECEIPT_ABSENT,
                  CONFLICT_TOKEN_MISSING ->
                 RefusalCode.ARGUMENT_MISSING;
 

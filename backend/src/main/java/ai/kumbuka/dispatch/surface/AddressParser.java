@@ -113,8 +113,7 @@ public final class AddressParser {
         return new ExchangeAddress(
             selector,
             Integer.parseInt(m.group(1)),
-            Integer.parseInt(m.group(2)),
-            null);
+            Integer.parseInt(m.group(2)));
     }
 
     /**

@@ -97,7 +97,7 @@ class LogContentGuardTest {
      * other way — {@code e} is a word inside a great many identifiers.
      */
     private static final List<String> FORBIDDEN_WHOLE_ARGUMENTS = List.of(
-        "e", "exchange", "ex", "entity", "row");
+        "e", "exchange", "ex", "task", "view", "entity", "row");
 
     /** Below this the guard is not measuring the tree it thinks it is. */
     private static final int MINIMUM_LOG_CALLS = 8;

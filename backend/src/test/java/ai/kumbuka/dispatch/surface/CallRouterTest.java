@@ -275,7 +275,7 @@ class CallRouterTest {
     }
 
     private static TaskView view(TaskState state, HolderState holder, List<TaskVerb> next) {
-        return new TaskView(UUID.randomUUID(), new ExchangeAddress("sprint", 7, 0, null),
+        return new TaskView(UUID.randomUUID(), new ExchangeAddress("sprint", 7, 0),
             state, null, null, holder, holder == HolderState.SELF ? Instant.now() : null, null,
             null, 0, "a title", "code", null, null, "the-current-token", null, List.of(), next);
     }

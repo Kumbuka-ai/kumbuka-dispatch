@@ -16,13 +16,15 @@ import java.util.UUID;
 /**
  * One idempotency key a caller has spent on a task call.
  *
- * <p>What {@link SpentKey} is for an exchange, pointing at {@code task}: the
- * key, the call it was spent on, a digest of that call's arguments and the
- * task it answered with. Remembered for {@link SpentKey#REMEMBERED_FOR}.
+ * <p>The key, the call it was spent on, a digest of that call's arguments and
+ * the task it answered with. Remembered for {@link #REMEMBERED_FOR}.
  */
 @Entity
 @Table(name = "task_idempotency_key", schema = "dispatch")
 public class SpentTaskKey {
+
+    /** How long a spent key speaks for its call: twenty-four hours. */
+    public static final java.time.Duration REMEMBERED_FOR = java.time.Duration.ofHours(24);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -57,7 +59,7 @@ public class SpentTaskKey {
 
     /** Whether this row still speaks for the key at {@code now}. */
     public boolean stillStandsAt(Instant now) {
-        return firstSeenAt != null && firstSeenAt.isAfter(now.minus(SpentKey.REMEMBERED_FOR));
+        return firstSeenAt != null && firstSeenAt.isAfter(now.minus(REMEMBERED_FOR));
     }
 
     /** Whether this row records the same call the caller is now making. */

@@ -59,8 +59,6 @@ class RefusalReasonFormTest {
      * contract rather than a build that quietly renames it.
      */
     private static final Map<String, String> GRANDFATHERED = new LinkedHashMap<>(Map.of(
-        "FROZEN",
-        "names no subject: frozen is a state, and the caller is not told of what",
         "NOT_FOUND",
         "leads with the negation and names no subject",
         "NOTHING_TO_CLAIM",

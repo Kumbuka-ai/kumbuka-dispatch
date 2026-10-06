@@ -23,11 +23,8 @@ import java.util.UUID;
  * Every statement the task kernel issues against {@code task}, {@code
  * task_text} and {@code task_idempotency_key}.
  *
- * <p>Placed as {@link ExchangeRepository} is, and for the same reasons: JPA
- * lives in this package, refusals stay above it, and an absent row is an empty
- * {@link Optional}. Its own repository rather than a share of the exchange's,
- * because that one is bound to {@code exchange} and goes when the old kernel
- * goes.
+ * <p>JPA lives in this package, refusals stay above it, and an absent row is
+ * an empty {@link Optional}.
  */
 @ApplicationScoped
 @TenantBound
@@ -241,8 +238,7 @@ public class TaskRepository {
     /**
      * The apparatus conjunct: the patterns as alternatives, {@code *} read as
      * any run of characters. The surface's character rule keeps {@code %} and
-     * {@code _} out of a pattern, so nothing needs escaping (see {@link
-     * ExchangeRepository}).
+     * {@code _} out of a pattern, so nothing needs escaping.
      */
     private static void appendApparatus(StringBuilder query, int patterns, String column) {
         if (patterns == 0) {

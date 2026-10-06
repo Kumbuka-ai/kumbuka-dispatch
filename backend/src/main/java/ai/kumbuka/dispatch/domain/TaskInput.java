@@ -11,10 +11,9 @@ import java.util.Objects;
  *
  * <p>One record per shape, and each row of {@link TaskVerb} names the shape it
  * takes. A mandatory part that is absent is refused in the compact constructor
- * as a defect, not as a caller refusal, as {@link ExchangeService.ClaimTerms}
- * does for the apparatus patterns. No caller reaches this kernel yet; refusing
- * a missing argument by name before a payload is built is the verb surface's
- * work in step 4 of REA-0009, and until it exists nothing does it.
+ * as a defect, not as a caller refusal: refusing a missing argument by name
+ * before a payload is built is the verb surface's work, and no call of the
+ * surface reaches these guards.
  * What only the task can judge -- whether an answer names one of the
  * question's options -- is check 7 of {@link Decision}.
  */
