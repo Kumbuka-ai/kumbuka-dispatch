@@ -39,10 +39,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <h2>Where the expectation comes from</h2>
  *
- * From the mapping the dispatch writes out, re-stated in {@link #expectedState}
- * and {@link #expectedTexts}, and from the stock as this test staged it. Never
- * from the migrated tables: a comparison of the copy with itself is green
- * whatever the copy did.
+ * From {@link #EXPECTED}: beside every row of the stock, its target state,
+ * hold reason and outcome and the texts its task must carry, written out as
+ * fixed values. Nothing in this test re-derives them from the source status: a
+ * function carrying the same case analysis as the migration's SQL would share
+ * any misreading of the mapping and stay green with it. Values the stock
+ * stages (ids, stamps) are looked up in the stock as read back before V17;
+ * never in the migrated tables, because a comparison of the copy with itself is
+ * green whatever the copy did.
  */
 class TaskStockCopyIT {
 
@@ -59,9 +63,7 @@ class TaskStockCopyIT {
 
     /** The stock as staged, read back before V17 ran. */
     private static List<Map<String, Object>> stock;
-    private static String exchangeBefore;
-    private static String idempotencyBefore;
-    private static String sourceCatalogueBefore;
+    private static SourceTables.Snapshot sourceBefore;
 
     @BeforeAll
     static void migrateAStockedDatabase() throws SQLException {
@@ -78,9 +80,7 @@ class TaskStockCopyIT {
             stage(c, TENANT_B, SCOPE_B, "b");
 
             stock = rows(c, "SELECT * FROM dispatch.exchange ORDER BY id");
-            exchangeBefore = digest(c, "dispatch.exchange");
-            idempotencyBefore = digest(c, "dispatch.idempotency_key");
-            sourceCatalogueBefore = sourceCatalogue(c);
+            sourceBefore = SourceTables.snapshot(c);
         }
 
         harness.migrate(url, MIGRATOR, MIGRATOR_PASSWORD, new TenantMigrationCallback());
@@ -188,7 +188,7 @@ class TaskStockCopyIT {
             for (UUID tenant : List.of(TENANT_A, TENANT_B)) {
                 Map<String, Long> expected = stock.stream()
                     .filter(r -> tenant.equals(r.get("tenant_id")) && r.get("addendum_suffix") == null)
-                    .collect(Collectors.groupingBy(TaskStockCopyIT::expectedState, Collectors.counting()));
+                    .collect(Collectors.groupingBy(r -> expected(r).stateKey(), Collectors.counting()));
                 Map<String, Long> actual = new HashMap<>();
                 for (Map<String, Object> t : rows(c, "SELECT state, hold_reason, outcome FROM "
                         + "dispatch.task WHERE tenant_id = '" + tenant + "'")) {
@@ -240,7 +240,7 @@ class TaskStockCopyIT {
                     continue;
                 }
                 Map<String, Object> t = tasks.get((Long) e.get("id"));
-                String state = expectedState(e).split("/")[0];
+                String state = expected(e).state();
                 boolean held = List.of("active", "on_hold", "delivered").contains(state);
                 String at = "task " + e.get("id") + " from " + e.get("status");
 
@@ -321,77 +321,136 @@ class TaskStockCopyIT {
     @Test
     void the_source_is_unchanged_row_for_row_and_in_the_catalogue() throws SQLException {
         try (Connection c = harness.adminConnection(url)) {
-            assertThat(digest(c, "dispatch.exchange"))
+            SourceTables.Snapshot after = SourceTables.snapshot(c);
+            assertThat(after.exchange())
                 .as("exchange row for row as before V17")
-                .isEqualTo(exchangeBefore);
-            assertThat(digest(c, "dispatch.idempotency_key"))
+                .isEqualTo(sourceBefore.exchange());
+            assertThat(after.idempotencyKey())
                 .as("idempotency_key row for row as before V17")
-                .isEqualTo(idempotencyBefore);
-            assertThat(sourceCatalogue(c))
+                .isEqualTo(sourceBefore.idempotencyKey());
+            assertThat(after.catalogue())
                 .as("and its row security, policies, triggers, constraints and grants as before: "
                     + "V17 lifts FORCE for the copy and must have put it back")
-                .isEqualTo(sourceCatalogueBefore)
+                .isEqualTo(sourceBefore.catalogue())
                 .contains("exchange rls=true force=true")
                 .contains("idempotency_key rls=true force=true");
         }
     }
 
     // ------------------------------------------------------------------
-    // The mapping, as the dispatch writes it
+    // The expectation, as fixed values beside every row of the stock
     // ------------------------------------------------------------------
 
-    /** state/hold_reason/outcome for a source row. */
-    static String expectedState(Map<String, Object> e) {
-        String status = (String) e.get("status");
-        boolean hasReturn = e.get("return_body") != null;
-        boolean ratified = e.get("ratified_at") != null;
-        return switch (status) {
-            case "draft", "open", "active" -> status + "/null/null";
-            case "needs_input" -> hasReturn ? "delivered/null/null" : "on_hold/question/null";
-            case "returned", "consumed" -> "closed/null/accepted";
-            case "rejected" -> "closed/null/rejected";
-            case "failed" -> "closed/null/failed";
-            case "closed" -> ratified ? "closed/null/accepted" : "closed/null/withdrawn";
-            default -> throw new IllegalStateException("unmapped status " + status);
-        };
+    /** One text a task must carry: type, suffix, the text with the tenant tag at %s, and who stamped it. */
+    private record Text(String type, String suffix, String text, String stampedBy) {
     }
 
+    /** What the row staged under a number must become: state, hold reason, outcome and texts. */
+    private record Expected(String state, String holdReason, String outcome, List<Text> texts) {
+        String stateKey() {
+            return state + "/" + holdReason + "/" + outcome;
+        }
+    }
+
+    private static Text text(String type, String suffix, String text, String stampedBy) {
+        return new Text(type, suffix, text, stampedBy);
+    }
+
+    /**
+     * Per number staged in {@link #stage}: the target. An addendum appears as a
+     * text of the task at its address, never as a row of its own.
+     */
+    private static final Map<Integer, Expected> EXPECTED = Map.ofEntries(
+        Map.entry(1, new Expected("draft", null, null, List.of(
+            text("dispatch", null, "", "author-1")))),
+        Map.entry(2, new Expected("open", null, null, List.of(
+            text("dispatch", null, "commission 2", "author-2"),
+            text("dispatch", "a", "first correction %s\n\nread it this way %s", "author-2a")))),
+        Map.entry(3, new Expected("open", null, null, List.of(
+            text("dispatch", null, "commission 3", "author-3"),
+            text("return", null, "early return %s", "changer-3")))),
+        Map.entry(4, new Expected("active", null, null, List.of(
+            text("dispatch", null, "commission 4", "author-4"),
+            text("return", null, "active return %s", "changer-4")))),
+        Map.entry(5, new Expected("active", null, null, List.of(
+            text("dispatch", null, "commission 5", "author-5")))),
+        Map.entry(6, new Expected("on_hold", "question", null, List.of(
+            text("dispatch", null, "commission 6", "author-6"),
+            text("question", null, "which one %s", "changer-6"),
+            text("answer", null, "this one %s", "changer-6")))),
+        Map.entry(7, new Expected("delivered", null, null, List.of(
+            text("dispatch", null, "commission 7", "author-7"),
+            text("return", null, "held return %s", "changer-7")))),
+        Map.entry(8, new Expected("closed", null, "accepted", List.of(
+            text("dispatch", null, "commission 8", "author-8"),
+            text("return", null, "accepted return %s", "changer-8")))),
+        Map.entry(9, new Expected("closed", null, "accepted", List.of(
+            text("dispatch", null, "commission 9", "author-9"),
+            text("return", null, "curated return %s", "changer-9")))),
+        Map.entry(10, new Expected("closed", null, "accepted", List.of(
+            text("dispatch", null, "commission 10", "author-10"),
+            text("return", null, "uncurated return %s", "changer-10")))),
+        Map.entry(11, new Expected("closed", null, "accepted", List.of(
+            text("dispatch", null, "commission 11", "author-11"),
+            text("return", null, "closed accepted %s", "changer-11"),
+            text("dispatch", "a", "late note %s\n\nfor the record %s", "author-11a"),
+            text("dispatch", "b", "later note %s\n\nand again %s", "author-11b")))),
+        Map.entry(12, new Expected("closed", null, "withdrawn", List.of(
+            text("dispatch", null, "commission 12", "author-12"),
+            text("return", null, "closed unratified %s", "changer-12"),
+            text("remark", null, "withdrawn after all %s", "changer-12")))),
+        Map.entry(13, new Expected("closed", null, "withdrawn", List.of(
+            text("dispatch", null, "commission 13", "author-13")))),
+        Map.entry(14, new Expected("closed", null, "rejected", List.of(
+            text("dispatch", null, "commission 14", "author-14"),
+            text("remark", null, "not ours %s", "changer-14")))),
+        Map.entry(15, new Expected("closed", null, "failed", List.of(
+            text("dispatch", null, "commission 15", "author-15"),
+            text("remark", null, "could not %s", "changer-15")))));
+
+    private static final Map<UUID, String> TAG = Map.of(TENANT_A, "a", TENANT_B, "b");
+
+    /** The fixed expectation for a staged row without a suffix, found by its number. */
+    private static Expected expected(Map<String, Object> e) {
+        return Objects.requireNonNull(EXPECTED.get((Integer) e.get("number")),
+            "no expectation written for number " + e.get("number"));
+    }
+
+    /** The text keys of a tenant: the literals, placed at the ids and stamps the stock was staged with. */
     private static List<String> expectedTexts(UUID tenant) {
         List<String> out = new ArrayList<>();
-        for (Map<String, Object> e : stock) {
-            if (!tenant.equals(e.get("tenant_id"))) {
-                continue;
-            }
-            Object created = e.get("created_at");
-            Object createdBy = e.get("created_by");
-            Object updated = e.get("updated_at");
-            Object updatedBy = e.get("updated_by");
-            if (e.get("addendum_suffix") != null) {
-                long base = stock.stream()
-                    .filter(b -> tenant.equals(b.get("tenant_id")) && b.get("addendum_suffix") == null
-                        && b.get("number").equals(e.get("number")) && b.get("sub").equals(e.get("sub")))
-                    .map(b -> (Long) b.get("id")).findFirst().orElseThrow();
-                out.add(textKey(base, "dispatch", e.get("addendum_suffix"),
-                    e.get("title") + "\n\n" + e.get("dispatch_body"), created, createdBy));
-                continue;
-            }
-            Object id = e.get("id");
-            out.add(textKey(id, "dispatch", null, e.get("dispatch_body"), created, createdBy));
-            if (e.get("return_body") != null) {
-                out.add(textKey(id, "return", null, e.get("return_body"), updated, updatedBy));
-            }
-            if (e.get("executor_question") != null) {
-                out.add(textKey(id, "question", null, e.get("executor_question"), updated, updatedBy));
-            }
-            if (e.get("commissioner_message") != null) {
-                out.add(textKey(id, e.get("executor_question") != null ? "answer" : "remark", null,
-                    e.get("commissioner_message"), updated, updatedBy));
-            }
-            if (e.get("termination_reason") != null) {
-                out.add(textKey(id, "remark", null, e.get("termination_reason"), updated, updatedBy));
+        for (Map.Entry<Integer, Expected> entry : EXPECTED.entrySet()) {
+            long task = stagedId(tenant, entry.getKey());
+            for (Text t : entry.getValue().texts()) {
+                out.add(textKey(task, t.type(), t.suffix(), t.text().replace("%s", TAG.get(tenant)),
+                    stampOf(tenant, t.stampedBy()), t.stampedBy()));
             }
         }
         return out;
+    }
+
+    /** The id the stock gave the row without a suffix under this number. */
+    private static long stagedId(UUID tenant, int number) {
+        return stock.stream()
+            .filter(r -> tenant.equals(r.get("tenant_id")) && r.get("addendum_suffix") == null
+                && Integer.valueOf(number).equals(r.get("number")))
+            .map(r -> (Long) r.get("id")).findFirst().orElseThrow();
+    }
+
+    /** The instant the stock stamped beside a name, in the column the name was staged in. */
+    private static Object stampOf(UUID tenant, String by) {
+        for (Map<String, Object> r : stock) {
+            if (!tenant.equals(r.get("tenant_id"))) {
+                continue;
+            }
+            if (by.equals(r.get("created_by"))) {
+                return r.get("created_at");
+            }
+            if (by.equals(r.get("updated_by"))) {
+                return r.get("updated_at");
+            }
+        }
+        throw new IllegalStateException("nothing in the stock was stamped by " + by);
     }
 
     private static String textKey(Object task, Object type, Object suffix, Object text,
@@ -492,48 +551,6 @@ class TaskStockCopyIT {
 
     private static Timestamp ts(Instant at) {
         return at == null ? null : Timestamp.from(at);
-    }
-
-    /** Every row of a table as text, in id order, folded into one digest. */
-    private static String digest(Connection c, String table) throws SQLException {
-        try (Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery("SELECT count(*) || ':' || coalesce(md5(string_agg("
-                 + "t::text, '|' ORDER BY t.id)), '') FROM " + table + " t")) {
-            rs.next();
-            return rs.getString(1);
-        }
-    }
-
-    /** What the catalogue says about the two source tables, as one comparable text. */
-    private static String sourceCatalogue(Connection c) throws SQLException {
-        List<String> facts = new ArrayList<>();
-        for (Map<String, Object> r : rows(c, """
-                SELECT 'table ' || relname || ' rls=' || relrowsecurity || ' force=' || relforcerowsecurity AS f
-                  FROM pg_class WHERE oid IN ('dispatch.exchange'::regclass, 'dispatch.idempotency_key'::regclass)
-                UNION ALL
-                SELECT 'policy ' || tablename || ' ' || policyname || ' ' || coalesce(qual, '')
-                       || ' ' || coalesce(with_check, '')
-                  FROM pg_policies WHERE schemaname = 'dispatch'
-                   AND tablename IN ('exchange', 'idempotency_key')
-                UNION ALL
-                SELECT 'trigger ' || tgrelid::regclass || ' ' || tgname || ' ' || tgenabled::text
-                  FROM pg_trigger WHERE tgrelid IN ('dispatch.exchange'::regclass,
-                                                    'dispatch.idempotency_key'::regclass)
-                   AND NOT tgisinternal
-                UNION ALL
-                SELECT 'constraint ' || conrelid::regclass || ' ' || conname || ' '
-                       || pg_get_constraintdef(oid)
-                  FROM pg_constraint WHERE conrelid IN ('dispatch.exchange'::regclass,
-                                                        'dispatch.idempotency_key'::regclass)
-                UNION ALL
-                SELECT 'grant ' || table_name || ' ' || grantee || ' ' || privilege_type
-                  FROM information_schema.role_table_grants
-                 WHERE table_schema = 'dispatch' AND table_name IN ('exchange', 'idempotency_key')
-                ORDER BY 1
-                """)) {
-            facts.add(((String) r.get("f")).replace("table dispatch.", "").replace("table ", ""));
-        }
-        return String.join("\n", facts);
     }
 
     private static List<Map<String, Object>> rows(Connection c, String sql) throws SQLException {
