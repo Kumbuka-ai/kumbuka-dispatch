@@ -207,20 +207,81 @@ public class DispatchException extends RuntimeException {
          * only metadata has no answer to write; refusing it is more useful
          * than storing null in place of what the caller meant to say.
          */
-        RETURN_DRAFT_REQUIRED
+        RETURN_DRAFT_REQUIRED,
+
+        /**
+         * A former holder called after its lease ended.
+         *
+         * <p>Apart from {@link #CLAIM_REQUIRED} because the caller did hold
+         * the task, and what it needs to learn is that its time ran out — not
+         * that it never had the task. Raised by the task kernel only.
+         */
+        LEASE_LAPSED,
+
+        /**
+         * A claim arrived before the instant a {@code defer} named.
+         *
+         * <p>The concept names this reason {@code NOT_BEFORE}, after the
+         * attribute. That spelling leads with the negation, which the form
+         * rule of refusal reasons refuses for every reason added after it; the
+         * subject here is the deferral, and its state is that it still runs.
+         */
+        DEFERRAL_PENDING,
+
+        /**
+         * The call would close a bracket root that has unfinished children.
+         *
+         * <p>Names each child and hands out a confirmation; the same call
+         * repeated with it withdraws the children and closes the root.
+         * Replaces {@link #SIBLINGS_NON_TERMINAL} for the task kernel.
+         */
+        CONFIRMATION_REQUIRED,
+
+        /** The set of unfinished children changed since the confirmation was handed out. */
+        CONFIRMATION_STALE,
+
+        /** An answer named none of the question's options, and free text was not admitted. */
+        ANSWER_NOT_AN_OPTION,
+
+        /**
+         * A call that is fenced by the conflict token arrived without one.
+         *
+         * <p>The same condition the surface has refused under this name since
+         * the conflict token existed; the task kernel checks the token itself
+         * (concept section 2.3, check 5), so the reason moves into the
+         * kernel's catalogue under the name it already carries on the wire.
+         */
+        CONFLICT_TOKEN_MISSING,
+
+        /** The conflict token presented is not the one the task holds. */
+        CONFLICT_TOKEN_STALE
     }
 
     private final transient Reason reason;
     private final transient List<String> offenders;
+    private final transient String confirmation;
 
     public DispatchException(Reason reason, String message) {
         this(reason, message, List.of());
     }
 
     public DispatchException(Reason reason, String message, List<String> offenders) {
+        this(reason, message, offenders, null);
+    }
+
+    /**
+     * A refusal that hands out a confirmation.
+     *
+     * <p>Only {@link Reason#CONFIRMATION_REQUIRED} carries one: the value the
+     * caller repeats its call with to confirm that the named children are to
+     * be withdrawn.
+     */
+    public DispatchException(Reason reason, String message, List<String> offenders,
+                             String confirmation) {
         super(message);
         this.reason = reason;
         this.offenders = List.copyOf(offenders);
+        this.confirmation = confirmation;
     }
 
     public Reason reason() {
@@ -238,5 +299,10 @@ public class DispatchException extends RuntimeException {
      */
     public List<String> offenders() {
         return offenders;
+    }
+
+    /** The confirmation this refusal hands out, where it hands one out. */
+    public java.util.Optional<String> confirmation() {
+        return java.util.Optional.ofNullable(confirmation);
     }
 }

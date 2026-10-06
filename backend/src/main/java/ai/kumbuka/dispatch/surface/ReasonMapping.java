@@ -92,6 +92,16 @@ public final class ReasonMapping {
             case UPDATE_EMPTY, RETURN_DRAFT_REQUIRED, ADDENDUM_TEXT_MISSING ->
                 RefusalCode.ARGUMENT_MISSING;
 
+            // The task kernel's reasons. No caller reaches that kernel yet; the
+            // entries exist so the switch stays complete, and the verb surface
+            // that binds the kernel decides their wording.
+            case LEASE_LAPSED -> RefusalCode.NOT_THE_HOLDER;
+            case DEFERRAL_PENDING -> RefusalCode.STATE_DOES_NOT_ALLOW;
+            case CONFIRMATION_REQUIRED, CONFIRMATION_STALE -> RefusalCode.CHILDREN_NOT_FINISHED;
+            case ANSWER_NOT_AN_OPTION -> RefusalCode.ARGUMENT_INVALID;
+            case CONFLICT_TOKEN_MISSING -> RefusalCode.CONFLICT_TOKEN_MISSING;
+            case CONFLICT_TOKEN_STALE -> RefusalCode.CONFLICT_TOKEN_STALE;
+
             // Ours, not the caller's.
             case SESSION_NOT_BOUND -> RefusalCode.UNEXPECTED_FAILURE;
         };
