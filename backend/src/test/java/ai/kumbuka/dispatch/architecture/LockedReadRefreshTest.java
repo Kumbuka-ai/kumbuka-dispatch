@@ -57,7 +57,8 @@ class LockedReadRefreshTest {
 
     private static final Pattern ANNOTATION = Pattern.compile("@\\w++(?:\\s*+\\([^)]*+\\))?");
 
-    private static final Pattern CALLED_NAME = Pattern.compile("(\\w++)\\s*+\\(");
+    /** Anchored at a word start, so a search does not restart inside every identifier. */
+    private static final Pattern CALLED_NAME = Pattern.compile("\\b(\\w++)\\s*+\\(");
 
     @Test
     void every_locking_read_of_the_repository_answers_the_row_under_the_lock() {
