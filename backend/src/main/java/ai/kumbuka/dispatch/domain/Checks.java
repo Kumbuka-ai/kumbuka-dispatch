@@ -159,7 +159,6 @@ final class Checks {
         TaskInput payload = verb.payloadOf(call);
         try {
             return switch (payload) {
-                case TaskInput.Sending sending -> metadata(sending.metadata());
                 case TaskInput.Delivery delivery -> metadata(delivery.metadata());
                 case TaskInput.Lease lease -> positive(lease);
                 case TaskInput.Reply reply -> option(s, reply);

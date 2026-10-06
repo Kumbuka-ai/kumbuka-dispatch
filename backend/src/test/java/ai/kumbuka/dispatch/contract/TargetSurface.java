@@ -94,7 +94,8 @@ public final class TargetSurface {
         table.put("query", new Arguments(
             List.of("scope", "selector", "state", "apparatus", "bracket", "address", "limit"),
             List.of()));
-        table.put("annotate", new Arguments(List.of("address"), List.of("text", "part")));
+        table.put("annotate", new Arguments(List.of("address", "idempotency_key"),
+            List.of("text", "part")));
         table.put("relate", new Arguments(List.of("address", "conflict_token"),
             List.of("curated_in")));
         table.put("unrelate", new Arguments(List.of("address", "conflict_token"), List.of()));

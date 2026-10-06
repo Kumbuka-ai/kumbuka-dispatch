@@ -18,12 +18,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The calls that take an idempotency key, on the surface: {@code create},
- * {@code claim} and {@code claim_next}.
+ * {@code claim}, {@code claim_next} and {@code annotate}.
  *
  * <p>A repeated create creates nothing and answers the first task. A
  * repeated claim answers the same task with a new receipt, with which the next
  * write succeeds, while the earlier receipt is refused; a repeated draw draws
- * nothing second (dispatch 200.7, part A2, criterion 8, on the wire).
+ * nothing second (dispatch 200.7, part A2, criterion 8, on the wire). A
+ * repeated addendum attaches nothing second and answers the task, on both
+ * surfaces: an addendum cannot be removed, so a duplicate would be permanent.
+ *
+ * <p>Red probe, observed: with the key not handed on to the kernel, the
+ * repeated addendum attaches a second time.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -74,6 +79,35 @@ class IdempotentCallsIT {
             .isEqualTo("RECEIPT_WRONG");
         Mcp.answer(Mcp.call("dispatch_renew", Map.of("address", address,
             "receipt", again.get("receipt"))));
+    }
+
+    @Test
+    void a_repeated_addendum_attaches_nothing_second_on_either_surface() {
+        String address = SurfaceFixture.address(SurfaceFixture.open("annotated once", "code"));
+        Map<String, Object> annotate = Map.of("address", address,
+            "idempotency_key", "annotate-once",
+            "fields", Map.of("part", "dispatch", "text", "the correction"));
+
+        Mcp.answer(Mcp.call("dispatch_annotate", annotate));
+        Map<String, Object> again = Mcp.answer(Mcp.call("dispatch_annotate", annotate));
+        String id = address.substring(address.lastIndexOf('/') + 1);
+        io.restassured.response.Response overRest = io.restassured.RestAssured.given()
+            .contentType(io.restassured.http.ContentType.JSON)
+            .body(Map.of("idempotency_key", "annotate-once",
+                "fields", Map.of("part", "dispatch", "text", "the correction")))
+            .post(SurfaceFixture.item(id) + ":annotate");
+
+        assertThat(again.get("address")).as("the repeat answers the task").isEqualTo(address);
+        assertThat(overRest.statusCode()).isEqualTo(200);
+        assertThat(Mcp.answer(Mcp.call("dispatch_read_text", Map.of("address", address,
+                "part", "addenda"))).toString())
+            .as("one addendum, however often the call was repeated")
+            .containsOnlyOnce("the correction");
+        assertThat(Mcp.reason(Mcp.call("dispatch_annotate", Map.of("address", address,
+                "idempotency_key", "annotate-once",
+                "fields", Map.of("part", "dispatch", "text", "another correction")))))
+            .as("the same key with another text")
+            .isEqualTo("IDEMPOTENCY_KEY_REUSED");
     }
 
     @Test

@@ -148,7 +148,7 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 
 **`dispatch_reject`**
 > Declines a commission you were offered, with a remark saying why. Moves the task from open to
-> closed, outcome rejected (final). Call as an executor who could take it up; no claim is needed.
+> closed, outcome rejected (final). Call as an executor.
 
 **`dispatch_fail`**
 > Closes a task you hold as failed, with a remark saying why. Moves the task from active or

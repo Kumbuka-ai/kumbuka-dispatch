@@ -168,7 +168,7 @@ public class CallRouter {
             case QUERY -> query(surface, actor, in);
             case ANNOTATE -> answered(surface, actor, verb, verbs.annotate(actor,
                 item(in, ADDRESS), TextType.fromWireName(in.field(PART)), in.field(TEXT),
-                in.call()), false, null);
+                in.call(), IdempotencyKey.of(in.top(KEY))), false, null);
             case RELATE -> answered(surface, actor, verb, verbs.relate(actor, item(in, ADDRESS),
                 item(in, CURATED_IN, in.field(CURATED_IN)), in.top(CONFLICT_TOKEN)),
                 false, null);

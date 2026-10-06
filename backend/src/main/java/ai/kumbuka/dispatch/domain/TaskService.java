@@ -505,9 +505,6 @@ public class TaskService {
     /** Sets what the row names: state, attributes, holder, lease, payload attributes. */
     private static void apply(Task task, TaskVerb verb, TaskSituation s, TaskInput payload,
                               Instant now, String by) {
-        if (payload instanceof TaskInput.Sending sending && sending.metadata() != null) {
-            task.dispatchMetadata = sending.metadata();
-        }
         if (verb.target() != s.state()) {
             HoldReason reason = payload instanceof TaskInput.Pause pause
                 ? pause.reason()
@@ -548,7 +545,6 @@ public class TaskService {
             case TaskInput.Pause pause -> pause.remark();
             case TaskInput.Delivery delivery -> delivery.text();
             case TaskInput.Nothing ignored -> null;
-            case TaskInput.Sending ignored -> null;
             case TaskInput.Lease ignored -> null;
         };
         if (text != null && !text.isBlank()) {

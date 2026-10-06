@@ -29,10 +29,6 @@ public sealed interface TaskInput {
     /** The one instance of {@link Nothing}. */
     TaskInput NONE = new Nothing();
 
-    /** {@code send}: dispatch metadata frozen at the gate, or null to keep the draft's. */
-    record Sending(Map<String, Object> metadata) implements TaskInput {
-    }
-
     /** {@code claim}, {@code claim_next}, {@code renew}, {@code resume}: the lease's length. */
     record Lease(Duration duration) implements TaskInput {
 

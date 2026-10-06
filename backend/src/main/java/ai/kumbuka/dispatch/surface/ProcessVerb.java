@@ -174,8 +174,7 @@ public enum ProcessVerb {
 
     REJECT("reject", TaskVerb.REJECT, Participation.CANDIDATE,
         "Declines a commission you were offered, with a remark saying why. Moves the task "
-            + "from open to closed, outcome rejected (final). Call as an executor who could "
-            + "take it up; no claim is needed.",
+            + "from open to closed, outcome rejected (final). Call as an executor.",
         List.of(address(), remark(true))),
 
     FAIL("fail", TaskVerb.FAIL, Participation.HOLDER,
@@ -279,6 +278,8 @@ public enum ProcessVerb {
             + "identity that wrote that text; the task's state does not change.\n\n"
             + "Read addenda with dispatch_read_text, part \"addenda\".",
         List.of(address(),
+            idempotencyKey("a key of your own: repeating the addendum with it attaches nothing "
+                + "a second time and returns the task"),
             Argument.field("text", Argument.STRING, true, "the addendum's text"),
             Argument.oneOf("part", Argument.Placement.FIELDS, true,
                 List.of("dispatch", "return", "question", "answer", "remark"),

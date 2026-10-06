@@ -140,7 +140,8 @@ public class VerbSurface {
      * it looking for a typo it does not have.
      */
     @Transactional
-    public Result annotate(Actor actor, Item at, TextType part, String text, String call) {
+    public Result annotate(Actor actor, Item at, TextType part, String text, String call,
+                           IdempotencyKey key) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
         TaskView head = tasks.read(scopeId, at.address(), actor);
         boolean written = head.texts().stream()
@@ -151,7 +152,7 @@ public class VerbSurface {
                     + "supplement");
         }
         return new Result(at.scope(),
-            tasks.annotate(scopeId, at.address(), part, text, actor, IdempotencyKey.NONE));
+            tasks.annotate(scopeId, at.address(), part, text, actor, key));
     }
 
     /**

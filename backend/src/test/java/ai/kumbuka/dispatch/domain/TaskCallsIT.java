@@ -365,17 +365,16 @@ class TaskCallsIT {
     // =======================================================================
 
     @Test
-    void send_freezes_metadata_given_at_the_gate_and_metadata_is_validated_everywhere() {
-        TaskView d = create(null, "with metadata at the gate");
+    void send_freezes_the_draft_s_metadata_and_metadata_is_validated_everywhere() {
+        TaskView d = tasks.create(SCOPE, SELECTOR, null, new TaskService.Draft("with metadata",
+            "code", null, Map.of("pr", "https://example.org/pr/1")), C, IdempotencyKey.NONE);
         TaskView sent = tasks.act(SCOPE, d.address(), TaskVerb.SEND, TaskCall.by(C)
-            .withConflictToken(d.conflictToken())
-            .with(new TaskInput.Sending(Map.of("pr", "https://example.org/pr/1"))));
+            .withConflictToken(d.conflictToken()));
         assertThat(sent.dispatchMetadata()).containsEntry("pr", "https://example.org/pr/1");
 
         TaskView other = create(null, "with a credential");
-        assertRefused(() -> tasks.act(SCOPE, other.address(), TaskVerb.SEND, TaskCall.by(C)
-                .withConflictToken(other.conflictToken())
-                .with(new TaskInput.Sending(Map.of("u", "https://a:b@example.org")))),
+        assertRefused(() -> tasks.update(SCOPE, other.address(), new TaskService.Draft(null,
+                null, null, Map.of("u", "https://a:b@example.org")), other.conflictToken(), C),
             DispatchException.Reason.METADATA_REFUSED);
         assertRefused(() -> tasks.create(SCOPE, SELECTOR, null, new TaskService.Draft("t",
                 "code", null, Map.of("n", List.of("ok", "x".repeat(600)))), C,

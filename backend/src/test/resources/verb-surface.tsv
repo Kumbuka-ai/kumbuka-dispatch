@@ -48,7 +48,7 @@ call	delete	DELETE	/api/{scope}/{selector}/{id}	item	conflict-token
 call	read	GET	/api/{scope}/{selector}/{id}	item	none
 call	read_text	GET	/api/{scope}/{selector}/{id}:read_text	item	none
 call	query	GET	/api/{scope}/{selector}	collection	none
-call	annotate	POST	/api/{scope}/{selector}/{id}:annotate	item	none
+call	annotate	POST	/api/{scope}/{selector}/{id}:annotate	item	idempotency-key
 call	relate	POST	/api/{scope}/{selector}/{id}:relate	item	conflict-token
 call	unrelate	POST	/api/{scope}/{selector}/{id}:unrelate	item	conflict-token
 
