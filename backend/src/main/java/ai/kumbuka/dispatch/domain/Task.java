@@ -267,6 +267,14 @@ public class Task {
         this.leaseExpiresAt = leaseEnd;
     }
 
+    /**
+     * Replaces the receipt of the holder and nothing else: holder, lease and
+     * count stay. The earlier receipt no longer matches.
+     */
+    void reissue(String receipt) {
+        this.holderReceiptHash = Receipt.hash(receipt);
+    }
+
     /** Records one lapsed lease. The count rises when the next executor takes the task up. */
     void recordLapse() {
         this.lapseCount = (short) (lapseCount + 1);

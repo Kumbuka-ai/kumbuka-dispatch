@@ -95,6 +95,20 @@ public class TaskRepository {
             .findFirst();
     }
 
+    /** The task with this surrogate in one scope, locked for the caller's transaction. */
+    @Transactional
+    public Optional<Task> lockById(UUID scopeId, Long id) {
+        return em.createQuery("""
+                SELECT t FROM Task t WHERE t.id = :id AND t.scopeId = :scope
+                """, Task.class)
+            .setParameter("id", id)
+            .setParameter(P_SCOPE, scopeId)
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .getResultList()
+            .stream()
+            .findFirst();
+    }
+
     /**
      * The task with this surrogate in whatever scope of the tenant holds it.
      *
