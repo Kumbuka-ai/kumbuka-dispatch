@@ -133,9 +133,9 @@ final class TaskStage {
     }
 
     /** What the row stores, read as the administrator: the stored side of the gap. */
-    record Row(String state, String holdReason, String outcome, String holder,
+    record Row(long id, String state, String holdReason, String outcome, String holder,
                Instant leaseExpiresAt, int lapseCount, Instant notBefore,
-               String stateChangedBy) {
+               String stateChangedBy, Long curatedIn) {
     }
 
     static Row row(UUID identity) {
@@ -145,15 +145,15 @@ final class TaskStage {
                 config.getValue("test.db.admin.username", String.class),
                 config.getValue("test.db.admin.password", String.class));
              Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery("SELECT state, hold_reason, outcome, holder_subject, "
-                 + "lease_expires_at, lapse_count, not_before, state_changed_by "
+             ResultSet rs = s.executeQuery("SELECT id, state, hold_reason, outcome, holder_subject, "
+                 + "lease_expires_at, lapse_count, not_before, state_changed_by, curated_in_id "
                  + "FROM dispatch.task WHERE uuid = '" + identity + "'")) {
             if (!rs.next()) {
                 return null;
             }
-            return new Row(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                instant(rs.getTimestamp(5)), rs.getInt(6), instant(rs.getTimestamp(7)),
-                rs.getString(8));
+            return new Row(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
+                rs.getString(5), instant(rs.getTimestamp(6)), rs.getInt(7),
+                instant(rs.getTimestamp(8)), rs.getString(9), (Long) rs.getObject(10));
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }

@@ -30,7 +30,7 @@ import java.util.UUID;
  *
  * <p><strong>Nothing here decides.</strong> The state moves only through
  * {@link #enter}, which {@link TaskService} calls after {@link Decision#of}
- * permitted the verb on the {@link Situation} — never the stored state. There
+ * permitted the verb on the {@link TaskSituation} — never the stored state. There
  * is no setter for the state and none for the holding columns, so a write that
  * skipped the decision would have to go through the one method that writes
  * the row shape the table checks.
@@ -147,7 +147,7 @@ public class Task {
     // Reading what is stored
     // ----------------------------------------------------------------------
 
-    /** The stored state. Read through {@link Situation#of} everywhere but there. */
+    /** The stored state. Read through {@link TaskSituation#of} everywhere but there. */
     TaskState storedState() {
         return TaskState.fromWireName(state);
     }

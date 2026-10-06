@@ -114,7 +114,7 @@ class CheckOrderTest {
 
     @Test
     void an_answer_names_an_option_or_free_text_where_admitted() {
-        Situation asked = situation("asked");
+        TaskSituation asked = situation("asked");
         Decision none = Decision.of(TaskVerb.ANSWER, asked,
             TaskCall.by(C).withConflictToken(TOKEN).with(new TaskPayload.Reply("maybe", null)));
         assertRefused(none, Check.PAYLOAD, Reason.ANSWER_NOT_AN_OPTION);
@@ -132,11 +132,11 @@ class CheckOrderTest {
 
     // -----------------------------------------------------------------------
 
-    static Situation rootWithUnfinishedChild() {
-        Situation open = situation("open");
-        return new Situation(open.identity(), open.address(), open.state(), null, null, null,
+    static TaskSituation rootWithUnfinishedChild() {
+        TaskSituation open = situation("open");
+        return new TaskSituation(open.identity(), open.address(), open.state(), null, null, null,
             false, null, TOKEN, null, null, true,
-            List.of(new Situation.Child(UUID.fromString("00000000-0000-0000-0000-0000000000bb"),
+            List.of(new TaskSituation.Child(UUID.fromString("00000000-0000-0000-0000-0000000000bb"),
                 ExchangeAddress.child("sprint", 1, 1), TaskState.ACTIVE)),
             NOW);
     }

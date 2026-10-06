@@ -21,7 +21,7 @@ import java.util.Optional;
  * calls open to a caller is the verbs for which they pass ({@link #open}). The
  * last three are faults of a request, which no list can know.
  *
- * <p>A pure function: it reads the {@link Situation} and the {@link TaskCall}
+ * <p>A pure function: it reads the {@link TaskSituation} and the {@link TaskCall}
  * and writes nothing. {@link TaskService} calls it before every write, under
  * the row lock, on the situation computed in the same transaction.
  */
@@ -80,7 +80,7 @@ public sealed interface Decision {
     }
 
     /** Decides one call of {@code verb} on {@code situation}. */
-    static Decision of(TaskVerb verb, Situation situation, TaskCall call) {
+    static Decision of(TaskVerb verb, TaskSituation situation, TaskCall call) {
         for (Check check : ORDER) {
             Optional<Refused> refused = run(check, verb, situation, call);
             if (refused.isPresent()) {
@@ -91,7 +91,7 @@ public sealed interface Decision {
     }
 
     /** Whether {@code verb} is open to {@code caller}: the situational checks pass. */
-    static boolean open(TaskVerb verb, Situation situation, Actor caller) {
+    static boolean open(TaskVerb verb, TaskSituation situation, Actor caller) {
         TaskCall probe = TaskCall.by(caller);
         for (Check check : ORDER) {
             if (check.situational() && run(check, verb, situation, probe).isPresent()) {
@@ -102,13 +102,13 @@ public sealed interface Decision {
     }
 
     /** The verbs open to {@code caller}, in table order. */
-    static List<TaskVerb> openVerbs(Situation situation, Actor caller) {
+    static List<TaskVerb> openVerbs(TaskSituation situation, Actor caller) {
         return java.util.Arrays.stream(TaskVerb.values())
             .filter(verb -> open(verb, situation, caller))
             .toList();
     }
 
-    private static Optional<Refused> run(Check check, TaskVerb verb, Situation s, TaskCall call) {
+    private static Optional<Refused> run(Check check, TaskVerb verb, TaskSituation s, TaskCall call) {
         return switch (check) {
             case STATE -> Checks.state(verb, s, call.caller());
             case CONDITION -> Checks.condition(verb, s);
@@ -127,7 +127,7 @@ public sealed interface Decision {
      * and stored nowhere: when the set changes, so does the value, and the one
      * handed out earlier no longer matches.
      */
-    static String confirmationFor(TaskVerb verb, Situation root) {
+    static String confirmationFor(TaskVerb verb, TaskSituation root) {
         StringBuilder material = new StringBuilder()
             .append(root.identity()).append('\u001F').append(verb.wireName());
         root.unfinishedChildren().stream()

@@ -13,7 +13,7 @@ import java.util.Set;
  * The seven checks of {@link Decision}, one method each.
  *
  * <p>Each reads one part of a {@link TaskVerb} row against the
- * {@link Situation} and the {@link TaskCall}, and answers empty or the
+ * {@link TaskSituation} and the {@link TaskCall}, and answers empty or the
  * refusal. None knows its place in the order; {@link Decision#ORDER} does.
  */
 final class Checks {
@@ -22,7 +22,7 @@ final class Checks {
     }
 
     /** Check 1: the effective state is one the row applies in. */
-    static Optional<Refused> state(TaskVerb verb, Situation s, Actor caller) {
+    static Optional<Refused> state(TaskVerb verb, TaskSituation s, Actor caller) {
         if (verb.states().contains(s.state())) {
             return Optional.empty();
         }
@@ -37,7 +37,7 @@ final class Checks {
     }
 
     /** Check 2: the condition on an attribute, where the row has one. */
-    static Optional<Refused> condition(TaskVerb verb, Situation s) {
+    static Optional<Refused> condition(TaskVerb verb, TaskSituation s) {
         return switch (verb.condition()) {
             case NONE -> Optional.empty();
             case DRAWABLE -> s.deferred()
@@ -57,7 +57,7 @@ final class Checks {
     }
 
     /** Check 3: the caller's relation to the task. */
-    static Optional<Refused> relation(TaskVerb verb, Situation s, Actor caller) {
+    static Optional<Refused> relation(TaskVerb verb, TaskSituation s, Actor caller) {
         return switch (verb.relation()) {
             case COMMISSIONER -> caller.isConsole()
                 ? Optional.empty()
@@ -72,7 +72,7 @@ final class Checks {
         };
     }
 
-    private static Optional<Refused> holder(TaskVerb verb, Situation s, Actor caller) {
+    private static Optional<Refused> holder(TaskVerb verb, TaskSituation s, Actor caller) {
         if (s.heldBy(caller)) {
             return Optional.empty();
         }
@@ -85,7 +85,7 @@ final class Checks {
     }
 
     /** Check 4: the lock on acceptance -- never the identity that delivered. */
-    static Optional<Refused> lock(TaskVerb verb, Situation s, Actor caller) {
+    static Optional<Refused> lock(TaskVerb verb, TaskSituation s, Actor caller) {
         if (verb.lock() == TaskVerb.Lock.NOT_THE_DELIVERER
                 && caller.subject().equals(s.storedHolder())) {
             return refuse(Check.LOCK, Reason.RATIFICATION_NOT_PERMITTED, "the identity that "
@@ -96,7 +96,7 @@ final class Checks {
     }
 
     /** Check 5: the receipt or the conflict token. */
-    static Optional<Refused> proof(TaskVerb verb, Situation s, TaskCall call) {
+    static Optional<Refused> proof(TaskVerb verb, TaskSituation s, TaskCall call) {
         return switch (verb.proof()) {
             case NONE -> Optional.empty();
             case RECEIPT -> receipt(s, call.receipt());
@@ -104,7 +104,7 @@ final class Checks {
         };
     }
 
-    private static Optional<Refused> receipt(Situation s, String presented) {
+    private static Optional<Refused> receipt(TaskSituation s, String presented) {
         if (presented == null || presented.isBlank()) {
             return refuse(Check.PROOF, Reason.RECEIPT_ABSENT, s.address() + " needs the "
                 + "receipt its claim handed out: every write by an executor carries it.");
@@ -116,7 +116,7 @@ final class Checks {
         return Optional.empty();
     }
 
-    static Optional<Refused> conflictToken(Situation s, String presented) {
+    static Optional<Refused> conflictToken(TaskSituation s, String presented) {
         if (presented == null || presented.isBlank()) {
             return refuse(Check.PROOF, Reason.CONFLICT_TOKEN_MISSING, "this call on "
                 + s.address() + " carries the conflict token of the caller's last read.");
@@ -130,7 +130,7 @@ final class Checks {
     }
 
     /** Check 6: closing a bracket root with unfinished children needs a confirmation. */
-    static Optional<Refused> confirmation(TaskVerb verb, Situation s, TaskCall call) {
+    static Optional<Refused> confirmation(TaskVerb verb, TaskSituation s, TaskCall call) {
         if (!verb.closes() || !s.root() || s.unfinishedChildren().isEmpty()) {
             return Optional.empty();
         }
@@ -155,7 +155,7 @@ final class Checks {
     }
 
     /** Check 7: what the payload carries is admissible for this task. */
-    static Optional<Refused> payload(TaskVerb verb, Situation s, TaskCall call) {
+    static Optional<Refused> payload(TaskVerb verb, TaskSituation s, TaskCall call) {
         TaskPayload payload = verb.payloadOf(call);
         try {
             return switch (payload) {
@@ -188,7 +188,7 @@ final class Checks {
         return Optional.empty();
     }
 
-    private static Optional<Refused> option(Situation s, TaskPayload.Reply reply) {
+    private static Optional<Refused> option(TaskSituation s, TaskPayload.Reply reply) {
         Map<String, Object> asked = s.questionOptions() == null ? Map.of() : s.questionOptions();
         List<?> options = asked.get("options") instanceof List<?> l ? l : List.of();
         boolean freeText = Boolean.TRUE.equals(asked.get("free_text"));

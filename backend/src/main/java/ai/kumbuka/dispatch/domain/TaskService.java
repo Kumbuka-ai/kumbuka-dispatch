@@ -22,7 +22,7 @@ import java.util.UUID;
  * sixteen transitions and the nine calls that are not transitions.
  *
  * <p>Every transition is one transaction: lock the row, compute the
- * {@link Situation}, call {@link Decision#of}, set the attributes the
+ * {@link TaskSituation}, call {@link Decision#of}, set the attributes the
  * {@link TaskVerb} row names, insert its text row, stamp {@code
  * state_changed_at} and {@code state_changed_by}. Nothing here decides
  * whether a transition is permitted; the row and the decision do.
@@ -134,7 +134,7 @@ public class TaskService {
     public TaskView update(UUID scopeId, ExchangeAddress address, Draft changes,
                            String conflictToken, Actor caller) {
         Task task = lockOrRefuse(scopeId, address);
-        Situation s = situation(task);
+        TaskSituation s = situation(task);
         requireDraft(s, "update");
         requireCommissioner(caller, "update");
         requireToken(s, conflictToken);
@@ -172,7 +172,7 @@ public class TaskService {
     public ExchangeAddress delete(UUID scopeId, ExchangeAddress address, String conflictToken,
                                   Actor caller) {
         Task task = lockOrRefuse(scopeId, address);
-        Situation s = situation(task);
+        TaskSituation s = situation(task);
         requireDraft(s, "delete");
         requireCommissioner(caller, "delete");
         requireToken(s, conflictToken);
@@ -197,7 +197,7 @@ public class TaskService {
     public TaskTextView readText(UUID scopeId, ExchangeAddress address, TextPart part,
                                  Actor caller) {
         Task task = findOrRefuse(scopeId, address);
-        Situation s = situation(task);
+        TaskSituation s = situation(task);
         if (!caller.isConsole() && !s.heldBy(caller)) {
             throw new DispatchException(s.formerHolder(caller)
                 ? DispatchException.Reason.LEASE_LAPSED
@@ -224,13 +224,13 @@ public class TaskService {
 
         List<Task> matching = tasks.listing(scopeId, selector, filter.apparatusPatterns(),
                 filter.brackets()).stream()
-            .filter(t -> filter.admits(Situation.of(t, now, List.of()).state(), t.address()))
+            .filter(t -> filter.admits(TaskSituation.of(t, now, List.of()).state(), t.address()))
             .toList();
         List<Task> page = matching.stream().limit(limit).toList();
         List<TaskText> texts = tasks.texts(page.stream().map(t -> t.id).toList());
 
         List<TaskView> heads = page.stream()
-            .map(t -> TaskView.of(t, Situation.of(t, now, List.of()), caller,
+            .map(t -> TaskView.of(t, TaskSituation.of(t, now, List.of()), caller,
                 texts.stream().filter(x -> x.taskId.equals(t.id)).toList(), curatedIn(t)))
             .toList();
         return new TaskListing(heads, matching.size() > page.size());
@@ -251,7 +251,7 @@ public class TaskService {
                 "an addendum carries its text, and it arrives with this call or never.");
         }
         Task task = lockOrRefuse(scopeId, address);
-        Situation s = situation(task);
+        TaskSituation s = situation(task);
         if (s.state() == TaskState.DRAFT) {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
                 address + " is a draft and is edited, not annotated.");
@@ -320,7 +320,7 @@ public class TaskService {
         List<Task> children = task.isBracketRoot() && verb.closes()
             ? tasks.children(scopeId, task.selector.id, task.number)
             : List.of();
-        Situation s = Situation.of(task, now, children);
+        TaskSituation s = TaskSituation.of(task, now, children);
         TaskPayload payload = decide(verb, s, call);
 
         String by = call.caller().subject();
@@ -356,7 +356,7 @@ public class TaskService {
                                TaskCall call) {
         selectors.requireDeclared(scopeId, selector);
         Task task = tasks.lockNextDrawable(scopeId, selector, apparatusPatterns, now(),
-                Situation.LAPSES_TO_PARK - 1)
+                TaskSituation.LAPSES_TO_PARK - 1)
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOTHING_TO_CLAIM,
                 "nothing in '" + selector + "' addressed to " + apparatusPatterns
                     + " is drawable: every task there those patterns match is a draft, "
@@ -367,7 +367,7 @@ public class TaskService {
 
     private TaskClaim take(UUID scopeId, Task task, TaskVerb verb, TaskCall call) {
         Instant now = now();
-        Situation s = Situation.of(task, now, List.of());
+        TaskSituation s = TaskSituation.of(task, now, List.of());
         TaskPayload.Lease lease = (TaskPayload.Lease) decide(verb, s, call);
 
         String by = call.caller().subject();
@@ -385,7 +385,7 @@ public class TaskService {
     }
 
     /** Decides, and refuses with the decision's reason; answers the payload to apply. */
-    private static TaskPayload decide(TaskVerb verb, Situation s, TaskCall call) {
+    private static TaskPayload decide(TaskVerb verb, TaskSituation s, TaskCall call) {
         Decision decision = Decision.of(verb, s, call);
         if (decision instanceof Decision.Refused refused) {
             LOG.debugf("%s on %s refused at %s: %s", verb.wireName(), s.address(),
@@ -396,7 +396,7 @@ public class TaskService {
     }
 
     /** Sets what the row names: state, attributes, holder, lease, payload attributes. */
-    private static void apply(Task task, TaskVerb verb, Situation s, TaskPayload payload,
+    private static void apply(Task task, TaskVerb verb, TaskSituation s, TaskPayload payload,
                               Instant now, String by) {
         if (payload instanceof TaskPayload.Sending sending && sending.metadata() != null) {
             task.dispatchMetadata = sending.metadata();
@@ -452,7 +452,7 @@ public class TaskService {
     /** Closes each unfinished child as withdrawn, before its root closes. */
     private void withdrawChildren(List<Task> children, Instant now, String by) {
         for (Task child : children) {
-            if (Situation.of(child, now, List.of()).state() != TaskState.CLOSED) {
+            if (TaskSituation.of(child, now, List.of()).state() != TaskState.CLOSED) {
                 child.enter(TaskState.CLOSED, null, Outcome.WITHDRAWN, now, by);
                 child.dropHolder();
                 child.touch(by);
@@ -467,7 +467,7 @@ public class TaskService {
     // ======================================================================
 
     private TaskView view(Task task, Actor caller) {
-        Situation s = situation(task);
+        TaskSituation s = situation(task);
         return TaskView.of(task, s, caller, tasks.texts(task.id), curatedIn(task));
     }
 
@@ -478,8 +478,8 @@ public class TaskService {
      * closing verb, with the children it read there. A head's {@code next}
      * comes from checks 1 to 4 and does not need them.
      */
-    private Situation situation(Task task) {
-        return Situation.of(task, now(), List.of());
+    private TaskSituation situation(Task task) {
+        return TaskSituation.of(task, now(), List.of());
     }
 
     /**
@@ -499,7 +499,7 @@ public class TaskService {
     private Task requireClosedForRelation(UUID scopeId, ExchangeAddress address,
                                           String conflictToken, Actor caller) {
         Task task = lockOrRefuse(scopeId, address);
-        Situation s = situation(task);
+        TaskSituation s = situation(task);
         if (s.state() != TaskState.CLOSED) {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
                 address + " is " + s.state().wireName() + "; a relation is recorded only on "
@@ -510,7 +510,7 @@ public class TaskService {
         return task;
     }
 
-    private static void requireDraft(Situation s, String call) {
+    private static void requireDraft(TaskSituation s, String call) {
         if (s.state() != TaskState.DRAFT) {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
                 s.address() + " is " + s.state().wireName() + "; " + call + " applies only "
@@ -526,7 +526,7 @@ public class TaskService {
         }
     }
 
-    private static void requireToken(Situation s, String presented) {
+    private static void requireToken(TaskSituation s, String presented) {
         Checks.conflictToken(s, presented).ifPresent(refused -> {
             throw refused.asException();
         });
@@ -537,7 +537,7 @@ public class TaskService {
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
                 "no bracket " + selector.name + "/" + number + "; a bracket opens with its "
                     + "root."));
-        if (Situation.of(root, now(), List.of()).state() == TaskState.CLOSED) {
+        if (TaskSituation.of(root, now(), List.of()).state() == TaskState.CLOSED) {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
                 root.address() + " is closed, and a closed root has only closed children.");
         }

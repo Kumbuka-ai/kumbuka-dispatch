@@ -44,7 +44,7 @@ import java.util.UUID;
  * @param unfinishedChildren the children of a root that are not closed
  * @param now                the instant this situation was read at
  */
-public record Situation(
+public record TaskSituation(
     UUID identity,
     ExchangeAddress address,
     TaskState state,
@@ -72,7 +72,7 @@ public record Situation(
     public record Child(UUID identity, ExchangeAddress address, TaskState state) {
     }
 
-    public Situation {
+    public TaskSituation {
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(now, "now");
         unfinishedChildren = List.copyOf(unfinishedChildren);
@@ -84,7 +84,7 @@ public record Situation(
      * @param children the children of the task when it is a bracket root, in
      *                 any state; ignored otherwise
      */
-    public static Situation of(Task task, Instant now, List<Task> children) {
+    public static TaskSituation of(Task task, Instant now, List<Task> children) {
         TaskState stored = task.storedState();
         boolean lapsed = stored == TaskState.ACTIVE && !leaseRuns(task, now);
 
@@ -105,7 +105,7 @@ public record Situation(
                 .toList()
             : List.of();
 
-        return new Situation(task.uuid, task.address(), state, reason, holder,
+        return new TaskSituation(task.uuid, task.address(), state, reason, holder,
             task.storedHolder(), lapsed, task.receiptHash(), task.conflictToken(),
             task.notBefore(), task.questionOptions(), task.isBracketRoot(), unfinished, now);
     }

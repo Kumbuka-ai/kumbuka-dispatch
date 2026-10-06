@@ -67,7 +67,7 @@ public record TaskView(
     }
 
     /** The head for {@code caller}, as the task stands in {@code situation}. */
-    static TaskView of(Task task, Situation situation, Actor caller, List<TaskText> texts,
+    static TaskView of(Task task, TaskSituation situation, Actor caller, List<TaskText> texts,
                        String curatedIn) {
         HolderState holder = HolderState.of(situation.holder(), caller);
         return new TaskView(task.uuid, task.address(), situation.state(),

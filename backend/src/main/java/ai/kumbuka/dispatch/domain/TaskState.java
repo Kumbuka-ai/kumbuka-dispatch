@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
  *
  * <p>What a task is in for a caller is never read off this column directly.
  * A lapsed lease leaves {@code active} in the row and means {@code open} or a
- * parked {@code on_hold}; {@link Situation#of} is the one place that turns the
+ * parked {@code on_hold}; {@link TaskSituation#of} is the one place that turns the
  * stored value into the one that holds.
  */
 public enum TaskState {

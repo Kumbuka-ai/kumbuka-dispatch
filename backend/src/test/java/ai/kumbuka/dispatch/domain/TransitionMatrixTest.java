@@ -1,6 +1,5 @@
 package ai.kumbuka.dispatch.domain;
 
-import ai.kumbuka.dispatch.domain.Decision.Check;
 import ai.kumbuka.dispatch.domain.DispatchException.Reason;
 import org.junit.jupiter.api.Test;
 
@@ -257,7 +256,7 @@ class TransitionMatrixTest {
         for (String line : MATRIX.strip().split("\n")) {
             String[] cell = line.split("\\|");
             TaskVerb verb = verb(cell[0].strip());
-            Situation situation = situation(cell[1].strip());
+            TaskSituation situation = situation(cell[1].strip());
             Map<Actor, String> expected = new LinkedHashMap<>();
             expected.put(C, cell[2].strip());
             expected.put(H, cell[3].strip());
@@ -357,7 +356,7 @@ class TransitionMatrixTest {
     }
 
     /** One of the eleven situations, built directly: what the decision reads. */
-    static Situation situation(String name) {
+    static TaskSituation situation(String name) {
         return switch (name) {
             case "draft" -> of(TaskState.DRAFT, null, null, null, false, null);
             case "open" -> of(TaskState.OPEN, null, null, null, false, null);
@@ -374,9 +373,9 @@ class TransitionMatrixTest {
         };
     }
 
-    static Situation of(TaskState state, HoldReason reason, Actor holder, Actor stored,
+    static TaskSituation of(TaskState state, HoldReason reason, Actor holder, Actor stored,
                         boolean lapsed, Instant notBefore) {
-        return new Situation(UUID.fromString("00000000-0000-0000-0000-0000000000aa"),
+        return new TaskSituation(UUID.fromString("00000000-0000-0000-0000-0000000000aa"),
             ExchangeAddress.bracket("sprint", 1), state, reason,
             holder == null ? null : holder.subject(),
             stored == null ? null : stored.subject(), lapsed,
@@ -385,10 +384,5 @@ class TransitionMatrixTest {
                 ? Map.of("options", List.of("yes", "no"), "free_text", false)
                 : null,
             true, List.of(), NOW);
-    }
-
-    /** The check a refusal names; used by the order tests beside this class. */
-    static Check checkOf(Decision decision) {
-        return decision instanceof Decision.Refused r ? r.check() : null;
     }
 }
