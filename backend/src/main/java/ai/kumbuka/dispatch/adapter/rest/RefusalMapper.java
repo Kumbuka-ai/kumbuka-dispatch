@@ -605,6 +605,14 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                 // caller can resolve it, by choosing another key.
                 case IDEMPOTENCY_KEY_REUSED -> 409;
 
+                // The task kernel's reasons, which no route reaches yet: the
+                // statuses the codes they map to already carry.
+                case LEASE_LAPSED, DEFERRAL_PENDING, CONFIRMATION_REQUIRED,
+                     CONFIRMATION_STALE -> 409;
+                case ANSWER_NOT_AN_OPTION -> 422;
+                case CONFLICT_TOKEN_MISSING -> 428;
+                case CONFLICT_TOKEN_STALE -> 412;
+
                 // Ours, not the caller's: the session contract was not bound.
                 case SESSION_NOT_BOUND -> 500;
             };
