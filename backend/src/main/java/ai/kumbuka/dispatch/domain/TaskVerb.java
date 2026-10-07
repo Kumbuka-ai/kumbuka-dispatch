@@ -31,7 +31,7 @@ public enum TaskVerb {
     SEND("send",
         when(EnumSet.of(DRAFT), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
             Proof.CONFLICT_TOKEN),
-        takes(TaskInput.Sending.class, new TaskInput.Sending(null)),
+        takes(TaskInput.Nothing.class, TaskInput.NONE),
         moves(OPEN, null, null, Holding.NONE, null),
         "Sends the draft: the task is frozen and open to executors."),
 

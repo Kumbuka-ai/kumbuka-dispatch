@@ -1,8 +1,8 @@
 package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.adapter.rest.CustomMethod;
-
 import ai.kumbuka.dispatch.adapter.mcp.McpTools;
+import ai.kumbuka.dispatch.adapter.rest.RestRoute;
+import ai.kumbuka.dispatch.contract.TargetSurface;
 import jakarta.ws.rs.HttpMethod;
 import jakarta.ws.rs.Path;
 import org.junit.jupiter.api.Test;
@@ -14,9 +14,12 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -24,87 +27,66 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The conformance probe, static half: does this surface project exactly the
- * specified verb set, and nothing else.
+ * The REST surface against its specification, and the two statements of the
+ * surface against each other.
  *
- * <p>Two halves, and both are needed. <strong>Coverage</strong> — every
- * specified form is reachable. <strong>Closure</strong> — no route exists that
- * is not specified. Coverage alone passes a surface that has grown a back
- * door; closure alone passes a surface that has lost half its verbs. An
- * undeclared route is a violation, which is what makes this a probe rather
- * than an inventory.
+ * <p>Three questions, each with its own source of truth. Whether the
+ * framework registered exactly the declared bindings is read from the
+ * annotations against {@code verb-surface.tsv}. Whether the routes of
+ * {@link RestRoute}, written by hand, are exactly the calls of the declaration
+ * -- one route per call, no route without a call -- is the test that holds the
+ * two statements together while REST is not generated. And whether those routes take the outward forms the specification
+ * writes is read against the file again.
  *
- * <h2>The expectation is not derived from the code</h2>
- *
- * It is read from {@code verb-surface.tsv}, transcribed from the dispatch and
- * from the two ratified concept documents. A probe that read its expectation
- * out of the thing it probes asserts that one copy equals itself. Both
- * expositions are probed against the same file and neither is the source for
- * the other — share-nothing applied to the surface.
- *
- * <h2>Why this half is static and where the other half lives</h2>
- *
- * Closure is a property of what was built, not of what happens to answer
- * today: no call can enumerate the routes that do not exist, so it is read
- * from the annotations, which is what the framework reads. Coverage of the
- * outward forms is the opposite — a form is reachable or it is not, and only
- * a call can say — so it is measured end to end in
- * {@code SurfaceConformanceIT} against a running database.
+ * <p>Red probes, observed: a route in {@link RestRoute} for a name the
+ * declaration does not carry, and a declared call whose route was removed,
+ * each turn {@link #every_declared_call_has_exactly_one_route_and_no_route_stands_without_one}
+ * red.
  */
 class VerbSurfaceConformanceTest {
 
-    /** Where the built classes are. The probe walks what the framework loads. */
+    /** Where the build puts the application's classes, relative to the module. */
     private static final String CLASS_ROOT = "target/classes";
+
+    /** The application's package, as a path under the class root. */
     private static final String PACKAGE_ROOT = "ai/kumbuka/dispatch";
 
-    /** {@code {name:regex}} is one template parameter, however it is spelled. */
+    /** A path template with a regex, {@code {id: [0-9.]+}}, reduced to {@code {id}}. */
     private static final Pattern TEMPLATE = Pattern.compile("\\{(\\w+)\\s*:[^{}]*}");
 
-    /** Below this the probe is not walking the tree it thinks it is. */
+    /** Fewer routes than this means the probe is walking the wrong tree. */
     private static final int MINIMUM_ROUTES = 8;
 
     // =======================================================================
-    // Closure, on the bindings
+    // Closure and coverage, on the bindings
     // =======================================================================
 
     @Test
     void no_route_exists_outside_the_declared_bindings() {
         Set<String> declared = VerbSurfaceSpecification.routesOf("binding", "extension");
-
         List<String> undeclared = builtRoutes().stream()
             .filter(route -> !declared.contains(route))
             .toList();
 
         assertThat(undeclared)
-            .as("REST is extensible while an extension adds no effect, and every extension "
-                + "is DECLARED — so a route nobody wrote into the specification is a "
-                + "violation and not a feature. State changes come from a verb, without "
-                + "exception")
+            .as("a route nobody wrote into the specification is a violation and not a "
+                + "feature. State changes come from a call, without exception")
             .isEmpty();
     }
 
     @Test
     void every_declared_binding_is_registered() {
         Set<String> built = builtRoutes();
-
         List<String> missing = VerbSurfaceSpecification.routesOf("binding", "extension").stream()
             .filter(route -> !built.contains(route))
             .toList();
 
         assertThat(missing)
             .as("a binding the specification declares and the framework never registered "
-                + "is a form nothing can reach, however carefully the verb behind it was "
-                + "written")
+                + "is a form nothing can reach")
             .isEmpty();
     }
 
-    /**
-     * The probe must have found routes at all.
-     *
-     * <p>A walk that finds none satisfies closure trivially, and it does so for
-     * every wrong reason there is: wrong directory, stale pattern, classes not
-     * built.
-     */
     @Test
     void the_probe_walked_a_tree_that_has_routes_in_it() {
         assertThat(builtRoutes())
@@ -113,130 +95,85 @@ class VerbSurfaceConformanceTest {
     }
 
     // =======================================================================
-    // Coverage and closure, on the colon verbs
+    // The two statements of the surface
     // =======================================================================
 
-    /**
-     * The colon verbs are routed from a table rather than by the framework, so
-     * the table is where coverage and closure are checked for them.
-     *
-     * <p>Both directions in one assertion, deliberately: a verb in the table
-     * and not in the specification is an undeclared act, and a verb in the
-     * specification and not in the table is one no path reaches.
-     */
     @Test
-    void the_colon_verbs_are_exactly_the_specified_ones_at_each_depth() {
-        assertThat(tableVerbs(CustomMethod.Depth.ITEM))
-            .as("the item-depth custom methods must be the specified ones exactly. One too "
-                + "many is a route nobody declared; one too few is a verb no caller can "
-                + "reach")
-            .containsExactlyInAnyOrderElementsOf(VerbSurfaceSpecification.colonVerbsAt("item"));
+    void every_declared_call_has_exactly_one_route_and_no_route_stands_without_one() {
+        List<String> declared = ProcessVerb.names(Surface.REST);
+        Map<String, Long> routed = Arrays.stream(RestRoute.values())
+            .map(RestRoute::call)
+            .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
 
-        assertThat(tableVerbs(CustomMethod.Depth.COLLECTION))
-            .as("and at collection depth, where the only declarable set semantics is "
-                + "exactly one")
-            .containsExactlyInAnyOrderElementsOf(VerbSurfaceSpecification.colonVerbsAt("collection"));
+        assertThat(declared.stream().filter(call -> routed.getOrDefault(call, 0L) != 1L)
+                .toList())
+            .as("every call of the declaration has exactly one route. A call with none is "
+                + "a call no REST caller can make; one with two is a call answered in two "
+                + "places that will drift")
+            .isEmpty();
+        assertThat(routed.keySet().stream().filter(call -> !declared.contains(call)).toList())
+            .as("and no route stands without a declared call: a route for a name the "
+                + "declaration does not carry is a second surface nobody checks")
+            .isEmpty();
     }
 
-    /**
-     * The split has to survive an address that grows segments.
-     *
-     * <p>Split at the last colon rather than the first: the address part is
-     * the thing that may grow and the verb is the thing that may not, so a
-     * first-colon split would let a future multi-segment id shadow the verb.
-     */
+    @Test
+    void the_routes_take_the_forms_the_specification_writes() {
+        assertThat(Arrays.stream(RestRoute.values()).map(RestRoute::form).toList())
+            .as("the outward form of every call, method and path, as verb-surface.tsv "
+                + "writes it by hand")
+            .containsExactlyInAnyOrderElementsOf(VerbSurfaceSpecification.callForms());
+        assertThat(VerbSurfaceSpecification.calls())
+            .as("and the specification names the twenty-five calls of TAR-0004 section 3")
+            .containsExactlyInAnyOrderElementsOf(TargetSurface.REST);
+    }
+
     @Test
     void the_verb_is_split_off_the_end_and_not_off_the_front() {
-        CustomMethod.Split split = CustomMethod
-            .split("a:b/164.0:send", CustomMethod.Depth.ITEM)
-            .orElseThrow();
-
-        assertThat(split.address()).isEqualTo("a:b/164.0");
-        assertThat(split.method()).isEqualTo(CustomMethod.SEND);
-    }
-
-    @Test
-    void a_segment_with_no_colon_carries_no_verb_at_all() {
-        assertThat(CustomMethod.split("164.0", CustomMethod.Depth.ITEM))
+        String[] split = RestRoute.split("a:b/164.0:send");
+        assertThat(split[0]).isEqualTo("a:b/164.0");
+        assertThat(split[1]).isEqualTo("send");
+        assertThat(RestRoute.split("164.0")[1])
             .as("a plain address is not a malformed verb, and the two must not be answered "
                 + "the same way")
-            .isEmpty();
+            .isNull();
     }
 
     // =======================================================================
     // The MCP projection
     // =======================================================================
 
-    /**
-     * The assistant surface carries the process verbs and no generic verb name.
-     *
-     * <p><strong>This assertion replaced an older one, and the older one was
-     * about a surface that no longer exists.</strong> It read "the MCP tool
-     * list is the carried verb set exactly" — true while both expositions
-     * carried the same fifteen generic verbs, and false since satellite/26.6
-     * put the process verbs of the contract's section 5 on this one. The
-     * replacement is not a weakening: what the old test guarded was that the
-     * two expositions could not drift silently, and drifting silently is now
-     * impossible for a different and stronger reason — the tool list is
-     * GENERATED from the declaration, and the declaration is checked against
-     * the contract document by {@code DeclarationConformanceTest}.
-     *
-     * <p>What is left for this test is the half that generation cannot give:
-     * that no generic verb name leaked onto the assistant surface. A tool
-     * called {@code accept} here would be a kernel name in a caller's hands,
-     * which is exactly what the repair removed.
-     */
     @Test
-    void the_mcp_exposition_carries_no_generic_verb_name() {
-        Set<String> generic = VerbSurfaceSpecification.carriedVerbs();
-
-        Set<String> declared = McpTools.declared().stream()
-            .map(McpTools.Tool::name)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
-
-        assertThat(declared)
-            .as("the assistant surface speaks process verbs. A generic name here is a "
-                + "kernel name in a caller's hands — measured on 2026-09-18, that is how "
-                + "a caller was told its exchange 'cannot takeup'")
-            .doesNotContainAnyElementsOf(generic);
-
-        assertThat(declared)
-            .as("every tool on this surface is prefixed, because a tool list is flat and "
-                + "shared with other services' tools")
-            .allMatch(name -> name.startsWith("dispatch_"));
-    }
-
-    /**
-     * The generic verbs are still all there — over REST.
-     *
-     * <p>The other half of the sentence above, and the one that makes it a
-     * projection rather than a replacement: nothing was removed from the
-     * service, only from one exposition of it. A verb that vanished from both
-     * would be an act nobody can reach any more.
-     */
-    @Test
-    void every_generic_verb_still_has_its_rest_form() {
-        Set<String> carried = VerbSurfaceSpecification.carriedVerbs();
-        Set<String> routed = VerbSurfaceSpecification.of("carried").stream()
-            .map(VerbSurfaceSpecification.Row::verb)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
-
-        assertThat(routed)
-            .as("REST is the complete surface and stays it: the process verbs are an "
-                + "assistant-facing projection, not a narrowing of what the service does")
-            .containsExactlyInAnyOrderElementsOf(carried);
+    void every_mcp_tool_is_a_declared_call_under_the_prefix() {
+        assertThat(McpTools.declared().stream().map(McpTools.Tool::name).toList())
+            .as("the assistant surface carries the same calls under the same names, each "
+                + "prefixed dispatch_ because a tool list is flat and shared with other "
+                + "services' tools")
+            .containsExactlyInAnyOrderElementsOf(TargetSurface.MCP);
     }
 
     @Test
-    void every_mcp_tool_declares_a_closed_argument_schema() {
+    @SuppressWarnings("unchecked")
+    void every_mcp_tool_declares_an_argument_schema_closed_at_every_level() {
+        List<String> open = new ArrayList<>();
         for (McpTools.Tool tool : McpTools.declared()) {
-            assertThat(tool.inputSchema())
-                .as("the schema of '%s' must close additionalProperties: an argument the "
-                    + "surface does not know is one a caller believes in, and accepting it "
-                    + "silently is how a client comes to depend on a field nobody reads",
-                    tool.name())
-                .containsEntry("additionalProperties", false);
+            if (!Boolean.FALSE.equals(tool.inputSchema().get("additionalProperties"))) {
+                open.add(tool.name());
+            }
+            Map<String, Object> properties =
+                (Map<String, Object>) tool.inputSchema().get("properties");
+            Object fields = properties.get("fields");
+            if (fields != null
+                    && !Boolean.FALSE.equals(((Map<String, Object>) fields)
+                        .get("additionalProperties"))) {
+                open.add(tool.name() + ".fields");
+            }
         }
+        assertThat(open)
+            .as("an argument the surface does not know is one a caller believes in. Both "
+                + "levels of every schema close additionalProperties; one level of closure "
+                + "is as much use as none, because nothing looks inside the other")
+            .isEmpty();
     }
 
     // =======================================================================
@@ -292,13 +229,6 @@ class VerbSurfaceConformanceTest {
             joined = "/" + joined;
         }
         return TEMPLATE.matcher(joined).replaceAll("{$1}");
-    }
-
-    /** The verbs the routing table carries at one depth. */
-    private static Set<String> tableVerbs(CustomMethod.Depth depth) {
-        return CustomMethod.at(depth).stream()
-            .map(CustomMethod::verb)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     /** Every class of this application, loaded from where the build put them. */

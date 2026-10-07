@@ -23,7 +23,7 @@ import java.util.Map;
  * from any other issuer does not get this far — the refusal happens in the
  * authentication layer, before this class is entered.
  *
- * <p>It is deliberately not a verb of the exchange. It reads no exchange, it
+ * <p>It is deliberately not a verb of the task. It reads no task, it
  * writes nothing, and it survives into the domain half only if it is still
  * the cheapest way to observe the same fact.
  */

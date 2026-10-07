@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 /**
  * What a listing of tasks may be narrowed by, and nothing else.
  *
- * <p>The grammar of {@link QueryFilter}: the fields are written out, values
+ * <p>The grammar of a listing's filter: the fields are written out, values
  * within a field are comma-separated alternatives, separate fields are
  * conjunctive, an undeclared field is refused by name rather than ignored, and
  * a value a field cannot take is refused rather than matched against nothing.
@@ -165,7 +165,7 @@ public record TaskFilter(
             Matcher m = ADDRESS.matcher(value);
             if (m.matches()) {
                 out.add(new ExchangeAddress(m.group(1), Integer.parseInt(m.group(2)),
-                    Integer.parseInt(m.group(3)), null));
+                    Integer.parseInt(m.group(3))));
             } else {
                 unusable.add(value);
             }

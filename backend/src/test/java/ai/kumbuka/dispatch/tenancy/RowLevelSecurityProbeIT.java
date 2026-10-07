@@ -61,18 +61,18 @@ class RowLevelSecurityProbeIT {
     void a_read_under_one_tenant_does_not_see_another_tenants_row() throws SQLException {
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
-            Db.insertExchange(c, tenantA, "probe-a");
+            Db.insertTask(c, tenantA, "probe-a");
             Db.bindTenant(c, tenantB);
-            Db.insertExchange(c, tenantB, "probe-b");
+            Db.insertTask(c, tenantB, "probe-b");
             c.commit();
 
             Db.bindTenant(c, tenantA);
-            assertThat(Db.countExchanges(c))
+            assertThat(Db.countTasks(c))
                 .as("a session bound to tenant A must see A's row and only A's")
                 .isEqualTo(1);
 
             Db.bindTenant(c, tenantB);
-            assertThat(Db.countExchanges(c))
+            assertThat(Db.countTasks(c))
                 .as("and symmetrically for B — otherwise the filter is not a filter but "
                     + "a coincidence about which rows happen to exist")
                 .isEqualTo(1);
@@ -106,9 +106,9 @@ class RowLevelSecurityProbeIT {
 
         try (Connection planter = Db.asService()) {
             Db.bindTenant(planter, tenantA);
-            Db.insertExchange(planter, tenantA, ownSlug);
+            Db.insertTask(planter, tenantA, ownSlug);
             Db.bindTenant(planter, tenantB);
-            Db.insertExchange(planter, tenantB, foreignSlug);
+            Db.insertTask(planter, tenantB, foreignSlug);
             planter.commit();
         }
 
@@ -125,7 +125,7 @@ class RowLevelSecurityProbeIT {
             c.commit();
 
             try {
-                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.exchange NO FORCE ROW LEVEL SECURITY");
+                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.task NO FORCE ROW LEVEL SECURITY");
                 Db.bindTenant(c, tenantA);
 
                 assertThat(countByTitle(c, foreignSlug))
@@ -138,7 +138,7 @@ class RowLevelSecurityProbeIT {
                     .isEqualTo(1);
                 c.commit();
             } finally {
-                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.exchange FORCE ROW LEVEL SECURITY");
+                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.task FORCE ROW LEVEL SECURITY");
             }
 
             Db.bindTenant(c, tenantA);
@@ -168,16 +168,16 @@ class RowLevelSecurityProbeIT {
      */
     @Test
     void the_service_role_cannot_switch_off_the_policy_that_binds_it() throws SQLException {
-        assertThat(refusalFor("ALTER TABLE dispatch.exchange NO FORCE ROW LEVEL SECURITY"))
+        assertThat(refusalFor("ALTER TABLE dispatch.task NO FORCE ROW LEVEL SECURITY"))
             .as("taking FORCE off would exempt the table's owner — and would be the first "
                 + "step back to a service role that owns what it reads")
             .isEqualTo("42501");
 
-        assertThat(refusalFor("ALTER TABLE dispatch.exchange DISABLE ROW LEVEL SECURITY"))
+        assertThat(refusalFor("ALTER TABLE dispatch.task DISABLE ROW LEVEL SECURITY"))
             .as("switching the policy off entirely is the shorter route to the same place")
             .isEqualTo("42501");
 
-        assertThat(refusalFor("DROP POLICY exchange_tenant_isolation ON dispatch.exchange"))
+        assertThat(refusalFor("DROP POLICY task_tenant_isolation ON dispatch.task"))
             .as("and removing the policy is the route FORCE cannot cover at all, because "
                 + "FORCE binds an owner to its policies without stopping it deleting them")
             .isEqualTo("42501");
@@ -190,7 +190,7 @@ class RowLevelSecurityProbeIT {
         String slug = "reconfigure-probe-" + tenantA;
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
-            Db.insertExchange(c, tenantA, slug);
+            Db.insertTask(c, tenantA, slug);
             c.commit();
 
             Db.bindTenant(c, tenantB);
@@ -228,7 +228,7 @@ class RowLevelSecurityProbeIT {
      */
     private static long countByTitle(Connection c, String title) throws SQLException {
         try (var st = c.prepareStatement(
-                "SELECT count(*) FROM dispatch.exchange WHERE title = ?")) {
+                "SELECT count(*) FROM dispatch.task WHERE title = ?")) {
             st.setString(1, title);
             try (var rs = st.executeQuery()) {
                 rs.next();
@@ -249,7 +249,7 @@ class RowLevelSecurityProbeIT {
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
             try {
-                Db.insertExchange(c, tenantB, "planted-across-the-boundary");
+                Db.insertTask(c, tenantB, "planted-across-the-boundary");
                 throw new AssertionError(
                     "a session bound to tenant A inserted a row owned by tenant B — WITH CHECK "
                         + "is missing from the policy, and every write path can now cross the "

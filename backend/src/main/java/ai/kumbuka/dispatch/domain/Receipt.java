@@ -41,7 +41,7 @@ public final class Receipt {
 
     /**
      * A fresh receipt. Opaque on purpose: it encodes nothing about the
-     * exchange, the holder or the time, so it cannot be reconstructed from
+     * task, the holder or the time, so it cannot be reconstructed from
      * anything an observer already knows.
      */
     public static String mint() {

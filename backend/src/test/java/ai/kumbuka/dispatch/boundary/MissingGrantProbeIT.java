@@ -68,7 +68,7 @@ class MissingGrantProbeIT {
     }
 
     /**
-     * Inward: the provider cannot read a tenant's exchanges.
+     * Inward: the provider cannot read a tenant's tasks.
      *
      * <p>The provider role carries BYPASSRLS, and that is deliberate. It means
      * the refusal below cannot be attributed to row-level security: this role
@@ -82,12 +82,12 @@ class MissingGrantProbeIT {
         assertRefusedThenGrantedThenRefused(
             SubstrateDatabaseResource.PROVIDER_ROLE,
             SubstrateDatabaseResource.PROVIDER_PASSWORD,
-            "SELECT count(*) FROM dispatch.exchange",
+            "SELECT count(*) FROM dispatch.task",
             "GRANT USAGE ON SCHEMA dispatch TO " + SubstrateDatabaseResource.PROVIDER_ROLE
-                + "; GRANT SELECT ON dispatch.exchange TO " + SubstrateDatabaseResource.PROVIDER_ROLE,
-            "REVOKE SELECT ON dispatch.exchange FROM " + SubstrateDatabaseResource.PROVIDER_ROLE
+                + "; GRANT SELECT ON dispatch.task TO " + SubstrateDatabaseResource.PROVIDER_ROLE,
+            "REVOKE SELECT ON dispatch.task FROM " + SubstrateDatabaseResource.PROVIDER_ROLE
                 + "; REVOKE USAGE ON SCHEMA dispatch FROM " + SubstrateDatabaseResource.PROVIDER_ROLE,
-            "the operator has no read path to a tenant's exchanges. The role carries "
+            "the operator has no read path to a tenant's tasks. The role carries "
                 + "BYPASSRLS, so this refusal cannot be row-level security doing the work — "
                 + "it is the absent privilege, which is the only form of the guarantee that "
                 + "cannot be switched off by a configuration mistake");
@@ -116,20 +116,20 @@ class MissingGrantProbeIT {
      */
     @Test
     void the_service_role_cannot_truncate_its_own_table() throws SQLException {
-        String table = "dispatch.exchange";
+        String table = "dispatch.task";
         // Every table that references it, because PostgreSQL refuses to
         // truncate a table another one has a foreign key into unless both are
-        // named. V14's ledger is such a table, and without it here the granted
-        // half of this probe would fail on the FOREIGN KEY rather than run —
-        // which would read as "the grant did not work" and is the opposite of
-        // what the probe is measuring. The grant is still the only variable:
-        // both halves name the same pair of tables.
-        String referencing = "dispatch.idempotency_key";
+        // named. The texts and the ledger of V17 are such tables, and without
+        // them here the granted half of this probe would fail on the FOREIGN
+        // KEY rather than run — which would read as "the grant did not work"
+        // and is the opposite of what the probe is measuring. The grant is
+        // still the only variable: both halves name the same tables.
+        String referencing = "dispatch.task_text, dispatch.task_idempotency_key";
         String role = SubstrateDatabaseResource.SERVICE_ROLE;
         String password = SubstrateDatabaseResource.SERVICE_PASSWORD;
 
         assertThat(attemptTruncate(role, password, table + ", " + referencing))
-            .as("GREEN STATE: TRUNCATE is not among the privileges V8 grants, and no "
+            .as("GREEN STATE: TRUNCATE is not among the privileges V8 and V17 grant, and no "
                 + "ownership hands it over implicitly any more. It is the one privilege "
                 + "row-level security cannot moderate, so the only place it can be stopped "
                 + "is the grant that does not exist")

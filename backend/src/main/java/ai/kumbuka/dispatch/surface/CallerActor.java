@@ -39,9 +39,11 @@ public class CallerActor {
      * roles are wrong, no caller can fix it, and nothing else will say so. The
      * caller sees a 403 and falls silent, and the roles stay wrong.
      *
-     * <p>Neither the subject nor the capacity is logged. Which token it was
-     * belongs to the audit log under its own rules; what the operator needs
-     * from this line is that the realm is handing out unusable tokens at all.
+     * <p>The subject is not logged, and of the capacity only whether the token
+     * carried both roles or neither. Which token it was belongs to the audit
+     * log under its own rules; what the operator needs from this line is that
+     * the realm is handing out unusable tokens at all, and which of the two
+     * misconfigurations it is.
      */
     private static final Logger LOG = Logger.getLogger(CallerActor.class);
 

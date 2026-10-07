@@ -52,13 +52,13 @@ public final class AddressParser {
     private static final Pattern SELECTOR = Pattern.compile("[a-z0-9]([a-z0-9-]*[a-z0-9])?");
 
     /**
-     * The id: {@code <number>.<sub>}, optionally one lower-case letter.
+     * The id: {@code <number>.<sub>}.
      *
      * <p>No leading zeroes on either part, and that is form rather than taste:
-     * {@code 07.1} and {@code 7.1} would be two strings for one exchange, which
+     * {@code 07.1} and {@code 7.1} would be two strings for one task, which
      * is the same identity-by-leniency the case rule refuses.
      */
-    private static final Pattern ID = Pattern.compile("(0|[1-9]\\d*)\\.(0|[1-9]\\d*)([a-z])?");
+    private static final Pattern ID = Pattern.compile("(0|[1-9]\\d*)\\.(0|[1-9]\\d*)");
 
     private AddressParser() {
     }
@@ -105,17 +105,15 @@ public final class AddressParser {
 
         Matcher m = ID.matcher(candidate);
         if (!m.matches()) {
-            throw malformed("the id '" + candidate + "' is not an exchange address. The form "
-                + "is <number>.<sub>, with one optional lower-case letter for an addendum — "
-                + "'149.2' or '149.0a'. A regular sub-number in place of the letter would "
-                + "make an addendum an ordinary child of the bracket.");
+            throw malformed("the id '" + candidate + "' is not a task address. The form is "
+                + "<number>.<sub>, such as '149.2'; an addendum is not addressed, it hangs on "
+                + "the text it supplements.");
         }
 
         return new ExchangeAddress(
             selector,
             Integer.parseInt(m.group(1)),
-            Integer.parseInt(m.group(2)),
-            m.group(3));
+            Integer.parseInt(m.group(2)));
     }
 
     /**
@@ -126,27 +124,7 @@ public final class AddressParser {
      * {@code Location} header.
      */
     public static String render(ExchangeAddress address) {
-        return address.number() + "." + address.sub()
-            + (address.suffix() == null ? "" : address.suffix());
-    }
-
-    /**
-     * The complete address, in the one form every call of this surface takes.
-     *
-     * <p><strong>Every address anywhere goes through here.</strong> Not as a
-     * convention: an address that leaves this service in any other form is one
-     * a caller has to repair before it can use it, and a caller reading an
-     * address out of an answer has no way to know it needs repairing. Measured
-     * on 2026-09-18: {@code create} and {@code claim} answered
-     * {@code satellite/26.2}, which no call accepts.
-     *
-     * <p>The scope travels as the slug the caller used, never as the internal
-     * id. Two reasons and both are load-bearing: the id is meaningless outside
-     * this deployment, and the slug is what the caller will put back into its
-     * next call.
-     */
-    public static String complete(String scopeSlug, ExchangeAddress address) {
-        return address.complete(scopeSlug);
+        return address.number() + "." + address.sub();
     }
 
     /** The complete address of a collection, for the refusals that name one. */

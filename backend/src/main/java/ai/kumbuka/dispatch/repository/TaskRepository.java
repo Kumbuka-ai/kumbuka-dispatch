@@ -23,11 +23,8 @@ import java.util.UUID;
  * Every statement the task kernel issues against {@code task}, {@code
  * task_text} and {@code task_idempotency_key}.
  *
- * <p>Placed as {@link ExchangeRepository} is, and for the same reasons: JPA
- * lives in this package, refusals stay above it, and an absent row is an empty
- * {@link Optional}. Its own repository rather than a share of the exchange's,
- * because that one is bound to {@code exchange} and goes when the old kernel
- * goes.
+ * <p>JPA lives in this package, refusals stay above it, and an absent row is
+ * an empty {@link Optional}.
  */
 @ApplicationScoped
 @TenantBound
@@ -59,7 +56,9 @@ public class TaskRepository {
      *
      * <p>A transition locks the row before it computes the effective state, so
      * two calls on one task decide one after the other and the second decides
-     * on what the first wrote.
+     * on what the first wrote. The task answered is the row as it stands under
+     * the lock, also where this transaction read it earlier: see {@link
+     * #underLock}.
      */
     @Transactional
     public Optional<Task> lock(UUID scopeId, ExchangeAddress address) {
@@ -67,7 +66,7 @@ public class TaskRepository {
     }
 
     private Optional<Task> at(UUID scopeId, ExchangeAddress address, LockModeType mode) {
-        return em.createQuery("""
+        Optional<Task> found = em.createQuery("""
                 SELECT t FROM Task t
                 WHERE t.scopeId = :scope AND t.selector.name = :sel
                   AND t.number = :num AND t.sub = :sub
@@ -80,6 +79,7 @@ public class TaskRepository {
             .getResultList()
             .stream()
             .findFirst();
+        return mode == LockModeType.NONE ? found : found.map(this::underLock);
     }
 
     /** The task with this surrogate in one scope. */
@@ -93,6 +93,24 @@ public class TaskRepository {
             .getResultList()
             .stream()
             .findFirst();
+    }
+
+    /**
+     * The task with this surrogate in one scope, locked for the caller's
+     * transaction, as the row stands under the lock: see {@link #underLock}.
+     */
+    @Transactional
+    public Optional<Task> lockById(UUID scopeId, Long id) {
+        return em.createQuery("""
+                SELECT t FROM Task t WHERE t.id = :id AND t.scopeId = :scope
+                """, Task.class)
+            .setParameter("id", id)
+            .setParameter(P_SCOPE, scopeId)
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .getResultList()
+            .stream()
+            .findFirst()
+            .map(this::underLock);
     }
 
     /**
@@ -112,9 +130,19 @@ public class TaskRepository {
             .findFirst());
     }
 
-    /** The children of a bracket, in sub order. */
+    /**
+     * The children of a bracket, each locked for the caller's transaction, in
+     * sub order.
+     *
+     * <p>Locked in the order of the address, so two transactions that lock the
+     * children of one root take them in the same order. The caller holds the
+     * root's lock first: the order is root before child wherever a call touches
+     * both. A child that another transaction finished while this one waited,
+     * or after this one read it without a lock, is read as that transaction
+     * left it: see {@link #underLock}.
+     */
     @Transactional
-    public List<Task> children(UUID scopeId, Long selectorId, int number) {
+    public List<Task> lockChildren(UUID scopeId, Long selectorId, int number) {
         return em.createQuery("""
                 SELECT t FROM Task t
                 WHERE t.scopeId = :scope AND t.selector.id = :sel AND t.number = :num
@@ -124,7 +152,34 @@ public class TaskRepository {
             .setParameter(P_SCOPE, scopeId)
             .setParameter(P_SELECTOR, selectorId)
             .setParameter(P_NUMBER, number)
-            .getResultList();
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .getResultList()
+            .stream()
+            .map(this::underLock)
+            .toList();
+    }
+
+    /**
+     * The entity as its row stands now that this transaction holds the lock.
+     * Every locking read of this repository answers through here, which
+     * {@code LockedReadRefreshTest} holds.
+     *
+     * <p>A locking query takes the lock on the current row, but where the
+     * transaction already holds the entity -- an earlier read without a lock
+     * put it there -- the persistence context answers that earlier object and
+     * not what the query found. Measured 2026-10-06 ({@code TaskLockedRowIT},
+     * {@code TaskBracketLockIT}): without this a claim after such a read took
+     * over a task another executor had claimed meanwhile, the closing of a
+     * root overwrote a child accepted meanwhile as withdrawn, a draw counted a
+     * lapse on the count read before and lost the one counted meanwhile, and a
+     * second bracket root created at once took the number of the first. The
+     * refresh reads the locked row again, at the cost of one more read per
+     * locked row; it would drop a change not yet flushed, and every write of
+     * the kernel flushes in the call that makes it.
+     */
+    private <T> T underLock(T entity) {
+        em.refresh(entity);
+        return entity;
     }
 
     /**
@@ -163,7 +218,9 @@ public class TaskRepository {
      * SQL states that set because the lock has to be taken in the statement
      * that selects; the kernel decides on the locked row again with {@code
      * TaskSituation} and {@code Decision}, so a row this predicate let through
-     * wrongly is refused rather than taken.
+     * wrongly is refused rather than taken. The task answered is the row as it
+     * stands under the lock, also where this transaction read it earlier: see
+     * {@link #underLock}.
      *
      * <p>Native because the lock is {@code SKIP LOCKED}, which JPA cannot
      * express: {@code PESSIMISTIC_WRITE} waits for the transaction holding the
@@ -211,14 +268,14 @@ public class TaskRepository {
         if (ids.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.ofNullable(em.find(Task.class, ((Number) ids.get(0)).longValue()));
+        return Optional.ofNullable(em.find(Task.class, ((Number) ids.get(0)).longValue()))
+            .map(this::underLock);
     }
 
     /**
      * The apparatus conjunct: the patterns as alternatives, {@code *} read as
      * any run of characters. The surface's character rule keeps {@code %} and
-     * {@code _} out of a pattern, so nothing needs escaping (see {@link
-     * ExchangeRepository}).
+     * {@code _} out of a pattern, so nothing needs escaping.
      */
     private static void appendApparatus(StringBuilder query, int patterns, String column) {
         if (patterns == 0) {
@@ -238,7 +295,11 @@ public class TaskRepository {
         }
     }
 
-    /** The selector row, locked so its counter can be read and bumped in this transaction. */
+    /**
+     * The selector row, locked so its counter can be read and bumped in this
+     * transaction, as the row stands under the lock: the creation read the
+     * selector before it took the lock, see {@link #underLock}.
+     */
     @Transactional
     public Optional<Selector> lockSelector(Long selectorId) {
         return em.createQuery("SELECT s FROM Selector s WHERE s.id = :id", Selector.class)
@@ -246,7 +307,8 @@ public class TaskRepository {
             .setLockMode(LockModeType.PESSIMISTIC_WRITE)
             .getResultList()
             .stream()
-            .findFirst();
+            .findFirst()
+            .map(this::underLock);
     }
 
     /** The highest sub of a bracket, or null when it has no task. */
@@ -344,7 +406,10 @@ public class TaskRepository {
     // task_idempotency_key
     // ----------------------------------------------------------------------
 
-    /** The row a caller's key holds in a scope, locked for update. */
+    /**
+     * The row a caller's key holds in a scope, locked for update, as the row
+     * stands under the lock: see {@link #underLock}.
+     */
     @Transactional
     public Optional<SpentTaskKey> lockKey(UUID scopeId, String callerSubject, String key) {
         return em.createQuery("""
@@ -357,7 +422,8 @@ public class TaskRepository {
             .setLockMode(LockModeType.PESSIMISTIC_WRITE)
             .getResultList()
             .stream()
-            .findFirst();
+            .findFirst()
+            .map(this::underLock);
     }
 
     /** Remembers a spent key. */

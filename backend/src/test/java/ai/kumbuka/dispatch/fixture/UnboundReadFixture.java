@@ -1,6 +1,6 @@
 package ai.kumbuka.dispatch.fixture;
 
-import ai.kumbuka.dispatch.domain.Exchange;
+import ai.kumbuka.dispatch.domain.Task;
 
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.persistence.EntityManager;
@@ -35,6 +35,6 @@ public class UnboundReadFixture {
 
     /** Public, reaches the database, and carries no transaction. */
     public List<Object> everythingInScope() {
-        return em.createQuery("SELECT e FROM Exchange e", Object.class).getResultList();
+        return em.createQuery("SELECT t FROM Task t", Object.class).getResultList();
     }
 }

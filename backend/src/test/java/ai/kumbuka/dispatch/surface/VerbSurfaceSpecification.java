@@ -1,6 +1,5 @@
 package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.adapter.rest.CustomMethod;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -59,7 +58,7 @@ public final class VerbSurfaceSpecification {
 
         /** Whether this row's form is a custom method in colon notation. */
         public boolean isColonForm() {
-            return path.lastIndexOf(CustomMethod.SEPARATOR) > path.lastIndexOf('/');
+            return path.lastIndexOf(':') > path.lastIndexOf('/');
         }
     }
 
@@ -104,24 +103,13 @@ public final class VerbSurfaceSpecification {
             .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    /** The verbs written in colon notation at one address depth. */
-    public static Set<String> colonVerbsAt(String depth) {
-        return of("carried", "uncarried").stream()
-            .filter(Row::isColonForm)
-            .filter(r -> depth.equals(r.depth()))
-            .map(Row::verb)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
+    /** The calls the expectation names, in its order. */
+    public static List<String> calls() {
+        return of("call").stream().map(Row::verb).toList();
     }
 
-    /** The verbs the scheme carries, each named once however many forms it has. */
-    public static Set<String> carriedVerbs() {
-        return of("carried").stream()
-            .map(Row::verb)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    /** The outward forms, which are what a caller writes and a probe calls. */
-    public static List<Row> outwardForms() {
-        return of("carried", "uncarried", "refusal");
+    /** The outward form of every call, as a caller writes it: method and path. */
+    public static Set<String> callForms() {
+        return routesOf("call");
     }
 }

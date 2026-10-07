@@ -17,7 +17,7 @@ import java.util.Map;
  *
  * <p><strong>The start-up guard reads this.</strong> Every {@link RefusalCode}
  * must have an entry and every entry must have a code; {@link
- * #requireComplete()} is called at start-up and throws if either set has a
+ * #requireComplete(Map)} is called at start-up and throws if either set has a
  * member the other lacks. That is the mechanism behind "a reason not in the
  * table cannot be returned": not a rule somebody keeps, but a service that
  * does not come up.
@@ -81,13 +81,8 @@ public final class ReasonCatalogue {
      * one more thing that could differ between two services saying the same
      * thing.
      *
-     * <p><strong>Known divergence from the contract copy.</strong> Section 4.3
-     * of {@code contract/assistant-surface.md} still carries the wording this
-     * replaced. The concept document is Concept's and is not edited from here;
-     * the divergence is declared in {@code DeclarationConformanceTest} and
-     * reported for ratification (dispatch 187.17). The platform wins on this
-     * value by that dispatch's own instruction: "der Katalog wird angepasst,
-     * nicht die Plattform".
+     * <p>The contract copy of this service ({@code contract/assistant-surface.md})
+     * carries the same text, so the comparison against it holds this constant.
      */
     public static final String NOT_FOUND_MESSAGE =
         "nothing is addressed here. Check the address, and that you are a member of "
@@ -96,10 +91,9 @@ public final class ReasonCatalogue {
     /**
      * The terminal variant of {@link RefusalCode#STATE_DOES_NOT_ALLOW}.
      *
-     * <p>Declared beside the ordinary pattern rather than derived from it: the
-     * contract gives two sentences, and "from closed you can: " followed by
-     * nothing is a sentence that trails off where the honest answer is that
-     * the exchange is over.
+     * <p>Declared beside the ordinary pattern rather than derived from it: a
+     * closed task has no way out, and "you can: nothing" is a sentence that
+     * trails off where the honest answer is that the task is over.
      */
     public static final String TERMINAL_STATE_PATTERN =
         "{call} is not possible on {address}: it is {state} and finished. Nothing further "
@@ -107,7 +101,7 @@ public final class ReasonCatalogue {
 
     /**
      * The remedy of every refusal a caller can act on by reading its own
-     * {@code data}. Three reasons share it, and they share it because it is
+     * {@code data}. Several reasons share it, and they share it because it is
      * one instruction.
      */
     private static final String READ_THE_NEXT_LIST = "the calls in data.next";
@@ -122,49 +116,45 @@ public final class ReasonCatalogue {
             "check scope and address");
 
         put(declared, RefusalCode.STATE_DOES_NOT_ALLOW,
-            "{call} is not possible on {address}: it is {state}. From {state} you can: "
-                + "{calls}.",
+            "{call} is not possible on {address}: it is {state}, and {call} applies {applies}. "
+                + "You can: {calls}.",
             READ_THE_NEXT_LIST);
 
         put(declared, RefusalCode.ROLE_DOES_NOT_ALLOW,
-            "{call} can only be made by the {role}. You take part in {address} as "
+            "{call} can only be made by {role}. You take part in {address} as "
                 + "{participation}.",
             READ_THE_NEXT_LIST);
 
         put(declared, RefusalCode.NOT_THE_HOLDER,
-            "{address} is held by someone else until {until}. Only the holder can {does}.",
-            "wait, or {read}");
-
-        put(declared, RefusalCode.RECEIPT_MISSING,
-            "{call} needs the receipt you received from {take} for {address}.",
-            "pass the receipt from the take");
+            "{call} is the holder's call, and you do not hold {address}: {why}.",
+            "take the task up first, or wait for its holder");
 
         put(declared, RefusalCode.RECEIPT_WRONG,
-            "{call} needs the receipt you received from {take} for {address}: the "
-                + "receipt given is not the one issued for {address}.",
-            "pass the receipt from the take");
-
-        put(declared, RefusalCode.NO_ANSWER_DELIVERED,
-            "{address} has no delivered answer to accept. The holder delivers with "
-                + "{deliver}.",
-            "wait for the executor");
+            "{call} needs the receipt your claim handed out for {address}: the receipt given "
+                + "is not the one it holds.",
+            "pass the receipt from the latest claim");
 
         put(declared, RefusalCode.CHILDREN_NOT_FINISHED,
-            "{root} cannot be {ending} while {count} exchange(s) of the bracket are "
-                + "unfinished: {offenders}.",
-            "the calls in each offender's next");
+            "{call} would close the bracket root {address} while {count} task(s) of the "
+                + "bracket are unfinished: {offenders}. {confirm}",
+            "repeat the call with data.confirmation, or finish the offenders first");
+
+        put(declared, RefusalCode.DEFERRAL_PENDING,
+            "{call} is not possible on {address} before {not_before}: the task was deferred "
+                + "until then.",
+            "take it up after that instant, or another task now");
 
         put(declared, RefusalCode.NOTHING_TO_TAKE,
-            "Nothing in {collection} can be taken up right now: every exchange is "
-                + "finished, held by someone, or waiting for its commissioner.",
-            "{query}");
+            "Nothing in {collection} that your patterns match can be taken up right now: "
+                + "every such task is a draft, held, paused, delivered, closed or deferred.",
+            "list the tasks with the query call");
 
         put(declared, RefusalCode.CLAIM_DURATION_INVALID,
             "The duration {value} is not a positive ISO-8601 duration such as PT2H.",
             "correct the duration");
 
         put(declared, RefusalCode.ARGUMENT_UNKNOWN,
-            "{call} has no argument named {name}. Its arguments are: {arguments}.",
+            "{subject} has no {kind} named {name}. It has: {known}.",
             "correct the name");
 
         put(declared, RefusalCode.ARGUMENT_MISSING,
@@ -175,29 +165,19 @@ public final class ReasonCatalogue {
             "{name} = {value} is not valid for {call}: {why}.",
             "correct the value");
 
-        put(declared, RefusalCode.CONFLICT_TOKEN_MISSING,
-            "{call} on {address} repeats the conflict token and none arrived. The token "
-                + "is the one handed out with the last read of {address}.",
-            "read again and repeat");
-
         put(declared, RefusalCode.CONFLICT_TOKEN_STALE,
-            "{call} on {address} carries a conflict token that is not the one it holds: "
-                + "{address} was changed since it was read.",
-            "read again and repeat");
+            "{call} on {address} carries a conflict token that is not the one it holds: it "
+                + "was changed since you read it. Its current token is {current}.",
+            "read the task again and repeat with data.conflict_token");
 
         put(declared, RefusalCode.SELECTOR_UNKNOWN,
             "{selector} is not a bracket kind declared in scope {scope}. Declared: "
                 + "{declared}.",
             "use a declared one");
 
-        // The three of the isolation set. Each pattern says what was wrong AND
-        // what to do instead, and each names the value its remedy turns on:
-        // the kind for the one about the offering, the scope for the two about
-        // writing. A pattern that named neither would read as finished and
-        // leave the caller with nothing to act on.
         put(declared, RefusalCode.SCOPE_KIND_UNSUPPORTED,
-            "{scope} is a {kind} scope, and this service does not carry exchanges in "
-                + "one. Name a project or a global scope instead.",
+            "{scope} is a {kind} scope, and this service does not carry tasks in one. Name a "
+                + "project or a global scope instead.",
             "name a project or a global scope");
 
         put(declared, RefusalCode.SCOPE_READ_ONLY,
@@ -211,21 +191,20 @@ public final class ReasonCatalogue {
             "wait for the lock to be lifted, or read instead");
 
         put(declared, RefusalCode.IDEMPOTENCY_KEY_REUSED,
-            "The idempotency key {key} was used for a different {call} in scope {scope} "
-                + "within the last 24 hours.",
+            "The idempotency key {key} was spent on a different call, or with different "
+                + "arguments, in scope {scope} within the last 24 hours.",
             "choose a new key");
 
         put(declared, RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
-            "{call} cannot be made on {address}: it applies to {applies}. On {address} you "
-                + "can: {calls}.",
-            READ_THE_NEXT_LIST);
+            "{call} cannot be made on {address}: it applies to {applies}.",
+            "address the call where it applies");
 
         put(declared, RefusalCode.UNEXPECTED_FAILURE,
             "{call} on {address} failed unexpectedly. This is a defect, not a rule. "
                 + "Nothing was changed. Report reference {reference}.",
             "report the reference");
 
-        return Map.copyOf(declared);
+        return java.util.Collections.unmodifiableMap(declared);
     }
 
     private static void put(Map<RefusalCode, Reason> into, RefusalCode code, String pattern,
@@ -243,7 +222,7 @@ public final class ReasonCatalogue {
         return DECLARED;
     }
 
-    /** Every declared reason, in the order of section 4.4. */
+    /** Every declared reason, in the order of the catalogue. */
     public static List<Reason> declared() {
         return List.copyOf(DECLARED.values());
     }
@@ -261,45 +240,27 @@ public final class ReasonCatalogue {
     }
 
     /**
-     * The message for a refusal, with its step names and its values filled in.
+     * The message for a refusal, with its values filled in.
      *
-     * <p>Two fillings in one pass, and they are not the same kind of thing.
-     * The <em>step</em> names come from the surface the caller called through,
-     * per section 4.2, and no throw site supplies them; the <em>values</em>
-     * come from the throw site, which is the only place that knows them.
+     * <p>The values come from the place that raises the refusal, which is the
+     * only place that knows them; the shape comes from here, so one refusal is
+     * worded one way wherever it is raised.
      *
      * <p>An unfilled placeholder throws. A caller reading a message with a
      * brace left in it learns nothing and cannot tell the gap from the
      * service's ordinary prose — and the throw lands as {@code
      * UNEXPECTED_FAILURE}, which is the honest name for it.
      */
-    public static String message(RefusalCode code, Surface surface,
-                                 Map<String, String> values) {
-        String rendered = fill(inVocabularyOf(of(code).pattern(), surface), values);
+    public static String message(RefusalCode code, Map<String, String> values) {
+        String rendered = fill(of(code).pattern(), values);
         requireFilled(code, rendered);
         return rendered;
     }
 
     /** The terminal-state variant, filled the same way. */
-    public static String terminalStateMessage(Surface surface,
-                                              Map<String, String> values) {
-        String rendered = fill(inVocabularyOf(TERMINAL_STATE_PATTERN, surface), values);
+    public static String terminalStateMessage(Map<String, String> values) {
+        String rendered = fill(TERMINAL_STATE_PATTERN, values);
         requireFilled(RefusalCode.STATE_DOES_NOT_ALLOW, rendered);
-        return rendered;
-    }
-
-    /**
-     * One pattern or remedy with its step names taken from a surface.
-     *
-     * <p>Public because the declaration publishes the patterns of the
-     * assistant surface, and publishing them with a step placeholder still in
-     * them would publish a shape no caller can read.
-     */
-    public static String inVocabularyOf(String pattern, Surface surface) {
-        String rendered = pattern;
-        for (SurfaceStep step : SurfaceStep.values()) {
-            rendered = rendered.replace("{" + step.placeholder() + "}", step.on(surface));
-        }
         return rendered;
     }
 
@@ -328,13 +289,6 @@ public final class ReasonCatalogue {
      * differently: a code with no entry is a refusal that cannot be worded and
      * would escape as an unexpected failure the first time it is raised; an
      * entry with no code is a published promise that nothing can keep.
-     */
-    public static void requireComplete() {
-        requireComplete(DECLARED);
-    }
-
-    /**
-     * The same check, against a catalogue handed in.
      *
      * <p>Public so that A8's red probe is a probe rather than a description.
      * The rule "the service refuses to start with an undeclared reason" can

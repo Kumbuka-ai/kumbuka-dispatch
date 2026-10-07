@@ -1,88 +1,80 @@
-# The verb surface of the dispatch scheme.
+# The REST surface of the dispatch service.
 #
-# THIS FILE IS THE EXPECTATION. It is transcribed from the dispatch's own
-# table and from the two ratified concept documents, and it is deliberately
-# NOT derived from the built code: a probe that reads its expectation out of
-# the thing it is probing checks that two copies agree, never that either is
-# right. Both expositions are probed against this one file and neither is the
-# source for the other.
+# THIS FILE IS THE EXPECTATION. It is written by hand from TAR-0004 section 3
+# (the twenty-five calls, on MCP and REST under the same names) and from the
+# concept document's section 3 (what each call takes), in the path form of the
+# adapter this surface replaced. It is deliberately NOT derived from the built
+# code: a probe that reads its expectation out of the thing it probes checks
+# that two copies agree, never that either is right.
 #
 # Columns, tab-separated:
-#   class     carried | uncarried | refusal | binding | extension
-#   verb      the platform verb name, or '-' where the row names no verb
+#   class     call | binding | extension
+#   verb      the call's name on REST (the assistant surface prefixes
+#             `dispatch_`), or '-' where the row names no call
 #   method    the HTTP method
 #   path      the form, exactly as it must appear
-#   depth     item | collection | sub-collection | none
-#   repeat    the declared repetition behaviour
+#   depth     item | collection | none
+#   repeat    what makes a repeat safe: idempotency-key, conflict-token,
+#             receipt, none (a read), or '-'
 #
 # ---------------------------------------------------------------------------
-# THE OUTWARD FORMS -- carried, uncarried, refusal
+# THE CALLS -- one route each, and no route without one
 # ---------------------------------------------------------------------------
-# What a caller writes. These are probed END TO END against a running service
-# and a running database: each is called and must be answered by the surface
-# rather than by the framework's own not-found. That is the coverage half.
-#
-# `carried` rows are the fifteen verbs of the dispatch. `uncarried` rows are
-# the two verbs the scheme does not carry, each of which must answer a typed
-# category error naming the reason -- never a 404, never an unimplemented
-# path, never a silent absence. The `refusal` row is a writing verb on a
-# truncated address: 405 with `Allow`.
+# Sixteen transitions and nine calls that are not transitions. A call that is
+# not the plain read, write or delete of what its path names is a custom
+# method in colon notation; the colon is forced, because the id part may grow
+# segments and a trailing verb segment could not be told from one.
 
 class	verb	method	path	depth	repeat
-carried	create	POST	/api/{scope}/{selector}	collection	idempotency-key
-carried	create	POST	/api/{scope}/{selector}/{id}/children	sub-collection	idempotency-key
-carried	read	GET	/api/{scope}/{selector}/{id}	item	none
-carried	update	PATCH	/api/{scope}/{selector}/{id}	item	conflict-token
-carried	append	POST	/api/{scope}/{selector}/{id}/addenda	sub-collection	idempotency-key
-carried	send	POST	/api/{scope}/{selector}/{id}:send	item	transition-guard
-carried	accept	POST	/api/{scope}/{selector}/{id}:accept	item	transition-guard
-carried	claim	POST	/api/{scope}/{selector}/{id}:claim	item	transition-guard
-carried	release	POST	/api/{scope}/{selector}/{id}:release	item	transition-guard
-carried	abandon	POST	/api/{scope}/{selector}/{id}:abandon	item	transition-guard
-carried	block	POST	/api/{scope}/{selector}/{id}:block	item	transition-guard
-carried	resume	POST	/api/{scope}/{selector}/{id}:resume	item	transition-guard
-carried	close	POST	/api/{scope}/{selector}/{id}:close	item	transition-guard
-carried	consume	POST	/api/{scope}/{selector}/{id}:consume	item	transition-guard
-carried	query	GET	/api/{scope}/{selector}	collection	none
-carried	claim_next	POST	/api/{scope}/{selector}:claim_next	collection	exactly-one
-uncarried	withdraw	POST	/api/{scope}/{selector}/{id}:withdraw	item	none
-uncarried	validate	POST	/api/{scope}/{selector}/{id}:validate	item	none
-refusal	-	POST	/api/{scope}/{selector}:{verb}	collection	none
+call	send	POST	/api/{scope}/{selector}/{id}:send	item	conflict-token
+call	claim	POST	/api/{scope}/{selector}/{id}:claim	item	idempotency-key
+call	claim_next	POST	/api/{scope}/{selector}:claim_next	collection	idempotency-key
+call	release	POST	/api/{scope}/{selector}/{id}:release	item	receipt
+call	defer	POST	/api/{scope}/{selector}/{id}:defer	item	receipt
+call	renew	POST	/api/{scope}/{selector}/{id}:renew	item	receipt
+call	ask	POST	/api/{scope}/{selector}/{id}:ask	item	receipt
+call	answer	POST	/api/{scope}/{selector}/{id}:answer	item	conflict-token
+call	hold	POST	/api/{scope}/{selector}/{id}:hold	item	receipt
+call	resume	POST	/api/{scope}/{selector}/{id}:resume	item	receipt
+call	deliver	POST	/api/{scope}/{selector}/{id}:deliver	item	receipt
+call	rework	POST	/api/{scope}/{selector}/{id}:rework	item	conflict-token
+call	accept	POST	/api/{scope}/{selector}/{id}:accept	item	conflict-token
+call	reject	POST	/api/{scope}/{selector}/{id}:reject	item	none
+call	fail	POST	/api/{scope}/{selector}/{id}:fail	item	receipt
+call	withdraw	POST	/api/{scope}/{selector}/{id}:withdraw	item	conflict-token
+call	create	POST	/api/{scope}/{selector}	collection	idempotency-key
+call	update	PATCH	/api/{scope}/{selector}/{id}	item	conflict-token
+call	delete	DELETE	/api/{scope}/{selector}/{id}	item	conflict-token
+call	read	GET	/api/{scope}/{selector}/{id}	item	none
+call	read_text	GET	/api/{scope}/{selector}/{id}:read_text	item	none
+call	query	GET	/api/{scope}/{selector}	collection	none
+call	annotate	POST	/api/{scope}/{selector}/{id}:annotate	item	idempotency-key
+call	relate	POST	/api/{scope}/{selector}/{id}:relate	item	conflict-token
+call	unrelate	POST	/api/{scope}/{selector}/{id}:unrelate	item	conflict-token
 
 # ---------------------------------------------------------------------------
 # THE BINDINGS
 # ---------------------------------------------------------------------------
-# What the framework may have registered. These are probed STATICALLY against
-# the annotations, and that is the closure half: a route outside this list is
-# a violation, whatever it does.
-#
-# There are fewer bindings than outward forms, and the reason is measured
-# rather than chosen. Quarkus REST 3.33.2, measured 2026-09-01: a path
-# template takes the whole segment it appears in, and a narrowing regex on it
-# is ignored -- so `@Path("{id}:send")` registers as `{id}` and the eleven
-# colon verbs would collapse into one route. The colon is therefore split off
-# in the surface, from a table the probe reads separately. The outward form is
-# unchanged; only where the split happens moved.
+# What the framework may have registered. Probed STATICALLY against the
+# annotations, and that is the closure half: a route outside this list is a
+# violation, whatever it does. There are fewer bindings than calls, and the
+# reason is measured rather than chosen: a path template takes the whole
+# segment it appears in (Quarkus REST 3.33.2, 2026-09-01), so the colon is
+# split off in the adapter from a table the probe reads separately.
 
 binding	-	POST	/api/{scope}/{selector}	collection	-
 binding	-	GET	/api/{scope}/{selector}	collection	-
-binding	-	POST	/api/{scope}/{selector}/{id}	item	-
 binding	-	GET	/api/{scope}/{selector}/{id}	item	-
 binding	-	PATCH	/api/{scope}/{selector}/{id}	item	-
-binding	-	POST	/api/{scope}/{selector}/{id}/children	sub-collection	-
-binding	-	POST	/api/{scope}/{selector}/{id}/addenda	sub-collection	-
+binding	-	DELETE	/api/{scope}/{selector}/{id}	item	-
+binding	-	POST	/api/{scope}/{selector}/{id}	item	-
 
 # ---------------------------------------------------------------------------
 # THE DECLARED EXTENSIONS
 # ---------------------------------------------------------------------------
 # REST is extensible while an extension adds no effect: reads, projections,
-# protocol furniture. State changes come from a verb, without exception. Every
-# extension is DECLARED, which is what lets the probe check closure at all.
+# protocol furniture. State changes come from a call, without exception.
 
 extension	-	GET	/api/whoami	none	-
 extension	-	POST	/mcp	none	-
-# The service's own declaration: what it offers, what each call takes, and
-# every refusal it can raise with its message pattern. A read, adding no
-# effect, and declared here because a route nobody wrote into this file is a
-# violation however harmless it looks.
 extension	-	GET	/mcp/declaration	none	-

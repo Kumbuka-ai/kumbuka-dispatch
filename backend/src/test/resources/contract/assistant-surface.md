@@ -1,356 +1,298 @@
 ---
-type: concept
-title: "The dispatch service's assistant surface: process verbs, answers that name the next step, and refusals that explain themselves"
-created: 2026-09-18
-domain: platform
+type: contract-copy
+title: "The dispatch service's verb surface: twenty-five calls, two sizes of answer, refusals that explain themselves"
+written: 2026-10-06
+sources:
+  - "platform-specs aa42521, docs/architecture/targets/TAR-0004-the-dispatch-service-carries-commissioned-work-from-issue-to-acceptance.md, sections 3, 5, 6, 7"
+  - "platform-specs aa42521, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3"
 ---
 
-# The dispatch service's assistant surface
+# The dispatch service's verb surface
 
-This document is the verb contract of the dispatch service for its assistant-facing surface (MCP).
-It is written against the state machine as measured on 2026-09-18 and serves REQ-0150 to REQ-0154;
-its answer and refusal shapes follow DEC-0040 and DEC-0042, and its rules DEC-0043. The tool
-descriptions in section 5, the message patterns in section 4.4 and the table in section 6 are
-normative text: the conformance probes of the service and of the router take their expected values
-from this document, never from the code.
-
-It builds on the draft standard for the verb surface (`concept-verb-surface-standard.md`), which
-inventoried the divergences between the services, and departs from it in one respect: the assistant
-surface of a service carries process verbs of its own rather than the generic verbs. The generic
-surface (REST) keeps its generic verbs; its answers and refusals follow sections 3 and 4 all the same,
-in its own vocabulary.
+This document is the expectation the service's conformance tests read: the calls, what each one
+says about itself, and the refusals. It is written by hand from TAR-0004 and from the concept
+document named above, and never generated from the service's declaration. Where those two
+documents fix a text, it stands here word for word and is marked so; where they leave the wording
+to the service, the text below was written with this surface and is the service's
+proposal until the concept apparatus ratifies it.
 
 ## 1. What the service holds
 
-An **exchange** is one commission and its answer, addressed as
-`dispatch://<scope>/<selector>/<number>.<sub>`.
+A **task** is one commission and its answer, addressed as
+`dispatch://<scope>/<selector>/<number>.<sub>`; its technical address is `dispatch://<uuid>`. Tasks
+are grouped in **brackets**: a root, sub-position `0`, and the children `1`, `2` and so on. A root
+that is closed has only closed children.
 
-A **bracket** is a group of exchanges sharing a number. Its root is sub-position `0`; its children
-are `1`, `2`, and so on. A bracket is finished when its root is terminal, and its root can only
-become terminal when every child is.
+A task is in one of six states: `draft`, `open`, `active`, `on_hold` (with `question`,
+`dependency` or `external`), `delivered`, `closed` (with `accepted`, `rejected`, `failed` or
+`withdrawn`).
 
-An **addendum** is a correction attached to an exchange that is frozen and not yet finished,
-addressed with a letter after the sub-position (`.3a`). It is not a child and closes with the
-exchange it corrects.
+## 2. One form for every call
 
-## 2. States and roles
+What names the target stands at the top level: the address, or scope and selector where no task
+exists yet. The transport artefacts stand at the top level too: conflict token, receipt, duration,
+idempotency key and the confirmation for a bracket root. Everything a call writes stands under
+`fields`. Both levels are closed: an argument a call does not declare is refused by its name, and
+nothing is written.
 
-| State | Meaning | Terminal |
-|---|---|---|
-| `open` | commissioned and frozen, waiting for someone to take it up | no |
-| `active` | taken up; a holder works on it | no |
-| `needs_input` | the holder waits for the commissioner, with either a question or a delivered answer | no |
-| `returned` | the answer is frozen and awaits closure (reached only through the generic surface) | no |
-| `closed` | finished | yes |
-| `consumed` | finished, its answer carried forward into a named object | yes |
-| `rejected` | declined before it was taken up | yes |
-| `failed` | abandoned after it was taken up | yes |
+On REST the same calls carry the same names without the `dispatch_` prefix; the path carries the
+scope and selector or the address, the `If-Match` header the conflict token, and the body the rest.
 
-`draft` exists only inside the transaction of `dispatch_commission` and is never visible on this
-surface.
+## 3. The calls
 
-A caller takes one of four parts in an exchange:
+### 3.1 Transitions
 
-- the **commissioner** gives and accepts work and must be a console identity;
-- the **holder** has taken the exchange up and proves it with the receipt its take returned;
-- a **candidate** could take the exchange up but has not: an executor, on an `open` exchange;
-- a **bystander** is anyone else who may see the exchange.
+**`dispatch_send`**
+> Sends your draft: the task is frozen and becomes open, waiting for an executor to take it up.
+> Moves the task from draft to open (not final). Call as the commissioner, with the conflict token
+> of your last read.
+>
+> After this the commission's text cannot change; add to it with dispatch_annotate. Withdraw it
+> with dispatch_withdraw.
 
-One identity may act in several parts on different exchanges, never as commissioner and holder of
-the same one.
+**`dispatch_claim`** (concept section 3.5, word for word)
+> Takes up one open task and makes you its holder. Moves the task from open to active (not final).
+> Call as an executor, naming the task by its address.
+>
+> Returns a receipt and the end of your hold. Keep the receipt: every later call on this task
+> needs it.
+>
+> The answer does NOT contain the task's text. Read it next with dispatch_read_text, part
+> "dispatch", before you start working.
+>
+> Your hold lasts 30 minutes unless you state a duration; extend it with dispatch_renew.
 
-## 3. The answer
+**`dispatch_claim_next`** (concept section 3.5, word for word)
+> Takes up the next open task addressed to you, without naming one; use dispatch_claim when you
+> know the address. Moves the task from open to active (not final). Call as an executor with
+> scope, selector and apparatus.
+>
+> Returns the address, a receipt and the end of your hold. Keep the receipt: every later call on
+> this task needs it.
+>
+> The answer does NOT contain the task's text. Read it next with dispatch_read_text, part
+> "dispatch", before you start working.
+>
+> If nothing matches, nothing is taken.
 
-Every answer about one exchange has this shape (DEC-0040):
+**`dispatch_release`**
+> Gives a task you hold back: it is open again for any executor. Moves the task from active to
+> open (not final). Call as its holder, with your receipt. Use it when you lose control over the
+> run.
+>
+> To give it back until a later instant use dispatch_defer; if the work cannot be done,
+> dispatch_fail.
 
-```
-{
-  "address": "dispatch://kumbuka/satellite/26.1",
-  "fields":  { ...the exchange as the caller may see it... },
-  "conflict_token": "...",
-  "next": [
-    { "call": "dispatch_accept_return",     "does": "Accepts the delivered answer and finishes the exchange." },
-    { "call": "dispatch_reply_to_executor", "does": "Sends it back with a message; the holder continues." }
-  ],
-  "waiting_for": null
-}
-```
+**`dispatch_defer`**
+> Gives a task you hold back until an instant you name; nobody can take it up before then. Moves
+> the task from active to open (not final). Call as its holder, with your receipt. Use it for a
+> technical abort that a later attempt may overcome.
+>
+> dispatch_read and dispatch_query show the instant.
 
-`next` lists exactly the calls this caller can make successfully from the current state, by the
-object's state, the caller's part and the preconditions the exchange carries (section 6): every
-listed call succeeds for this caller, and every call that would succeed is listed. `waiting_for`
-is present only where `next` is empty and the exchange is not finished, and names who or what it
-waits for. A listing carries the same two members on every entry.
+**`dispatch_renew`**
+> Extends your hold on a task you are working on. The task stays active (not final). Call as its
+> holder, with your receipt.
+>
+> The answer carries the new end of your hold.
 
-**Every address is complete.** Every address anywhere in an answer or a refusal -- the top-level
-`address`, every entry of a listing, every reference inside `fields` (the bracket root of a child,
-the target of a curated answer), every address in a refusal's `message` and `data`, every address
-in `next` or `waiting_for` -- is the complete URI, exactly as every call takes it. Measured on
-2026-09-18: `create` and `claim` answered `satellite/26.2` and `satellite/26.4`, and a refusal
-listed a blocking child as `satellite/26.1 (draft)`.
+**`dispatch_ask`**
+> Pauses a task you hold and asks the commissioner a question, with answer options, free text
+> admitted, or both. Moves the task from active to on_hold (not final). Call as its holder, with
+> your receipt.
+>
+> You keep the task. The commissioner's dispatch_answer makes it active again with a fresh
+> 30-minute hold; read the answer with dispatch_read_text, part "thread".
 
-**No argument is accepted and discarded.** Every call refuses an argument it does not declare, by
-name, including an argument nested in `fields` (REQ-0113); and every argument a call declares has
-the effect its declaration states. Measured on 2026-09-18: `create` accepted `draft` inside its
-body, discarded it and answered with success.
+**`dispatch_answer`**
+> Answers the question the holder asked: name one of its options, or give text where free text is
+> admitted. Moves the task from on_hold to active (not final); the holder continues with a fresh
+> 30-minute hold. Call as the commissioner, with the conflict token of your last read.
+>
+> Read the question first with dispatch_read_text, part "thread".
 
-**An idempotency key means what it says.** A call that takes `idempotency_key` and is repeated by
-the same caller in the same scope with the same key, within 24 hours of the first, creates nothing
-and answers with the answer the first call produced, in the object's current state. The same key
-with different arguments is refused as `IDEMPOTENCY_KEY_REUSED`.
+**`dispatch_hold`**
+> Pauses a task you hold while it waits on a dependency or on something external. Moves the task
+> from active to on_hold (not final). Call as its holder, with your receipt. You keep the task;
+> the hold does not run out while it is paused.
+>
+> Continue with dispatch_resume.
 
-## 4. The refusal
+**`dispatch_resume`**
+> Continues a task you paused with dispatch_hold. Moves the task from on_hold to active (not
+> final). Call as its holder, with your receipt.
+>
+> A question you asked is continued by the commissioner's dispatch_answer, not by this call.
 
-### 4.1 Shape
+**`dispatch_deliver`**
+> Delivers your answer, its text and your metadata in one act. Moves the task from active to
+> delivered (not final). Call as its holder, with your receipt.
+>
+> You keep the task while the commissioner reviews it. It closes when accepted, or comes back to
+> you with a remark through dispatch_rework.
 
-```
-{
-  "reason": "STATE_DOES_NOT_ALLOW",
-  "message": "dispatch_accept_return is not possible on dispatch://kumbuka/sprint/183.1: the exchange is closed and finished. Nothing further can be done with it.",
-  "data": {
-    "attempted": "dispatch_accept_return",
-    "state": "closed",
-    "next": []
-  }
-}
-```
+**`dispatch_rework`**
+> Sends a delivered answer back to its holder with a remark saying what to change. Moves the task
+> from delivered to active (not final); the holder continues with a fresh 30-minute hold. Call as
+> the commissioner, with the conflict token of your last read.
+>
+> Read the answer first with dispatch_read_text, part "return".
 
-### 4.2 Rules for every message
+**`dispatch_accept`**
+> Accepts the delivered answer and closes the task. Moves the task from delivered to closed,
+> outcome accepted (final). Call as the commissioner, with the conflict token of your last read;
+> the identity that delivered cannot accept.
+>
+> Read the answer first with dispatch_read_text, part "return". On a bracket root with unfinished
+> children, repeat with the confirmation the refusal hands out.
 
-- It names the call the caller made, under the name the caller used on its surface. Kernel names
-  never appear.
-- Every other call it names -- in the message and in `data.next` -- is named in the vocabulary of
-  the surface the caller used. A pattern never names a call literally; it names a step, written
-  below as `<take>`, `<deliver>`, `<query>`, `<read>`, and the surface fills in its own call for
-  that step (`dispatch_take` on the assistant surface, the corresponding REST verb on the generic
-  surface).
-- It names the complete address and, where the caller may see it, the state.
-- It gives the specific reason in one sentence.
-- It names what the caller can do instead; `data.next` lists the same calls.
-- Lists of objects travel in `data`, never in a member of their own.
-- It is built from the pattern alone. A sentence produced by the kernel never reaches the caller,
-  in whole or in part.
+**`dispatch_reject`**
+> Declines a commission you were offered, with a remark saying why. Moves the task from open to
+> closed, outcome rejected (final). Call as an executor.
 
-### 4.3 The one deliberately indistinguishable refusal
+**`dispatch_fail`**
+> Closes a task you hold as failed, with a remark saying why. Moves the task from active or
+> on_hold to closed, outcome failed (final). Call as its holder, with your receipt. For a
+> technical abort use dispatch_defer; to hand the task back, dispatch_release.
+>
+> On a bracket root with unfinished children, repeat with the confirmation the refusal hands out.
 
-An object that does not exist, a scope the caller may not see and an address that cannot be routed
-receive the same refusal, with no `data` and therefore no list (DEC-0042). It names neither the call
-nor the address, so that it is byte-identical across the three causes; the caller knows both from its
-own request:
+**`dispatch_withdraw`**
+> Withdraws a commission that is no longer wanted. Moves the task from open, active, on_hold or
+> delivered to closed, outcome withdrawn (final). Call as the commissioner, with the conflict
+> token of your last read.
+>
+> On a bracket root with unfinished children the first call is refused and names them; repeat it
+> with the confirmation it hands out to withdraw them and the root together.
 
-> `NOT_FOUND`: Nothing is visible to you at the address you gave. The address or the scope may be
-> wrong, or you may lack access; for your protection and that of others these cases are not told
-> apart. Check the scope name and the number.
+### 3.2 Calls that are not transitions
 
-### 4.4 Refusals of this surface
+**`dispatch_create`**
+> Creates a task as a draft, for you to complete and send. Without parent it opens a new bracket
+> and the task is its root; with parent it adds a child to that bracket. The service allocates the
+> number. Call as a commissioner; you become the task's commissioner.
+>
+> Nobody is offered the draft until you send it with dispatch_send. Change it with
+> dispatch_update, or discard it with dispatch_delete.
 
-| Reason | Message pattern | What the caller can do |
-|---|---|---|
-| `NOT_FOUND` | 4.3 | check scope and address |
-| `STATE_DOES_NOT_ALLOW` | `<call> is not possible on <address>: it is <state>. From <state> you can: <calls>.` -- for a terminal state: `... it is <state> and finished. Nothing further can be done with it.` | the calls in `data.next` |
-| `ROLE_DOES_NOT_ALLOW` | `<call> can only be made by the <required part>. You take part in <address> as <your part>.` -- `<your part>` is the caller's actual part from section 2 | the calls in `data.next` |
-| `NOT_THE_HOLDER` | `<address> is held by someone else until <claim expiry>. Only the holder can <what the call does>.` -- `<claim expiry>` is the ISO-8601 instant at which the claim lapses | wait, or `<read>` |
-| `RECEIPT_MISSING` / `RECEIPT_WRONG` | `<call> needs the receipt you received from <take> for <address>.` / `... the receipt given is not the one issued for <address>.` | pass the receipt from the take |
-| `NO_ANSWER_DELIVERED` | `<address> has no delivered answer to accept. The holder delivers with <deliver>.` | wait for the executor |
-| `CHILDREN_NOT_FINISHED` | `<root> cannot be <closed / cancelled> while <n> exchange(s) of the bracket are unfinished: <address> (<state>), ...` with `data.offenders` as `[{ address, state, next }]`; each offender's `next` is computed for this caller on this surface | the calls in each offender's `next` |
-| `NOTHING_TO_TAKE` | `Nothing in dispatch://<scope>/<selector> can be taken up right now: every exchange is finished, held by someone, or waiting for its commissioner.` | `<query>` |
-| `CLAIM_DURATION_INVALID` | `The duration <value> is not a positive ISO-8601 duration such as PT2H.` | correct the duration |
-| `IDEMPOTENCY_KEY_REUSED` | `The idempotency key <key> was used for a different <call> in scope <scope> within the last 24 hours.` | choose a new key |
-| `CALL_NOT_AT_THIS_ADDRESS` | `<call> cannot be made on <address>: it applies to <what it applies to>. On <address> you can: <calls>.` | the calls in `data.next` |
-| `ARGUMENT_UNKNOWN` | `<call> has no argument named <name>. Its arguments are: <list>.` | correct the name |
-| `ARGUMENT_MISSING` | `<call> needs <name>: <what it is>.` | supply it |
-| `ARGUMENT_INVALID` | `<name> = <value> is not valid for <call>: <why>.` -- `<why>` is a sentence of the pattern's own, never a kernel sentence | correct the value |
-| `CONFLICT_TOKEN_MISSING` / `CONFLICT_TOKEN_STALE` | as DEC-0041 fixes them, with the message naming the call, the address and that the exchange was changed since it was read | read again and repeat |
-| `SELECTOR_UNKNOWN` | `<selector> is not a bracket kind declared in scope <scope>. Declared: <list>.` -- `<list>` is every selector declared in that scope | use a declared one |
-| `UNEXPECTED_FAILURE` | `<call> on <address> failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report reference <ref>.` -- `<ref>` is written to the service's log with the failure, on every path that raises it | report the reference |
+**`dispatch_update`**
+> Changes your draft: its title, apparatus, text or metadata; only what you give changes. Call as
+> the commissioner, with the conflict token of your last read. The task stays a draft.
+>
+> A sent task cannot be changed; add to its text with dispatch_annotate.
 
-A scope that cannot be resolved receives the `NOT_FOUND` refusal and is never distinguished from it.
-
-On the assistant surface the receipt and the conflict token are required arguments wherever a call
-takes them, so their absence is answered as `ARGUMENT_MISSING`; `RECEIPT_MISSING` and
-`CONFLICT_TOKEN_MISSING` are raised on the generic surface only, where both are optional in form.
-
-A reason not in this table cannot be returned: the service refuses to start with an undeclared reason
-in its catalogue.
-
-## 5. The process verbs
-
-Each entry gives the tool name, its description (normative), its arguments, the part that may call
-it, the effect on the kernel and the resulting state. Arguments follow DEC-0040: those that choose
-the target and the transport artefacts are top-level; everything the call writes is under `fields`.
-
-### 5.1 Commissioner
-
-**`dispatch_commission`**
-> Give a piece of work to someone. Creates the exchange and freezes it in one step: once
-> commissioned, the text cannot be changed, only corrected with dispatch_add_correction. Without
-> `parent` it opens a new bracket and the exchange becomes its root; with `parent` it adds a child
-> to that bracket. The service allocates the number. Afterwards the exchange is open and waits for
-> an executor to take it up with dispatch_take.
-
-Top-level: `scope`, `selector`, optional `parent` (complete address of a bracket root), optional
-`idempotency_key`. Under `fields`: `title`, `apparatus`, `text`, optional `date` (default today),
-optional `metadata`. Part: commissioner. Kernel: create, write the dispatch body, send, in one
-transaction; a failure leaves nothing behind. Result: `open`.
-
-**`dispatch_add_correction`**
-> Attach a correction to a commissioned exchange whose text is frozen. The correction is shown with
-> the exchange, cannot be removed, and closes together with it. Not possible once the exchange is
-> finished.
-
-Top-level: `address`, optional `idempotency_key`. Under `fields`: `title`, `text`. Part:
-commissioner. From: any state that is not terminal. Kernel: append. Result: the exchange, unchanged
-in state.
-
-**`dispatch_accept_return`**
-> Accept the answer the executor delivered and finish the exchange. The answer is frozen and the
-> exchange becomes closed. Use dispatch_curate_return instead if the answer is to be carried forward
-> into another object, and dispatch_reply_to_executor if it needs rework.
-
-Top-level: `address`. Part: commissioner. From: `needs_input` with a delivered answer, or
-`returned`; not on a bracket root. Kernel: ratify and close in one transaction. Result: `closed`.
-
-**`dispatch_curate_return`**
-> Accept the delivered answer and finish the exchange by carrying it forward into another exchange
-> you can see, for example the record of the bracket it belongs to. The target is stored with the
-> exchange.
-
-Top-level: `address`. Under `fields`: `into`, the complete address of the target: an exchange of
-this service that the caller may see, in any scope and bracket kind, other than the exchange itself.
-Part and from-states as `dispatch_accept_return`. Kernel: ratify and consume in one transaction;
-`into` is resolved and stored as the target's durable identity (ADR-0014). A target the caller
-cannot see is answered `NOT_FOUND`; the exchange itself as its own target is `ARGUMENT_INVALID` on
-`into`. Result: `consumed`.
-
-**`dispatch_reply_to_executor`**
-> Answer the executor: either a question it asked, or a delivered answer that needs rework. The
-> message is stored with the exchange and the holder continues working.
-
-Top-level: `address`, `conflict_token`. Under `fields`: `message`. Part: commissioner. From:
-`needs_input`. Kernel: store the message, resume. Result: `active`.
-
-**`dispatch_cancel`**
-> Withdraw a commission that is no longer wanted. The exchange is closed without an accepted answer.
-> On a bracket root this ends the bracket without a record, and is refused while any exchange of
-> the bracket is unfinished.
-
-Top-level: `address`, `conflict_token`. Under `fields`: `reason`. Part: commissioner. From: `open`,
-`active`, `needs_input`; on a bracket root only when every child is terminal. Kernel: store the
-reason, close. Result: `closed`.
-
-**`dispatch_close_bracket`**
-> Finish a bracket: accept the record delivered on its root and close it. Refused while any exchange
-> of the bracket is unfinished; the refusal names each one with its complete address and the call
-> that would finish it.
-
-Top-level: `address` of the root. Part: commissioner. From: root in `needs_input` with a delivered
-record, or `returned`. Kernel: check children terminal, ratify, close, in one transaction. Result:
-`closed`.
-
-### 5.2 Executor
-
-**`dispatch_take`**
-> Take up an open exchange to work on it. Returns a receipt that later calls on this exchange need;
-> keep it. The claim lasts for `duration`.
-
-Top-level: `address`, `duration`. Part: candidate. Kernel: claim. Result: `active`, plus `receipt`.
-
-**`dispatch_take_next`**
-> Take up the next open exchange of a bracket kind, in address order. Returns the exchange and the
-> receipt.
-
-Top-level: `scope`, `selector`, `duration`. Part: executor. Kernel: claim_next. Result: `active`,
-plus `receipt`.
-
-**`dispatch_deliver_return`**
-> Deliver your answer to the commissioner. The answer is stored and the exchange waits for the
-> commissioner to accept it, curate it or send it back. You keep the exchange meanwhile.
-
-Top-level: `address`, `receipt`. Under `fields`: `text`. Part: holder. From: `active`. Kernel: write
-the return draft and block, in one transaction. Result: `needs_input`.
-
-**`dispatch_ask_commissioner`**
-> Stop and ask the commissioner something you cannot decide. The question is stored with the
-> exchange; you keep it until the commissioner replies.
-
-Top-level: `address`, `receipt`. Under `fields`: `question`. Part: holder. From: `active`. Kernel:
-store the question, block. Result: `needs_input`.
-
-**`dispatch_decline`**
-> Decline the work. On an open exchange, any executor who could take it up may decline it, and the
-> commission is refused. On an exchange you hold, it records that you could not complete it, and
-> needs your receipt. The reason is stored. Final.
-
-Top-level: `address`, and `receipt` when the caller is the holder. Under `fields`: `reason`. Part:
-candidate on `open` (kernel reject, result `rejected`); holder on `active` (kernel fail, result
-`failed`).
-
-### 5.3 Every part
+**`dispatch_delete`**
+> Deletes your draft outright; it leaves no trace. Call as the commissioner, with the conflict
+> token of your last read. Only a draft can be deleted; a sent task is withdrawn with
+> dispatch_withdraw.
+>
+> The answer carries the address the draft had, and nothing else.
 
 **`dispatch_read`**
-> Read one exchange with what you may see of it, the calls open to you from its state, and who it is
-> waiting for.
+> Reads the head of one task: its state and attributes, whether you, someone else or nobody holds
+> it, its metadata, which texts it has, and the calls open to you with what each does, or what the
+> task waits for.
+>
+> The answer does NOT contain the task's text; read that with dispatch_read_text.
 
-Top-level: `address`.
+**`dispatch_read_text`**
+> Reads one part of a task's text: "dispatch" (the commission), "return" (the valid answer),
+> "thread" (questions, answers, remarks and earlier answers, in order) or "addenda". One part per
+> call.
+>
+> The commissioner reads every part in every state; an executor reads only a task it holds. For
+> "dispatch" and "return" the answer says how many addenda the text has.
 
 **`dispatch_query`**
-> List the exchanges of one bracket kind in a scope, narrowed by filters. Each entry carries its
-> complete address, its state and the calls open to you.
+> Lists the tasks of one bracket kind in a scope, without their text: each with its state,
+> attributes and the calls open to you. Narrow by state, apparatus, bracket or address;
+> comma-separated values are alternatives, and an undeclared filter is refused.
+>
+> The list follows the address order, stops at the page bound and says whether it was cut.
 
-Top-level: `scope`, `selector`, optional filters on the declared fields.
+**`dispatch_annotate`**
+> Adds an addendum to a text of a sent task: a supplement with its own time and author that cannot
+> be removed. Name the part it supplements. Call as the identity that wrote that text; the task's
+> state does not change.
+>
+> Read addenda with dispatch_read_text, part "addenda".
 
-## 6. How `next` is computed
+**`dispatch_relate`**
+> Records the object a closed task was curated into: another task you can see, in any scope and
+> bracket kind, never the task itself. Call as the commissioner, with the conflict token of your
+> last read. The task stays closed.
+>
+> Remove the relation with dispatch_unrelate.
 
-For a caller C and an exchange E in state S, from the same table that enforces the transitions
-(DEC-0040). Where the column `waiting_for` is empty, `next` is not empty and `waiting_for` is absent.
+**`dispatch_unrelate`**
+> Removes the record of the object a closed task was curated into. Call as the commissioner, with
+> the conflict token of your last read. The task stays closed.
 
-| S | C is | `next` | `waiting_for` |
-|---|---|---|---|
-| `open` | commissioner | `dispatch_add_correction`, `dispatch_cancel` (root: only if every child is terminal) | |
-| `open` | candidate | `dispatch_take`, `dispatch_decline` | |
-| `open` | bystander | (none) | an executor to take it up |
-| `active` | holder | `dispatch_deliver_return`, `dispatch_ask_commissioner`, `dispatch_decline` | |
-| `active` | commissioner | `dispatch_add_correction`, `dispatch_cancel` (root: only if every child is terminal) | |
-| `active` | candidate or bystander | (none) | the holder |
-| `needs_input`, answer delivered | commissioner | `dispatch_accept_return`, `dispatch_curate_return`, `dispatch_reply_to_executor`, `dispatch_add_correction`, `dispatch_cancel` -- on a root: `dispatch_close_bracket` (only if every child is terminal) instead of the first two, and `dispatch_cancel` only if every child is terminal | |
-| `needs_input`, question asked | commissioner | `dispatch_reply_to_executor`, `dispatch_add_correction`, `dispatch_cancel` (root: only if every child is terminal) | |
-| `needs_input` | holder, candidate or bystander | (none) | the commissioner |
-| `returned` | commissioner | `dispatch_accept_return`, `dispatch_curate_return`, `dispatch_add_correction` -- on a root: `dispatch_close_bracket` (only if every child is terminal) instead of the first two | |
-| `returned` | anyone else | (none) | the commissioner |
-| any terminal | anyone | (none) | nobody: the exchange is finished |
+### 3.3 The argument `apparatus` of `dispatch_claim_next` (concept section 3.5, word for word)
 
-`dispatch_read` is always available on a visible exchange and is not listed. On the generic surface
-the same table applies with that surface's verbs.
+> Which apparatus you draw for. Every task is addressed to an apparatus: the kind of executor it is
+> meant for, such as "code" or "review". Give one or more patterns, matched as alternatives. "*"
+> stands for any run of characters, so "agent-*" matches "agent-backend". Case-sensitive. A
+> pattern of only "*" is refused. dispatch_query lists open tasks with their apparatus.
 
-## 7. Changes to the service this contract requires
+## 4. Answers
 
-1. The twelve process verbs and the two reading verbs of section 5 on the MCP adapter, replacing the
-   fifteen generic tools there.
-2. Atomic compound transitions: commission (create, write, send), accept (ratify, close), curate
-   (ratify, consume), close-bracket (check, ratify, close), deliver (write, block).
-3. Stored values: `into` for a consumed exchange, resolved to the target's durable identity; the
-   commissioner's message, the executor's question, and the reason of a cancellation or a decline.
-4. `next` and `waiting_for` in every answer and on every listing entry, and `next` inside `data` of
-   every refusal that carries `data`, computed from the transition table, the caller's part and the
-   exchange's preconditions.
-5. Refusal messages under section 4: surface names instead of kernel names, the way out instead of
-   the way in, lists in `data`, every call named in the caller's surface vocabulary.
-6. Every address in every answer and refusal in complete form.
-7. Closed input schemas on the service and on the router: no argument accepted and discarded, and no
-   declared argument without its effect. The router's schema for `create` currently declares
-   `additionalProperties: true` on `body`, which is the path by which `draft` reached the service and
-   was dropped there.
-8. Idempotency keys remembered per caller and scope for 24 hours.
-9. A catalogue of declared reasons checked at start-up.
-10. The generic REST surface returns the same answers and refusals, in its own vocabulary.
+A writing call answers lean: `address`, `fields` with the state and its attributes (`hold_reason`,
+`outcome`, `not_before`) and, for the holder, `lease_expires_at`; `conflict_token`; `next`.
+`dispatch_claim` and `dispatch_claim_next` add `receipt`. `dispatch_read` and `dispatch_query`
+answer the full head: in addition `title`, `apparatus`, `identity` (the technical address),
+`holder` (`self`, `other` or `nobody`), `lapse_count`, the pending question's options, both
+metadata, `curated_in`, and `texts`, the texts that exist by type and suffix, never their content.
+`dispatch_query` answers `{ "tasks": [...], "cut": ... }`. `dispatch_delete` answers the address
+and nothing else. No answer names the identity of an actor.
 
-## 8. Open points
+Text comes only from `dispatch_read_text`, one part per call. No other call, no listing and no
+refusal carries a text of a task.
 
-- `needs_input` carries two meanings, a question and a delivered answer, told apart by whether an
-  answer is present. A dedicated state for a delivered answer would be cleaner and changes the
-  kernel; this contract works without it.
-- The executor's text-bearing verbs rely on the claim and the receipt for exclusivity and take no
-  conflict token; the commissioner's verbs on an existing exchange do. The departure on the executor
-  side is deliberate.
-- Every console identity may act as commissioner of any exchange it may see. Narrowing the part to
-  the identity that commissioned the exchange is a change of rights and is not decided here.
+`next` lists the transitions open to the caller, each with one sentence. Right after a claim, its
+first entry for the holder is (concept section 3.5, word for word):
+
+```
+{ "call": "dispatch_read_text",
+  "does": "Reads the commission. Do this first: the claim did not return it." }
+```
+
+and for the commissioner of a delivered task, before `dispatch_accept`, it is `dispatch_read_text`
+as well. Where nothing is open to the caller, `waiting_for` says what the task waits for.
+
+## 5. Refusals
+
+```
+{ "reason": "...", "message": "...", "data": { "attempted": "...", "state": "...", "next": [...] } }
+```
+
+Every refusal names the call as the caller made it, the state, the reason and the way out. A
+refusal decided before the task is read -- an argument, a scope, a bracket kind -- names no state,
+so a caller learns no state of a task it may not see. `NOT_FOUND` carries no `data` and the same
+bytes whatever its cause.
+
+| Reason | Message pattern | Remedy |
+|---|---|---|
+| `NOT_FOUND` | `nothing is addressed here. Check the address, and that you are a member of the scope it names.` | check scope and address |
+| `STATE_DOES_NOT_ALLOW` | `{call} is not possible on {address}: it is {state}, and {call} applies {applies}. You can: {calls}.` | the calls in data.next |
+| `ROLE_DOES_NOT_ALLOW` | `{call} can only be made by {role}. You take part in {address} as {participation}.` | the calls in data.next |
+| `NOT_THE_HOLDER` | `{call} is the holder's call, and you do not hold {address}: {why}.` | take the task up first, or wait for its holder |
+| `RECEIPT_WRONG` | `{call} needs the receipt your claim handed out for {address}: the receipt given is not the one it holds.` | pass the receipt from the latest claim |
+| `CHILDREN_NOT_FINISHED` | `{call} would close the bracket root {address} while {count} task(s) of the bracket are unfinished: {offenders}. {confirm}` | repeat the call with data.confirmation, or finish the offenders first |
+| `DEFERRAL_PENDING` | `{call} is not possible on {address} before {not_before}: the task was deferred until then.` | take it up after that instant, or another task now |
+| `NOTHING_TO_TAKE` | `Nothing in {collection} that your patterns match can be taken up right now: every such task is a draft, held, paused, delivered, closed or deferred.` | list the tasks with the query call |
+| `CLAIM_DURATION_INVALID` | `The duration {value} is not a positive ISO-8601 duration such as PT2H.` | correct the duration |
+| `ARGUMENT_UNKNOWN` | `{subject} has no {kind} named {name}. It has: {known}.` | correct the name |
+| `ARGUMENT_MISSING` | `{call} needs {name}: {what}.` | supply it |
+| `ARGUMENT_INVALID` | `{name} = {value} is not valid for {call}: {why}.` | correct the value |
+| `CONFLICT_TOKEN_STALE` | `{call} on {address} carries a conflict token that is not the one it holds: it was changed since you read it. Its current token is {current}.` | read the task again and repeat with data.conflict_token |
+| `SELECTOR_UNKNOWN` | `{selector} is not a bracket kind declared in scope {scope}. Declared: {declared}.` | use a declared one |
+| `SCOPE_KIND_UNSUPPORTED` | `{scope} is a {kind} scope, and this service does not carry tasks in one. Name a project or a global scope instead.` | name a project or a global scope |
+| `SCOPE_READ_ONLY` | `{call} writes, and you may read {scope} without writing to it. Reading it is unaffected; the write right is granted with the membership.` | ask whoever administers the membership of this scope |
+| `SCOPE_LOCKED` | `{scope} is locked, so it refuses every write whatever your role. Reading it is unaffected. The lock is lifted where it was set.` | wait for the lock to be lifted, or read instead |
+| `IDEMPOTENCY_KEY_REUSED` | `The idempotency key {key} was spent on a different call, or with different arguments, in scope {scope} within the last 24 hours.` | choose a new key |
+| `CALL_NOT_AT_THIS_ADDRESS` | `{call} cannot be made on {address}: it applies to {applies}.` | address the call where it applies |
+| `UNEXPECTED_FAILURE` | `{call} on {address} failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report reference {reference}.` | report the reference |
+
+A closed task refuses with the terminal variant of `STATE_DOES_NOT_ALLOW`:
+`{call} is not possible on {address}: it is {state} and finished. Nothing further can be done with it.`

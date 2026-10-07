@@ -24,7 +24,7 @@ import java.util.Map;
  * <h2>Cardinality, not typefreedom</h2>
  *
  * <p>A value is either a single identifier or a list of them — exactly one
- * level deep, and nothing else. An exchange references several tracks and
+ * level deep, and nothing else. A task references several tracks and
  * several tasks; that is more of the same shape and it is admissible under
  * the same rule. A JSON tree of arbitrary depth would be a different rule
  * entirely, and it is refused with a typed error rather than flattened or

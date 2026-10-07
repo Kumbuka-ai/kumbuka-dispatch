@@ -140,8 +140,8 @@ class ColdStartIT {
     @Test
     void the_service_reaches_its_own_table_and_reaches_nothing_else() throws SQLException {
         try (Connection c = Db.asService()) {
-            // Not as its owner: by the SELECT that V8 grants it by name.
-            assertThat(Db.countExchanges(c))
+            // Not as its owner: by the SELECT that V17 grants it by name.
+            assertThat(Db.countTasks(c))
                 .as("the service role must reach its own table under the enumerated grant — "
                     + "a schema nobody can read would satisfy every absence this suite "
                     + "asserts and could not run the service")

@@ -36,12 +36,19 @@ public final class SurfaceDeclaration {
      * changed — and the service's version moves for reasons that have nothing
      * to do with it.
      */
-    public static final String SHAPE_VERSION = "1";
+    public static final String SHAPE_VERSION = "2";
+
+    /**
+     * The most characters a call's description may carry (concept section
+     * 3.5). A description over it fails the start of the service, and with it
+     * every test that boots the service: the build.
+     */
+    public static final int DESCRIPTION_BUDGET = 500;
 
     private SurfaceDeclaration() {
     }
 
-    /** The fourteen calls, in the order of section 5. */
+    /** The twenty-five calls, in the order of TAR-0004 section 3. */
     public static List<ProcessVerb> calls() {
         return List.of(ProcessVerb.values());
     }
@@ -65,6 +72,7 @@ public final class SurfaceDeclaration {
         declaration.put("service", "dispatch");
         declaration.put("scheme", "dispatch");
         declaration.put("address_form", "dispatch://<scope>/<selector>/<number>.<sub>");
+        declaration.put("technical_address_form", "dispatch://<uuid>");
         declaration.put("calls", callsAsMaps());
         declaration.put("reasons", reasonsAsMaps());
         return Map.copyOf(declaration);
@@ -75,10 +83,9 @@ public final class SurfaceDeclaration {
         for (ProcessVerb verb : ProcessVerb.values()) {
             Map<String, Object> call = new LinkedHashMap<>();
             call.put("call", verb.call());
+            call.put("transition", verb.isTransition());
             call.put("description", verb.description());
-            call.put("role", verb.role() == null
-                ? "both"
-                : verb.role().name().toLowerCase(java.util.Locale.ROOT));
+            call.put("role", verb.roleName());
             call.put("arguments", argumentsAsMaps(verb));
             calls.add(Map.copyOf(call));
         }
@@ -95,30 +102,25 @@ public final class SurfaceDeclaration {
             declared.put("placement",
                 argument.placement().name().toLowerCase(java.util.Locale.ROOT));
             declared.put("description", argument.description());
+            if (argument.itemPattern() != null) {
+                declared.put("item_pattern", argument.itemPattern());
+            }
+            if (!argument.values().isEmpty()) {
+                declared.put("values", argument.values());
+            }
             arguments.add(Map.copyOf(declared));
         }
         return List.copyOf(arguments);
     }
 
-    /**
-     * The reasons, with their patterns read in this surface's vocabulary.
-     *
-     * <p>The catalogue holds the patterns surface-neutrally — a step where a
-     * call name goes, per section 4.2 — because the same pattern words a
-     * refusal on both surfaces. This declaration describes the ASSISTANT
-     * surface, so it publishes them filled: a consumer reading {@code "the
-     * holder delivers with {deliver}"} would have to know a convention nobody
-     * published to make sense of it.
-     */
+    /** The reasons, each with its message pattern and its remedy. */
     private static List<Map<String, Object>> reasonsAsMaps() {
         List<Map<String, Object>> reasons = new ArrayList<>();
         for (ReasonCatalogue.Reason reason : ReasonCatalogue.declared()) {
             Map<String, Object> declared = new LinkedHashMap<>();
             declared.put("reason", reason.code().name());
-            declared.put("message_pattern",
-                ReasonCatalogue.inVocabularyOf(reason.pattern(), Surface.MCP));
-            declared.put("remedy",
-                ReasonCatalogue.inVocabularyOf(reason.remedy(), Surface.MCP));
+            declared.put("message_pattern", reason.pattern());
+            declared.put("remedy", reason.remedy());
             reasons.add(Map.copyOf(declared));
         }
         return List.copyOf(reasons);
@@ -170,11 +172,27 @@ public final class SurfaceDeclaration {
             if (verb.description() == null || verb.description().isBlank()) {
                 throw new IllegalStateException(
                     verb.call() + " is declared without a description. The description is "
-                        + "the contract's normative text and is the only thing a caller "
-                        + "with no skill has to go on.");
+                        + "the only thing a caller with no skill has to go on.");
             }
+            requireWithinBudget(verb.call(), verb.description());
 
             requireDescribedArguments(verb.call(), verb.arguments());
+        }
+    }
+
+    /**
+     * Refuses a description over {@link #DESCRIPTION_BUDGET} characters.
+     *
+     * <p>Takes the name and the text rather than the constant, so the refusal
+     * can be observed against a text over the budget; the real declaration is
+     * a constant that cannot be made too long at runtime.
+     */
+    public static void requireWithinBudget(String call, String description) {
+        if (description.length() > DESCRIPTION_BUDGET) {
+            throw new IllegalStateException(
+                call + "'s description has " + description.length() + " characters, over the "
+                    + "budget of " + DESCRIPTION_BUDGET + ". What explains one argument stands "
+                    + "at that argument.");
         }
     }
 

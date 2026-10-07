@@ -70,12 +70,12 @@ class ForeignKeyTenantGuardIT {
             c.setAutoCommit(false);
             try (Statement s = c.createStatement()) {
                 s.execute("CREATE TABLE dispatch.planted_reference ("
-                    + "tenant_id uuid NOT NULL, exchange_id bigint REFERENCES dispatch.exchange (id))");
+                    + "tenant_id uuid NOT NULL, task_id bigint REFERENCES dispatch.task (id))");
             }
             List<String> found = keysWithoutTheTenant(c);
             c.rollback();
             assertThat(found)
-                .as("RED STATE, observed: a single-column key onto exchange.id, planted in the "
+                .as("RED STATE, observed: a single-column key onto task.id, planted in the "
                     + "schema, must be reported, or the check above passes whatever it reads")
                 .anyMatch(name -> name.startsWith("dispatch.planted_reference."));
         }

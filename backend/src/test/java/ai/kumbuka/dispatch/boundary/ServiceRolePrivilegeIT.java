@@ -88,11 +88,10 @@ class ServiceRolePrivilegeIT {
      * appears, including the one whose entitlement is nothing at all — an
      * absence stated is checkable, an absence omitted is not.
      *
-     * <p>No DELETE on the exchange store. The thirteen verbs are create, read, update, append, send,
-     * accept, claim, release, abandon, block, resume, close and consume, and
-     * none of them deletes: {@code revert} discards an unratified return
-     * draft by nulling two columns, which is an UPDATE. No path in this
-     * repository issues a DELETE against any of these tables.
+     * <p>No DELETE on the exchange store. No code of the service reads or
+     * writes it any longer; it stays in the schema, with the grants V8 and V14
+     * wrote, until the release after the switch removes it, and this
+     * expectation keeps those grants checked until then.
      */
     private static final Map<String, Set<String>> EXPECTED = Map.of(
         "exchange", DOMAIN_PRIVILEGES,
@@ -155,7 +154,7 @@ class ServiceRolePrivilegeIT {
     private static List<String> migratedForeignOwned;
     private static boolean migratedSchemaUsage;
     private static boolean migratedSchemaCreate;
-    private static String migratedExchangeRead;
+    private static String migratedTaskRead;
 
     @BeforeAll
     static void captureWhatTheMigrationLeft() throws SQLException {
@@ -168,7 +167,7 @@ class ServiceRolePrivilegeIT {
             migratedSchemaUsage = holdsOnSchema(c, "USAGE");
             migratedSchemaCreate = holdsOnSchema(c, "CREATE");
         }
-        migratedExchangeRead = readExchangeAsRuntimeRole();
+        migratedTaskRead = readTaskAsRuntimeRole();
     }
 
     /**
@@ -184,10 +183,10 @@ class ServiceRolePrivilegeIT {
      * That is the difference between "the suite broke" and "V8 forgot a
      * GRANT", and the second is what the reader needs.
      */
-    private static String readExchangeAsRuntimeRole() throws SQLException {
+    private static String readTaskAsRuntimeRole() throws SQLException {
         try (Connection c = service();
              Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery("SELECT count(*) FROM " + schema() + ".exchange")) {
+             ResultSet rs = s.executeQuery("SELECT count(*) FROM " + schema() + ".task")) {
             rs.next();
             return rs.getLong(1) + " rows";
         } catch (SQLException e) {
@@ -237,7 +236,7 @@ class ServiceRolePrivilegeIT {
             .as("CREATE on its own schema would let the runtime role add a table and own "
                 + "it, which is the enumeration defeated in one statement")
             .isFalse();
-        assertThat(migratedExchangeRead)
+        assertThat(migratedTaskRead)
             .as("and the role must actually read its own table — read under the role "
                 + "itself, before any red case in this class had a chance to issue the "
                 + "grant that would make it possible")
@@ -300,7 +299,7 @@ class ServiceRolePrivilegeIT {
      */
     @Test
     void the_probe_notices_ownership_handed_to_the_runtime_role() throws SQLException {
-        String table = schema() + ".exchange";
+        String table = schema() + ".task";
         try (Connection c = admin()) {
             try {
                 exec(c, "ALTER TABLE " + table + " OWNER TO " + role());
@@ -311,7 +310,7 @@ class ServiceRolePrivilegeIT {
                         + "owner — a report that only says 'wrong owner' sends the reader "
                         + "back to the catalog to find out whose")
                     .anySatisfy(relation -> assertThat(relation)
-                        .contains("exchange")
+                        .contains("task [owner")
                         .contains(role()));
 
                 assertThat(privilegeDefects(c))
@@ -319,15 +318,15 @@ class ServiceRolePrivilegeIT {
                         + "relation without a single GRANT having been issued — which is "
                         + "the whole mechanism of the defect, in one assertion")
                     .anySatisfy(defect -> assertThat(defect)
-                        .contains("exchange")
+                        .contains(".task:")
                         .contains("TRUNCATE"));
             } finally {
                 exec(c, "ALTER TABLE " + table + " OWNER TO "
                     + SubstrateDatabaseResource.MIGRATOR_ROLE);
                 // The owner change carries the implicit ACL with it and drops
                 // the explicit grants, so they are re-issued exactly as V8
-                // writes them.
-                exec(c, "GRANT SELECT, INSERT, UPDATE ON " + table + " TO " + role());
+                // and V17 write them.
+                exec(c, "GRANT SELECT, INSERT, UPDATE, DELETE ON " + table + " TO " + role());
             }
 
             assertThat(relationsNotOwnedBy(c, SubstrateDatabaseResource.MIGRATOR_ROLE))
@@ -349,7 +348,7 @@ class ServiceRolePrivilegeIT {
      */
     @Test
     void the_probe_reports_a_privilege_that_is_held_and_must_not_be() throws SQLException {
-        String table = schema() + ".exchange";
+        String table = schema() + ".task";
         try (Connection c = admin()) {
             try {
                 exec(c, "GRANT TRUNCATE ON " + table + " TO " + role());
@@ -360,7 +359,7 @@ class ServiceRolePrivilegeIT {
                         + "report that only says 'wrong' sends the reader back to the "
                         + "catalog to find out what it meant")
                     .anySatisfy(defect -> assertThat(defect)
-                        .contains("exchange")
+                        .contains(".task:")
                         .contains("TRUNCATE"));
             } finally {
                 exec(c, "REVOKE TRUNCATE ON " + table + " FROM " + role());
@@ -379,7 +378,7 @@ class ServiceRolePrivilegeIT {
      */
     @Test
     void the_probe_reports_a_privilege_that_is_missing_and_must_be_held() throws SQLException {
-        String table = schema() + ".exchange";
+        String table = schema() + ".task";
         try (Connection c = admin()) {
             try {
                 exec(c, "REVOKE UPDATE ON " + table + " FROM " + role());
@@ -387,7 +386,7 @@ class ServiceRolePrivilegeIT {
                 assertThat(privilegeDefects(c))
                     .as("RED STATE, observed: a missing UPDATE is a defect too")
                     .anySatisfy(defect -> assertThat(defect)
-                        .contains("exchange")
+                        .contains(".task:")
                         .contains("UPDATE"));
             } finally {
                 exec(c, "GRANT UPDATE ON " + table + " TO " + role());

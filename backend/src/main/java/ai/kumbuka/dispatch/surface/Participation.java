@@ -1,81 +1,48 @@
 package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.domain.ExchangeStatus;
+import ai.kumbuka.dispatch.domain.Actor;
+import ai.kumbuka.dispatch.domain.HolderState;
+import ai.kumbuka.dispatch.domain.TaskState;
+import ai.kumbuka.dispatch.domain.TaskView;
+
+import java.util.Locale;
 
 /**
- * How one caller takes part in one exchange.
+ * How one caller takes part in one task.
  *
- * <p>Not a property of the caller and not a property of the exchange, but of
- * the pair: the same console identity is the commissioner of one exchange and
- * a bystander at another, and the same executor is the holder of the exchange
- * it took up and a candidate at the open one beside it. Section 6 of the
- * contract reads on exactly this pair, and a value that carried only the
- * caller's capacity could not answer it.
- *
- * <p><strong>Four values, because the contract has four.</strong> An earlier
- * shape had three and folded the candidate into the bystander, which put
- * {@code dispatch_decline} in the wrong place twice: offered to a bystander on
- * an {@code active} exchange, where the call is the holder's and is refused;
- * and withheld from a candidate on an {@code open} one, where it succeeds.
- * Section 2's distinction is not a finer name for the same thing — the
- * candidate is the part that can still take the work, and it is the only part
- * besides the holder that {@code dispatch_decline} admits.
+ * <p>A property of the pair, not of the caller and not of the task: the same
+ * executor holds the task it took up and is a candidate at the open one beside
+ * it. The kernel decides with the relation of each row of the transition
+ * table; this is the same relation named for a caller who is told which part
+ * it has, in a refusal that says the call belongs to another.
  */
 public enum Participation {
 
-    /**
-     * Gives and accepts the work. A console identity.
-     *
-     * <p>May correct, cancel, accept, curate, close a bracket and reply — the
-     * whole commissioner column of section 6.
-     */
+    /** Holds the commissioning capacity and may see the task. */
     COMMISSIONER,
 
-    /**
-     * Holds this exchange through an effective claim.
-     *
-     * <p>The claim is judged as it EFFECTIVELY stands, never as the row reads:
-     * a lapsed claim holds nothing, so an executor whose lease ran out is a
-     * candidate again at an open exchange and a {@link #BYSTANDER} anywhere
-     * else, and {@code next} tells it so.
-     */
+    /** Holds the task: through a running lease, or paused or delivered. */
     HOLDER,
 
-    /**
-     * Could take this exchange up and has not: an executor, at an open
-     * exchange.
-     *
-     * <p>Decided by the exchange's state and not by anything the caller
-     * carries, which is why {@link #of} takes the status. An executor is a
-     * candidate at every open exchange it may see, including one whose claim
-     * it let lapse — the work is open again and it may take it again.
-     */
+    /** An executor that could take the task up: the task is open. */
     CANDIDATE,
 
-    /**
-     * Sees the exchange and takes no part in it.
-     *
-     * <p>An executor at an exchange that is not open and that it does not
-     * hold. No call is open to it at all; {@code waiting_for} is the whole of
-     * what an answer can tell it.
-     */
+    /** Sees the task and takes no part in it now. */
     BYSTANDER;
 
-    /**
-     * The part an executor takes at an exchange in this state.
-     *
-     * <p>One place, because the candidate/bystander line is drawn by the
-     * state alone and a second drawing of it would be a second permission
-     * model. The commissioner and the holder are decided before this is
-     * reached — both are properties of the caller against the exchange, not
-     * of the exchange alone.
-     */
-    public static Participation of(ExchangeStatus status) {
-        return status == ExchangeStatus.OPEN ? CANDIDATE : BYSTANDER;
+    /** The part {@code caller} takes in the task whose head is {@code view}. */
+    public static Participation of(Actor caller, TaskView view) {
+        if (caller.isConsole()) {
+            return COMMISSIONER;
+        }
+        if (view.holder() == HolderState.SELF) {
+            return HOLDER;
+        }
+        return view.state() == TaskState.OPEN ? CANDIDATE : BYSTANDER;
     }
 
-    /** The part as section 2 names it, for a refusal that states it. */
+    /** The part as a refusal states it. */
     public String wireName() {
-        return name().toLowerCase(java.util.Locale.ROOT);
+        return name().toLowerCase(Locale.ROOT);
     }
 }

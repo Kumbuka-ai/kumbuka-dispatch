@@ -70,9 +70,9 @@ final class Db {
         }
     }
 
-    static long countExchanges(Connection c) throws SQLException {
+    static long countTasks(Connection c) throws SQLException {
         try (Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM dispatch.exchange")) {
+             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM dispatch.task")) {
             rs.next();
             return rs.getLong(1);
         }
@@ -118,7 +118,7 @@ final class Db {
     }
 
     /**
-     * Insert an exchange directly, bypassing the ORM, under whatever tenant
+     * Insert a task directly, bypassing the ORM, under whatever tenant
      * the setting currently names. Used to plant rows a later read must or
      * must not see.
      *
@@ -127,14 +127,14 @@ final class Db {
      * layer 2 does on its own.
      *
      * <p>A fresh selector row is inserted for each tenant on the fly,
-     * because {@code exchange.selector_id} is a foreign key onto it — a
+     * because {@code task.selector_id} is a foreign key onto it — a
      * row planted without one is refused by the reference and the probe
      * would never reach the policy behaviour it is here to measure. The
      * scope is a random UUID (this is a tenancy probe, not a scope probe)
-     * and every planted exchange gets its own; two rows never sharing a
+     * and every planted task gets its own; two rows never sharing a
      * scope keeps the probe honest to what it measures.
      */
-    static long insertExchange(Connection c, UUID tenant, String title) throws SQLException {
+    static long insertTask(Connection c, UUID tenant, String title) throws SQLException {
         UUID scopeId = UUID.randomUUID();
         try (var st = c.prepareStatement("""
                 INSERT INTO dispatch.selector (tenant_id, scope_id, name)
@@ -146,21 +146,20 @@ final class Db {
             try (ResultSet rs = st.executeQuery()) {
                 rs.next();
                 long selectorId = rs.getLong(1);
-                return insertExchangeUnderSelector(c, tenant, scopeId, selectorId, title);
+                return insertTaskUnderSelector(c, tenant, scopeId, selectorId, title);
             }
         }
     }
 
-    private static long insertExchangeUnderSelector(Connection c, UUID tenant, UUID scopeId,
-                                                    long selectorId, String title)
+    private static long insertTaskUnderSelector(Connection c, UUID tenant, UUID scopeId,
+                                                long selectorId, String title)
             throws SQLException {
         try (var st = c.prepareStatement("""
-                INSERT INTO dispatch.exchange
-                    (tenant_id, scope_id, selector_id, number, sub, title, apparatus,
-                     dispatch_date)
+                INSERT INTO dispatch.task
+                    (tenant_id, scope_id, selector_id, number, sub, title, apparatus)
                 VALUES (?::uuid, ?::uuid, ?,
-                        (SELECT coalesce(max(number), 0) + 1 FROM dispatch.exchange),
-                        0, ?, 'code', CURRENT_DATE)
+                        (SELECT coalesce(max(number), 0) + 1 FROM dispatch.task),
+                        0, ?, 'code')
                 RETURNING id
                 """)) {
             st.setString(1, tenant.toString());

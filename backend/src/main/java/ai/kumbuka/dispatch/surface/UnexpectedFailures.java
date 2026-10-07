@@ -42,8 +42,7 @@ public final class UnexpectedFailures {
      *              sent: a stack trace is both unreadable to a caller and a
      *              disclosure.
      */
-    public static Refused refuse(Surface surface, String call, String address,
-                                 Throwable cause) {
+    public static Refused refuse(String call, String address, Throwable cause) {
         String reference = UUID.randomUUID().toString();
         if (cause == null) {
             LOG.errorf("unexpected failure on %s at %s, reference %s", call, address,
@@ -52,6 +51,6 @@ public final class UnexpectedFailures {
             LOG.errorf(cause, "unexpected failure on %s at %s, reference %s", call, address,
                 reference);
         }
-        return Refused.unexpected(surface, call, address, reference);
+        return Refused.unexpected(call, address, reference);
     }
 }

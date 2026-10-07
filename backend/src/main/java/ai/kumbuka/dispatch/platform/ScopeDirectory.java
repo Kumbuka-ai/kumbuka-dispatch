@@ -112,14 +112,14 @@ public class ScopeDirectory {
      * <p>Only one kind is refused and it is the private one. A private scope
      * is a per-tenant container for memory content, and the platform publishes
      * it here because one contract answers for every service — not because
-     * every service answers for it. An exchange in a private scope is not a
+     * every service answers for it. A task in a private scope is not a
      * thing this service has a meaning for, so the refusal is a category
      * statement and not a permission one: the caller is not told to come back
      * with a better token, it is told the address names something this scheme
      * does not carry.
      *
      * <p>Before the write check rather than after, and on a read as well as on
-     * a write. Reading an exchange out of a private scope is as meaningless as
+     * a write. Reading a task out of a private scope is as meaningless as
      * writing one into it, and a service that refused only the write would be
      * saying the read was fine — which is a statement about memory content it
      * has no standing to make.
@@ -130,7 +130,7 @@ public class ScopeDirectory {
                 DispatchException.Reason.SCOPE_KIND_UNSUPPORTED);
             throw new DispatchException(DispatchException.Reason.SCOPE_KIND_UNSUPPORTED,
                 "a private scope is not served by this service. Private scopes are "
-                    + "per-tenant containers for memory content, and an exchange has no "
+                    + "per-tenant containers for memory content, and a task has no "
                     + "meaning in one — so this is what the scheme carries, not what "
                     + "this caller may reach. Name a project or a global scope.",
                 // The kind travels so the surface need not know which kinds are
@@ -183,7 +183,7 @@ public class ScopeDirectory {
             throw new DispatchException(DispatchException.Reason.SCOPE_READ_ONLY,
                 "this caller may read this scope but not write to it over a service "
                     + "channel. The write right is the platform's answer about the "
-                    + "membership, not this service's about the exchange — so no verb "
+                    + "membership, not this service's about the task — so no verb "
                     + "here reaches the effect, and the remedy is the membership.");
         }
     }

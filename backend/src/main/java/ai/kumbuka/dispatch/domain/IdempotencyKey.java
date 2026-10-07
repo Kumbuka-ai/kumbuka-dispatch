@@ -4,8 +4,8 @@ package ai.kumbuka.dispatch.domain;
  * The key a caller chose so that a retry does not act twice, or the statement
  * that it chose none.
  *
- * <p>Sealed and two-cased, for the reason {@link ClaimProof} is: the absence is
- * the ordinary case and it is load-bearing. A call without a key is executed
+ * <p>Sealed and two-cased, because the absence is the ordinary case and it is
+ * load-bearing. A call without a key is executed
  * every time it arrives, and a call with one is executed at most once per key
  * per caller per scope in twenty-four hours. A {@code null} travelling into the
  * domain would leave that difference undeclared at every method it passed.

@@ -56,7 +56,7 @@ public class SelectorRegistry {
                 DispatchException.Reason.SELECTOR_WITHDRAWN);
             throw new DispatchException(DispatchException.Reason.SELECTOR_WITHDRAWN,
                 "selector '" + name + "' is withdrawn. Addresses already issued under it "
-                    + "remain readable; no new exchange is numbered under it.");
+                    + "remain readable; no new task is numbered under it.");
         }
         return selector;
     }
@@ -71,17 +71,17 @@ public class SelectorRegistry {
      *
      * <p>Withdrawal is a status and never a deletion, because every address
      * ever issued under the name depends on it. A selector that HAS been used
-     * cannot be withdrawn at all — the exchanges under it would be left
+     * cannot be withdrawn at all — the tasks under it would be left
      * pointing at a name the registry disowns.
      */
     @Transactional
     public Selector withdraw(UUID scopeId, String name) {
         Selector selector = requireDeclared(scopeId, name);
-        long used = selectors.exchangesUnder(scopeId, name);
+        long used = selectors.tasksUnder(scopeId, name);
 
         if (used > 0) {
             throw new DispatchException(DispatchException.Reason.SELECTOR_IN_USE,
-                "selector '" + name + "' carries " + used + " exchange(s) and cannot be "
+                "selector '" + name + "' carries " + used + " task(s) and cannot be "
                     + "withdrawn. Only a never-used selector may be; the addresses under "
                     + "a used one depend on the name continuing to mean what it meant.");
         }

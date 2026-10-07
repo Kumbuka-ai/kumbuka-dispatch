@@ -1,7 +1,8 @@
 package ai.kumbuka.dispatch.tenancy;
 
 import ai.kumbuka.dispatch.domain.DomainFixture;
-import ai.kumbuka.dispatch.domain.ExchangeService;
+import ai.kumbuka.dispatch.domain.IdempotencyKey;
+import ai.kumbuka.dispatch.domain.TaskService;
 import io.quarkus.hibernate.orm.PersistenceUnitExtension;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -53,7 +54,7 @@ class TenantBindingEdgeCaseIT {
     static final ai.kumbuka.dispatch.domain.Actor PROBE =
         new ai.kumbuka.dispatch.domain.Actor("probe", ai.kumbuka.dispatch.domain.Actor.Kind.CONSOLE);
 
-    @Inject ExchangeService exchanges;
+    @Inject TaskService tasks;
 
     // -----------------------------------------------------------------------
     // The bind stack
@@ -193,17 +194,28 @@ class TenantBindingEdgeCaseIT {
         DomainFixture.declareSelector(tenant, scope, "sprint");
 
         try (AutoCloseable ignored = tenantContext.bind(tenant)) {
-            var opened = exchanges.openBracket(scope, "sprint", "count-probe", "code",
-                java.time.LocalDate.now(), PROBE);
-            assertThat(opened.tenantId)
+            var opened = tasks.create(scope, "sprint", null,
+                new TaskService.Draft("count-probe", "code", null, null), PROBE,
+                IdempotencyKey.NONE);
+            assertThat(tenantOf(opened.identity()))
                 .as("a write through the ORM carries the bound tenant without the caller "
                     + "supplying it — that is what the @TenantId filter is for")
                 .isEqualTo(tenant.toString());
-            assertThat(exchanges.read(scope,
-                    ai.kumbuka.dispatch.domain.ExchangeAddress.bracket("sprint", opened.number))
-                .title)
+            assertThat(tasks.read(scope, opened.address(), PROBE).title())
                 .as("and reads back exactly what it wrote")
                 .isEqualTo("count-probe");
+        }
+    }
+
+    /** The tenant a task row carries, read as the administrator. */
+    private static String tenantOf(UUID identity) throws java.sql.SQLException {
+        try (var c = Db.asAdmin();
+             var st = c.prepareStatement("SELECT tenant_id::text FROM dispatch.task WHERE uuid = ?")) {
+            st.setObject(1, identity);
+            try (var rs = st.executeQuery()) {
+                rs.next();
+                return rs.getString(1);
+            }
         }
     }
 

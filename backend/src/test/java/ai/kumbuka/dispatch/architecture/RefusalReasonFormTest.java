@@ -29,13 +29,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * loaded from the same enum that switch is over, so a reason cannot be added
  * anywhere this does not see it.
  *
- * <h2>The grandfathered three</h2>
+ * <h2>The grandfathered two</h2>
  *
- * Three existing reasons break the form. They are not corrected here and the
+ * Two existing reasons break the form. They are not corrected here and the
  * omission is deliberate: a reason name travels in the refusal payload, which
  * is the published contract, and renaming one is a contract change that is not
  * a run's to make. They sit in {@link #GRANDFATHERED} with what is wrong with
- * each, so the rule binds every reason added from now on while the three stay
+ * each, so the rule binds every reason added from now on while the two stay
  * visible as debts rather than as silence.
  *
  * <p>Runs as a plain unit test: it reads enum constants and needs no database.
@@ -59,8 +59,6 @@ class RefusalReasonFormTest {
      * contract rather than a build that quietly renames it.
      */
     private static final Map<String, String> GRANDFATHERED = new LinkedHashMap<>(Map.of(
-        "FROZEN",
-        "names no subject: frozen is a state, and the caller is not told of what",
         "NOT_FOUND",
         "leads with the negation and names no subject",
         "NOTHING_TO_CLAIM",
@@ -72,7 +70,7 @@ class RefusalReasonFormTest {
             .as("a refusal reason is read by a caller deciding what to do next, and the "
                 + "subject is the half that tells them where to look. Spell it "
                 + "<SUBJECT>_<STATE>, name the subject, and do not lead with the "
-                + "negation. Four existing reasons break this and are listed in "
+                + "negation. Two existing reasons break this and are listed in "
                 + "GRANDFATHERED with the reason they are not being renamed here — a "
                 + "reason name is part of the published refusal payload")
             .isEmpty();

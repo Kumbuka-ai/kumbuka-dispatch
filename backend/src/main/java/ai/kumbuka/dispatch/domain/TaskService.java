@@ -27,9 +27,8 @@ import java.util.UUID;
  * state_changed_at} and {@code state_changed_by}. Nothing here decides
  * whether a transition is permitted; the row and the decision do.
  *
- * <p>Stands beside {@link ExchangeService} and serves no caller yet: neither
- * {@code surface} nor {@code adapter} reaches it, which a test holds. The verb
- * surface binds it in step 4 of REA-0009.
+ * <p>The verb surface binds it: every call of both surfaces reaches the
+ * kernel through one method of this class.
  *
  * <p>No answer of this class carries a text of a task except {@link
  * #readText}, which carries exactly one part.
@@ -44,6 +43,8 @@ public class TaskService {
     /** The call names an idempotency key is spent on. */
     static final String CREATE = "dispatch_create";
     static final String ANNOTATE = "dispatch_annotate";
+    static final String CLAIM = "dispatch_claim";
+    static final String CLAIM_NEXT = "dispatch_claim_next";
 
     /** The last letter an addendum suffix may take; past it is refused, never wrapped. */
     private static final char LAST_SUFFIX = 'z';
@@ -318,6 +319,13 @@ public class TaskService {
      * <p>On a bracket root, a closing verb confirmed by the caller withdraws
      * the unfinished children first and then closes the root, in this
      * transaction.
+     *
+     * <p>A closing verb on a root locks the root, then each child in the order
+     * of the address, and reads the unfinished set under those locks. A child
+     * another transaction finished meanwhile is read as finished and keeps its
+     * outcome; a child another transaction is creating waits on the root's
+     * lock in {@link #create} and finds the root closed. A transition on a
+     * child locks its own row only.
      */
     @Transactional
     public TaskView act(UUID scopeId, ExchangeAddress address, TaskVerb verb, TaskCall call) {
@@ -328,7 +336,7 @@ public class TaskService {
         Task task = lockOrRefuse(scopeId, address);
         Instant now = now();
         List<Task> children = task.isBracketRoot() && verb.closes()
-            ? tasks.children(scopeId, task.selector.id, task.number)
+            ? tasks.lockChildren(scopeId, task.selector.id, task.number)
             : List.of();
         TaskSituation s = TaskSituation.of(task, now, children);
         if (Decision.of(verb, s, call) instanceof Decision.AlreadyThere) {
@@ -352,8 +360,31 @@ public class TaskService {
     /** Takes up the task at an address and mints its receipt. */
     @Transactional
     public TaskClaim claim(UUID scopeId, ExchangeAddress address, TaskCall call) {
+        return claim(scopeId, address, call, IdempotencyKey.NONE);
+    }
+
+    /**
+     * Takes up the task at an address and mints its receipt, under an
+     * idempotency key.
+     *
+     * <p>A repeat by the same caller with the same key and the same arguments,
+     * while the caller still holds the task under a running lease, answers the
+     * same task with a new receipt and takes nothing up again: see {@link
+     * #reissue}.
+     */
+    @Transactional
+    public TaskClaim claim(UUID scopeId, ExchangeAddress address, TaskCall call,
+                           IdempotencyKey key) {
+        String digest = IdempotencyService.digestOf(
+            Arrays.asList(address.toString(), leaseOf(call)));
+        Optional<Long> repeat = firstAnswerFor(scopeId, call.caller(), key, CLAIM, digest);
+        if (repeat.isPresent()) {
+            return reissue(scopeId, repeat.get(), TaskVerb.CLAIM, call);
+        }
         Task task = lockOrRefuse(scopeId, address);
-        return take(task, TaskVerb.CLAIM, call);
+        TaskClaim claimed = take(task, TaskVerb.CLAIM, call);
+        remember(scopeId, call.caller(), key, CLAIM, digest, task);
+        return claimed;
     }
 
     /**
@@ -368,7 +399,24 @@ public class TaskService {
     @Transactional
     public TaskClaim claimNext(UUID scopeId, String selector, List<String> apparatusPatterns,
                                TaskCall call) {
+        return claimNext(scopeId, selector, apparatusPatterns, call, IdempotencyKey.NONE);
+    }
+
+    /**
+     * The draw under an idempotency key. A repeat with the same key and the
+     * same arguments while the caller still holds the task it drew answers
+     * that task with a new receipt and draws nothing: see {@link #reissue}.
+     */
+    @Transactional
+    public TaskClaim claimNext(UUID scopeId, String selector, List<String> apparatusPatterns,
+                               TaskCall call, IdempotencyKey key) {
         selectors.requireDeclared(scopeId, selector);
+        String digest = IdempotencyService.digestOf(Arrays.asList(selector,
+            String.join("\u001F", apparatusPatterns), leaseOf(call)));
+        Optional<Long> repeat = firstAnswerFor(scopeId, call.caller(), key, CLAIM_NEXT, digest);
+        if (repeat.isPresent()) {
+            return reissue(scopeId, repeat.get(), TaskVerb.CLAIM_NEXT, call);
+        }
         Task task = tasks.lockNextDrawable(scopeId, selector, apparatusPatterns, now(),
                 TaskSituation.LAPSES_TO_PARK - 1)
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOTHING_TO_CLAIM,
@@ -376,7 +424,49 @@ public class TaskService {
                     + " is drawable: every task there those patterns match is a draft, "
                     + "held, paused, delivered, closed or deferred. The selector exists; "
                     + "this is an empty draw, not a missing address."));
-        return take(task, TaskVerb.CLAIM_NEXT, call);
+        TaskClaim claimed = take(task, TaskVerb.CLAIM_NEXT, call);
+        remember(scopeId, call.caller(), key, CLAIM_NEXT, digest, task);
+        return claimed;
+    }
+
+    /**
+     * Answers a repeated claim: the same task, a new receipt, and nothing else.
+     *
+     * <p>The service keeps only the hash of a receipt, so the first one cannot
+     * be handed out again; the repeat replaces the hash, and the earlier
+     * receipt stops matching. State, holder, lease end and lapse count stay as
+     * they are. Where the caller no longer holds the task under a running
+     * lease, the repeat is refused with the reason the situation gives and
+     * nothing is taken.
+     */
+    private TaskClaim reissue(UUID scopeId, Long taskId, TaskVerb verb, TaskCall call) {
+        Task task = tasks.lockById(scopeId, taskId).orElseThrow(() -> notFound(null));
+        TaskSituation s = situation(task);
+        Actor caller = call.caller();
+        if (s.state() != TaskState.ACTIVE || !s.heldBy(caller)) {
+            if (Decision.of(verb, s, call) instanceof Decision.Refused refused) {
+                throw refused.asException();
+            }
+            throw new DispatchException(s.formerHolder(caller)
+                ? DispatchException.Reason.LEASE_LAPSED
+                : DispatchException.Reason.CLAIM_REQUIRED,
+                "the claim this key took on " + s.address() + " no longer holds, and a "
+                    + "repeat under the key takes nothing up. Take the task up again with "
+                    + "a new key.");
+        }
+        String receipt = Receipt.mint();
+        task.reissue(receipt);
+        task.touch(caller.subject());
+        tasks.flush();
+        LOG.infof("%s %s repeated: receipt reissued", verb.wireName(), task.address());
+        return new TaskClaim(view(task, caller), receipt);
+    }
+
+    /** The lease a claim asked for, as its digest records it: the duration or the default. */
+    private static String leaseOf(TaskCall call) {
+        return call.payload() instanceof TaskInput.Lease lease
+            ? lease.duration().toString()
+            : "default";
     }
 
     private TaskClaim take(Task task, TaskVerb verb, TaskCall call) {
@@ -415,9 +505,6 @@ public class TaskService {
     /** Sets what the row names: state, attributes, holder, lease, payload attributes. */
     private static void apply(Task task, TaskVerb verb, TaskSituation s, TaskInput payload,
                               Instant now, String by) {
-        if (payload instanceof TaskInput.Sending sending && sending.metadata() != null) {
-            task.dispatchMetadata = sending.metadata();
-        }
         if (verb.target() != s.state()) {
             HoldReason reason = payload instanceof TaskInput.Pause pause
                 ? pause.reason()
@@ -458,7 +545,6 @@ public class TaskService {
             case TaskInput.Pause pause -> pause.remark();
             case TaskInput.Delivery delivery -> delivery.text();
             case TaskInput.Nothing ignored -> null;
-            case TaskInput.Sending ignored -> null;
             case TaskInput.Lease ignored -> null;
         };
         if (text != null && !text.isBlank()) {
@@ -549,8 +635,16 @@ public class TaskService {
         });
     }
 
+    /**
+     * Locks the bracket root and refuses a closed one.
+     *
+     * <p>Locked, so the check and the insert of the child stand in one order
+     * with the closing of the root: a root that is being closed is read once
+     * that transaction ended, and a child is never created under a root that
+     * closes past it.
+     */
     private void requireOpenBracket(UUID scopeId, Selector selector, int number) {
-        Task root = tasks.find(scopeId, ExchangeAddress.bracket(selector.name, number))
+        Task root = tasks.lock(scopeId, ExchangeAddress.bracket(selector.name, number))
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
                 "no bracket " + selector.name + "/" + number + "; a bracket opens with its "
                     + "root."));
@@ -616,8 +710,15 @@ public class TaskService {
         return new DispatchException(DispatchException.Reason.NOT_FOUND, "no task at " + address);
     }
 
+    /**
+     * Now, to the microsecond: the precision the columns store. An instant
+     * this class writes -- a lease end above all -- is answered as it is
+     * stored; with the clock's nanoseconds the answer to a claim and every
+     * later read of the same lease would differ (measured on the CI runner,
+     * where the database rounds the nanoseconds rather than cutting them).
+     */
     private Instant now() {
-        return Instant.now(clock);
+        return Instant.now(clock).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
     }
 
     // ----------------------------------------------------------------------
@@ -626,8 +727,7 @@ public class TaskService {
 
     /**
      * The task a repeat of a call answers with, if it is one; refuses the key
-     * spent on another call. The rule of {@link IdempotencyService}, on the
-     * task's own ledger.
+     * spent on another call or other arguments, on the task's own ledger.
      */
     private Optional<Long> firstAnswerFor(UUID scopeId, Actor caller, IdempotencyKey key,
                                           String call, String digest) {

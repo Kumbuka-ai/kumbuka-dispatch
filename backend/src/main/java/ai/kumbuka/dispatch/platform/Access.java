@@ -21,7 +21,7 @@ public enum Access {
     /**
      * The call writes, or takes a lease that will be written against.
      *
-     * <p>A claim counts as a write even though the exchange's fields do not
+     * <p>A claim counts as a write even though the task's fields do not
      * change with it: the lease is state, it is stored, and a caller that
      * could take one in a scope it may not write to would hold a lease it can
      * never use — which reads to everyone else as the scope being in progress.
