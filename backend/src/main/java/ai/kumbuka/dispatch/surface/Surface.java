@@ -16,12 +16,19 @@ package ai.kumbuka.dispatch.surface;
  * the adapter that happens to be on the stack: an inference would be a second
  * place the question is answered, and the one that would be wrong is the one
  * used by whatever adapter is written next.
+ *
+ * <p>Where something stands in front of this service, only that one knows the
+ * surface its caller came through, and it says so: a router that publishes the
+ * calls as assistant tools and reaches this service over REST sends {@code
+ * Kumbuka-Surface: assistant}, and the REST adapter makes the call on {@link
+ * #MCP}. The surface is declared by the hop that knows it, never concluded.
  */
 public enum Surface {
 
     /**
      * The assistant surface. Carries the process verbs of section 5 of the
-     * contract, each prefixed {@code dispatch_}.
+     * contract, each prefixed {@code dispatch_}. Reached through the service's
+     * own MCP adapter, or over REST with the header that names it.
      */
     MCP,
 

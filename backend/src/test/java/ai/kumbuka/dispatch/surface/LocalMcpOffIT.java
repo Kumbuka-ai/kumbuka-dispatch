@@ -29,6 +29,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * The REST cases are the ones {@code RestSurfaceIT} asserts with the surface
  * on, with the same expectations.
  *
+ * <p>With {@code Kumbuka-Surface: assistant} REST answers in the vocabulary of
+ * the assistant surface here too: that vocabulary belongs to the call, not to
+ * the adapter this build leaves out.
+ *
  * <p>Red probes, observed: without the annotation on {@link McpAdapter},
  * {@code /mcp} answers and this class turns red; with the annotation on the
  * router both surfaces share, REST loses it and this class turns red.
@@ -84,6 +88,28 @@ class LocalMcpOffIT {
         assertThat(read.statusCode()).isEqualTo(200);
         assertThat(read.jsonPath().getString("fields.title")).isEqualTo("without mcp");
         assertThat(read.jsonPath().getList("next.call")).contains("send");
+    }
+
+    @Test
+    void with_the_header_rest_names_the_assistant_tools_though_there_is_no_mcp() {
+        Response created = SurfaceFixture.create(Map.of("title", "named for the assistant",
+            "apparatus", "code"));
+        String id = SurfaceFixture.idOf(created);
+
+        Response read = given().header("Kumbuka-Surface", "assistant")
+            .get(SurfaceFixture.item(id));
+        assertThat(read.statusCode()).isEqualTo(200);
+        assertThat(read.jsonPath().getList("next.call", String.class))
+            .contains("dispatch_send")
+            .allMatch(call -> call.startsWith(ProcessVerb.PREFIX));
+
+        Response refused = given().header("Kumbuka-Surface", "assistant")
+            .contentType(ContentType.JSON).body(Map.of("duration", "PT1H"))
+            .post(SurfaceFixture.item(id) + ":claim");
+        assertThat(refused.jsonPath().getString("reason")).isEqualTo("STATE_DOES_NOT_ALLOW");
+        assertThat(refused.jsonPath().getString("message")).contains("dispatch_claim");
+        assertThat(refused.jsonPath().getList("data.next.call", String.class))
+            .isNotEmpty().allMatch(call -> call.startsWith(ProcessVerb.PREFIX));
     }
 
     @Test
