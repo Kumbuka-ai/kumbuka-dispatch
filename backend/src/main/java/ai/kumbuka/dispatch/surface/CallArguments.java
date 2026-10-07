@@ -9,9 +9,13 @@ import java.util.Map;
  * read out of them.
  *
  * <p><strong>Checked first and completely.</strong> The constructor walks both
- * levels of the incoming map, refuses the first argument the call does not
- * declare, then the first one of the wrong type or outside its values, then
- * the first required one that is absent. Nothing is resolved, read or written
+ * levels of the incoming map and refuses, in this order: the arguments the
+ * call does not declare, then the first one of the wrong type or outside its
+ * values, then the first required one that is absent. Undeclared arguments are
+ * refused one level at a time and all of a level together: every undeclared
+ * name at the top in one refusal, and only when the top is clean every
+ * undeclared name under {@code fields} in one, each in the order the call
+ * carried them. Nothing is resolved, read or written
  * before that walk finishes, which is what "nothing was written" in an
  * argument refusal is a statement about.
  *
@@ -65,18 +69,19 @@ public final class CallArguments {
     }
 
     private void refuseUndeclared() {
-        List<String> declared = verb.topNames();
-        for (String name : top.keySet()) {
-            if (!declared.contains(name)) {
-                throw Refused.argumentUnknown(call, call, "argument", name, declared);
-            }
-        }
-        List<String> declaredFields = verb.fieldArguments().stream().map(Argument::name).toList();
-        for (String name : written.keySet()) {
-            if (!declaredFields.contains(name)) {
-                throw Refused.argumentUnknown(call, call, "argument under fields", name,
-                    declaredFields);
-            }
+        refuseUndeclared(top, verb.topNames(), "argument");
+        refuseUndeclared(written, verb.fieldArguments().stream().map(Argument::name).toList(),
+            "argument under fields");
+    }
+
+    /** Refuses every name of one level the declaration does not hold, in one refusal. */
+    private void refuseUndeclared(Map<String, Object> level, List<String> declared, String kind) {
+        List<String> undeclared = level.keySet().stream()
+            .filter(name -> !declared.contains(name))
+            .toList();
+        if (!undeclared.isEmpty()) {
+            throw Refused.argumentUnknown(call, call, kind, String.join(", ", undeclared),
+                declared);
         }
     }
 

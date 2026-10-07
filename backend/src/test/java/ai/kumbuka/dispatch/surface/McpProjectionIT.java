@@ -131,6 +131,48 @@ class McpProjectionIT {
     }
 
     @Test
+    void every_undeclared_argument_of_a_level_is_named_in_one_refusal() {
+        Map<String, Object> filters = new LinkedHashMap<>();
+        filters.put("scope", SurfaceFixture.SCOPE);
+        filters.put("selector", SurfaceFixture.SELECTOR);
+        filters.put("status", "open");
+        filters.put("holder", "self");
+        Map<String, Object> atTop = Mcp.refusal(Mcp.call("dispatch_query", filters));
+        assertThat(atTop.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(String.valueOf(atTop.get("message")))
+            .as("both filters, in the order the call carried them, and the declared ones")
+            .contains("named status, holder.")
+            .contains("state, apparatus, bracket, address");
+
+        String before = Writes.snapshot();
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("title", "two made-up fields");
+        fields.put("apparatus", "code");
+        fields.put("colour", "red");
+        fields.put("weight", "1");
+        Map<String, Object> below = Mcp.refusal(Mcp.call("dispatch_create", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "fields", fields)));
+        assertThat(below.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(String.valueOf(below.get("message")))
+            .contains("argument under fields named colour, weight.");
+        assertThat(Writes.snapshot()).as("the create wrote nothing").isEqualTo(before);
+
+        Map<String, Object> both = new LinkedHashMap<>();
+        both.put("scope", SurfaceFixture.SCOPE);
+        both.put("selector", SurfaceFixture.SELECTOR);
+        both.put("stray", "x");
+        both.put("fields", Map.of("title", "t", "apparatus", "code", "colour", "red"));
+        Map<String, Object> topFirst = Mcp.refusal(Mcp.call("dispatch_create", both));
+        assertThat(topFirst.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(String.valueOf(topFirst.get("message")))
+            .as("the top level is refused first, and alone")
+            .contains("argument named stray.")
+            .doesNotContain("colour");
+        assertThat(Writes.snapshot()).as("nor did the one with both").isEqualTo(before);
+    }
+
+    @Test
     void an_undeclared_filter_on_query_is_refused_and_a_declared_one_narrows() {
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
