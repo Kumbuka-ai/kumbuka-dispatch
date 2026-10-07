@@ -255,10 +255,11 @@ public class TaskService {
             throw new DispatchException(DispatchException.Reason.ADDENDUM_TEXT_MISSING,
                 "an addendum carries its text, and it arrives with this call or never.");
         }
-        Task task = lockOrRefuse(scopeId, address);
         String digest = IdempotencyService.digestOf(
             Arrays.asList(address.toString(), part.wireName(), text));
-        if (firstAnswerFor(scopeId, caller, key, ANNOTATE, digest).isPresent()) {
+        boolean repeat = firstAnswerFor(scopeId, caller, key, ANNOTATE, digest).isPresent();
+        Task task = lockOrRefuse(scopeId, address);
+        if (repeat) {
             return view(task, caller);
         }
         TaskSituation s = situation(task);
@@ -728,12 +729,19 @@ public class TaskService {
     /**
      * The task a repeat of a call answers with, if it is one; refuses the key
      * spent on another call or other arguments, on the task's own ledger.
+     *
+     * <p>Takes the key's lock first ({@link TaskRepository#lockKeyUse}), and a
+     * call under a key calls this before it locks anything else. A second call
+     * under the same key that overlaps the first therefore waits here until
+     * the first has committed, and then reads the first's entry as a repeat.
+     * Without a key nothing is locked.
      */
     private Optional<Long> firstAnswerFor(UUID scopeId, Actor caller, IdempotencyKey key,
                                           String call, String digest) {
         if (!(key instanceof IdempotencyKey.Given given)) {
             return Optional.empty();
         }
+        tasks.lockKeyUse(scopeId, caller.subject(), given.value());
         Optional<SpentTaskKey> held = tasks.lockKey(scopeId, caller.subject(), given.value());
         if (held.isEmpty() || !held.get().stillStandsAt(now())) {
             return Optional.empty();

@@ -243,6 +243,22 @@ final class TaskStage {
         }
     }
 
+    /** One value a query answers, read as the administrator: what the transactions committed. */
+    static String value(String sql) {
+        var config = ConfigProvider.getConfig();
+        try (Connection c = DriverManager.getConnection(
+                config.getValue("test.db.url", String.class),
+                config.getValue("test.db.admin.username", String.class),
+                config.getValue("test.db.admin.password", String.class));
+             Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(sql)) {
+            rs.next();
+            return rs.getString(1);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static Instant instant(java.sql.Timestamp t) {
         return t == null ? null : t.toInstant();
     }
