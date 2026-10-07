@@ -1,8 +1,11 @@
 package ai.kumbuka.dispatch.surface;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * One call's arguments, checked against the declaration before anything is
@@ -28,6 +31,12 @@ public final class CallArguments {
 
     /** The one nested object a call may carry, by the name DEC-0040 gives it. */
     public static final String FIELDS = "fields";
+
+    private static final BigDecimal LONG_MAX = BigDecimal.valueOf(Long.MAX_VALUE);
+    private static final BigDecimal LONG_MIN = BigDecimal.valueOf(Long.MIN_VALUE);
+    private static final Pattern WHOLE_TEXT = Pattern.compile("[+-]?\\d+");
+    /** Every run of this many digits fits a long; one more may not. */
+    private static final int MAX_LONG_DIGITS = 18;
 
     private final ProcessVerb verb;
     private final String call;
@@ -119,7 +128,16 @@ public final class CallArguments {
                     || "true".equals(value) || "false".equals(value)
                 ? null
                 : "it is true or false";
-            case Argument.INTEGER -> integerOf(value) != null ? null : "it is a whole number";
+            case Argument.INTEGER -> {
+                Long whole = wholeOf(value);
+                if (whole == null) {
+                    yield "it is a whole number";
+                }
+                yield fitsAnInt(whole)
+                    ? null
+                    : "it is too large for a whole number here, which lies from "
+                        + Integer.MIN_VALUE + " to " + Integer.MAX_VALUE;
+            }
             default -> "its declared type is " + argument.type();
         };
     }
@@ -212,21 +230,67 @@ public final class CallArguments {
         return filters;
     }
 
+    /** A whole number that fits an int, or null where the value is none. */
     private static Integer integerOf(Object value) {
-        if (value instanceof Integer i) {
-            return i;
-        }
-        if (value instanceof Number n && n.doubleValue() == Math.rint(n.doubleValue())) {
-            return n.intValue();
+        Long whole = wholeOf(value);
+        return whole != null && fitsAnInt(whole) ? whole.intValue() : null;
+    }
+
+    /**
+     * The whole number a value names, or null where it names none: a JSON
+     * number with no fraction, or text that is a whole number. A number past
+     * what a long holds comes back as the long's bound on its side, which is
+     * enough to refuse it as too large without ever building it.
+     */
+    private static Long wholeOf(Object value) {
+        if (value instanceof Integer || value instanceof Long
+                || value instanceof Short || value instanceof Byte) {
+            return ((Number) value).longValue();
         }
         if (value instanceof String s) {
-            try {
-                return Integer.valueOf(s.trim());
-            } catch (NumberFormatException e) {
-                return null;
-            }
+            return wholeOf(s.trim());
         }
-        return null;
+        if (!(value instanceof Number n)) {
+            return null;
+        }
+        BigDecimal exact;
+        if (n instanceof BigDecimal d) {
+            exact = d;
+        } else if (n instanceof BigInteger b) {
+            exact = new BigDecimal(b);
+        } else if (Double.isFinite(n.doubleValue())) {
+            exact = BigDecimal.valueOf(n.doubleValue());
+        } else {
+            return null;
+        }
+        if (exact.signum() != 0 && exact.stripTrailingZeros().scale() > 0) {
+            return null;
+        }
+        if (exact.compareTo(LONG_MAX) > 0) {
+            return Long.MAX_VALUE;
+        }
+        if (exact.compareTo(LONG_MIN) < 0) {
+            return Long.MIN_VALUE;
+        }
+        return exact.longValueExact();
+    }
+
+    /** Text that is a sign and digits; more than eighteen digits are read as a bound. */
+    private static Long wholeOf(String text) {
+        if (!WHOLE_TEXT.matcher(text).matches()) {
+            return null;
+        }
+        boolean negative = text.startsWith("-");
+        String digits = text.replaceFirst("^[+-]?0*", "");
+        if (digits.length() > MAX_LONG_DIGITS) {
+            return negative ? Long.MIN_VALUE : Long.MAX_VALUE;
+        }
+        long magnitude = digits.isEmpty() ? 0 : Long.parseLong(digits);
+        return negative ? -magnitude : magnitude;
+    }
+
+    private static boolean fitsAnInt(long whole) {
+        return whole >= Integer.MIN_VALUE && whole <= Integer.MAX_VALUE;
     }
 
     private static String string(Object value) {

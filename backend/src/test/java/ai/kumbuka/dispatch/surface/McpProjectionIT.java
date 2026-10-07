@@ -219,6 +219,23 @@ class McpProjectionIT {
             .as("an empty value is refused too").isEqualTo("ARGUMENT_INVALID");
     }
 
+    @Test
+    void a_whole_number_past_the_range_is_refused_by_name_and_not_read_as_another() {
+        for (long beyond : List.of(4294967297L, 2147483648L, -2147483649L)) {
+            Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
+                "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+                "limit", beyond)));
+            assertThat(refusal.get("reason")).as("%s", beyond).isEqualTo("ARGUMENT_INVALID");
+            assertThat(String.valueOf(refusal.get("message"))).as("%s", beyond)
+                .contains("limit = " + beyond + " ")
+                .contains("too large");
+        }
+        Map<String, Object> listed = Mcp.answer(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "limit", Integer.MAX_VALUE)));
+        assertThat(listed.get("cut")).as("the largest whole number is taken").isEqualTo(false);
+    }
+
     // -----------------------------------------------------------------------
 
     /** Every mandatory argument of a call, with a value of the right shape. */

@@ -175,6 +175,21 @@ class RestSurfaceIT {
     }
 
     @Test
+    void a_whole_number_past_the_range_is_refused_by_name() {
+        for (String beyond : List.of("4294967297", "2147483648", "-2147483649")) {
+            Response refused = given().get(SurfaceFixture.collection() + "?limit=" + beyond);
+            assertThat(refused.statusCode()).as(beyond).isEqualTo(400);
+            assertThat(refused.jsonPath().getString("reason")).as(beyond)
+                .isEqualTo("ARGUMENT_INVALID");
+            assertThat(refused.jsonPath().getString("message")).as(beyond)
+                .contains("limit = " + beyond + " ")
+                .contains("too large");
+        }
+        Response listed = given().get(SurfaceFixture.collection() + "?limit=2147483647");
+        assertThat(listed.statusCode()).as("the largest whole number is taken").isEqualTo(200);
+    }
+
+    @Test
     void a_call_under_an_earlier_name_is_refused_as_unknown() {
         String id = SurfaceFixture.open("old names", "code");
         String before = Writes.snapshot();
