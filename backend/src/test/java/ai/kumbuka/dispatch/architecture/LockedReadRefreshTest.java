@@ -26,10 +26,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <h2>What counts</h2>
  *
- * A method of a class in {@code repository} locks when its code names a
- * pessimistic lock mode, calls {@code setLockMode}, or carries a row-locking
- * clause of SQL ({@code FOR UPDATE}, {@code FOR NO KEY UPDATE}, {@code FOR
- * SHARE}, {@code FOR KEY SHARE}). It refreshes when its code calls {@code
+ * A method of a class in {@code repository}, or in a package below it, locks
+ * when its code names a pessimistic lock mode, calls {@code setLockMode}, or
+ * carries a row-locking clause of SQL ({@code FOR UPDATE}, {@code FOR NO KEY
+ * UPDATE}, {@code FOR SHARE}, {@code FOR KEY SHARE}). It refreshes when its code calls {@code
  * underLock} or {@code refresh}, or calls a method of the same class that
  * refreshes: {@code lock} hands its lock mode to {@code at}, and {@code at}
  * refreshes. A locking method that does not refresh is reported.
@@ -46,7 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class LockedReadRefreshTest {
 
-    /** The package whose locking reads are held to the rule. */
+    /** The package whose locking reads are held to the rule, with its subpackages. */
     private static final String REPOSITORY = "repository";
 
     private static final Pattern LOCKS = Pattern.compile(
@@ -62,23 +62,12 @@ class LockedReadRefreshTest {
 
     @Test
     void every_locking_read_of_the_repository_answers_the_row_under_the_lock() {
-        Path root = SourceTree.root("main");
-        List<String> locking = new ArrayList<>();
-        List<String> offenders = new ArrayList<>();
-        for (Path file : SourceTree.files(root)) {
-            if (!SourceTree.layerOf(root, file).equals(REPOSITORY)) {
-                continue;
-            }
-            Verdict verdict = verdictOn(SourceTree.code(file));
-            String type = SourceTree.fqcn(root, file);
-            verdict.locking().forEach(m -> locking.add(type + "#" + m));
-            verdict.offenders().forEach(m -> offenders.add(type + "#" + m));
-        }
+        Verdict verdict = verdictUnder(SourceTree.root("main"), REPOSITORY);
 
-        assertThat(locking)
+        assertThat(verdict.locking())
             .as("the repository takes row locks; a guard that finds none walks the wrong tree")
             .isNotEmpty();
-        assertThat(offenders)
+        assertThat(verdict.offenders())
             .as("these methods lock a row and answer what the persistence context holds, "
                 + "which may be an object read before the lock and changed since. Answer "
                 + "through underLock")
@@ -102,10 +91,46 @@ class LockedReadRefreshTest {
             .containsExactlyInAnyOrder("lockedJpql", "lockedNative");
     }
 
+    /**
+     * The red state of the selection, observed on every build: the walk takes
+     * the repository package with its subpackages. {@code
+     * SubpackageLockFixture} sits one package below {@code fixture.repository}
+     * and carries an unrefreshed locking read; walked from there, it is
+     * reported.
+     */
+    @Test
+    void the_guard_reads_the_subpackages_of_the_repository_package() {
+        assertThat(verdictUnder(SourceTree.root("test"), "fixture.repository").offenders())
+            .as("RED STATE, observed: the locking read of the class in the subpackage is "
+                + "reported, so a repository class in a subpackage is not walked past")
+            .containsExactly(
+                "ai.kumbuka.dispatch.fixture.repository.sub.SubpackageLockFixture#lockedInSubpackage");
+    }
+
     // -----------------------------------------------------------------------
 
     /** The locking methods of one class, and those among them that do not refresh. */
     private record Verdict(List<String> locking, List<String> offenders) {
+    }
+
+    /**
+     * The verdict on every class of one package and its subpackages, each
+     * method named {@code type#method}.
+     */
+    private static Verdict verdictUnder(Path root, String layer) {
+        List<String> locking = new ArrayList<>();
+        List<String> offenders = new ArrayList<>();
+        for (Path file : SourceTree.files(root)) {
+            String at = SourceTree.layerOf(root, file);
+            if (!at.equals(layer) && !at.startsWith(layer + ".")) {
+                continue;
+            }
+            Verdict verdict = verdictOn(SourceTree.code(file));
+            String type = SourceTree.fqcn(root, file);
+            verdict.locking().forEach(m -> locking.add(type + "#" + m));
+            verdict.offenders().forEach(m -> offenders.add(type + "#" + m));
+        }
+        return new Verdict(locking, offenders);
     }
 
     private record Method(String name, String body) {
