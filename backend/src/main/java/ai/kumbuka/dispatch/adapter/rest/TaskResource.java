@@ -29,6 +29,7 @@ import jakarta.ws.rs.core.UriBuilder;
 import jakarta.ws.rs.core.UriInfo;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -43,6 +44,18 @@ import java.util.Map;
  * invented argument by name on both surfaces alike, whichever part of the
  * request it came in.
  *
+ * <p>A call names calls in the vocabulary of the surface its caller came
+ * through. Without the {@code Kumbuka-Surface} header that is this one. With
+ * {@code Kumbuka-Surface: assistant} it is the assistant surface: a router
+ * that publishes these calls as tools reaches this service over REST and says
+ * so, and the call is made under its tool name, so that {@code next}, {@code
+ * waiting_for}, every message and the {@code data} of every refusal name the
+ * tools that caller holds. Any other value is refused and the call is not
+ * made. The header is not an argument of the call — it is in no declaration
+ * and never reaches {@link CallRouter}'s argument map — and it grants nothing.
+ * A {@code 405} names routes, which have one spelling, so it stays in the REST
+ * form whatever the header says.
+ *
  * <p>This class holds the HTTP expression of a call and nothing else: the
  * route, the status, {@code ETag} with the conflict token, {@code 201} with
  * {@code Location} for a created task, {@code 405} with {@code Allow} for a
@@ -56,6 +69,18 @@ public class TaskResource {
 
     private static final String IF_MATCH = "If-Match";
 
+    /**
+     * Names the surface the caller came through, where that is not this one.
+     * A router that publishes these calls as assistant tools and reaches this
+     * service over REST says so here, so that the calls in an answer carry the
+     * names the caller knows them by. It decides nothing else: who calls, and
+     * what that caller may do, come from the verified identity as always.
+     */
+    static final String SURFACE = "Kumbuka-Surface";
+
+    /** The one value {@link #SURFACE} takes: the assistant surface. */
+    static final String ASSISTANT = "assistant";
+
     @Inject CallRouter router;
     @Inject CallerActor caller;
     @Inject ObjectMapper json;
@@ -68,16 +93,20 @@ public class TaskResource {
     @Path("{selector}")
     public Response collectionPost(@PathParam("scope") String scope,
                                    @PathParam("selector") String segment,
+                                   @Context HttpHeaders http,
                                    @Context UriInfo uri, String body) {
-        return route("POST", new At(RestRoute.Depth.COLLECTION, scope, segment, null), null, uri, body);
+        return route("POST", new At(RestRoute.Depth.COLLECTION, scope, segment, null),
+            new Headers(null, http.getRequestHeader(SURFACE)), uri, body);
     }
 
     @GET
     @Path("{selector}")
     public Response collectionGet(@PathParam("scope") String scope,
                                   @PathParam("selector") String segment,
+                                  @Context HttpHeaders http,
                                   @Context UriInfo uri) {
-        return route("GET", new At(RestRoute.Depth.COLLECTION, scope, segment, null), null, uri, null);
+        return route("GET", new At(RestRoute.Depth.COLLECTION, scope, segment, null),
+            new Headers(null, http.getRequestHeader(SURFACE)), uri, null);
     }
 
     @GET
@@ -86,8 +115,10 @@ public class TaskResource {
                             @PathParam("selector") String selector,
                             @PathParam("id") String segment,
                             @HeaderParam(IF_MATCH) String ifMatch,
+                            @Context HttpHeaders http,
                             @Context UriInfo uri) {
-        return route("GET", new At(RestRoute.Depth.ITEM, scope, selector, segment), ifMatch, uri, null);
+        return route("GET", new At(RestRoute.Depth.ITEM, scope, selector, segment),
+            new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, null);
     }
 
     @PATCH
@@ -96,9 +127,10 @@ public class TaskResource {
                               @PathParam("selector") String selector,
                               @PathParam("id") String segment,
                               @HeaderParam(IF_MATCH) String ifMatch,
+                              @Context HttpHeaders http,
                               @Context UriInfo uri, String body) {
-        return route("PATCH", new At(RestRoute.Depth.ITEM, scope, selector, segment), ifMatch, uri,
-            body);
+        return route("PATCH", new At(RestRoute.Depth.ITEM, scope, selector, segment),
+            new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, body);
     }
 
     @DELETE
@@ -107,9 +139,10 @@ public class TaskResource {
                                @PathParam("selector") String selector,
                                @PathParam("id") String segment,
                                @HeaderParam(IF_MATCH) String ifMatch,
+                               @Context HttpHeaders http,
                                @Context UriInfo uri) {
-        return route("DELETE", new At(RestRoute.Depth.ITEM, scope, selector, segment), ifMatch, uri,
-            null);
+        return route("DELETE", new At(RestRoute.Depth.ITEM, scope, selector, segment),
+            new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, null);
     }
 
     @POST
@@ -118,9 +151,10 @@ public class TaskResource {
                              @PathParam("selector") String selector,
                              @PathParam("id") String segment,
                              @HeaderParam(IF_MATCH) String ifMatch,
+                             @Context HttpHeaders http,
                              @Context UriInfo uri, String body) {
-        return route("POST", new At(RestRoute.Depth.ITEM, scope, selector, segment), ifMatch, uri,
-            body);
+        return route("POST", new At(RestRoute.Depth.ITEM, scope, selector, segment),
+            new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, body);
     }
 
     // ======================================================================
@@ -132,7 +166,16 @@ public class TaskResource {
                       String idSegment) {
     }
 
-    private Response route(String method, At where, String ifMatch, UriInfo uri, String body) {
+    /**
+     * The headers a call reads, as they arrived. The conflict token may be
+     * absent; the surface is kept as every value it arrived with, an empty
+     * list when there is none, because an empty value or a second one is a
+     * value it cannot take, not an absence.
+     */
+    private record Headers(String ifMatch, List<String> surface) {
+    }
+
+    private Response route(String method, At where, Headers headers, UriInfo uri, String body) {
         RestRoute.Depth depth = where.depth();
         String scope = where.scope();
         String selectorSegment = where.selectorSegment();
@@ -143,6 +186,14 @@ public class TaskResource {
         if (route == null) {
             return notHere(method, depth, at[1], scope, selectorSegment, at[0]);
         }
+        List<String> named = headers.surface();
+        if (!named.isEmpty() && !List.of(ASSISTANT).equals(named)) {
+            return refusal(Refused.argumentInvalid(route.call(), SURFACE,
+                String.join(", ", named), "it takes the one value " + ASSISTANT
+                    + ", once, or is left out"), null);
+        }
+        Surface surface = named.isEmpty() ? Surface.REST : Surface.MCP;
+        String call = nameOn(surface, route);
 
         Map<String, Object> arguments = new LinkedHashMap<>();
         if (depth == RestRoute.Depth.COLLECTION) {
@@ -152,20 +203,29 @@ public class TaskResource {
             arguments.put("address", AddressParser.SCHEME + "://" + scope + "/"
                 + selectorSegment + "/" + at[0]);
         }
+        String ifMatch = headers.ifMatch();
         if (ifMatch != null && !ifMatch.isBlank()) {
             arguments.put("conflict_token", unquote(ifMatch.trim()));
         }
-        Refused collision = merge(route.call(), arguments, query(uri), "the query");
+        Refused collision = merge(call, arguments, query(uri), "the query");
         if (collision == null) {
-            collision = mergeBody(route.call(), arguments, body);
+            collision = mergeBody(call, arguments, body);
         }
         if (collision != null) {
             return refusal(collision, null);
         }
 
-        CallRouter.Outcome outcome = router.call(Surface.REST, caller::current, route.call(),
-            arguments);
+        CallRouter.Outcome outcome = router.call(surface, caller::current, call, arguments);
         return respond(route, outcome);
+    }
+
+    /**
+     * The name a route's call goes by on a surface. Every route is a call of
+     * the declaration under its REST name; {@code VerbSurfaceConformanceTest}
+     * turns red on one that is not.
+     */
+    private static String nameOn(Surface surface, RestRoute route) {
+        return ProcessVerb.byName(Surface.REST, route.call()).on(surface);
     }
 
     /**
