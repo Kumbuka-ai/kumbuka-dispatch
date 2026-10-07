@@ -76,6 +76,18 @@ public class CallRouter {
     private static final String CURATED_IN = "curated_in";
     private static final String APPARATUS = "apparatus";
 
+    /**
+     * The first instant and the bound past the last a task stores, as the
+     * start of a deferral and as the end of a lease: inside what the timestamp
+     * columns hold, which is 4713 BC to 294276 AD. Measured: an instant past
+     * that range parsed, reached the store and failed there as a defect, and
+     * so did a lease whose end lies past it. The lower bound is the start of
+     * the common era, a chosen margin and not the column's edge: nothing a
+     * task stores lies earlier.
+     */
+    private static final Instant EARLIEST = Instant.parse("0001-01-01T00:00:00Z");
+    private static final Instant LATEST = Instant.parse("+294276-01-01T00:00:00Z");
+
     /** The filters of a listing, by the names the kernel and the declaration share. */
     private static final List<String> FILTERS = TaskFilter.Field.wireNames();
 
@@ -324,24 +336,43 @@ public class CallRouter {
         if (raw == null) {
             return TaskInput.NONE;
         }
+        Duration duration;
         try {
-            return new TaskInput.Lease(Duration.parse(raw));
+            duration = Duration.parse(raw);
         } catch (DateTimeParseException e) {
             throw Refused.claimDurationInvalid(in.call(), raw);
         }
+        if (duration.compareTo(Duration.between(Instant.now(), LATEST)) >= 0) {
+            throw Refused.argumentInvalid(in.call(), DURATION, raw,
+                "a lease ends before " + LATEST);
+        }
+        return new TaskInput.Lease(duration);
     }
 
     private static Instant instant(CallArguments in, String name) {
         String raw = in.field(name);
+        Instant at = parsedInstant(raw);
+        if (at == null) {
+            throw Refused.argumentInvalid(in.call(), name, raw,
+                "an instant is written in ISO-8601 with its offset, such as "
+                    + "2026-10-07T09:00:00Z");
+        }
+        if (at.isBefore(EARLIEST) || !at.isBefore(LATEST)) {
+            throw Refused.argumentInvalid(in.call(), name, raw,
+                "an instant lies from " + EARLIEST + " up to " + LATEST);
+        }
+        return at;
+    }
+
+    /** The instant ISO-8601 text names, in UTC or with an offset; null where it names none. */
+    private static Instant parsedInstant(String raw) {
         try {
             return Instant.parse(raw);
         } catch (DateTimeParseException notUtc) {
             try {
                 return OffsetDateTime.parse(raw).toInstant();
             } catch (DateTimeParseException e) {
-                throw Refused.argumentInvalid(in.call(), name, raw,
-                    "an instant is written in ISO-8601 with its offset, such as "
-                        + "2026-10-07T09:00:00Z");
+                return null;
             }
         }
     }

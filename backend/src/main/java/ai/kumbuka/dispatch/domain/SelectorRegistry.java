@@ -41,24 +41,34 @@ public class SelectorRegistry {
     @Transactional
     public Selector requireDeclared(UUID scopeId, String name) {
         LOG.debugf("checking selector '%s'", name);
-        Selector selector = find(scopeId, name).orElseThrow(() -> {
-            LOG.warnf("selector '%s' refused: %s", name,
-                DispatchException.Reason.SELECTOR_NOT_DECLARED);
-            return new DispatchException(
-            DispatchException.Reason.SELECTOR_NOT_DECLARED,
-            "selector '" + name + "' is not declared in this scope. Bracket names are "
-                + "declared before use, never by first use: a typo must not silently "
-                + "open a namespace.");
-        });
+        Selector selector = find(scopeId, name).orElseThrow(() -> notDeclared(name));
+        refuseIfWithdrawn(selector);
+        return selector;
+    }
 
+    /**
+     * Refuses a withdrawn selector, with the refusal {@link #requireDeclared}
+     * gives. For a caller that holds the selector's row lock and must decide
+     * on the row as it stands under it, not on what it read before.
+     */
+    static void refuseIfWithdrawn(Selector selector) {
         if (Boolean.TRUE.equals(selector.withdrawn)) {
-            LOG.warnf("selector '%s' refused: %s", name,
+            LOG.warnf("selector '%s' refused: %s", selector.name,
                 DispatchException.Reason.SELECTOR_WITHDRAWN);
             throw new DispatchException(DispatchException.Reason.SELECTOR_WITHDRAWN,
-                "selector '" + name + "' is withdrawn. Addresses already issued under it "
+                "selector '" + selector.name + "' is withdrawn. Addresses already issued under it "
                     + "remain readable; no new task is numbered under it.");
         }
-        return selector;
+    }
+
+    private static DispatchException notDeclared(String name) {
+        LOG.warnf("selector '%s' refused: %s", name,
+            DispatchException.Reason.SELECTOR_NOT_DECLARED);
+        return new DispatchException(
+        DispatchException.Reason.SELECTOR_NOT_DECLARED,
+        "selector '" + name + "' is not declared in this scope. Bracket names are "
+            + "declared before use, never by first use: a typo must not silently "
+            + "open a namespace.");
     }
 
     @Transactional
@@ -73,10 +83,17 @@ public class SelectorRegistry {
      * ever issued under the name depends on it. A selector that HAS been used
      * cannot be withdrawn at all — the tasks under it would be left
      * pointing at a name the registry disowns.
+     *
+     * <p>Decided under the selector's row lock, which the numbering of a
+     * bracket root takes as well: a root being created is counted once its
+     * transaction committed, and a root created after the withdrawal finds the
+     * selector withdrawn on the row it locked. A child needs its root, so
+     * nothing is numbered under a selector withdrawn this way.
      */
     @Transactional
     public Selector withdraw(UUID scopeId, String name) {
-        Selector selector = requireDeclared(scopeId, name);
+        Selector selector = selectors.lock(scopeId, name).orElseThrow(() -> notDeclared(name));
+        refuseIfWithdrawn(selector);
         long used = selectors.tasksUnder(scopeId, name);
 
         if (used > 0) {

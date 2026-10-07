@@ -57,8 +57,12 @@ public final class AddressParser {
      * <p>No leading zeroes on either part, and that is form rather than taste:
      * {@code 07.1} and {@code 7.1} would be two strings for one task, which
      * is the same identity-by-leniency the case rule refuses.
+     *
+     * <p>At most nine digits on either part, so every number this production
+     * admits fits an {@code int} and is parsed below without a failure. A
+     * longer one is a malformed address, refused as any other form error.
      */
-    private static final Pattern ID = Pattern.compile("(0|[1-9]\\d*)\\.(0|[1-9]\\d*)");
+    private static final Pattern ID = Pattern.compile("(0|[1-9]\\d{0,8})\\.(0|[1-9]\\d{0,8})");
 
     private AddressParser() {
     }

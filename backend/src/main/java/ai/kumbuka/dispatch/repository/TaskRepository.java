@@ -407,6 +407,34 @@ public class TaskRepository {
     // ----------------------------------------------------------------------
 
     /**
+     * Takes the lock of one caller's key in a scope, held until the caller's
+     * transaction ends, and waits while another transaction holds it.
+     *
+     * <p>A transaction-bound advisory lock of Postgres over the three values
+     * the unique key of {@code task_idempotency_key} carries. The row lock of
+     * {@link #lockKey} cannot serialise the first two calls under a new key:
+     * neither finds a row to lock, and each would do its work. Under this lock
+     * the second reads the key only once the first has committed, and so reads
+     * the first's entry as a repeat does.
+     *
+     * <p>Not a locking read: it answers no row, so {@link #underLock} has
+     * nothing to refresh. Two different keys that hash alike wait on each
+     * other and decide nothing for each other.
+     */
+    @Transactional
+    public void lockKeyUse(UUID scopeId, String callerSubject, String key) {
+        em.createNativeQuery("""
+                SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(
+                    CAST(:scope AS text) || chr(31) || CAST(:caller AS text) || chr(31)
+                        || CAST(:key AS text), 0))) AS held
+                """)
+            .setParameter(P_SCOPE, scopeId.toString())
+            .setParameter("caller", callerSubject)
+            .setParameter("key", key)
+            .getSingleResult();
+    }
+
+    /**
      * The row a caller's key holds in a scope, locked for update, as the row
      * stands under the lock: see {@link #underLock}.
      */

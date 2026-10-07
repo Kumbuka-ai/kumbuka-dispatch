@@ -49,6 +49,12 @@ class AddressParserTest {
             .isEqualTo("164.2");
     }
 
+    @Test
+    void nine_digits_on_either_part_are_an_address() {
+        assertThat(AddressParser.item("sprint", "999999999.999999999"))
+            .isEqualTo(new ExchangeAddress("sprint", 999_999_999, 999_999_999));
+    }
+
     // =======================================================================
     // What is refused, and refused as FORM
     // =======================================================================
@@ -67,6 +73,9 @@ class AddressParserTest {
         "-1.2",       // there is no negative number in a circle
         "164.1 ",     // trailing space changes the string, so it changes identity
         "SPRINT.1",   // a selector in the id position
+        "1000000000.0",  // ten digits: past what every admitted number fits, an int
+        "7.1000000000",  // and so on the sub
+        "99999999999.0", // where parsing it into an int failed outright
     })
     void a_malformed_id_is_a_typed_form_refusal(String id) {
         assertThatThrownBy(() -> AddressParser.item("sprint", id))

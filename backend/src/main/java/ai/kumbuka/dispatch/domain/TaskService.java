@@ -255,10 +255,11 @@ public class TaskService {
             throw new DispatchException(DispatchException.Reason.ADDENDUM_TEXT_MISSING,
                 "an addendum carries its text, and it arrives with this call or never.");
         }
-        Task task = lockOrRefuse(scopeId, address);
         String digest = IdempotencyService.digestOf(
             Arrays.asList(address.toString(), part.wireName(), text));
-        if (firstAnswerFor(scopeId, caller, key, ANNOTATE, digest).isPresent()) {
+        boolean repeat = firstAnswerFor(scopeId, caller, key, ANNOTATE, digest).isPresent();
+        Task task = lockOrRefuse(scopeId, address);
+        if (repeat) {
             return view(task, caller);
         }
         TaskSituation s = situation(task);
@@ -440,7 +441,10 @@ public class TaskService {
      * nothing is taken.
      */
     private TaskClaim reissue(UUID scopeId, Long taskId, TaskVerb verb, TaskCall call) {
-        Task task = tasks.lockById(scopeId, taskId).orElseThrow(() -> notFound(null));
+        Task task = tasks.lockById(scopeId, taskId).orElseThrow(() -> new DispatchException(
+            DispatchException.Reason.NOT_FOUND,
+            "the task this key was spent on is no longer there, and a repeat under the key "
+                + "takes nothing up. Take a task up with a new key."));
         TaskSituation s = situation(task);
         Actor caller = call.caller();
         if (s.state() != TaskState.ACTIVE || !s.heldBy(caller)) {
@@ -654,11 +658,17 @@ public class TaskService {
         }
     }
 
-    /** Takes the next bracket number under the selector's row lock, in this transaction. */
+    /**
+     * Takes the next bracket number under the selector's row lock, in this
+     * transaction, and refuses a selector withdrawn meanwhile: the lock is the
+     * one {@link SelectorRegistry#withdraw} takes, so the row read under it is
+     * the one a withdrawal left.
+     */
     private int allocateNumber(Selector selector) {
         Selector locked = tasks.lockSelector(selector.id).orElseThrow(() ->
             new DispatchException(DispatchException.Reason.SELECTOR_NOT_DECLARED,
                 "selector '" + selector.name + "' is not declared in this scope."));
+        SelectorRegistry.refuseIfWithdrawn(locked);
         int allocated = locked.nextNumber;
         locked.nextNumber = allocated + 1;
         return allocated;
@@ -728,12 +738,19 @@ public class TaskService {
     /**
      * The task a repeat of a call answers with, if it is one; refuses the key
      * spent on another call or other arguments, on the task's own ledger.
+     *
+     * <p>Takes the key's lock first ({@link TaskRepository#lockKeyUse}), and a
+     * call under a key calls this before it locks anything else. A second call
+     * under the same key that overlaps the first therefore waits here until
+     * the first has committed, and then reads the first's entry as a repeat.
+     * Without a key nothing is locked.
      */
     private Optional<Long> firstAnswerFor(UUID scopeId, Actor caller, IdempotencyKey key,
                                           String call, String digest) {
         if (!(key instanceof IdempotencyKey.Given given)) {
             return Optional.empty();
         }
+        tasks.lockKeyUse(scopeId, caller.subject(), given.value());
         Optional<SpentTaskKey> held = tasks.lockKey(scopeId, caller.subject(), given.value());
         if (held.isEmpty() || !held.get().stillStandsAt(now())) {
             return Optional.empty();

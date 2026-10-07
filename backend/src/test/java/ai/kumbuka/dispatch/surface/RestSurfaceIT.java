@@ -10,6 +10,7 @@ import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -134,6 +135,58 @@ class RestSurfaceIT {
         assertThat(refused.statusCode()).isEqualTo(400);
         assertThat(refused.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(refused.jsonPath().getString("message")).contains("holder");
+    }
+
+    @Test
+    void every_undeclared_argument_of_a_level_is_named_in_one_refusal() {
+        Response atTop = given().get(SurfaceFixture.collection() + "?status=open&holder=self");
+        assertThat(atTop.statusCode()).isEqualTo(400);
+        assertThat(atTop.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(atTop.jsonPath().getString("message"))
+            .as("both filters, in the order of the query map, which keeps no order of the "
+                + "query string, and the declared ones")
+            .containsPattern("named (status, holder|holder, status)\\.")
+            .contains("state, apparatus, bracket, address");
+
+        String before = Writes.snapshot();
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("title", "two made-up fields");
+        fields.put("apparatus", "code");
+        fields.put("colour", "red");
+        fields.put("weight", "1");
+        Response below = given().contentType(ContentType.JSON)
+            .body(Map.of("fields", fields)).post(SurfaceFixture.collection());
+        assertThat(below.statusCode()).isEqualTo(400);
+        assertThat(below.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(below.jsonPath().getString("message"))
+            .contains("argument under fields named colour, weight.");
+        assertThat(Writes.snapshot()).as("the create wrote nothing").isEqualTo(before);
+
+        Response topFirst = given().contentType(ContentType.JSON)
+            .body(Map.of("fields", Map.of("title", "t", "apparatus", "code", "colour", "red")))
+            .post(SurfaceFixture.collection() + "?stray=x");
+        assertThat(topFirst.statusCode()).isEqualTo(400);
+        assertThat(topFirst.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(topFirst.jsonPath().getString("message"))
+            .as("the top level is refused first, and alone")
+            .contains("argument named stray.")
+            .doesNotContain("colour");
+        assertThat(Writes.snapshot()).as("nor did the one with both").isEqualTo(before);
+    }
+
+    @Test
+    void a_whole_number_past_the_range_is_refused_by_name() {
+        for (String beyond : List.of("4294967297", "2147483648", "-2147483649")) {
+            Response refused = given().get(SurfaceFixture.collection() + "?limit=" + beyond);
+            assertThat(refused.statusCode()).as(beyond).isEqualTo(400);
+            assertThat(refused.jsonPath().getString("reason")).as(beyond)
+                .isEqualTo("ARGUMENT_INVALID");
+            assertThat(refused.jsonPath().getString("message")).as(beyond)
+                .contains("limit = " + beyond + " ")
+                .contains("too large");
+        }
+        Response listed = given().get(SurfaceFixture.collection() + "?limit=2147483647");
+        assertThat(listed.statusCode()).as("the largest whole number is taken").isEqualTo(200);
     }
 
     @Test
