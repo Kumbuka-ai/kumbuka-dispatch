@@ -117,6 +117,38 @@ class CallRouterTest {
     }
 
     @Test
+    void an_address_whose_number_does_not_fit_is_refused_by_name_on_both_surfaces() {
+        for (String past : List.of("dispatch://probe/sprint/2147483648.0",
+                "dispatch://probe/sprint/7.99999999999")) {
+            Refused overMcp = refusal(router.call(Surface.MCP, () -> C, "dispatch_read",
+                Map.of("address", past)));
+            assertThat(overMcp.code()).as(past).isEqualTo(RefusalCode.ARGUMENT_INVALID);
+            assertThat(overMcp.getMessage()).startsWith("address = " + past);
+            Refused overRest = refusal(router.call(Surface.REST, () -> C, "read",
+                Map.of("address", past)));
+            assertThat(overRest.code()).as(past).isEqualTo(RefusalCode.ARGUMENT_INVALID);
+            assertThat(overRest.getMessage()).startsWith("address = " + past);
+        }
+        verifyNoInteractions(verbs);
+    }
+
+    @Test
+    void a_lease_or_a_deferral_past_what_a_task_stores_is_refused_by_name() {
+        Refused lease = refusal(router.call(Surface.MCP, () -> H, "dispatch_claim",
+            Map.of("address", ADDRESS, "duration", "PT3000000000H")));
+        assertThat(lease.code()).isEqualTo(RefusalCode.ARGUMENT_INVALID);
+        assertThat(lease.getMessage()).startsWith("duration = PT3000000000H");
+        for (String notBefore : List.of("+1000000000-01-01T00:00:00Z", "-5000-01-01T00:00:00Z")) {
+            Refused deferral = refusal(router.call(Surface.MCP, () -> H, "dispatch_defer",
+                Map.of("address", ADDRESS, "receipt", "r",
+                    "fields", Map.of("not_before", notBefore))));
+            assertThat(deferral.code()).as(notBefore).isEqualTo(RefusalCode.ARGUMENT_INVALID);
+            assertThat(deferral.getMessage()).startsWith("not_before = " + notBefore);
+        }
+        verifyNoInteractions(verbs);
+    }
+
+    @Test
     void a_combination_the_kernel_would_meet_as_a_defect_is_refused_first() {
         Map<String, Object> ask = Map.of("address", ADDRESS, "receipt", "r",
             "fields", Map.of("question", "which?"));
