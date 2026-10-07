@@ -441,7 +441,10 @@ public class TaskService {
      * nothing is taken.
      */
     private TaskClaim reissue(UUID scopeId, Long taskId, TaskVerb verb, TaskCall call) {
-        Task task = tasks.lockById(scopeId, taskId).orElseThrow(() -> notFound(null));
+        Task task = tasks.lockById(scopeId, taskId).orElseThrow(() -> new DispatchException(
+            DispatchException.Reason.NOT_FOUND,
+            "the task this key was spent on is no longer there, and a repeat under the key "
+                + "takes nothing up. Take a task up with a new key."));
         TaskSituation s = situation(task);
         Actor caller = call.caller();
         if (s.state() != TaskState.ACTIVE || !s.heldBy(caller)) {

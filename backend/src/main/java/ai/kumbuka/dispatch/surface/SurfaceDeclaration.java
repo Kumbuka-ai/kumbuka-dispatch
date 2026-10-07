@@ -1,6 +1,7 @@
 package ai.kumbuka.dispatch.surface;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -159,24 +160,40 @@ public final class SurfaceDeclaration {
             Map<RefusalCode, ReasonCatalogue.Reason> catalogue) {
         ReasonCatalogue.requireComplete(catalogue);
 
-        List<String> seen = new ArrayList<>();
+        requireDistinctNames(Arrays.stream(ProcessVerb.values()).map(ProcessVerb::call).toList());
         for (ProcessVerb verb : ProcessVerb.values()) {
-            if (seen.contains(verb.call())) {
+            requireDescribed(verb.call(), verb.description());
+            requireWithinBudget(verb.call(), verb.description());
+            requireDescribedArguments(verb.call(), verb.arguments());
+        }
+    }
+
+    /**
+     * Refuses two calls declared under one name.
+     *
+     * <p>Takes the names rather than the enum, for the reason {@link
+     * #requireDescribedArguments} takes a list: the real declaration cannot be
+     * made to carry a duplicate at runtime.
+     */
+    public static void requireDistinctNames(List<String> calls) {
+        List<String> seen = new ArrayList<>();
+        for (String call : calls) {
+            if (seen.contains(call)) {
                 throw new IllegalStateException(
-                    "two calls are declared as '" + verb.call() + "'. A tool list is flat, "
+                    "two calls are declared as '" + call + "'. A tool list is flat, "
                         + "so a duplicate name is a call one of whose declarations no "
                         + "caller can reach.");
             }
-            seen.add(verb.call());
+            seen.add(call);
+        }
+    }
 
-            if (verb.description() == null || verb.description().isBlank()) {
-                throw new IllegalStateException(
-                    verb.call() + " is declared without a description. The description is "
-                        + "the only thing a caller with no skill has to go on.");
-            }
-            requireWithinBudget(verb.call(), verb.description());
-
-            requireDescribedArguments(verb.call(), verb.arguments());
+    /** Refuses a call declared without a description; takes the text, as above. */
+    public static void requireDescribed(String call, String description) {
+        if (description == null || description.isBlank()) {
+            throw new IllegalStateException(
+                call + " is declared without a description. The description is "
+                    + "the only thing a caller with no skill has to go on.");
         }
     }
 

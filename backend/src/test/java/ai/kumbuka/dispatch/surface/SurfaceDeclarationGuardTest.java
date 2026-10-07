@@ -67,6 +67,28 @@ class SurfaceDeclarationGuardTest {
             .hasMessageContaining("without a pattern");
     }
 
+    /** Two calls under one name are refused: a flat tool list reaches one of them only. */
+    @Test
+    void two_calls_under_one_name_refuse_the_start() {
+        assertThatThrownBy(() -> SurfaceDeclaration.requireDistinctNames(
+            List.of("dispatch_read", "dispatch_claim", "dispatch_read")))
+            .as("RED STATE, observed: a duplicate call name refuses the start, and names it")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("dispatch_read");
+    }
+
+    /** A call with no description is refused: it is all a caller with no skill has. */
+    @Test
+    void a_call_with_no_description_refuses_the_start() {
+        assertThatThrownBy(() -> SurfaceDeclaration.requireDescribed("dispatch_something", " "))
+            .as("RED STATE, observed: a call declared with a blank description refuses the "
+                + "start, and names the call")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("dispatch_something");
+        assertThatThrownBy(() -> SurfaceDeclaration.requireDescribed("dispatch_something", null))
+            .isInstanceOf(IllegalStateException.class);
+    }
+
     /**
      * A call with no arguments is refused — the check the javadoc named and
      * the code did not make.
