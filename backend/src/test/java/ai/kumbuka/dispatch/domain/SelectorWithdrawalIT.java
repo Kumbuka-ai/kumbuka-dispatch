@@ -6,6 +6,7 @@ import ai.kumbuka.dispatch.tenancy.TenantContext;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +18,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 
 import static ai.kumbuka.dispatch.domain.TaskHoldingIT.assertRefused;
 import static ai.kumbuka.dispatch.domain.TaskStage.C;
@@ -29,6 +31,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>No call of either surface withdraws a selector; this is the kernel's
  * method and the database's grant, measured together.
+ *
+ * <p>The two overlapping cases meet a withdrawal and a root's creation under
+ * one selector ({@link Overlap}). Red probes, observed before the withdrawal
+ * took the selector's lock: a withdrawal that overlapped a creation answered
+ * success and left a withdrawn selector with a task under it; a creation that
+ * overlapped a withdrawal numbered a root under the withdrawn selector.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -41,6 +49,7 @@ class SelectorWithdrawalIT {
     @Inject SelectorRegistry selectors;
     @Inject TaskService tasks;
     @Inject TenantContext tenantContext;
+    @Inject EntityManager em;
 
     private UUID tenant;
     private AutoCloseable binding;
@@ -86,7 +95,47 @@ class SelectorWithdrawalIT {
         assertThat(tasksUnder(UNUSED)).isZero();
     }
 
+    @Test
+    void a_selector_a_root_is_being_created_under_is_not_withdrawn() throws Exception {
+        Overlap overlap = overlap(
+            () -> tasks.create(SCOPE, UNUSED, null,
+                new TaskService.Draft("first", "code", null, null), C, IdempotencyKey.NONE),
+            () -> selectors.withdraw(SCOPE, UNUSED));
+
+        assertThat(overlap.second())
+            .as("the withdrawal counted under the selector's lock, after the creation committed")
+            .isInstanceOfSatisfying(DispatchException.class, refused ->
+                assertThat(refused.reason()).isEqualTo(DispatchException.Reason.SELECTOR_IN_USE));
+        assertThat(withdrawn(UNUSED)).isFalse();
+        assertThat(tasksUnder(UNUSED)).isEqualTo(1);
+        assertThat(overlap.waited()).as("the withdrawal waited on the creation").isTrue();
+    }
+
+    @Test
+    void no_root_is_created_under_a_selector_being_withdrawn() throws Exception {
+        int before = TaskStage.nextNumber(tenant, SCOPE, UNUSED);
+
+        Overlap overlap = overlap(
+            () -> selectors.withdraw(SCOPE, UNUSED),
+            () -> tasks.create(SCOPE, UNUSED, null,
+                new TaskService.Draft("too late", "code", null, null), C, IdempotencyKey.NONE));
+
+        assertThat(overlap.second())
+            .as("the creation read the selector under its lock, after the withdrawal committed")
+            .isInstanceOfSatisfying(DispatchException.class, refused ->
+                assertThat(refused.reason()).isEqualTo(DispatchException.Reason.SELECTOR_WITHDRAWN));
+        assertThat(tasksUnder(UNUSED)).isZero();
+        assertThat(TaskStage.nextNumber(tenant, SCOPE, UNUSED)).as("no number was taken")
+            .isEqualTo(before);
+        assertThat(overlap.waited()).as("the creation waited on the withdrawal").isTrue();
+    }
+
     // -----------------------------------------------------------------------
+
+    private Overlap overlap(Callable<?> first, Callable<?> second) throws Exception {
+        return new Overlap.Stage(em, tenantContext, tenant).run(first, second);
+    }
+
 
     private boolean withdrawn(String name) {
         return Boolean.parseBoolean(single("SELECT withdrawn::text FROM dispatch.selector WHERE tenant_id = '"

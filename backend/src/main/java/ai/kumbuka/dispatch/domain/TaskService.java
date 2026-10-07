@@ -655,11 +655,17 @@ public class TaskService {
         }
     }
 
-    /** Takes the next bracket number under the selector's row lock, in this transaction. */
+    /**
+     * Takes the next bracket number under the selector's row lock, in this
+     * transaction, and refuses a selector withdrawn meanwhile: the lock is the
+     * one {@link SelectorRegistry#withdraw} takes, so the row read under it is
+     * the one a withdrawal left.
+     */
     private int allocateNumber(Selector selector) {
         Selector locked = tasks.lockSelector(selector.id).orElseThrow(() ->
             new DispatchException(DispatchException.Reason.SELECTOR_NOT_DECLARED,
                 "selector '" + selector.name + "' is not declared in this scope."));
+        SelectorRegistry.refuseIfWithdrawn(locked);
         int allocated = locked.nextNumber;
         locked.nextNumber = allocated + 1;
         return allocated;

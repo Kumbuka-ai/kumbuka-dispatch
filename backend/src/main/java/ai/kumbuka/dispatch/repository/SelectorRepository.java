@@ -5,6 +5,7 @@ import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.UUID;
  *
  * <p>Separate from {@link TaskRepository} because the registry above it is
  * separate: a selector is declared deliberately and never as a side effect of
- * use, and folding its three statements into the task repository would put
+ * use, and folding its statements into the task repository would put
  * them next to the ones that DO run on every ordinary write.
  *
  * <p>As there, refusals stay above. "Not declared" and "withdrawn" are two
@@ -42,6 +43,33 @@ public class SelectorRepository {
             .setParameter("name", name)
             .getResultList();
         return found.isEmpty() ? Optional.empty() : Optional.of(found.get(0));
+    }
+
+    /**
+     * The selector of that name in this scope, locked for the caller's
+     * transaction, as the row stands under the lock.
+     *
+     * <p>The same row lock the numbering of a bracket root takes, so a
+     * withdrawal and a root's creation under one selector decide one after the
+     * other. Refreshed for the reason {@code TaskRepository.underLock} gives:
+     * where the transaction read the selector before, the persistence context
+     * would answer that earlier object.
+     */
+    @Transactional
+    public Optional<Selector> lock(UUID scopeId, String name) {
+        return em.createQuery("""
+                SELECT s FROM Selector s WHERE s.scopeId = :scope AND s.name = :name
+                """, Selector.class)
+            .setParameter(P_SCOPE, scopeId)
+            .setParameter("name", name)
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .getResultList()
+            .stream()
+            .findFirst()
+            .map(locked -> {
+                em.refresh(locked);
+                return locked;
+            });
     }
 
     /** Every selector of a scope, withdrawn ones included, by name. */
