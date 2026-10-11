@@ -57,6 +57,9 @@ public class TaskRepository {
     /** The prefix of the draw's apparatus parameters, numbered from zero. */
     private static final String P_APPARATUS = "ap";
 
+    /** The opening of a conjunct of alternatives. */
+    private static final String AND_OPEN = "  AND (";
+
     /** The prefixes of a listing's address parameters, numbered from zero. */
     private static final String P_ADDRESS_NUMBER = "an";
     private static final String P_ADDRESS_SUB = "as";
@@ -274,7 +277,7 @@ public class TaskRepository {
             query.append("  AND 1 = 0\n");
             return;
         }
-        query.append("  AND (");
+        query.append(AND_OPEN);
         for (int i = 0; i < addresses; i++) {
             query.append(i == 0 ? "" : " OR ")
                 .append("(t.number = :").append(P_ADDRESS_NUMBER).append(i)
@@ -325,7 +328,7 @@ public class TaskRepository {
                         alternatives.add("t.state = '" + state.wireName() + "'");
                 }
             }
-            return new StatePredicate("  AND (" + String.join(" OR ", alternatives) + ")\n",
+            return new StatePredicate(AND_OPEN + String.join(" OR ", alternatives) + ")\n",
                 now, park);
         }
 
@@ -411,7 +414,7 @@ public class TaskRepository {
         if (patterns == 0) {
             return;
         }
-        query.append("  AND (");
+        query.append(AND_OPEN);
         for (int i = 0; i < patterns; i++) {
             query.append(i == 0 ? "" : " OR ").append(column).append(" LIKE :")
                 .append(P_APPARATUS).append(i);

@@ -48,6 +48,7 @@ public class Refused extends RuntimeException {
     private static final String P_ADDRESS = "address";
     private static final String P_STATE = "state";
     private static final String P_NAME = "name";
+    private static final String P_VALUE = "value";
 
     private final transient RefusalCode code;
     private final transient Map<String, Object> data;
@@ -221,21 +222,21 @@ public class Refused extends RuntimeException {
     /** A duration that is not a positive ISO-8601 duration. */
     public static Refused claimDurationInvalid(String call, String value) {
         String message = ReasonCatalogue.message(RefusalCode.CLAIM_DURATION_INVALID,
-            Map.of("value", String.valueOf(value)));
+            Map.of(P_VALUE, String.valueOf(value)));
         return new Refused(RefusalCode.CLAIM_DURATION_INVALID, message, attempted(call));
     }
 
     /** A page size outside the bounds of a listing. */
     public static Refused pageSizeRejected(String call, String value, int max) {
         String message = ReasonCatalogue.message(RefusalCode.PAGE_SIZE_REJECTED, Map.of(
-            "value", value, P_CALL, call, "max", String.valueOf(max)));
+            P_VALUE, value, P_CALL, call, "max", String.valueOf(max)));
         return new Refused(RefusalCode.PAGE_SIZE_REJECTED, message, attempted(call));
     }
 
     /** A cursor this service did not hand out. */
     public static Refused cursorMalformed(String call, String value, String query) {
         String message = ReasonCatalogue.message(RefusalCode.CURSOR_MALFORMED, Map.of(
-            "value", value, "query", query));
+            P_VALUE, value, "query", query));
         return new Refused(RefusalCode.CURSOR_MALFORMED, message, attempted(call));
     }
 
@@ -254,7 +255,7 @@ public class Refused extends RuntimeException {
     /** A sort a listing does not declare; the declared ones are named. */
     public static Refused sortUndeclared(String call, String value, List<String> declared) {
         String message = ReasonCatalogue.message(RefusalCode.SORT_UNDECLARED, Map.of(
-            P_CALL, call, "value", value, "declared", String.join(", ", declared)));
+            P_CALL, call, P_VALUE, value, "declared", String.join(", ", declared)));
         return new Refused(RefusalCode.SORT_UNDECLARED, message, attempted(call));
     }
 
@@ -288,7 +289,7 @@ public class Refused extends RuntimeException {
      */
     public static Refused argumentInvalid(String call, String name, String value, String why) {
         String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_INVALID, Map.of(
-            P_CALL, call, P_NAME, name, "value", String.valueOf(value), "why", why));
+            P_CALL, call, P_NAME, name, P_VALUE, String.valueOf(value), "why", why));
         return new Refused(RefusalCode.ARGUMENT_INVALID, message, attempted(call));
     }
 
