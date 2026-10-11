@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import java.util.LinkedHashMap;
@@ -216,6 +223,39 @@ public class Refused extends RuntimeException {
         String message = ReasonCatalogue.message(RefusalCode.CLAIM_DURATION_INVALID,
             Map.of("value", String.valueOf(value)));
         return new Refused(RefusalCode.CLAIM_DURATION_INVALID, message, attempted(call));
+    }
+
+    /** A page size outside the bounds of a listing. */
+    public static Refused pageSizeRejected(String call, String value, int max) {
+        String message = ReasonCatalogue.message(RefusalCode.PAGE_SIZE_REJECTED, Map.of(
+            "value", value, P_CALL, call, "max", String.valueOf(max)));
+        return new Refused(RefusalCode.PAGE_SIZE_REJECTED, message, attempted(call));
+    }
+
+    /** A cursor this service did not hand out. */
+    public static Refused cursorMalformed(String call, String value, String query) {
+        String message = ReasonCatalogue.message(RefusalCode.CURSOR_MALFORMED, Map.of(
+            "value", value, "query", query));
+        return new Refused(RefusalCode.CURSOR_MALFORMED, message, attempted(call));
+    }
+
+    /**
+     * A cursor of another listing.
+     *
+     * @param differs what about the listing differs: scope, selector, filter, sort or
+     *                direction, in that order
+     */
+    public static Refused cursorForeign(String call, List<String> differs) {
+        String message = ReasonCatalogue.message(RefusalCode.CURSOR_FOREIGN, Map.of(
+            P_CALL, call, "differs", differs.isEmpty() ? "listing" : String.join(", ", differs)));
+        return new Refused(RefusalCode.CURSOR_FOREIGN, message, attempted(call));
+    }
+
+    /** A sort a listing does not declare; the declared ones are named. */
+    public static Refused sortUndeclared(String call, String value, List<String> declared) {
+        String message = ReasonCatalogue.message(RefusalCode.SORT_UNDECLARED, Map.of(
+            P_CALL, call, "value", value, "declared", String.join(", ", declared)));
+        return new Refused(RefusalCode.SORT_UNDECLARED, message, attempted(call));
     }
 
     /**

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.adapter.rest;
 
 import ai.kumbuka.dispatch.adapter.payload.Answers;
@@ -39,7 +46,8 @@ public class RefusalMapper implements ExceptionMapper<Refused> {
     public static int statusOf(RefusalCode code) {
         return switch (code) {
             case ARGUMENT_UNKNOWN, ARGUMENT_MISSING, ARGUMENT_INVALID,
-                 CLAIM_DURATION_INVALID -> 400;
+                 CLAIM_DURATION_INVALID, PAGE_SIZE_REJECTED, CURSOR_MALFORMED,
+                 CURSOR_FOREIGN, SORT_UNDECLARED -> 400;
             case ROLE_DOES_NOT_ALLOW, NOT_THE_HOLDER, RECEIPT_WRONG, SCOPE_READ_ONLY -> 403;
             case NOT_FOUND -> 404;
             case CALL_NOT_AT_THIS_ADDRESS -> 405;

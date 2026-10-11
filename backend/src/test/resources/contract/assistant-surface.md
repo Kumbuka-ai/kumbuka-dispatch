@@ -2,10 +2,19 @@
 type: contract-copy
 title: "The dispatch service's verb surface: twenty-five calls, two sizes of answer, refusals that explain themselves"
 written: 2026-10-06
+amended: 2026-10-11
 sources:
   - "platform-specs aa42521, docs/architecture/targets/TAR-0004-the-dispatch-service-carries-commissioned-work-from-issue-to-acceptance.md, sections 3, 5, 6, 7"
   - "platform-specs aa42521, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3"
+  - "the platform's pagination frame for every primary object, ratified by the operator 2026-10-11 (the substance of ADR-0049, not yet written): page_size, after, sort, direction, next_cursor, and the refusals PAGE_SIZE_REJECTED, CURSOR_MALFORMED, CURSOR_FOREIGN, SORT_UNDECLARED"
 ---
+<!--
+Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+SPDX-License-Identifier: AGPL-3.0-only
+This file is part of Kumbuka and is licensed under the GNU Affero
+General Public License v3.0 only. See the LICENSE file in the
+repository root for the full licence text.
+-->
 
 # The dispatch service's verb surface
 
@@ -208,7 +217,8 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 > attributes and the calls open to you. Narrow by state, apparatus, bracket or address;
 > comma-separated values are alternatives, and an undeclared filter is refused.
 >
-> The list follows the address order, stops at the page bound and says whether it was cut.
+> One page per call, in address order unless you sort otherwise. While next_cursor is in the
+> answer, more follow: pass it as after, with the same other arguments, for the next page.
 
 **`dispatch_annotate`**
 > Adds an addendum to a text of a sent task: a supplement with its own time and author that cannot
@@ -243,7 +253,12 @@ A writing call answers lean: `address`, `fields` with the state and its attribut
 answer the full head: in addition `title`, `apparatus`, `identity` (the technical address),
 `holder` (`self`, `other` or `nobody`), `lapse_count`, the pending question's options, both
 metadata, `curated_in`, and `texts`, the texts that exist by type and suffix, never their content.
-`dispatch_query` answers `{ "tasks": [...], "cut": ... }`. `dispatch_delete` answers the address
+`dispatch_query` answers `{ "tasks": [...], "next_cursor": "..." }`, one page; `next_cursor` is
+absent on the last page. It takes `page_size` (50 if omitted, 1 to 200), `after` (the
+`next_cursor` of the previous page), `sort` (`id` or `created_at`, `id` if omitted) and `direction`
+(`asc` or `desc`, `asc` if omitted). `id` sorts by the address, number and sub numerically;
+`created_at` takes the address as its second key. A cursor continues only the listing that
+handed it out: the same scope, selector, filter, sort and direction. `dispatch_delete` answers the address
 and nothing else. No answer names the identity of an actor.
 
 Text comes only from `dispatch_read_text`, one part per call. No other call, no listing and no
@@ -282,6 +297,10 @@ bytes whatever its cause.
 | `DEFERRAL_PENDING` | `{call} is not possible on {address} before {not_before}: the task was deferred until then.` | take it up after that instant, or another task now |
 | `NOTHING_TO_TAKE` | `Nothing in {collection} that your patterns match can be taken up right now: every such task is a draft, held, paused, delivered, closed or deferred.` | list the tasks with the query call |
 | `CLAIM_DURATION_INVALID` | `The duration {value} is not a positive ISO-8601 duration such as PT2H.` | correct the duration |
+| `PAGE_SIZE_REJECTED` | `page_size = {value} is not valid for {call}: it is a whole number from 1 to {max}.` | correct the value |
+| `CURSOR_MALFORMED` | `after = {value} is not a cursor {query} handed out.` | repeat the query without after |
+| `CURSOR_FOREIGN` | `{call} carries a cursor of another listing: its {differs} is not the one this call asks for. A cursor continues only the listing that handed it out.` | repeat the call with the arguments that handed the cursor out, or without after |
+| `SORT_UNDECLARED` | `{call} cannot sort by {value}. It sorts by: {declared}.` | use a declared sort |
 | `ARGUMENT_UNKNOWN` | `{subject} has no {kind} named {name}. It has: {known}.` | correct the name |
 | `ARGUMENT_MISSING` | `{call} needs {name}: {what}.` | supply it |
 | `ARGUMENT_INVALID` | `{name} = {value} is not valid for {call}: {why}.` | correct the value |

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -175,18 +182,49 @@ class RestSurfaceIT {
     }
 
     @Test
-    void a_whole_number_past_the_range_is_refused_by_name() {
-        for (String beyond : List.of("4294967297", "2147483648", "-2147483649")) {
-            Response refused = given().get(SurfaceFixture.collection() + "?limit=" + beyond);
-            assertThat(refused.statusCode()).as(beyond).isEqualTo(400);
-            assertThat(refused.jsonPath().getString("reason")).as(beyond)
-                .isEqualTo("ARGUMENT_INVALID");
-            assertThat(refused.jsonPath().getString("message")).as(beyond)
-                .contains("limit = " + beyond + " ")
-                .contains("too large");
+    void a_page_size_outside_its_bounds_is_refused_by_name_and_the_bounds_are_taken() {
+        for (String outside : List.of("0", "-1", "201", "4294967297", "-2147483649")) {
+            Response refused = given().get(SurfaceFixture.collection() + "?page_size=" + outside);
+            assertThat(refused.statusCode()).as(outside).isEqualTo(400);
+            assertThat(refused.jsonPath().getString("reason")).as(outside)
+                .isEqualTo("PAGE_SIZE_REJECTED");
+            assertThat(refused.jsonPath().getString("message")).as(outside)
+                .contains("page_size = " + outside + " ")
+                .contains("from 1 to 200");
         }
-        Response listed = given().get(SurfaceFixture.collection() + "?limit=2147483647");
-        assertThat(listed.statusCode()).as("the largest whole number is taken").isEqualTo(200);
+        for (String bound : List.of("1", "200")) {
+            assertThat(given().get(SurfaceFixture.collection() + "?page_size=" + bound)
+                .statusCode()).as("%s is taken", bound).isEqualTo(200);
+        }
+        Response earlier = given().get(SurfaceFixture.collection() + "?limit=10");
+        assertThat(earlier.jsonPath().getString("reason"))
+            .as("the earlier page bound is not an argument any more")
+            .isEqualTo("ARGUMENT_UNKNOWN");
+    }
+
+    @Test
+    void a_listing_pages_over_rest_by_its_cursor_and_refuses_a_sort_it_does_not_declare() {
+        for (int i = 0; i < 3; i++) {
+            SurfaceFixture.open("paged " + i, "code");
+        }
+        List<String> seen = new java.util.ArrayList<>();
+        String after = null;
+        int pages = 0;
+        do {
+            Response page = given().get(SurfaceFixture.collection() + "?page_size=1"
+                + (after == null ? "" : "&after=" + after));
+            assertThat(page.statusCode()).isEqualTo(200);
+            seen.addAll(page.jsonPath().getList("tasks.address", String.class));
+            after = page.jsonPath().getString("next_cursor");
+            assertThat(++pages).as("the walk ends").isLessThan(1000);
+        } while (after != null);
+        assertThat(seen).doesNotHaveDuplicates().hasSize(pages);
+
+        Response sorted = given().get(SurfaceFixture.collection() + "?sort=title");
+        assertThat(sorted.statusCode()).isEqualTo(400);
+        assertThat(sorted.jsonPath().getString("reason")).isEqualTo("SORT_UNDECLARED");
+        assertThat(sorted.jsonPath().getString("message")).contains("title")
+            .contains("id, created_at");
     }
 
     @Test

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.contract.TargetSurface;
@@ -188,7 +195,7 @@ class McpProjectionIT {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tasks = (List<Map<String, Object>>) listed.get("tasks");
         assertThat(tasks).extracting(t -> t.get("address")).containsExactly(open);
-        assertThat(listed.get("cut")).isEqualTo(false);
+        assertThat(listed).as("one page holds it all: no cursor").doesNotContainKey("next_cursor");
 
         String draft = String.valueOf(Mcp.answer(Mcp.call("dispatch_create", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
@@ -220,20 +227,54 @@ class McpProjectionIT {
     }
 
     @Test
-    void a_whole_number_past_the_range_is_refused_by_name_and_not_read_as_another() {
-        for (long beyond : List.of(4294967297L, 2147483648L, -2147483649L)) {
+    void a_page_size_outside_its_bounds_is_refused_by_name_and_not_read_as_another() {
+        for (long outside : List.of(0L, 201L, 4294967297L, 2147483648L, -2147483649L)) {
             Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
                 "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-                "limit", beyond)));
-            assertThat(refusal.get("reason")).as("%s", beyond).isEqualTo("ARGUMENT_INVALID");
-            assertThat(String.valueOf(refusal.get("message"))).as("%s", beyond)
-                .contains("limit = " + beyond + " ")
-                .contains("too large");
+                "page_size", outside)));
+            assertThat(refusal.get("reason")).as("%s", outside).isEqualTo("PAGE_SIZE_REJECTED");
+            assertThat(String.valueOf(refusal.get("message"))).as("%s", outside)
+                .contains("page_size = " + outside + " ")
+                .contains("from 1 to 200");
         }
-        Map<String, Object> listed = Mcp.answer(Mcp.call("dispatch_query", Map.of(
+        assertThat(Mcp.answer(Mcp.call("dispatch_query", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-            "limit", Integer.MAX_VALUE)));
-        assertThat(listed.get("cut")).as("the largest whole number is taken").isEqualTo(false);
+            "page_size", 200)))).as("the largest page is taken").containsKey("tasks");
+        assertThat(Mcp.reason(Mcp.call("dispatch_query", Map.of(
+                "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+                "limit", 10))))
+            .as("the earlier page bound is not an argument any more")
+            .isEqualTo("ARGUMENT_UNKNOWN");
+    }
+
+    @Test
+    void a_cursor_continues_its_own_listing_and_is_refused_for_another_or_when_unread() {
+        for (int i = 0; i < 2; i++) {
+            SurfaceFixture.open("cursor " + i, "code");
+        }
+        Map<String, Object> first = Mcp.answer(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "page_size", 1)));
+        String cursor = String.valueOf(first.get("next_cursor"));
+        assertThat(first.get("next_cursor")).as("more follow").isNotNull();
+
+        Map<String, Object> second = Mcp.answer(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "page_size", 1, "after", cursor)));
+        assertThat(second.get("tasks")).as("the next page").isNotEqualTo(first.get("tasks"));
+
+        Map<String, Object> foreign = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "page_size", 1, "after", cursor, "direction", "desc")));
+        assertThat(foreign.get("reason")).isEqualTo("CURSOR_FOREIGN");
+        assertThat(String.valueOf(foreign.get("message"))).contains("direction");
+
+        Map<String, Object> malformed = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "after", "not-a-cursor")));
+        assertThat(malformed.get("reason")).isEqualTo("CURSOR_MALFORMED");
+        assertThat(String.valueOf(malformed.get("message")))
+            .isEqualTo("after = not-a-cursor is not a cursor dispatch_query handed out.");
     }
 
     // -----------------------------------------------------------------------

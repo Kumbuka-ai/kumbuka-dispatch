@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.contract;
 
 import ai.kumbuka.dispatch.platform.PlatformFixture;
@@ -68,6 +75,60 @@ class EveryRefusalIT {
                 "selector", SurfaceFixture.SELECTOR))
             .jsonPath().getString("result.structuredContent"))
             .isEqualTo(unknownScope.jsonPath().getString("result.structuredContent"));
+    }
+
+    /**
+     * The four refusals of a listing's page: decided before any task is read,
+     * so they carry the call and no state.
+     */
+    @Test
+    void the_page_of_a_listing_refuses_its_size_its_cursor_and_its_sort_by_name() {
+        SurfaceFixture.open("one", "code");
+        SurfaceFixture.open("two", "code");
+        Map<String, Object> collection = Map.of("scope", SurfaceFixture.SCOPE,
+            "selector", SurfaceFixture.SELECTOR);
+
+        Map<String, Object> size = Mcp.refusal(Mcp.call("dispatch_query",
+            with(collection, "page_size", 0)));
+        assertThat(size.get("reason")).isEqualTo("PAGE_SIZE_REJECTED");
+        assertThat(size.get("message"))
+            .isEqualTo("page_size = 0 is not valid for dispatch_query: it is a whole number "
+                + "from 1 to 200.");
+
+        Map<String, Object> malformed = Mcp.refusal(Mcp.call("dispatch_query",
+            with(collection, "after", "x")));
+        assertThat(malformed.get("reason")).isEqualTo("CURSOR_MALFORMED");
+        assertThat(malformed.get("message"))
+            .isEqualTo("after = x is not a cursor dispatch_query handed out.");
+
+        String cursor = String.valueOf(Mcp.answer(Mcp.call("dispatch_query",
+            with(collection, "page_size", 1))).get("next_cursor"));
+        Map<String, Object> foreign = Mcp.refusal(Mcp.call("dispatch_query",
+            with(with(collection, "after", cursor), "sort", "created_at")));
+        assertThat(foreign.get("reason")).isEqualTo("CURSOR_FOREIGN");
+        assertThat(foreign.get("message"))
+            .isEqualTo("dispatch_query carries a cursor of another listing: its sort is not "
+                + "the one this call asks for. A cursor continues only the listing that "
+                + "handed it out.");
+
+        Map<String, Object> sort = Mcp.refusal(Mcp.call("dispatch_query",
+            with(collection, "sort", "uuid")));
+        assertThat(sort.get("reason")).isEqualTo("SORT_UNDECLARED");
+        assertThat(sort.get("message"))
+            .isEqualTo("dispatch_query cannot sort by uuid. It sorts by: id, created_at.");
+
+        for (Map<String, Object> refusal : List.of(size, malformed, foreign, sort)) {
+            assertThat(data(refusal)).as("the call, and no state: %s", refusal)
+                .containsEntry("attempted", "dispatch_query")
+                .doesNotContainKey("state");
+        }
+    }
+
+    private static Map<String, Object> with(Map<String, Object> arguments, String name,
+                                            Object value) {
+        Map<String, Object> more = new java.util.LinkedHashMap<>(arguments);
+        more.put(name, value);
+        return more;
     }
 
     @Test

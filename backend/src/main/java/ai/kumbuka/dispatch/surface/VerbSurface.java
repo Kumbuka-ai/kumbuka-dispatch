@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
@@ -7,7 +14,8 @@ import ai.kumbuka.dispatch.domain.SelectorRegistry;
 import ai.kumbuka.dispatch.domain.TaskCall;
 import ai.kumbuka.dispatch.domain.TaskClaim;
 import ai.kumbuka.dispatch.domain.TaskFilter;
-import ai.kumbuka.dispatch.domain.TaskListing;
+import ai.kumbuka.dispatch.domain.Page;
+import ai.kumbuka.dispatch.domain.PageRequest;
 import ai.kumbuka.dispatch.domain.TaskService;
 import ai.kumbuka.dispatch.domain.TaskState;
 import ai.kumbuka.dispatch.domain.TaskTextView;
@@ -77,8 +85,8 @@ public class VerbSurface {
     public record Claimed(Result result, String receipt) {
     }
 
-    /** A listing: the heads, and whether the page bound cut it. */
-    public record Listing(String scope, TaskListing listing) {
+    /** A listing: one page of heads, and where the listing goes on. */
+    public record Listing(String scope, Page page) {
     }
 
     // ======================================================================
@@ -123,12 +131,12 @@ public class VerbSurface {
 
     @Transactional
     public Listing query(Actor actor, String scope, String selector, TaskFilter filter,
-                         int limit) {
+                         PageRequest page) {
         UUID scopeId = resolve(actor, scope, Access.READ);
-        TaskListing listing = tasks.query(scopeId, selector, filter, limit, actor);
+        Page answered = tasks.query(scopeId, selector, filter, page, actor);
         LOG.debugf("query %s in scope %s: %d head(s)", selector, scopeId,
-            listing.tasks().size());
-        return new Listing(scope, listing);
+            answered.tasks().size());
+        return new Listing(scope, answered);
     }
 
     /**

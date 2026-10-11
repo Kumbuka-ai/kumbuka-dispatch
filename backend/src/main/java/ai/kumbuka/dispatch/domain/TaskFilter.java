@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import java.util.ArrayList;
@@ -98,10 +105,17 @@ public record TaskFilter(
             addresses(values(raw, Field.ADDRESS)));
     }
 
-    /** Whether a task in effective state {@code state} at {@code address} passes. */
-    boolean admits(TaskState state, ExchangeAddress address) {
-        return (states.isEmpty() || states.contains(state))
-            && (addresses.isEmpty() || addresses.contains(address));
+    /**
+     * The filter in one canonical spelling: every field, its values sorted, so
+     * two filters that admit the same tasks spell alike whatever order the
+     * caller wrote the alternatives in. What a cursor's fingerprint is taken of.
+     */
+    String canonical() {
+        return "state=" + String.join(",", states.stream().map(TaskState::wireName).sorted().toList())
+            + ";apparatus=" + String.join(",", apparatusPatterns.stream().sorted().distinct().toList())
+            + ";bracket=" + String.join(",", brackets.stream().sorted().map(String::valueOf).toList())
+            + ";address=" + String.join(",", addresses.stream().map(ExchangeAddress::toString)
+                .sorted().toList());
     }
 
     private static List<String> values(Map<String, String> raw, Field field) {

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.TaskVerb;
@@ -258,8 +265,9 @@ public enum ProcessVerb {
             + "state, attributes and the calls open to you. Narrow by state, apparatus, "
             + "bracket or address; comma-separated values are alternatives, and an undeclared "
             + "filter is refused.\n\n"
-            + "The list follows the address order, stops at the page bound and says whether "
-            + "it was cut.",
+            + "One page per call, in address order unless you sort otherwise. While "
+            + "next_cursor is in the answer, more follow: pass it as after, with the same "
+            + "other arguments, for the next page.",
         List.of(scope(), selector(),
             Argument.top("state", Argument.STRING, false,
                 "states to list, comma-separated: draft, open, active, on_hold, delivered, "
@@ -269,8 +277,15 @@ public enum ProcessVerb {
             Argument.top("bracket", Argument.STRING, false, "bracket numbers, comma-separated"),
             Argument.top("address", Argument.STRING, false,
                 "complete addresses of tasks of this bracket kind, comma-separated"),
-            Argument.top("limit", Argument.INTEGER, false,
-                "the page bound: at most this many tasks; 100 if omitted"))),
+            Argument.top("page_size", Argument.INTEGER, false,
+                "how many tasks at most, from 1 to 200; 50 if omitted"),
+            Argument.top("after", Argument.STRING, false,
+                "the next_cursor of the previous page; the first page if omitted"),
+            Argument.top("sort", Argument.STRING, false,
+                "what the list is sorted by: id, the address, or created_at, then the "
+                    + "address; id if omitted"),
+            Argument.oneOf("direction", Argument.Placement.TOP, false, List.of("asc", "desc"),
+                "the direction of the sort; asc if omitted"))),
 
     ANNOTATE("annotate", null, null,
         "Adds an addendum to a text of a sent task: a supplement with its own time and "

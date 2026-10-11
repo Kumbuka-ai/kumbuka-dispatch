@@ -1,3 +1,10 @@
+<!--
+Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+SPDX-License-Identifier: AGPL-3.0-only
+This file is part of Kumbuka and is licensed under the GNU Affero
+General Public License v3.0 only. See the LICENSE file in the
+repository root for the full licence text.
+-->
 # Where `assistant-surface.md` came from
 
 `assistant-surface.md` is **written by hand** from
@@ -9,6 +16,16 @@
 on 2026-10-06. It replaces the verbatim copy of the
 earlier contract of the assistant surface, whose process verbs this surface no
 longer carries.
+
+## The amendment of 2026-10-11: the page of a listing
+
+The request and answer of `dispatch_query` and its four refusals were rewritten
+from the platform's pagination frame, which the operator ratified on
+2026-10-11 and which ADR-0049 is to record. The frame fixes the names
+(`page_size`, `after`, `sort`, `direction`, `next_cursor`), the bounds (50 by
+default, 200 at most), the two sort keys and their second key, and the four
+reason codes; the description of the call and the message patterns are this
+surface's proposal, as the rest of the descriptions are.
 
 ## What is word for word, and what is not
 

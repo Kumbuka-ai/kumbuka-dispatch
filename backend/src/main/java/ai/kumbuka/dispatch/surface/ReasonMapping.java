@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.DispatchException;
@@ -60,6 +67,13 @@ public final class ReasonMapping {
 
             // A set with nothing free in it.
             case NOTHING_TO_CLAIM -> RefusalCode.NOTHING_TO_TAKE;
+
+            // The page of a listing: its size, its cursor and its order. One to
+            // one, because each names its own remedy.
+            case PAGE_SIZE_REJECTED -> RefusalCode.PAGE_SIZE_REJECTED;
+            case CURSOR_MALFORMED -> RefusalCode.CURSOR_MALFORMED;
+            case CURSOR_FOREIGN -> RefusalCode.CURSOR_FOREIGN;
+            case SORT_UNDECLARED -> RefusalCode.SORT_UNDECLARED;
 
             // The lease's one form rule.
             case CLAIM_DURATION_NOT_POSITIVE -> RefusalCode.CLAIM_DURATION_INVALID;

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 /**
@@ -62,6 +69,26 @@ public enum RefusalCode {
 
     /** A claim duration was absent, malformed, zero or negative. */
     CLAIM_DURATION_INVALID,
+
+    /**
+     * A page size outside the bounds of a listing. Refused rather than
+     * clamped, because a page cut to the bound without a word reads as the
+     * whole list.
+     */
+    PAGE_SIZE_REJECTED,
+
+    /** A cursor this service did not hand out. */
+    CURSOR_MALFORMED,
+
+    /**
+     * A cursor handed out for another listing: another scope, selector,
+     * filter, sort or direction. The cursor is sound and the call is not the
+     * one that produced it, which is a different remedy from a malformed one.
+     */
+    CURSOR_FOREIGN,
+
+    /** A sort a listing does not declare. */
+    SORT_UNDECLARED,
 
     /** An argument the call does not declare, at any depth. Nothing was written. */
     ARGUMENT_UNKNOWN,

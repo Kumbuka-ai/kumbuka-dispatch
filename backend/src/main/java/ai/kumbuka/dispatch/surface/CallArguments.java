@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import java.math.BigDecimal;
@@ -128,16 +135,9 @@ public final class CallArguments {
                     || "true".equals(value) || "false".equals(value)
                 ? null
                 : "it is true or false";
-            case Argument.INTEGER -> {
-                Long whole = wholeOf(value);
-                if (whole == null) {
-                    yield "it is a whole number";
-                }
-                yield fitsAnInt(whole)
-                    ? null
-                    : "it is too large for a whole number here, which lies from "
-                        + Integer.MIN_VALUE + " to " + Integer.MAX_VALUE;
-            }
+            // Whether the number is one the call can take is the call's own
+            // refusal: a page size outside its bounds is refused as one.
+            case Argument.INTEGER -> wholeOf(value) == null ? "it is a whole number" : null;
             default -> "its declared type is " + argument.type();
         };
     }
@@ -201,9 +201,12 @@ public final class CallArguments {
         return Boolean.TRUE.equals(raw) || "true".equals(raw);
     }
 
-    /** A whole number at the top level, or null where it is absent. */
-    public Integer integer(String name) {
-        return integerOf(top.get(name));
+    /**
+     * A whole number at the top level, or null where it is absent. A number
+     * past what a long holds arrives as the long's bound on its side.
+     */
+    public Long wholeNumber(String name) {
+        return wholeOf(top.get(name));
     }
 
     /** The metadata object under {@code fields}, or empty where it is absent. */
@@ -228,12 +231,6 @@ public final class CallArguments {
             }
         }
         return filters;
-    }
-
-    /** A whole number that fits an int, or null where the value is none. */
-    private static Integer integerOf(Object value) {
-        Long whole = wholeOf(value);
-        return whole != null && fitsAnInt(whole) ? whole.intValue() : null;
     }
 
     /**
@@ -287,10 +284,6 @@ public final class CallArguments {
         }
         long magnitude = digits.isEmpty() ? 0 : Long.parseLong(digits);
         return negative ? -magnitude : magnitude;
-    }
-
-    private static boolean fitsAnInt(long whole) {
-        return whole >= Integer.MIN_VALUE && whole <= Integer.MAX_VALUE;
     }
 
     private static String string(Object value) {

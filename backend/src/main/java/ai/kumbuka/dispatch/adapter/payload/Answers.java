@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.HoldReason;
@@ -103,11 +110,15 @@ public final class Answers {
         return rendered;
     }
 
-    /** A listing: the heads, and whether the page bound cut it. */
+    /**
+     * A listing: one page of heads, and {@code next_cursor} where more follow.
+     * On the last page it is absent, which is the only sign that it is the
+     * last.
+     */
     public static Map<String, Object> listing(CallRouter.Listed listed) {
         Map<String, Object> listing = new LinkedHashMap<>();
         listing.put("tasks", listed.heads().stream().map(Answers::answer).toList());
-        listing.put("cut", listed.cut());
+        putIfPresent(listing, "next_cursor", listed.nextCursor());
         return listing;
     }
 

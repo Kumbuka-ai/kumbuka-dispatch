@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.repository;
 
 import ai.kumbuka.dispatch.tenancy.TenantBound;
@@ -64,32 +71,6 @@ public class ScopeAccessRepository {
             (String) row[4],
             (Boolean) row[5],
             (Boolean) row[6]));
-    }
-
-    /**
-     * The slug of a scope the bound subject may see, or empty.
-     *
-     * <p>The reverse of {@link #findBySlug}, and it reads the same
-     * subject-filtered view — which is what makes it safe to call for a scope
-     * the caller did not name. A curated answer's target may live in another
-     * scope entirely (section 5.1), and its address can only be rendered
-     * complete if the slug is known; a caller that may not see that scope gets
-     * no slug and therefore no address, which is the same answer it would get
-     * for a target that is not there.
-     */
-    @Transactional
-    public Optional<String> slugOf(UUID scopeId) {
-        List<Object[]> rows = em.createNativeQuery("""
-                SELECT slug
-                FROM platform.scope_access
-                WHERE scope_id = :id
-                """)
-            .setParameter("id", scopeId)
-            .getResultList();
-
-        return rows.isEmpty()
-            ? Optional.empty()
-            : Optional.of(String.valueOf(rows.get(0)));
     }
 
     /**

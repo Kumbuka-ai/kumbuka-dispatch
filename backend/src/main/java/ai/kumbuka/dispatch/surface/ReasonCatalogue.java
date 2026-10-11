@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import java.util.LinkedHashMap;
@@ -152,6 +159,24 @@ public final class ReasonCatalogue {
         put(declared, RefusalCode.CLAIM_DURATION_INVALID,
             "The duration {value} is not a positive ISO-8601 duration such as PT2H.",
             "correct the duration");
+
+        put(declared, RefusalCode.PAGE_SIZE_REJECTED,
+            "page_size = {value} is not valid for {call}: it is a whole number from 1 to "
+                + "{max}.",
+            "correct the value");
+
+        put(declared, RefusalCode.CURSOR_MALFORMED,
+            "after = {value} is not a cursor {query} handed out.",
+            "repeat the query without after");
+
+        put(declared, RefusalCode.CURSOR_FOREIGN,
+            "{call} carries a cursor of another listing: its {differs} is not the one this "
+                + "call asks for. A cursor continues only the listing that handed it out.",
+            "repeat the call with the arguments that handed the cursor out, or without after");
+
+        put(declared, RefusalCode.SORT_UNDECLARED,
+            "{call} cannot sort by {value}. It sorts by: {declared}.",
+            "use a declared sort");
 
         put(declared, RefusalCode.ARGUMENT_UNKNOWN,
             "{subject} has no {kind} named {name}. It has: {known}.",

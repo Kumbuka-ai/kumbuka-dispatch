@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.contract;
 
 import java.util.LinkedHashMap;
@@ -16,7 +23,11 @@ import java.util.Map;
  * <p>Where the table leaves a name open, the name the service chose stands
  * here, marked: the filters of {@code query} ("filters" in the table; the
  * concept's section 5 names state, apparatus pattern, bracket and a list of
- * addresses) and its page bound ("page bound"; {@code limit}).
+ * addresses). The page of {@code query} is no longer the service's choice:
+ * {@code page_size}, {@code after}, {@code sort} and {@code direction} are
+ * the request the platform's pagination frame fixes for every primary object
+ * (ratified by the operator 2026-10-11, the substance of ADR-0049), and they
+ * stand here from that frame.
  */
 public final class TargetSurface {
 
@@ -90,9 +101,11 @@ public final class TargetSurface {
             List.of("address", "conflict_token", "confirmation"), List.of("remark")));
         table.put("read", new Arguments(List.of("address"), List.of()));
         table.put("read_text", new Arguments(List.of("address", "part"), List.of()));
-        // "filters, page bound": the names are the service's (see the class comment).
+        // "filters": the names are the service's; the page is the pagination
+        // frame's (see the class comment).
         table.put("query", new Arguments(
-            List.of("scope", "selector", "state", "apparatus", "bracket", "address", "limit"),
+            List.of("scope", "selector", "state", "apparatus", "bracket", "address",
+                "page_size", "after", "sort", "direction"),
             List.of()));
         table.put("annotate", new Arguments(List.of("address", "idempotency_key"),
             List.of("text", "part")));

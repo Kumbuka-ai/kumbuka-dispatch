@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -65,7 +72,7 @@ class TaskTenancyIT {
             assertRefused(() -> tasks.claimNext(SCOPE, SELECTOR, List.of("*e"), TaskCall.by(K)),
                 DispatchException.Reason.NOTHING_TO_CLAIM);
             assertThat(tasks.query(SCOPE, SELECTOR,
-                    TaskFilter.of(Map.of("address", "sprint/1.0")), 10, C).tasks())
+                    TaskFilter.of(Map.of("address", "sprint/1.0")), TaskStage.page(10), C).tasks())
                 .as("a listing of B shows nothing of A").isEmpty();
 
             TaskView own = tasks.create(SCOPE, SELECTOR, null,

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
@@ -6,6 +13,8 @@ import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.domain.HoldReason;
 import ai.kumbuka.dispatch.domain.HolderState;
 import ai.kumbuka.dispatch.domain.IdempotencyKey;
+import ai.kumbuka.dispatch.domain.PageRequest;
+import ai.kumbuka.dispatch.domain.SortKey;
 import ai.kumbuka.dispatch.domain.TaskCall;
 import ai.kumbuka.dispatch.domain.TaskFilter;
 import ai.kumbuka.dispatch.domain.TaskInput;
@@ -57,9 +66,6 @@ import java.util.function.Supplier;
 @ApplicationScoped
 public class CallRouter {
 
-    /** The page bound of a listing that names none. */
-    public static final int DEFAULT_PAGE = 100;
-
     private static final String ADDRESS = "address";
     private static final String SCOPE = "scope";
     private static final String SELECTOR = "selector";
@@ -75,6 +81,9 @@ public class CallRouter {
     private static final String PARENT = "parent";
     private static final String CURATED_IN = "curated_in";
     private static final String APPARATUS = "apparatus";
+    private static final String PAGE_SIZE = "page_size";
+    private static final String AFTER = "after";
+    private static final String SORT = "sort";
 
     /**
      * The first instant and the bound past the last a task stores, as the
@@ -109,8 +118,11 @@ public class CallRouter {
         implements Outcome {
     }
 
-    /** A listing: full heads, and whether the page bound cut it. */
-    public record Listed(List<Answered> heads, boolean cut) implements Outcome {
+    /**
+     * A listing: one page of full heads, and the cursor of the next page,
+     * which is null on the last.
+     */
+    public record Listed(List<Answered> heads, String nextCursor) implements Outcome {
     }
 
     /** One part of a task's text. */
@@ -271,18 +283,15 @@ public class CallRouter {
             }
             filters.put(filter.getKey(), value);
         }
-        Integer limit = in.integer("limit");
-        if (limit != null && limit < 1) {
-            throw Refused.argumentInvalid(in.call(), "limit", String.valueOf(limit),
-                "the page bound is at least 1");
-        }
+        PageRequest page = PageRequest.of(in.wholeNumber(PAGE_SIZE), in.top(SORT),
+            SortKey.Direction.of(in.top("direction")), in.top(AFTER));
         VerbSurface.Listing listing = verbs.query(actor, scope, selector,
-            TaskFilter.of(filters), limit == null ? DEFAULT_PAGE : limit);
-        List<Answered> heads = listing.listing().tasks().stream()
+            TaskFilter.of(filters), page);
+        List<Answered> heads = listing.page().tasks().stream()
             .map(view -> answered(surface, actor, ProcessVerb.QUERY,
                 new VerbSurface.Result(listing.scope(), view), true, null))
             .toList();
-        return new Listed(heads, listing.listing().cut());
+        return new Listed(heads, listing.page().nextCursor().orElse(null));
     }
 
     /** An address filter: complete addresses in, the kernel's short form out. */
@@ -491,6 +500,14 @@ public class CallRouter {
                 ProcessVerb.QUERY.on(surface));
             case CLAIM_DURATION_INVALID -> Refused.claimDurationInvalid(name,
                 String.valueOf(given.get(DURATION)));
+            case PAGE_SIZE_REJECTED -> Refused.pageSizeRejected(name,
+                String.valueOf(given.get(PAGE_SIZE)), PageRequest.MAX_PAGE_SIZE);
+            case CURSOR_MALFORMED -> Refused.cursorMalformed(name,
+                String.valueOf(given.get(AFTER)), ProcessVerb.QUERY.on(surface));
+            case CURSOR_FOREIGN -> Refused.cursorForeign(name, e.offenders());
+            case SORT_UNDECLARED -> Refused.sortUndeclared(name,
+                e.offenders().isEmpty() ? String.valueOf(given.get(SORT)) : e.offenders().get(0),
+                SortKey.wireNames());
             case ARGUMENT_MISSING -> missing(verb, name, e);
             case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(name, name, "argument",
                 e.offenders().isEmpty() ? "an argument" : String.join(", ", e.offenders()),
