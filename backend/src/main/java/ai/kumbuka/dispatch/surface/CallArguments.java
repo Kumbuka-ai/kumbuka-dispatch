@@ -61,7 +61,8 @@ public final class CallArguments {
      *
      * @param call the call's name as the caller made it, for the refusal
      * @throws Refused {@code ARGUMENT_UNKNOWN}, {@code ARGUMENT_INVALID} or
-     *                 {@code ARGUMENT_MISSING}, naming the argument
+     *                 {@code ARGUMENT_MISSING}, naming the argument; {@code
+     *                 PAGE_SIZE_REJECTED} for a page size that is no whole number
      */
     public CallArguments(ProcessVerb verb, String call, Map<String, Object> arguments) {
         this.verb = verb;

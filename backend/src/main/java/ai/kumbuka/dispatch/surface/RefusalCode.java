@@ -71,9 +71,9 @@ public enum RefusalCode {
     CLAIM_DURATION_INVALID,
 
     /**
-     * A page size outside the bounds of a listing. Refused rather than
-     * clamped, because a page cut to the bound without a word reads as the
-     * whole list.
+     * A page size a listing cannot take: outside its bounds, or no whole
+     * number at all (ADR-0049). Refused rather than clamped or rounded,
+     * because a page cut to the bound without a word reads as the whole list.
      */
     PAGE_SIZE_REJECTED,
 
