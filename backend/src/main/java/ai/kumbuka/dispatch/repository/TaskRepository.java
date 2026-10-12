@@ -211,22 +211,31 @@ public class TaskRepository {
      *
      * <p>The keyset is a row-value comparison on the sort's columns, the
      * address always last, so the order is total within a selector.
+     *
+     * <p><strong>The selector stands here by its id, not by its name.</strong>
+     * Each order has an index whose key is the tenant, the scope, the selector
+     * and then the sort's columns, and the planner walks it in order only when
+     * every column before the sort is a constant of the statement. Named
+     * through a join on the selector's name, the selector's id is a value of
+     * the join and not a constant, and the planner sorted every task of the
+     * selector for each page, with either index in place ({@code
+     * TaskListingPlanIT}).
      */
     @Transactional
-    public List<Task> page(UUID scopeId, String selector, TaskFilter filter, PageRequest page,
+    public List<Task> page(UUID scopeId, Selector selector, TaskFilter filter, PageRequest page,
                            Optional<PageCursor.Position> after, Instant now) {
         boolean desc = page.direction() == SortKey.Direction.DESC;
         boolean byCreation = page.sort() == SortKey.CREATED_AT;
         StringBuilder jpql = new StringBuilder("""
             SELECT t FROM Task t
-            WHERE t.scopeId = :scope AND t.selector.name = :sel
+            WHERE t.scopeId = :scope AND t.selector.id = :sel
             """);
         appendApparatus(jpql, filter.apparatusPatterns().size(), "t.apparatus");
         if (!filter.brackets().isEmpty()) {
             jpql.append("  AND t.number IN :numbers\n");
         }
         List<ExchangeAddress> addresses = filter.addresses().stream()
-            .filter(a -> a.selector().equals(selector))
+            .filter(a -> a.selector().equals(selector.name))
             .toList();
         if (!filter.addresses().isEmpty()) {
             appendAddresses(jpql, addresses.size());
@@ -246,7 +255,7 @@ public class TaskRepository {
 
         var query = em.createQuery(jpql.toString(), Task.class)
             .setParameter(P_SCOPE, scopeId)
-            .setParameter(P_SELECTOR, selector)
+            .setParameter(P_SELECTOR, selector.id)
             .setMaxResults(page.pageSize() + 1);
         bindApparatus(query, filter.apparatusPatterns());
         if (!filter.brackets().isEmpty()) {

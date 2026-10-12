@@ -233,13 +233,13 @@ public class TaskService {
     @Transactional
     public Page query(UUID scopeId, String selector, TaskFilter filter, PageRequest page,
                       Actor caller) {
-        selectors.requireDeclared(scopeId, selector);
+        Selector declared = selectors.requireDeclared(scopeId, selector);
         PageCursor.Binding binding = PageCursor.Binding.of(scopeId, selector, filter, page);
         Optional<PageCursor.Position> after = page.after()
             .map(raw -> PageCursor.decode(raw).continuing(binding));
         Instant now = now();
 
-        List<Task> read = tasks.page(scopeId, selector, filter, page, after, now);
+        List<Task> read = tasks.page(scopeId, declared, filter, page, after, now);
         boolean more = read.size() > page.pageSize();
         List<Task> shown = more ? read.subList(0, page.pageSize()) : read;
 
