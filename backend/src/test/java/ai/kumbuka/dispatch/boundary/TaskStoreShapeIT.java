@@ -97,7 +97,7 @@ class TaskStoreShapeIT {
     private static final List<String> BY_ADDRESS = List.of(
         "tenant_id", "scope_id", "selector_id", "number", "sub");
     private static final List<String> BY_CREATION = List.of(
-        "tenant_id", "scope_id", "selector_id", "created_at", "id");
+        "tenant_id", "scope_id", "selector_id", "created_at", "number", "sub");
 
     @Test
     void a_listing_has_an_index_for_each_order_it_pages_in() throws SQLException {
@@ -113,7 +113,7 @@ class TaskStoreShapeIT {
         try (Connection c = admin()) {
             c.setAutoCommit(false);
             try {
-                exec(c, "DROP INDEX dispatch.idx_task_created");
+                exec(c, "DROP INDEX dispatch.idx_task_created_address");
                 assertThat(indexes(c, "task"))
                     .as("RED STATE, observed: without the index the creation order has none")
                     .doesNotContain(BY_CREATION);

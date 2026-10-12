@@ -183,7 +183,8 @@ class RestSurfaceIT {
 
     @Test
     void a_page_size_outside_its_bounds_is_refused_by_name_and_the_bounds_are_taken() {
-        for (String outside : List.of("0", "-1", "201", "4294967297", "-2147483649")) {
+        for (String outside : List.of("0", "-1", "201", "4294967297", "-2147483649", "abc",
+                "7.5")) {
             Response refused = given().get(SurfaceFixture.collection() + "?page_size=" + outside);
             assertThat(refused.statusCode()).as(outside).isEqualTo(400);
             assertThat(refused.jsonPath().getString("reason")).as(outside)
@@ -191,6 +192,8 @@ class RestSurfaceIT {
             assertThat(refused.jsonPath().getString("message")).as(outside)
                 .contains("page_size = " + outside + " ")
                 .contains("from 1 to 200");
+            assertThat(refused.jsonPath().getList("data.offenders", String.class)).as(outside)
+                .containsExactly("page_size");
         }
         for (String bound : List.of("1", "200")) {
             assertThat(given().get(SurfaceFixture.collection() + "?page_size=" + bound)
@@ -200,6 +203,15 @@ class RestSurfaceIT {
         assertThat(earlier.jsonPath().getString("reason"))
             .as("the earlier page bound is not an argument any more")
             .isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(earlier.statusCode()).isEqualTo(400);
+        assertThat(earlier.jsonPath().getList("data.offenders", String.class))
+            .containsExactly("limit");
+
+        Response sideways = given().get(SurfaceFixture.collection() + "?direction=sideways");
+        assertThat(sideways.statusCode()).isEqualTo(400);
+        assertThat(sideways.jsonPath().getString("reason")).isEqualTo("ARGUMENT_INVALID");
+        assertThat(sideways.jsonPath().getList("data.offenders", String.class))
+            .containsExactly("direction");
     }
 
     @Test
@@ -214,7 +226,7 @@ class RestSurfaceIT {
             Response page = given().get(SurfaceFixture.collection() + "?page_size=1"
                 + (after == null ? "" : "&after=" + after));
             assertThat(page.statusCode()).isEqualTo(200);
-            seen.addAll(page.jsonPath().getList("tasks.address", String.class));
+            seen.addAll(page.jsonPath().getList("objects.address", String.class));
             after = page.jsonPath().getString("next_cursor");
             assertThat(++pages).as("the walk ends").isLessThan(1000);
         } while (after != null);
@@ -225,6 +237,8 @@ class RestSurfaceIT {
         assertThat(sorted.jsonPath().getString("reason")).isEqualTo("SORT_UNDECLARED");
         assertThat(sorted.jsonPath().getString("message")).contains("title")
             .contains("id, created_at");
+        assertThat(sorted.jsonPath().getList("data.offenders", String.class))
+            .containsExactly("sort");
     }
 
     @Test

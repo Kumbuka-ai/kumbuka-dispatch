@@ -62,6 +62,16 @@ class SurfaceHeaderIT {
 
         Response listed = assistant().get(SurfaceFixture.collection() + "?address=" + address);
         assertThat(listed.statusCode()).isEqualTo(200);
+        assertThat(body(listed)).as("the page carries its objects under objects")
+            .containsKey("objects").doesNotContainKey("tasks");
+        assertThat(given().get(SurfaceFixture.collection() + "?address=" + address)
+                .jsonPath().getMap("$")).as("and so does the page without the header")
+            .containsKey("objects").doesNotContainKey("tasks");
+        Response rejected = assistant().get(SurfaceFixture.collection() + "?page_size=abc");
+        assertThat(rejected.statusCode()).isEqualTo(400);
+        assertThat(rejected.jsonPath().getString("reason")).isEqualTo("PAGE_SIZE_REJECTED");
+        assertThat(rejected.jsonPath().getList("data.offenders", String.class))
+            .containsExactly("page_size");
         assertThat(body(listed)).as("query")
             .isEqualTo(Mcp.answer(Mcp.call("dispatch_query", Map.of(
                 "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,

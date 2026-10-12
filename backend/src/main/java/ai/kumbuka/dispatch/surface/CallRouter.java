@@ -81,7 +81,7 @@ public class CallRouter {
     private static final String PARENT = "parent";
     private static final String CURATED_IN = "curated_in";
     private static final String APPARATUS = "apparatus";
-    private static final String PAGE_SIZE = "page_size";
+    private static final String PAGE_SIZE = CallArguments.PAGE_SIZE;
     private static final String AFTER = "after";
     private static final String SORT = "sort";
 
@@ -151,8 +151,8 @@ public class CallRouter {
                         Map<String, Object> arguments) {
         ProcessVerb verb = ProcessVerb.byName(surface, name);
         if (verb == null) {
-            return new Refusal(Refused.argumentUnknown(String.valueOf(name), "this service",
-                "call", String.valueOf(name), ProcessVerb.names(surface)));
+            return new Refusal(Refused.callUnknown(String.valueOf(name), "call",
+                String.valueOf(name), ProcessVerb.names(surface)));
         }
         Map<String, Object> given = arguments == null ? Map.of() : arguments;
         Actor actor = null;
@@ -509,9 +509,9 @@ public class CallRouter {
                 e.offenders().isEmpty() ? String.valueOf(given.get(SORT)) : e.offenders().get(0),
                 SortKey.wireNames());
             case ARGUMENT_MISSING -> missing(verb, name, e);
-            case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(name, name, "argument",
-                e.offenders().isEmpty() ? "an argument" : String.join(", ", e.offenders()),
-                verb.topNames());
+            case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(name, "argument",
+                e.offenders().isEmpty() ? List.of("an argument") : e.offenders(),
+                e.offenders(), verb.topNames());
             case ARGUMENT_INVALID -> invalid(actor, name, given, e);
             default -> about(surface, actor, verb, name, given, e, code);
         };
@@ -602,8 +602,8 @@ public class CallRouter {
                         ? "it is one of " + options
                         : "the question admits no free text; name one of " + options);
             }
-            default -> Refused.argumentInvalid(name, "a value given",
-                String.join(", ", e.offenders()), "it is not a value this call takes");
+            default -> Refused.valueInvalid(name, String.join(", ", e.offenders()),
+                "it is not a value this call takes");
         };
     }
 

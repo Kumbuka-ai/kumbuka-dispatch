@@ -117,7 +117,7 @@ public final class Answers {
      */
     public static Map<String, Object> listing(CallRouter.Listed listed) {
         Map<String, Object> listing = new LinkedHashMap<>();
-        listing.put("tasks", listed.heads().stream().map(Answers::answer).toList());
+        listing.put("objects", listed.heads().stream().map(Answers::answer).toList());
         putIfPresent(listing, "next_cursor", listed.nextCursor());
         return listing;
     }

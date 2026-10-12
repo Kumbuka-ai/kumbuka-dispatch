@@ -29,6 +29,13 @@ import java.util.Map;
  *
  * <p>No refusal carries a text of a task: the values filled in are addresses,
  * states, call names and the caller's own arguments.
+ *
+ * <p><strong>A refusal of a call's arguments names them in {@code
+ * data.offenders}</strong> (DEC-0042): the names of the arguments it concerns,
+ * one under {@code fields} with its path, and never a value the caller sent.
+ * The value may stand in the message, which is written for the caller; {@code
+ * offenders} is what a caller branches on and what a log keeps, and a name
+ * carries no content into either.
  */
 public class Refused extends RuntimeException {
 
@@ -49,6 +56,7 @@ public class Refused extends RuntimeException {
     private static final String P_STATE = "state";
     private static final String P_NAME = "name";
     private static final String P_VALUE = "value";
+    private static final String AFTER = "after";
 
     private final transient RefusalCode code;
     private final transient Map<String, Object> data;
@@ -223,21 +231,24 @@ public class Refused extends RuntimeException {
     public static Refused claimDurationInvalid(String call, String value) {
         String message = ReasonCatalogue.message(RefusalCode.CLAIM_DURATION_INVALID,
             Map.of(P_VALUE, String.valueOf(value)));
-        return new Refused(RefusalCode.CLAIM_DURATION_INVALID, message, attempted(call));
+        return new Refused(RefusalCode.CLAIM_DURATION_INVALID, message,
+            offending(call, List.of("duration")));
     }
 
-    /** A page size outside the bounds of a listing. */
+    /** A page size a listing cannot take: out of its bounds, or no whole number. */
     public static Refused pageSizeRejected(String call, String value, int max) {
         String message = ReasonCatalogue.message(RefusalCode.PAGE_SIZE_REJECTED, Map.of(
             P_VALUE, value, P_CALL, call, "max", String.valueOf(max)));
-        return new Refused(RefusalCode.PAGE_SIZE_REJECTED, message, attempted(call));
+        return new Refused(RefusalCode.PAGE_SIZE_REJECTED, message,
+            offending(call, List.of("page_size")));
     }
 
     /** A cursor this service did not hand out. */
     public static Refused cursorMalformed(String call, String value, String query) {
         String message = ReasonCatalogue.message(RefusalCode.CURSOR_MALFORMED, Map.of(
             P_VALUE, value, "query", query));
-        return new Refused(RefusalCode.CURSOR_MALFORMED, message, attempted(call));
+        return new Refused(RefusalCode.CURSOR_MALFORMED, message,
+            offending(call, List.of(AFTER)));
     }
 
     /**
@@ -249,48 +260,85 @@ public class Refused extends RuntimeException {
     public static Refused cursorForeign(String call, List<String> differs) {
         String message = ReasonCatalogue.message(RefusalCode.CURSOR_FOREIGN, Map.of(
             P_CALL, call, "differs", differs.isEmpty() ? "listing" : String.join(", ", differs)));
-        return new Refused(RefusalCode.CURSOR_FOREIGN, message, attempted(call));
+        return new Refused(RefusalCode.CURSOR_FOREIGN, message, offending(call, List.of(AFTER)));
     }
 
     /** A sort a listing does not declare; the declared ones are named. */
     public static Refused sortUndeclared(String call, String value, List<String> declared) {
         String message = ReasonCatalogue.message(RefusalCode.SORT_UNDECLARED, Map.of(
             P_CALL, call, P_VALUE, value, "declared", String.join(", ", declared)));
-        return new Refused(RefusalCode.SORT_UNDECLARED, message, attempted(call));
+        return new Refused(RefusalCode.SORT_UNDECLARED, message, offending(call, List.of("sort")));
     }
 
     /**
-     * Something the declaration does not have: an argument at either level,
-     * a filter, or a call.
+     * Arguments the declaration does not have, at one level of a call.
      *
-     * @param subject the call whose argument it is, or "this service" for a call
-     * @param kind    "argument", "argument under fields", or "call"
-     * @param known   what it has instead
+     * @param kind      "argument" or "argument under fields"
+     * @param names     the undeclared names as the message lists them
+     * @param offenders the same names as {@code data.offenders} carries them,
+     *                  one under {@code fields} with its path
+     * @param known     what the level has instead
      */
-    public static Refused argumentUnknown(String attempted, String subject, String kind,
-                                          String name, List<String> known) {
-        String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_UNKNOWN, Map.of(
+    public static Refused argumentUnknown(String call, String kind, List<String> names,
+                                          List<String> offenders, List<String> known) {
+        return new Refused(RefusalCode.ARGUMENT_UNKNOWN,
+            unknownMessage(call, kind, String.join(", ", names), known),
+            offending(call, offenders));
+    }
+
+    /**
+     * A call this service does not have, or no route for a request. Refused
+     * as {@code ARGUMENT_UNKNOWN} like an argument, and without {@code
+     * offenders}: a call's name is not one of its arguments.
+     *
+     * @param kind "call", or the route a request asked for
+     * @param known the calls there are
+     */
+    public static Refused callUnknown(String attempted, String kind, String name,
+                                      List<String> known) {
+        return new Refused(RefusalCode.ARGUMENT_UNKNOWN,
+            unknownMessage("this service", kind, name, known), attempted(attempted));
+    }
+
+    private static String unknownMessage(String subject, String kind, String name,
+                                         List<String> known) {
+        return ReasonCatalogue.message(RefusalCode.ARGUMENT_UNKNOWN, Map.of(
             "subject", subject, "kind", kind, P_NAME, name,
             "known", known.isEmpty() ? "none" : String.join(", ", known)));
-        return new Refused(RefusalCode.ARGUMENT_UNKNOWN, message, attempted(attempted));
     }
 
     /** A required argument did not arrive. */
     public static Refused argumentMissing(String call, String name, String what) {
         String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_MISSING,
             Map.of(P_CALL, call, P_NAME, name, "what", what));
-        return new Refused(RefusalCode.ARGUMENT_MISSING, message, attempted(call));
+        return new Refused(RefusalCode.ARGUMENT_MISSING, message,
+            offending(call, List.of(name)));
     }
 
     /**
      * An argument arrived with a value it cannot take.
      *
-     * @param why a sentence of the surface's own, never the kernel's message
+     * @param name the argument, one under {@code fields} with its path; it is
+     *             also the one entry of {@code data.offenders}
+     * @param why  a sentence of the surface's own, never the kernel's message
      */
     public static Refused argumentInvalid(String call, String name, String value, String why) {
+        return argumentInvalid(call, name, value, why, List.of(name));
+    }
+
+    /**
+     * An argument arrived with a value it cannot take, where the refusal can
+     * name no argument: {@code offenders} is then empty rather than a guess.
+     */
+    public static Refused valueInvalid(String call, String value, String why) {
+        return argumentInvalid(call, "a value given", value, why, List.of());
+    }
+
+    private static Refused argumentInvalid(String call, String name, String value, String why,
+                                           List<String> offenders) {
         String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_INVALID, Map.of(
             P_CALL, call, P_NAME, name, P_VALUE, String.valueOf(value), "why", why));
-        return new Refused(RefusalCode.ARGUMENT_INVALID, message, attempted(call));
+        return new Refused(RefusalCode.ARGUMENT_INVALID, message, offending(call, offenders));
     }
 
     /** The bracket kind is not declared in this scope; the declared ones are named. */
@@ -354,6 +402,13 @@ public class Refused extends RuntimeException {
     private static Map<String, Object> attempted(String call) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put(ATTEMPTED, call);
+        return data;
+    }
+
+    /** The data of a refusal of a call's arguments: the call, and the arguments by name. */
+    private static Map<String, Object> offending(String call, List<String> names) {
+        Map<String, Object> data = attempted(call);
+        data.put(OFFENDERS, List.copyOf(names));
         return data;
     }
 

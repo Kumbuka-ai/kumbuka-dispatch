@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.domain.PageRequest;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.LinkedHashMap;
@@ -38,6 +40,9 @@ public final class CallArguments {
 
     /** The one nested object a call may carry, by the name DEC-0040 gives it. */
     public static final String FIELDS = "fields";
+
+    /** The page bound of a listing: the one argument whose value refusal has its own code. */
+    public static final String PAGE_SIZE = "page_size";
 
     private static final BigDecimal LONG_MAX = BigDecimal.valueOf(Long.MAX_VALUE);
     private static final BigDecimal LONG_MIN = BigDecimal.valueOf(Long.MIN_VALUE);
@@ -85,19 +90,23 @@ public final class CallArguments {
     }
 
     private void refuseUndeclared() {
-        refuseUndeclared(top, verb.topNames(), "argument");
+        refuseUndeclared(top, verb.topNames(), "argument", "");
         refuseUndeclared(written, verb.fieldArguments().stream().map(Argument::name).toList(),
-            "argument under fields");
+            "argument under fields", FIELDS + ".");
     }
 
-    /** Refuses every name of one level the declaration does not hold, in one refusal. */
-    private void refuseUndeclared(Map<String, Object> level, List<String> declared, String kind) {
+    /**
+     * Refuses every name of one level the declaration does not hold, in one
+     * refusal; {@code path} is what {@code offenders} writes before each.
+     */
+    private void refuseUndeclared(Map<String, Object> level, List<String> declared, String kind,
+                                  String path) {
         List<String> undeclared = level.keySet().stream()
             .filter(name -> !declared.contains(name))
             .toList();
         if (!undeclared.isEmpty()) {
-            throw Refused.argumentUnknown(call, call, kind, String.join(", ", undeclared),
-                declared);
+            throw Refused.argumentUnknown(call, kind, undeclared,
+                undeclared.stream().map(name -> path + name).toList(), declared);
         }
     }
 
@@ -108,8 +117,15 @@ public final class CallArguments {
                 continue;
             }
             String why = mistyped(argument, value);
+            if (why != null && PAGE_SIZE.equals(argument.name())) {
+                // ADR-0049: every page size a listing cannot take is refused
+                // as one, a value that is no whole number as much as one out
+                // of bounds, so a caller correcting it branches on one code.
+                throw Refused.pageSizeRejected(call, String.valueOf(value),
+                    PageRequest.MAX_PAGE_SIZE);
+            }
             if (why != null) {
-                throw Refused.argumentInvalid(call, argument.name(), String.valueOf(value), why);
+                throw Refused.argumentInvalid(call, pathOf(argument), String.valueOf(value), why);
             }
         }
     }
@@ -136,7 +152,8 @@ public final class CallArguments {
                 ? null
                 : "it is true or false";
             // Whether the number is one the call can take is the call's own
-            // refusal: a page size outside its bounds is refused as one.
+            // refusal: a page size outside its bounds is refused as one, and
+            // so is one that is no whole number (refuseMistyped).
             case Argument.INTEGER -> wholeOf(value) == null ? "it is a whole number" : null;
             default -> "its declared type is " + argument.type();
         };
@@ -152,15 +169,18 @@ public final class CallArguments {
                 || (value instanceof String s && s.isBlank())
                 || (value instanceof List<?> l && l.isEmpty());
             if (absent) {
-                throw Refused.argumentMissing(call, argument.isField()
-                    ? FIELDS + "." + argument.name()
-                    : argument.name(), argument.description());
+                throw Refused.argumentMissing(call, pathOf(argument), argument.description());
             }
         }
     }
 
     private Map<String, Object> levelOf(Argument argument) {
         return argument.isField() ? written : top;
+    }
+
+    /** An argument's name as a refusal names it: under {@code fields}, with its path. */
+    private static String pathOf(Argument argument) {
+        return argument.isField() ? FIELDS + "." + argument.name() : argument.name();
     }
 
     // ======================================================================

@@ -251,7 +251,7 @@ public class TaskResource {
                         + (route.custom() ? ":" + route.call() : ""))
                     .orElse("no route of this surface"));
         } else {
-            refused = Refused.argumentUnknown(attempted, "this service",
+            refused = Refused.callUnknown(attempted,
                 verb == null ? "route for " + method + " at this address" : "call", attempted,
                 ProcessVerb.names(Surface.REST));
         }

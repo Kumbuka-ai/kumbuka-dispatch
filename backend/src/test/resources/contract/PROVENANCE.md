@@ -27,6 +27,14 @@ default, 200 at most), the two sort keys and their second key, and the four
 reason codes; the description of the call and the message patterns are this
 surface's proposal, as the rest of the descriptions are.
 
+## The amendment of 2026-10-12: the list under `objects`, and `offenders`
+
+Rewritten from ADR-0049 and DEC-0042 as ratified on 2026-10-12
+(platform-specs, branch `docs/refusal-form-and-paging-alignment`): a page
+carries its objects under `objects`; every `page_size` a listing cannot take,
+a value that is no whole number included, is `PAGE_SIZE_REJECTED`; a refusal of
+a call's arguments names them in `data.offenders`, by name and never by value.
+
 ## What is word for word, and what is not
 
 The descriptions of `dispatch_claim` and `dispatch_claim_next`, the description

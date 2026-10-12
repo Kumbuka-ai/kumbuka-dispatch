@@ -47,8 +47,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>the selector named through a join on its name, as the page did before:
  *       with either index in place the planner sorts all 5000 tasks of the
  *       selector for a page of fifty;
- *   <li>V19's index, which ends on {@code id}, in place of V20's: the creation
- *       order is sorted, not walked. Kept as a test of its own below.
+ *   <li>V19's index, which ends on {@code id}, in place of V20's: the planner
+ *       walks it up to {@code created_at} and sorts again past it, an
+ *       incremental sort over the tasks of each instant. Kept as a test of its
+ *       own below.
  * </ul>
  */
 @QuarkusTest

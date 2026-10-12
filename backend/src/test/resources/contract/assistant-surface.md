@@ -253,8 +253,9 @@ A writing call answers lean: `address`, `fields` with the state and its attribut
 answer the full head: in addition `title`, `apparatus`, `identity` (the technical address),
 `holder` (`self`, `other` or `nobody`), `lapse_count`, the pending question's options, both
 metadata, `curated_in`, and `texts`, the texts that exist by type and suffix, never their content.
-`dispatch_query` answers `{ "tasks": [...], "next_cursor": "..." }`, one page; `next_cursor` is
-absent on the last page. It takes `page_size` (50 if omitted, 1 to 200), `after` (the
+`dispatch_query` answers `{ "objects": [...], "next_cursor": "..." }`, one page; `next_cursor` is
+absent on the last page. It takes `page_size` (50 if omitted, a whole number from 1 to 200; any
+other value is refused as `PAGE_SIZE_REJECTED`), `after` (the
 `next_cursor` of the previous page), `sort` (`id` or `created_at`, `id` if omitted) and `direction`
 (`asc` or `desc`, `asc` if omitted). `id` sorts by the address, number and sub numerically;
 `created_at` takes the address as its second key. A cursor continues only the listing that
@@ -283,7 +284,12 @@ as well. Where nothing is open to the caller, `waiting_for` says what the task w
 
 Every refusal names the call as the caller made it, the state, the reason and the way out. A
 refusal decided before the task is read -- an argument, a scope, a bracket kind -- names no state,
-so a caller learns no state of a task it may not see. `NOT_FOUND` carries no `data` and the same
+so a caller learns no state of a task it may not see. A refusal of a call's arguments names them
+in `data.offenders`: the names of the arguments it concerns, one under `fields` with its path
+(`fields.title`), never a value the caller sent -- the unknown names for `ARGUMENT_UNKNOWN`,
+`["page_size"]` for `PAGE_SIZE_REJECTED`, `["after"]` for `CURSOR_MALFORMED` and
+`CURSOR_FOREIGN`, `["sort"]` for `SORT_UNDECLARED`, the argument for `ARGUMENT_MISSING` and
+`ARGUMENT_INVALID`. `NOT_FOUND` carries no `data` and the same
 bytes whatever its cause.
 
 | Reason | Message pattern | Remedy |

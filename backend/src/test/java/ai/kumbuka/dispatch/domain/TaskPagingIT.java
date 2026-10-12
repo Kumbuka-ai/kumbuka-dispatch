@@ -262,6 +262,40 @@ class TaskPagingIT {
             .as("alternatives written in another order are the same filter").hasSize(1);
     }
 
+    /**
+     * A scope's name recurs across tenants and its identity does not, so the
+     * cursor binds the identity (ADR-0049). The kernel is handed the scope
+     * only by identity, which is what the platform's directory resolves a
+     * name to in each tenant: a scope of the same name in another tenant is a
+     * scope with another identity here.
+     *
+     * <p>Red probe, observed 2026-10-12: the scope taken out of the cursor's
+     * binding answers the cursor of tenant A with a page of tenant B.
+     */
+    @Test
+    void a_cursor_of_a_scope_of_the_same_name_in_another_tenant_is_foreign() throws Exception {
+        for (int i = 0; i < 2; i++) {
+            stage.open(SELECTOR);
+        }
+        PageRequest first = new PageRequest(1, SortKey.ID, SortKey.Direction.ASC,
+            Optional.empty());
+        String cursor = tasks.query(SCOPE, SELECTOR, TaskFilter.none(), first, C)
+            .nextCursor().orElseThrow();
+
+        UUID tenantB = UUID.randomUUID();
+        UUID sameNameInB = UUID.randomUUID();
+        DomainFixture.declareSelector(tenantB, sameNameInB, SELECTOR);
+        try (AutoCloseable inB = tenantContext.bind(tenantB)) {
+            TaskStage stageB = new TaskStage(tasks, sameNameInB);
+            for (int i = 0; i < 2; i++) {
+                stageB.open(SELECTOR);
+            }
+            assertForeign(() -> tasks.query(sameNameInB, SELECTOR, TaskFilter.none(),
+                new PageRequest(1, SortKey.ID, SortKey.Direction.ASC, Optional.of(cursor)), C),
+                "scope");
+        }
+    }
+
     @Test
     void a_cursor_this_service_did_not_hand_out_is_refused_as_malformed() {
         stage.open(SELECTOR);
