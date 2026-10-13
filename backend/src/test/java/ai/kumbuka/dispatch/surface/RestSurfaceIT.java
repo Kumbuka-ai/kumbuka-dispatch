@@ -190,8 +190,8 @@ class RestSurfaceIT {
             assertThat(refused.jsonPath().getString("reason")).as(outside)
                 .isEqualTo("PAGE_SIZE_REJECTED");
             assertThat(refused.jsonPath().getString("message")).as(outside)
-                .contains("page_size = " + outside + " ")
-                .contains("from 1 to 200");
+                .startsWith("page_size is not valid for ")
+                .endsWith("it is a whole number from 1 to 200.");
             assertThat(refused.jsonPath().getList("data.offenders", String.class)).as(outside)
                 .containsExactly("page_size");
         }
@@ -235,7 +235,7 @@ class RestSurfaceIT {
         Response sorted = given().get(SurfaceFixture.collection() + "?sort=title");
         assertThat(sorted.statusCode()).isEqualTo(400);
         assertThat(sorted.jsonPath().getString("reason")).isEqualTo("SORT_UNDECLARED");
-        assertThat(sorted.jsonPath().getString("message")).contains("title")
+        assertThat(sorted.jsonPath().getString("message")).doesNotContain("title")
             .contains("id, created_at");
         assertThat(sorted.jsonPath().getList("data.offenders", String.class))
             .containsExactly("sort");

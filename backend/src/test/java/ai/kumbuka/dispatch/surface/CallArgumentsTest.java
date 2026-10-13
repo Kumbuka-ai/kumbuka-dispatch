@@ -87,8 +87,9 @@ class CallArgumentsTest {
     void a_value_that_is_no_whole_number_is_refused_as_a_page_size(Object given) {
         Refused refused = catchThrowableOfType(Refused.class, () -> query(given));
         assertThat(refused.code()).isEqualTo(RefusalCode.PAGE_SIZE_REJECTED);
-        assertThat(refused.getMessage()).startsWith("page_size = ")
-            .endsWith("it is a whole number from 1 to 200.");
+        assertThat(refused.getMessage())
+            .isEqualTo("page_size is not valid for dispatch_query: it is a whole number from 1 "
+                + "to 200.");
         assertThat(refused.data()).containsEntry("attempted", "dispatch_query")
             .containsEntry("offenders", List.of("page_size"));
     }
@@ -163,13 +164,13 @@ class CallArgumentsTest {
 
     @Test
     void the_refusals_of_the_page_name_their_one_argument() {
-        assertThat(Refused.pageSizeRejected("q", "abc", 200).data())
+        assertThat(Refused.pageSizeRejected("q", 200).data())
             .containsEntry("offenders", List.of("page_size"));
-        assertThat(Refused.cursorMalformed("q", "x", "dispatch_query").data())
+        assertThat(Refused.cursorMalformed("q", "dispatch_query").data())
             .containsEntry("offenders", List.of("after"));
         assertThat(Refused.cursorForeign("q", List.of("scope")).data())
             .containsEntry("offenders", List.of("after"));
-        assertThat(Refused.sortUndeclared("q", "title", List.of("id", "created_at")).data())
+        assertThat(Refused.sortUndeclared("q", List.of("id", "created_at")).data())
             .containsEntry("offenders", List.of("sort"));
     }
 

@@ -123,11 +123,13 @@ class CallRouterTest {
             Refused overMcp = refusal(router.call(Surface.MCP, () -> C, "dispatch_read",
                 Map.of("address", past)));
             assertThat(overMcp.code()).as(past).isEqualTo(RefusalCode.ARGUMENT_INVALID);
-            assertThat(overMcp.getMessage()).startsWith("address = " + past);
+            assertThat(overMcp.getMessage()).startsWith("address is not valid for ")
+                .doesNotContain(past);
             Refused overRest = refusal(router.call(Surface.REST, () -> C, "read",
                 Map.of("address", past)));
             assertThat(overRest.code()).as(past).isEqualTo(RefusalCode.ARGUMENT_INVALID);
-            assertThat(overRest.getMessage()).startsWith("address = " + past);
+            assertThat(overRest.getMessage()).startsWith("address is not valid for ")
+                .doesNotContain(past);
         }
         verifyNoInteractions(verbs);
     }
@@ -137,13 +139,15 @@ class CallRouterTest {
         Refused lease = refusal(router.call(Surface.MCP, () -> H, "dispatch_claim",
             Map.of("address", ADDRESS, "duration", "PT3000000000H")));
         assertThat(lease.code()).isEqualTo(RefusalCode.ARGUMENT_INVALID);
-        assertThat(lease.getMessage()).startsWith("duration = PT3000000000H");
+        assertThat(lease.getMessage()).startsWith("duration is not valid for dispatch_claim")
+            .doesNotContain("PT3000000000H");
         for (String notBefore : List.of("+1000000000-01-01T00:00:00Z", "-5000-01-01T00:00:00Z")) {
             Refused deferral = refusal(router.call(Surface.MCP, () -> H, "dispatch_defer",
                 Map.of("address", ADDRESS, "receipt", "r",
                     "fields", Map.of("not_before", notBefore))));
             assertThat(deferral.code()).as(notBefore).isEqualTo(RefusalCode.ARGUMENT_INVALID);
-            assertThat(deferral.getMessage()).startsWith("not_before = " + notBefore);
+            assertThat(deferral.getMessage()).startsWith("not_before is not valid for ")
+                .doesNotContain(notBefore);
         }
         verifyNoInteractions(verbs);
     }
@@ -298,6 +302,30 @@ class CallRouterTest {
     private static Map<String, Object> fieldsOf(Map<String, Object> arguments) {
         Object fields = arguments.get(CallArguments.FIELDS);
         return fields instanceof Map ? (Map<String, Object>) fields : Map.of();
+    }
+
+    /**
+     * The one code no caller can raise on the wire, held to DEC-0042 here: a
+     * kernel that fails with the caller's value in its own message, under a
+     * call that carries it, answers with neither. The wire half of the probe
+     * is {@code RefusalEchoesNoValueIT}.
+     */
+    @Test
+    void an_unexpected_failure_gives_back_no_value_the_call_carried() {
+        String marker = "zzecho7319";
+        when(verbs.create(any(), any(), any(), any(), any(), any()))
+            .thenThrow(new IllegalStateException("broke on " + marker));
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("scope", "probe");
+        arguments.put("selector", "sprint");
+        arguments.put("fields", Map.of("title", marker, "apparatus", "code"));
+
+        Refused refused = refusal(router.call(Surface.MCP, () -> C, "dispatch_create",
+            arguments));
+
+        assertThat(refused.code()).isEqualTo(RefusalCode.UNEXPECTED_FAILURE);
+        assertThat(refused.getMessage()).doesNotContain(marker);
+        assertThat(String.valueOf(refused.data())).doesNotContain(marker);
     }
 
     private static Refused refusal(CallRouter.Outcome outcome) {

@@ -40,7 +40,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Red probe, observed: with the current token left out of the refusal of a
  * stale conflict token, {@link #a_stale_conflict_token_is_refused_with_the_current_one}
- * turns red.
+ * turns red. With the unfinished children under {@code data.offenders}, as
+ * before the amendment of 2026-10-13, {@link
+ * #a_root_with_unfinished_children_closes_only_on_its_confirmation} turns red.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -92,14 +94,15 @@ class EveryRefusalIT {
             with(collection, "page_size", 0)));
         assertThat(size.get("reason")).isEqualTo("PAGE_SIZE_REJECTED");
         assertThat(size.get("message"))
-            .isEqualTo("page_size = 0 is not valid for dispatch_query: it is a whole number "
+            .isEqualTo("page_size is not valid for dispatch_query: it is a whole number "
                 + "from 1 to 200.");
 
         Map<String, Object> malformed = Mcp.refusal(Mcp.call("dispatch_query",
             with(collection, "after", "x")));
         assertThat(malformed.get("reason")).isEqualTo("CURSOR_MALFORMED");
         assertThat(malformed.get("message"))
-            .isEqualTo("after = x is not a cursor dispatch_query handed out.");
+            .isEqualTo("after is not a cursor dispatch_query handed out: it is the "
+                + "next_cursor of the previous page.");
 
         String cursor = String.valueOf(Mcp.answer(Mcp.call("dispatch_query",
             with(collection, "page_size", 1))).get("next_cursor"));
@@ -115,7 +118,7 @@ class EveryRefusalIT {
             with(collection, "sort", "uuid")));
         assertThat(sort.get("reason")).isEqualTo("SORT_UNDECLARED");
         assertThat(sort.get("message"))
-            .isEqualTo("dispatch_query cannot sort by uuid. It sorts by: id, created_at.");
+            .isEqualTo("sort is not valid for dispatch_query: it is one of id, created_at.");
 
         for (Map<String, Object> refusal : List.of(size, malformed, foreign, sort)) {
             assertThat(data(refusal)).as("the call, and no state: %s", refusal)
@@ -248,11 +251,14 @@ class EveryRefusalIT {
             "address", root, "conflict_token", token(root))));
         assertThat(refusal.get("reason")).isEqualTo("CHILDREN_NOT_FINISHED");
         Map<String, Object> data = data(refusal);
-        assertThat(String.valueOf(data.get("offenders"))).contains(childAddress, "draft");
-        assertThat(refusal).as("the offenders stand under data and not beside it")
+        assertThat(String.valueOf(data.get("children"))).contains(childAddress, "draft");
+        assertThat(data).as("the children concern no argument, so no offenders are named "
+                + "(DEC-0042: every member of data means one thing on every service)")
             .doesNotContainKey("offenders");
+        assertThat(refusal).as("the children stand under data and not beside it")
+            .doesNotContainKey("children");
         @SuppressWarnings("unchecked")
-        Map<Object, List<String>> nextOf = ((List<Map<String, Object>>) data.get("offenders"))
+        Map<Object, List<String>> nextOf = ((List<Map<String, Object>>) data.get("children"))
             .stream().collect(java.util.stream.Collectors.toMap(o -> o.get("address"),
                 Mcp::nextCalls));
         assertThat(nextOf.get(childAddress)).as("each unfinished child carries its own next")

@@ -82,7 +82,7 @@ public final class CallArguments {
             return Map.of();
         }
         if (!(nested instanceof Map)) {
-            throw Refused.argumentInvalid(call, FIELDS, String.valueOf(nested),
+            throw Refused.argumentInvalid(call, FIELDS,
                 "it carries the values this call writes, and is an object");
         }
         Map<String, Object> carried = new LinkedHashMap<>();
@@ -122,11 +122,10 @@ public final class CallArguments {
                 // ADR-0049: every page size a listing cannot take is refused
                 // as one, a value that is no whole number as much as one out
                 // of bounds, so a caller correcting it branches on one code.
-                throw Refused.pageSizeRejected(call, String.valueOf(value),
-                    PageRequest.MAX_PAGE_SIZE);
+                throw Refused.pageSizeRejected(call, PageRequest.MAX_PAGE_SIZE);
             }
             if (why != null) {
-                throw Refused.argumentInvalid(call, pathOf(argument), String.valueOf(value), why);
+                throw Refused.argumentInvalid(call, pathOf(argument), why);
             }
         }
     }

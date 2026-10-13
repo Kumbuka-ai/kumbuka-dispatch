@@ -189,7 +189,7 @@ public class TaskResource {
         List<String> named = headers.surface();
         if (!named.isEmpty() && !List.of(ASSISTANT).equals(named)) {
             return refusal(Refused.argumentInvalid(route.call(), SURFACE,
-                String.join(", ", named), "it takes the one value " + ASSISTANT
+                "it takes the one value " + ASSISTANT
                     + ", once, or is left out"), null);
         }
         Surface surface = named.isEmpty() ? Surface.REST : Surface.MCP;
@@ -237,16 +237,24 @@ public class TaskResource {
     private Response notHere(String method, RestRoute.Depth depth, String verb, String scope,
                              String selectorSegment, String at) {
         String attempted = verb == null ? method : verb;
-        String selector = depth == RestRoute.Depth.COLLECTION ? at : selectorSegment;
+        // The segments are named only once they read as a scope and a
+        // bracket kind: a refusal echoes no value the caller sent (DEC-0042).
+        String scopeNamed = segmentOr(() -> AddressParser.scope(scope), "<scope>");
+        String selector = segmentOr(() -> AddressParser.selector(
+            depth == RestRoute.Depth.COLLECTION ? at : selectorSegment), "<selector>");
         ProcessVerb declared = verb == null ? null : ProcessVerb.byName(Surface.REST, verb);
         Refused refused;
         if (declared != null) {
             String address = depth == RestRoute.Depth.COLLECTION
-                ? AddressParser.SCHEME + "://" + scope + "/" + selector
-                : AddressParser.SCHEME + "://" + scope + "/" + selector + "/" + at;
+                ? AddressParser.SCHEME + "://" + scopeNamed + "/" + selector
+                : AddressParser.SCHEME + "://" + scopeNamed + "/" + selector + "/"
+                    + segmentOr(() -> {
+                        var item = AddressParser.item(selector, at);
+                        return item.number() + "." + item.sub();
+                    }, "<number>.<sub>");
             refused = Refused.callNotAtThisAddress(attempted, address,
                 RestRoute.of(verb)
-                    .map(route -> route.method() + " /api/" + scope + "/" + selector
+                    .map(route -> route.method() + " /api/" + scopeNamed + "/" + selector
                         + (route.depth() == RestRoute.Depth.ITEM ? "/<number>.<sub>" : "")
                         + (route.custom() ? ":" + route.call() : ""))
                     .orElse("no route of this surface"));
@@ -256,6 +264,16 @@ public class TaskResource {
                 ProcessVerb.names(Surface.REST));
         }
         return refusal(refused, RestRoute.allow(depth));
+    }
+
+    /** A path segment as the parser reads it, or the placeholder where it reads as none. */
+    private static String segmentOr(java.util.function.Supplier<String> parsed,
+                                    String placeholder) {
+        try {
+            return parsed.get();
+        } catch (RuntimeException malformed) {
+            return placeholder;
+        }
     }
 
     private static Map<String, Object> query(UriInfo uri) {
@@ -271,7 +289,7 @@ public class TaskResource {
         for (Map.Entry<String, Object> given : from.entrySet()) {
             if (into.containsKey(given.getKey())) {
                 return Refused.argumentInvalid(call, given.getKey(),
-                    String.valueOf(given.getValue()), "it arrived twice: in " + part + " and "
+                    "it arrived twice: in " + part + " and "
                         + "in the path or a header, and a call takes each argument once");
             }
             into.put(given.getKey(), given.getValue());
@@ -288,11 +306,11 @@ public class TaskResource {
         try {
             parsed = json.readValue(body, Object.class);
         } catch (JsonProcessingException e) {
-            return Refused.argumentInvalid(call, "body", "the body sent",
+            return Refused.argumentInvalid(call, "body",
                 "a body is a JSON object of the call's arguments");
         }
         if (!(parsed instanceof Map)) {
-            return Refused.argumentInvalid(call, "body", String.valueOf(parsed),
+            return Refused.argumentInvalid(call, "body",
                 "a body is a JSON object of the call's arguments");
         }
         return merge(call, into, (Map<String, Object>) parsed, "the body");

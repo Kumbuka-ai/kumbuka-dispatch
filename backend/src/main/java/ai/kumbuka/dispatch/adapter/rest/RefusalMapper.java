@@ -86,8 +86,10 @@ public class RefusalMapper implements ExceptionMapper<Refused> {
 
         @Override
         public Response toResponse(SurfaceException e) {
+            // The parser's own message quotes the address it could not read,
+            // and a refusal echoes no value the caller sent (DEC-0042).
             return answer(Refused.argumentInvalid("this request", "address",
-                "the address given", e.getMessage()));
+                "a task's address is written dispatch://<scope>/<selector>/<number>.<sub>"));
         }
     }
 }

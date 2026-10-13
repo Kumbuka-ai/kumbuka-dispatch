@@ -156,7 +156,7 @@ public class VerbSurface {
         boolean written = head.texts().stream()
             .anyMatch(x -> x.type() == part && x.addendumSuffix() == null);
         if (!written && head.state() != TaskState.DRAFT) {
-            throw Refused.argumentInvalid(call, "part", part.wireName(),
+            throw Refused.argumentInvalid(call, "part",
                 at.complete() + " has no " + part.wireName() + " text for an addendum to "
                     + "supplement");
         }

@@ -27,15 +27,19 @@ import java.util.Map;
  * name on the caller's surface: {@code dispatch_accept} on MCP, {@code accept}
  * on REST.
  *
- * <p>No refusal carries a text of a task: the values filled in are addresses,
- * states, call names and the caller's own arguments.
+ * <p>No refusal carries a text of a task, and none carries a value the caller
+ * sent (DEC-0042), in its message or in its {@code data}: a refusal lands in
+ * a log, and a value can be content. The values filled in are addresses the
+ * service resolved, states, call and argument names, bounds and declared
+ * names. That is why no factory here takes the value it refuses: what is not
+ * passed in cannot be echoed.
  *
  * <p><strong>A refusal of a call's arguments names them in {@code
  * data.offenders}</strong> (DEC-0042): the names of the arguments it concerns,
- * one under {@code fields} with its path, and never a value the caller sent.
- * The value may stand in the message, which is written for the caller; {@code
- * offenders} is what a caller branches on and what a log keeps, and a name
- * carries no content into either.
+ * one under {@code fields} with its path. Every member of {@code data} means
+ * one thing on every service, so a refusal that is about no argument carries
+ * no {@code offenders}: the unfinished children of a bracket root stand under
+ * {@code data.children}.
  */
 public class Refused extends RuntimeException {
 
@@ -47,6 +51,7 @@ public class Refused extends RuntimeException {
     public static final String NEXT = "next";
     public static final String WAITING_FOR = "waiting_for";
     public static final String OFFENDERS = "offenders";
+    public static final String CHILDREN = "children";
     public static final String CONFIRMATION = "confirmation";
     public static final String CONFLICT_TOKEN = "conflict_token";
 
@@ -55,7 +60,6 @@ public class Refused extends RuntimeException {
     private static final String P_ADDRESS = "address";
     private static final String P_STATE = "state";
     private static final String P_NAME = "name";
-    private static final String P_VALUE = "value";
     private static final String AFTER = "after";
 
     private final transient RefusalCode code;
@@ -167,16 +171,16 @@ public class Refused extends RuntimeException {
     /**
      * The call would close a bracket root with unfinished children.
      *
-     * @param offenders    each unfinished child: complete address, state, and
+     * @param children     each unfinished child: complete address, state, and
      *                     the calls open to the caller on it
      * @param confirmation what the call is repeated with to close them all
      * @param stale        whether the call carried a confirmation that no
      *                     longer holds
      */
     public static Refused childrenNotFinished(String call, Situation at,
-                                              List<Map<String, Object>> offenders,
+                                              List<Map<String, Object>> children,
                                               String confirmation, boolean stale) {
-        String listed = String.join(", ", offenders.stream()
+        String listed = String.join(", ", children.stream()
             .map(o -> o.get(P_ADDRESS) + " (" + o.get(STATE) + ")")
             .toList());
         String confirm = stale
@@ -185,9 +189,9 @@ public class Refused extends RuntimeException {
             : "Repeat the call with data.confirmation to withdraw them and close the root.";
         String message = ReasonCatalogue.message(RefusalCode.CHILDREN_NOT_FINISHED, Map.of(
             P_CALL, call, P_ADDRESS, at.address(),
-            "count", String.valueOf(offenders.size()), OFFENDERS, listed, "confirm", confirm));
+            "count", String.valueOf(children.size()), CHILDREN, listed, "confirm", confirm));
         Map<String, Object> data = situation(call, at);
-        data.put(OFFENDERS, List.copyOf(offenders));
+        data.put(CHILDREN, List.copyOf(children));
         data.put(CONFIRMATION, confirmation);
         return new Refused(RefusalCode.CHILDREN_NOT_FINISHED, message, data);
     }
@@ -228,25 +232,25 @@ public class Refused extends RuntimeException {
     }
 
     /** A duration that is not a positive ISO-8601 duration. */
-    public static Refused claimDurationInvalid(String call, String value) {
+    public static Refused claimDurationInvalid(String call) {
         String message = ReasonCatalogue.message(RefusalCode.CLAIM_DURATION_INVALID,
-            Map.of(P_VALUE, String.valueOf(value)));
+            Map.of(P_CALL, call));
         return new Refused(RefusalCode.CLAIM_DURATION_INVALID, message,
             offending(call, List.of("duration")));
     }
 
     /** A page size a listing cannot take: out of its bounds, or no whole number. */
-    public static Refused pageSizeRejected(String call, String value, int max) {
+    public static Refused pageSizeRejected(String call, int max) {
         String message = ReasonCatalogue.message(RefusalCode.PAGE_SIZE_REJECTED, Map.of(
-            P_VALUE, value, P_CALL, call, "max", String.valueOf(max)));
+            P_CALL, call, "max", String.valueOf(max)));
         return new Refused(RefusalCode.PAGE_SIZE_REJECTED, message,
             offending(call, List.of("page_size")));
     }
 
     /** A cursor this service did not hand out. */
-    public static Refused cursorMalformed(String call, String value, String query) {
+    public static Refused cursorMalformed(String call, String query) {
         String message = ReasonCatalogue.message(RefusalCode.CURSOR_MALFORMED, Map.of(
-            P_VALUE, value, "query", query));
+            "query", query));
         return new Refused(RefusalCode.CURSOR_MALFORMED, message,
             offending(call, List.of(AFTER)));
     }
@@ -264,9 +268,9 @@ public class Refused extends RuntimeException {
     }
 
     /** A sort a listing does not declare; the declared ones are named. */
-    public static Refused sortUndeclared(String call, String value, List<String> declared) {
+    public static Refused sortUndeclared(String call, List<String> declared) {
         String message = ReasonCatalogue.message(RefusalCode.SORT_UNDECLARED, Map.of(
-            P_CALL, call, P_VALUE, value, "declared", String.join(", ", declared)));
+            P_CALL, call, "declared", String.join(", ", declared)));
         return new Refused(RefusalCode.SORT_UNDECLARED, message, offending(call, List.of("sort")));
     }
 
@@ -320,32 +324,33 @@ public class Refused extends RuntimeException {
      *
      * @param name the argument, one under {@code fields} with its path; it is
      *             also the one entry of {@code data.offenders}
-     * @param why  a sentence of the surface's own, never the kernel's message
+     * @param why  a sentence of the surface's own, never the kernel's message,
+     *             that says the form the argument takes and carries no value
+     *             the caller sent
      */
-    public static Refused argumentInvalid(String call, String name, String value, String why) {
-        return argumentInvalid(call, name, value, why, List.of(name));
+    public static Refused argumentInvalid(String call, String name, String why) {
+        return argumentInvalid(call, name, why, List.of(name));
     }
 
     /**
      * An argument arrived with a value it cannot take, where the refusal can
      * name no argument: {@code offenders} is then empty rather than a guess.
      */
-    public static Refused valueInvalid(String call, String value, String why) {
-        return argumentInvalid(call, "a value given", value, why, List.of());
+    public static Refused valueInvalid(String call, String why) {
+        return argumentInvalid(call, "a value given", why, List.of());
     }
 
-    private static Refused argumentInvalid(String call, String name, String value, String why,
+    private static Refused argumentInvalid(String call, String name, String why,
                                            List<String> offenders) {
         String message = ReasonCatalogue.message(RefusalCode.ARGUMENT_INVALID, Map.of(
-            P_CALL, call, P_NAME, name, P_VALUE, String.valueOf(value), "why", why));
+            P_CALL, call, P_NAME, name, "why", why));
         return new Refused(RefusalCode.ARGUMENT_INVALID, message, offending(call, offenders));
     }
 
     /** The bracket kind is not declared in this scope; the declared ones are named. */
-    public static Refused selectorUnknown(String call, String selector, String scope,
-                                          List<String> declared) {
+    public static Refused selectorUnknown(String call, String scope, List<String> declared) {
         String message = ReasonCatalogue.message(RefusalCode.SELECTOR_UNKNOWN, Map.of(
-            "selector", selector, P_SCOPE, scope,
+            P_SCOPE, scope,
             "declared", declared.isEmpty() ? "none" : String.join(", ", declared)));
         return new Refused(RefusalCode.SELECTOR_UNKNOWN, message, attempted(call));
     }
@@ -372,9 +377,9 @@ public class Refused extends RuntimeException {
     }
 
     /** The same key, a different call or different arguments. */
-    public static Refused idempotencyKeyReused(String call, String key, String scope) {
+    public static Refused idempotencyKeyReused(String call, String scope) {
         String message = ReasonCatalogue.message(RefusalCode.IDEMPOTENCY_KEY_REUSED,
-            Map.of("key", key, P_SCOPE, scope));
+            Map.of(P_SCOPE, scope));
         return new Refused(RefusalCode.IDEMPOTENCY_KEY_REUSED, message, attempted(call));
     }
 

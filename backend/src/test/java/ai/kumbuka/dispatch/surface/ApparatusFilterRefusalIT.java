@@ -114,9 +114,11 @@ class ApparatusFilterRefusalIT {
                 .isEqualTo(400);
             assertThat(refused.jsonPath().getString("reason")).isEqualTo("ARGUMENT_INVALID");
             assertThat(refused.jsonPath().getString("message"))
-                .as("the offending pattern is named: this refusal is about one value and a "
-                    + "caller sending several has no other way to tell which")
-                .contains(malformed);
+                .as("the argument and the form it takes are named, and the pattern sent is "
+                    + "not: a refusal gives back no value the caller sent (DEC-0042)")
+                .startsWith("apparatus is not valid for ")
+                .contains("A-Z, a-z, 0-9")
+                .doesNotContain(malformed);
             assertNothingWasClaimed();
         }
     }

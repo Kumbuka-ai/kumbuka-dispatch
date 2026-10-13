@@ -218,12 +218,12 @@ public class CallRouter {
         if (parent != null) {
             VerbSurface.Item root = item(in, PARENT, parent);
             if (!root.scope().equals(scope) || !root.address().selector().equals(selector)) {
-                throw Refused.argumentInvalid(in.call(), PARENT, parent,
+                throw Refused.argumentInvalid(in.call(), PARENT,
                     "it names another scope or bracket kind than the call does, and a child "
                         + "is created in its root's bracket");
             }
             if (root.address().sub() != 0) {
-                throw Refused.argumentInvalid(in.call(), PARENT, parent,
+                throw Refused.argumentInvalid(in.call(), PARENT,
                     "a parent is a bracket root, the <number>.0 of its bracket");
             }
             parentNumber = root.address().number();
@@ -238,14 +238,14 @@ public class CallRouter {
         List<String> patterns = in.list(APPARATUS, Argument.Placement.TOP);
         String malformed = ApparatusPatterns.firstMalformed(patterns);
         if (malformed != null) {
-            throw Refused.argumentInvalid(in.call(), APPARATUS, malformed,
+            throw Refused.argumentInvalid(in.call(), APPARATUS,
                 "a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*', and '*' is the "
                     + "only wildcard; the underscore and the percent sign carry a meaning of "
                     + "their own in the comparison and are excluded");
         }
         String unbounded = ApparatusPatterns.firstUnbounded(patterns);
         if (unbounded != null) {
-            throw Refused.argumentInvalid(in.call(), APPARATUS, unbounded,
+            throw Refused.argumentInvalid(in.call(), APPARATUS,
                 "a pattern of nothing but '*' matches every apparatus, which is the blind "
                     + "draw the argument exists to refuse");
         }
@@ -270,16 +270,17 @@ public class CallRouter {
                 String malformed = ApparatusPatterns.firstMalformed(
                     List.of(value.split(",", -1)).stream().map(String::trim).toList());
                 if (malformed != null) {
-                    throw Refused.argumentInvalid(in.call(), filter.getKey(), malformed,
+                    throw Refused.argumentInvalid(in.call(), filter.getKey(),
                         "a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*'");
                 }
             }
             try {
                 TaskFilter.of(Map.of(filter.getKey(), value));
             } catch (DispatchException refused) {
-                throw Refused.argumentInvalid(in.call(), filter.getKey(), filter.getValue(),
-                    "it carries a value the filter cannot take: " + String.join(", ",
-                        refused.offenders()));
+                // The kernel names the values it refused; the caller is told
+                // the form the filter takes instead, and none of its values.
+                throw Refused.argumentInvalid(in.call(), filter.getKey(),
+                    filterForm(filter.getKey()));
             }
             filters.put(filter.getKey(), value);
         }
@@ -294,6 +295,21 @@ public class CallRouter {
         return new Listed(heads, listing.page().nextCursor().orElse(null));
     }
 
+    /** The form one filter takes, as a refusal of its value says it. */
+    private static String filterForm(String field) {
+        if (field.equals(TaskFilter.Field.STATE.wireName())) {
+            return "it is one or more of " + String.join(", ", java.util.Arrays.stream(
+                TaskState.values()).map(TaskState::wireName).toList()) + ", comma-separated";
+        }
+        if (field.equals(TaskFilter.Field.BRACKET.wireName())) {
+            return "it is one or more bracket numbers, comma-separated";
+        }
+        if (field.equals(TaskFilter.Field.ADDRESS.wireName())) {
+            return "it is one or more complete task addresses, comma-separated";
+        }
+        return "it is one or more values, comma-separated";
+    }
+
     /** An address filter: complete addresses in, the kernel's short form out. */
     private static String shortAddresses(CallArguments in, String scope, String selector,
                                          String value) {
@@ -301,7 +317,7 @@ public class CallRouter {
         for (String raw : value.split(",", -1)) {
             VerbSurface.Item at = item(in, ADDRESS, raw.trim());
             if (!at.scope().equals(scope) || !at.address().selector().equals(selector)) {
-                throw Refused.argumentInvalid(in.call(), ADDRESS, raw.trim(),
+                throw Refused.argumentInvalid(in.call(), ADDRESS,
                     "a listing filters the tasks of its own scope and bracket kind");
             }
             shortForms.add(at.address().toString());
@@ -349,10 +365,10 @@ public class CallRouter {
         try {
             duration = Duration.parse(raw);
         } catch (DateTimeParseException e) {
-            throw Refused.claimDurationInvalid(in.call(), raw);
+            throw Refused.claimDurationInvalid(in.call());
         }
         if (duration.compareTo(Duration.between(Instant.now(), LATEST)) >= 0) {
-            throw Refused.argumentInvalid(in.call(), DURATION, raw,
+            throw Refused.argumentInvalid(in.call(), DURATION,
                 "a lease ends before " + LATEST);
         }
         return new TaskInput.Lease(duration);
@@ -362,12 +378,12 @@ public class CallRouter {
         String raw = in.field(name);
         Instant at = parsedInstant(raw);
         if (at == null) {
-            throw Refused.argumentInvalid(in.call(), name, raw,
+            throw Refused.argumentInvalid(in.call(), name,
                 "an instant is written in ISO-8601 with its offset, such as "
                     + "2026-10-07T09:00:00Z");
         }
         if (at.isBefore(EARLIEST) || !at.isBefore(LATEST)) {
-            throw Refused.argumentInvalid(in.call(), name, raw,
+            throw Refused.argumentInvalid(in.call(), name,
                 "an instant lies from " + EARLIEST + " up to " + LATEST);
         }
         return at;
@@ -405,7 +421,7 @@ public class CallRouter {
                 "one of the question's options, or text where free text is admitted");
         }
         if (option != null && text != null) {
-            throw Refused.argumentInvalid(in.call(), CallArguments.FIELDS + ".text", text,
+            throw Refused.argumentInvalid(in.call(), CallArguments.FIELDS + ".text",
                 "an answer names an option or carries text, not both");
         }
         return new TaskInput.Reply(option, text);
@@ -436,7 +452,7 @@ public class CallRouter {
             return new VerbSurface.Item(parts.scope(),
                 AddressParser.item(parts.selector(), parts.id()));
         } catch (SurfaceException malformed) {
-            throw Refused.argumentInvalid(in.call(), argument, raw,
+            throw Refused.argumentInvalid(in.call(), argument,
                 "a task's address is written dispatch://<scope>/<selector>/<number>.<sub>");
         }
     }
@@ -445,7 +461,7 @@ public class CallRouter {
         try {
             return AddressParser.scope(raw);
         } catch (SurfaceException malformed) {
-            throw Refused.argumentInvalid(in.call(), SCOPE, raw,
+            throw Refused.argumentInvalid(in.call(), SCOPE,
                 "a scope's name is a DNS label: lower case, digits and inner hyphens");
         }
     }
@@ -454,7 +470,7 @@ public class CallRouter {
         try {
             return AddressParser.selector(raw);
         } catch (SurfaceException malformed) {
-            throw Refused.argumentInvalid(in.call(), SELECTOR, raw,
+            throw Refused.argumentInvalid(in.call(), SELECTOR,
                 "a bracket kind's name is lower case, digits and inner hyphens");
         }
     }
@@ -491,23 +507,17 @@ public class CallRouter {
                 e.offenders().isEmpty() ? "kind it does not serve" : e.offenders().get(0));
             case SCOPE_READ_ONLY -> Refused.scopeReadOnly(name, scope);
             case SCOPE_LOCKED -> Refused.scopeLocked(name, scope);
-            case SELECTOR_UNKNOWN -> Refused.selectorUnknown(name,
-                String.valueOf(given.get(SELECTOR)), scope, declaredSelectors(actor, scope));
-            case IDEMPOTENCY_KEY_REUSED -> Refused.idempotencyKeyReused(name,
-                String.valueOf(given.get(KEY)), scope);
+            case SELECTOR_UNKNOWN -> Refused.selectorUnknown(name, scope,
+                declaredSelectors(actor, scope));
+            case IDEMPOTENCY_KEY_REUSED -> Refused.idempotencyKeyReused(name, scope);
             case NOTHING_TO_TAKE -> Refused.nothingToTake(name,
                 AddressParser.completeCollection(scope, String.valueOf(given.get(SELECTOR))),
                 ProcessVerb.QUERY.on(surface));
-            case CLAIM_DURATION_INVALID -> Refused.claimDurationInvalid(name,
-                String.valueOf(given.get(DURATION)));
-            case PAGE_SIZE_REJECTED -> Refused.pageSizeRejected(name,
-                String.valueOf(given.get(PAGE_SIZE)), PageRequest.MAX_PAGE_SIZE);
-            case CURSOR_MALFORMED -> Refused.cursorMalformed(name,
-                String.valueOf(given.get(AFTER)), ProcessVerb.QUERY.on(surface));
+            case CLAIM_DURATION_INVALID -> Refused.claimDurationInvalid(name);
+            case PAGE_SIZE_REJECTED -> Refused.pageSizeRejected(name, PageRequest.MAX_PAGE_SIZE);
+            case CURSOR_MALFORMED -> Refused.cursorMalformed(name, ProcessVerb.QUERY.on(surface));
             case CURSOR_FOREIGN -> Refused.cursorForeign(name, e.offenders());
-            case SORT_UNDECLARED -> Refused.sortUndeclared(name,
-                e.offenders().isEmpty() ? String.valueOf(given.get(SORT)) : e.offenders().get(0),
-                SortKey.wireNames());
+            case SORT_UNDECLARED -> Refused.sortUndeclared(name, SortKey.wireNames());
             case ARGUMENT_MISSING -> missing(verb, name, e);
             case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(name, "argument",
                 e.offenders().isEmpty() ? List.of("an argument") : e.offenders(),
@@ -551,7 +561,7 @@ public class CallRouter {
             case NOT_THE_HOLDER -> Refused.notTheHolder(name, at, whyNotHeld(verb, view, e));
             case RECEIPT_WRONG -> Refused.receiptWrong(name, at);
             case CHILDREN_NOT_FINISHED -> Refused.childrenNotFinished(name, at,
-                offenders(surface, actor, result, e), e.confirmation().orElse(null),
+                children(surface, actor, result, e), e.confirmation().orElse(null),
                 e.reason() == DispatchException.Reason.CONFIRMATION_STALE);
             case DEFERRAL_PENDING -> Refused.deferralPending(name, at,
                 String.valueOf(view.notBefore()));
@@ -578,32 +588,28 @@ public class CallRouter {
                             Map<String, Object> given, DispatchException e) {
         return switch (e.reason()) {
             case METADATA_REFUSED -> Refused.argumentInvalid(name,
-                CallArguments.FIELDS + ".metadata", "the object given",
+                CallArguments.FIELDS + ".metadata",
                 "metadata carries your own keys, each value a string or a list of strings of "
                     + "at most 512 characters, and no URL carrying credentials");
             case CURATION_TARGET_SELF -> Refused.argumentInvalid(name,
-                CallArguments.FIELDS + ".curated_in", String.valueOf(fieldIn(given,
-                    CURATED_IN)), "a task cannot be curated into itself");
+                CallArguments.FIELDS + ".curated_in", "it names another task than this one");
             case ADDENDUM_SUFFIX_EXHAUSTED -> Refused.argumentInvalid(name,
-                CallArguments.FIELDS + "." + PART, String.valueOf(fieldIn(given, PART)),
+                CallArguments.FIELDS + "." + PART,
                 "that text already carries addenda a to z, and a further letter would "
                     + "reissue one that exists");
             case ANSWER_NOT_AN_OPTION -> {
-                Object option = fieldIn(given, "option");
-                VerbSurface.Result result = actor == null ? null
-                    : readQuietly(actor, targetIn(ProcessVerb.ANSWER, given));
-                Object options = result == null || result.view().questionOptions() == null
-                    ? "the question's options"
-                    : result.view().questionOptions().get("options");
+                // The options are the question's text, so they are pointed
+                // at and not listed: a refusal carries no text of a task.
+                boolean option = fieldIn(given, "option") != null;
                 yield Refused.argumentInvalid(name, CallArguments.FIELDS
-                        + (option != null ? ".option" : ".text"),
-                    String.valueOf(option != null ? option : fieldIn(given, TEXT)),
-                    option != null
-                        ? "it is one of " + options
-                        : "the question admits no free text; name one of " + options);
+                        + (option ? ".option" : ".text"),
+                    option
+                        ? "it is one of the question's options, which the read of the task "
+                            + "lists"
+                        : "the question admits no free text; name one of its options, which "
+                            + "the read of the task lists");
             }
-            default -> Refused.valueInvalid(name, String.join(", ", e.offenders()),
-                "it is not a value this call takes");
+            default -> Refused.valueInvalid(name, "it is a value this call takes");
         };
     }
 
@@ -658,9 +664,9 @@ public class CallRouter {
     }
 
     /** Each unfinished child, complete, with its state and the calls open on it. */
-    private List<Map<String, Object>> offenders(Surface surface, Actor actor,
+    private List<Map<String, Object>> children(Surface surface, Actor actor,
                                                VerbSurface.Result root, DispatchException e) {
-        List<Map<String, Object>> offenders = new ArrayList<>();
+        List<Map<String, Object>> children = new ArrayList<>();
         for (String named : e.offenders()) {
             int space = named.indexOf(' ');
             String shortForm = space < 0 ? named : named.substring(0, space);
@@ -669,16 +675,16 @@ public class CallRouter {
                 shortForm.substring(slash + 1));
             VerbSurface.Result read = readQuietly(actor,
                 new VerbSurface.Item(root.scope(), child).complete());
-            Map<String, Object> offender = new LinkedHashMap<>();
-            offender.put(ADDRESS, child.complete(root.scope()));
-            offender.put(Refused.STATE, read == null
+            Map<String, Object> unfinished = new LinkedHashMap<>();
+            unfinished.put(ADDRESS, child.complete(root.scope()));
+            unfinished.put(Refused.STATE, read == null
                 ? named.substring(space + 2, named.length() - 1)
                 : stateOf(read.view()));
-            offender.put(Refused.NEXT, read == null ? List.of()
+            unfinished.put(Refused.NEXT, read == null ? List.of()
                 : NextList.of(surface, read.view(), actor, false));
-            offenders.add(offender);
+            children.add(unfinished);
         }
-        return offenders;
+        return children;
     }
 
     private Refused.Situation situationOf(Surface surface, Actor actor,
@@ -700,10 +706,26 @@ public class CallRouter {
         return state;
     }
 
-    /** The task a refused call was about: its address, or a create's parent. */
+    /**
+     * The task a refused call was about: its address, or a create's parent;
+     * null where the call named none, or none that reads as an address. A
+     * refusal names an address only once it reads as one, so a value that
+     * merely arrived where an address belongs is never echoed (DEC-0042).
+     */
     private static String targetIn(ProcessVerb verb, Map<String, Object> given) {
         Object target = given.get(verb == ProcessVerb.CREATE ? PARENT : ADDRESS);
-        return target == null ? null : String.valueOf(target);
+        return target == null ? null : wellFormed(String.valueOf(target));
+    }
+
+    /** The address as the service renders it, or null where it reads as none. */
+    private static String wellFormed(String raw) {
+        try {
+            AddressParser.Parts parts = AddressParser.uri(raw);
+            return new VerbSurface.Item(parts.scope(),
+                AddressParser.item(parts.selector(), parts.id())).complete();
+        } catch (RuntimeException malformed) {
+            return null;
+        }
     }
 
     private VerbSurface.Result readQuietly(Actor actor, String complete) {
@@ -731,11 +753,14 @@ public class CallRouter {
         }
     }
 
-    /** The scope as the caller named it: the argument, or the scope of the address. */
+    /**
+     * The scope as the caller named it: the argument, or the scope of the
+     * address; a phrase where neither reads as a scope's name.
+     */
     private static String scopeIn(Map<String, Object> given) {
         Object named = given.get(SCOPE);
         if (named != null) {
-            return String.valueOf(named);
+            return scopeOrPhrase(String.valueOf(named));
         }
         Object address = given.get(ADDRESS);
         if (address == null) {
@@ -747,20 +772,35 @@ public class CallRouter {
             return "the scope named";
         }
         int end = raw.indexOf('/', start + 3);
-        return end < 0 ? raw.substring(start + 3) : raw.substring(start + 3, end);
+        return scopeOrPhrase(end < 0 ? raw.substring(start + 3) : raw.substring(start + 3, end));
+    }
+
+    private static String scopeOrPhrase(String raw) {
+        try {
+            return AddressParser.scope(raw);
+        } catch (RuntimeException malformed) {
+            return "the scope named";
+        }
     }
 
     /** The address or the collection a call named, for a refusal that names where. */
     private static String whereIn(Map<String, Object> given) {
         Object address = given.get(ADDRESS);
         if (address != null) {
-            return String.valueOf(address);
+            String complete = wellFormed(String.valueOf(address));
+            return complete == null ? "the address given" : complete;
         }
         Object scope = given.get(SCOPE);
         Object selector = given.get(SELECTOR);
-        return scope == null || selector == null
-            ? "the address given"
-            : "dispatch://" + scope + "/" + selector;
+        if (scope == null || selector == null) {
+            return "the address given";
+        }
+        try {
+            return AddressParser.completeCollection(AddressParser.scope(String.valueOf(scope)),
+                AddressParser.selector(String.valueOf(selector)));
+        } catch (RuntimeException malformed) {
+            return "the address given";
+        }
     }
 
     @SuppressWarnings("unchecked")

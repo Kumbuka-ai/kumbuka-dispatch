@@ -29,6 +29,13 @@ import java.util.Map;
  * table cannot be returned": not a rule somebody keeps, but a service that
  * does not come up.
  *
+ * <h2>No value the caller sent</h2>
+ *
+ * No pattern carries a value the caller sent (DEC-0042): a refusal lands in a
+ * log, and a value can be content. A pattern names the argument and the form
+ * it takes; the values filled in are the service's own — addresses it
+ * resolved, states, call and argument names, bounds and declared names.
+ *
  * <h2>Placeholders</h2>
  *
  * A pattern carries {@code {name}} placeholders, filled by {@link
@@ -48,7 +55,8 @@ public final class ReasonCatalogue {
      *
      * @param code    the caller-facing reason, stable across rewordings
      * @param pattern the message shape, with {@code {name}} placeholders
-     * @param remedy  what the caller can do, in the contract's own words. Not
+     * @param remedy  what the caller does next, in the contract's own words: an
+     *                instruction, worded as the act to take (DEC-0042). Not
      *                sent on the wire — {@code data.next} carries the calls —
      *                but declared, because a reason nobody could act on is one
      *                that should not have been declared.
@@ -111,7 +119,7 @@ public final class ReasonCatalogue {
      * {@code data}. Several reasons share it, and they share it because it is
      * one instruction.
      */
-    private static final String READ_THE_NEXT_LIST = "the calls in data.next";
+    private static final String MAKE_A_NEXT_CALL = "Make one of the calls in data.next.";
 
     private static final Map<RefusalCode, Reason> DECLARED = declare();
 
@@ -120,114 +128,116 @@ public final class ReasonCatalogue {
 
         put(declared, RefusalCode.NOT_FOUND,
             NOT_FOUND_MESSAGE,
-            "check scope and address");
+            "Check the scope and the address.");
 
         put(declared, RefusalCode.STATE_DOES_NOT_ALLOW,
             "{call} is not possible on {address}: it is {state}, and {call} applies {applies}. "
                 + "You can: {calls}.",
-            READ_THE_NEXT_LIST);
+            MAKE_A_NEXT_CALL);
 
         put(declared, RefusalCode.ROLE_DOES_NOT_ALLOW,
             "{call} can only be made by {role}. You take part in {address} as "
                 + "{participation}.",
-            READ_THE_NEXT_LIST);
+            MAKE_A_NEXT_CALL);
 
         put(declared, RefusalCode.NOT_THE_HOLDER,
             "{call} is the holder's call, and you do not hold {address}: {why}.",
-            "take the task up first, or wait for its holder");
+            "Claim the task first, or wait until its holder gives it back.");
 
         put(declared, RefusalCode.RECEIPT_WRONG,
             "{call} needs the receipt your claim handed out for {address}: the receipt given "
                 + "is not the one it holds.",
-            "pass the receipt from the latest claim");
+            "Pass the receipt from your latest claim.");
 
         put(declared, RefusalCode.CHILDREN_NOT_FINISHED,
             "{call} would close the bracket root {address} while {count} task(s) of the "
-                + "bracket are unfinished: {offenders}. {confirm}",
-            "repeat the call with data.confirmation, or finish the offenders first");
+                + "bracket are unfinished: {children}. {confirm}",
+            "Repeat the call with data.confirmation, or finish the tasks in data.children "
+                + "first.");
 
         put(declared, RefusalCode.DEFERRAL_PENDING,
             "{call} is not possible on {address} before {not_before}: the task was deferred "
                 + "until then.",
-            "take it up after that instant, or another task now");
+            "Take the task up after that instant, or take up another task now.");
 
         put(declared, RefusalCode.NOTHING_TO_TAKE,
             "Nothing in {collection} that your patterns match can be taken up right now: "
                 + "every such task is a draft, held, paused, delivered, closed or deferred.",
-            "list the tasks with the query call");
+            "List the tasks with the query call.");
 
         put(declared, RefusalCode.CLAIM_DURATION_INVALID,
-            "The duration {value} is not a positive ISO-8601 duration such as PT2H.",
-            "correct the duration");
+            "duration is not valid for {call}: it is a positive ISO-8601 duration such as "
+                + "PT2H.",
+            "Send the duration as a positive ISO-8601 duration such as PT2H.");
 
         put(declared, RefusalCode.PAGE_SIZE_REJECTED,
-            "page_size = {value} is not valid for {call}: it is a whole number from 1 to "
-                + "{max}.",
-            "correct the value");
+            "page_size is not valid for {call}: it is a whole number from 1 to {max}.",
+            "Send page_size as a whole number within the bounds the message names.");
 
         put(declared, RefusalCode.CURSOR_MALFORMED,
-            "after = {value} is not a cursor {query} handed out.",
-            "repeat the query without after");
+            "after is not a cursor {query} handed out: it is the next_cursor of the "
+                + "previous page.",
+            "Call the query again from the first page.");
 
         put(declared, RefusalCode.CURSOR_FOREIGN,
             "{call} carries a cursor of another listing: its {differs} is not the one this "
                 + "call asks for. A cursor continues only the listing that handed it out.",
-            "repeat the call with the arguments that handed the cursor out, or without after");
+            "Repeat the call with the arguments that handed the cursor out.");
 
         put(declared, RefusalCode.SORT_UNDECLARED,
-            "{call} cannot sort by {value}. It sorts by: {declared}.",
-            "use a declared sort");
+            "sort is not valid for {call}: it is one of {declared}.",
+            "Send sort as one of the sorts the message names.");
 
         put(declared, RefusalCode.ARGUMENT_UNKNOWN,
             "{subject} has no {kind} named {name}. It has: {known}.",
-            "correct the name");
+            "Use one of the names the message lists.");
 
         put(declared, RefusalCode.ARGUMENT_MISSING,
             "{call} needs {name}: {what}.",
-            "supply it");
+            "Repeat the call with the argument the message names.");
 
         put(declared, RefusalCode.ARGUMENT_INVALID,
-            "{name} = {value} is not valid for {call}: {why}.",
-            "correct the value");
+            "{name} is not valid for {call}: {why}.",
+            "Send the argument in the form the message describes.");
 
         put(declared, RefusalCode.CONFLICT_TOKEN_STALE,
             "{call} on {address} carries a conflict token that is not the one it holds: it "
                 + "was changed since you read it. Its current token is {current}.",
-            "read the task again and repeat with data.conflict_token");
+            "Read the task again and repeat the call with data.conflict_token.");
 
         put(declared, RefusalCode.SELECTOR_UNKNOWN,
-            "{selector} is not a bracket kind declared in scope {scope}. Declared: "
+            "selector is not a bracket kind declared in scope {scope}. Declared: "
                 + "{declared}.",
-            "use a declared one");
+            "Use one of the declared bracket kinds.");
 
         put(declared, RefusalCode.SCOPE_KIND_UNSUPPORTED,
             "{scope} is a {kind} scope, and this service does not carry tasks in one. Name a "
                 + "project or a global scope instead.",
-            "name a project or a global scope");
+            "Name a project or a global scope.");
 
         put(declared, RefusalCode.SCOPE_READ_ONLY,
             "{call} writes, and you may read {scope} without writing to it. Reading it "
                 + "is unaffected; the write right is granted with the membership.",
-            "ask whoever administers the membership of this scope");
+            "Ask whoever administers the membership of this scope for the write right.");
 
         put(declared, RefusalCode.SCOPE_LOCKED,
             "{scope} is locked, so it refuses every write whatever your role. Reading "
                 + "it is unaffected. The lock is lifted where it was set.",
-            "wait for the lock to be lifted, or read instead");
+            "Wait for the lock to be lifted, or read instead.");
 
         put(declared, RefusalCode.IDEMPOTENCY_KEY_REUSED,
-            "The idempotency key {key} was spent on a different call, or with different "
+            "The idempotency key given was spent on a different call, or with different "
                 + "arguments, in scope {scope} within the last 24 hours.",
-            "choose a new key");
+            "Choose a new key.");
 
         put(declared, RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
             "{call} cannot be made on {address}: it applies to {applies}.",
-            "address the call where it applies");
+            "Address the call where it applies.");
 
         put(declared, RefusalCode.UNEXPECTED_FAILURE,
             "{call} on {address} failed unexpectedly. This is a defect, not a rule. "
                 + "Nothing was changed. Report reference {reference}.",
-            "report the reference");
+            "Report the reference.");
 
         return java.util.Collections.unmodifiableMap(declared);
     }

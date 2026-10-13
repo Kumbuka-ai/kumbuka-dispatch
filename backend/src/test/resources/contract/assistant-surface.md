@@ -284,40 +284,48 @@ as well. Where nothing is open to the caller, `waiting_for` says what the task w
 
 Every refusal names the call as the caller made it, the state, the reason and the way out. A
 refusal decided before the task is read -- an argument, a scope, a bracket kind -- names no state,
-so a caller learns no state of a task it may not see. A refusal of a call's arguments names them
-in `data.offenders`: the names of the arguments it concerns, one under `fields` with its path
-(`fields.title`), never a value the caller sent -- the unknown names for `ARGUMENT_UNKNOWN`,
-`["page_size"]` for `PAGE_SIZE_REJECTED`, `["after"]` for `CURSOR_MALFORMED` and
-`CURSOR_FOREIGN`, `["sort"]` for `SORT_UNDECLARED`, the argument for `ARGUMENT_MISSING` and
-`ARGUMENT_INVALID`. `NOT_FOUND` carries no `data` and the same
-bytes whatever its cause.
+so a caller learns no state of a task it may not see. Every member of `data` means one thing on
+every service. A refusal of a call's arguments names them in `data.offenders`: the names of the
+arguments it concerns, one under `fields` with its path (`fields.title`) -- the unknown names for
+`ARGUMENT_UNKNOWN`, `["page_size"]` for `PAGE_SIZE_REJECTED`, `["after"]` for `CURSOR_MALFORMED`
+and `CURSOR_FOREIGN`, `["sort"]` for `SORT_UNDECLARED`, `["duration"]` for
+`CLAIM_DURATION_INVALID`, the argument for `ARGUMENT_MISSING` and `ARGUMENT_INVALID`. A refusal
+that is about no argument carries no `offenders`: `CHILDREN_NOT_FINISHED` names the unfinished
+children of the bracket root under `data.children`, each with its address, its state and its
+`next`, beside `data.confirmation`. `NOT_FOUND` carries no `data` and the same bytes whatever its
+cause.
+
+Neither the message nor a member of `data` returns a value the caller sent: a refusal lands in a
+log, and a value can be content. The message names the argument and the form it takes. The remedy
+is an instruction, worded as the act the caller takes, and so is the sentence of every step in
+`next`.
 
 | Reason | Message pattern | Remedy |
 |---|---|---|
-| `NOT_FOUND` | `nothing is addressed here. Check the address, and that you are a member of the scope it names.` | check scope and address |
-| `STATE_DOES_NOT_ALLOW` | `{call} is not possible on {address}: it is {state}, and {call} applies {applies}. You can: {calls}.` | the calls in data.next |
-| `ROLE_DOES_NOT_ALLOW` | `{call} can only be made by {role}. You take part in {address} as {participation}.` | the calls in data.next |
-| `NOT_THE_HOLDER` | `{call} is the holder's call, and you do not hold {address}: {why}.` | take the task up first, or wait for its holder |
-| `RECEIPT_WRONG` | `{call} needs the receipt your claim handed out for {address}: the receipt given is not the one it holds.` | pass the receipt from the latest claim |
-| `CHILDREN_NOT_FINISHED` | `{call} would close the bracket root {address} while {count} task(s) of the bracket are unfinished: {offenders}. {confirm}` | repeat the call with data.confirmation, or finish the offenders first |
-| `DEFERRAL_PENDING` | `{call} is not possible on {address} before {not_before}: the task was deferred until then.` | take it up after that instant, or another task now |
-| `NOTHING_TO_TAKE` | `Nothing in {collection} that your patterns match can be taken up right now: every such task is a draft, held, paused, delivered, closed or deferred.` | list the tasks with the query call |
-| `CLAIM_DURATION_INVALID` | `The duration {value} is not a positive ISO-8601 duration such as PT2H.` | correct the duration |
-| `PAGE_SIZE_REJECTED` | `page_size = {value} is not valid for {call}: it is a whole number from 1 to {max}.` | correct the value |
-| `CURSOR_MALFORMED` | `after = {value} is not a cursor {query} handed out.` | repeat the query without after |
-| `CURSOR_FOREIGN` | `{call} carries a cursor of another listing: its {differs} is not the one this call asks for. A cursor continues only the listing that handed it out.` | repeat the call with the arguments that handed the cursor out, or without after |
-| `SORT_UNDECLARED` | `{call} cannot sort by {value}. It sorts by: {declared}.` | use a declared sort |
-| `ARGUMENT_UNKNOWN` | `{subject} has no {kind} named {name}. It has: {known}.` | correct the name |
-| `ARGUMENT_MISSING` | `{call} needs {name}: {what}.` | supply it |
-| `ARGUMENT_INVALID` | `{name} = {value} is not valid for {call}: {why}.` | correct the value |
-| `CONFLICT_TOKEN_STALE` | `{call} on {address} carries a conflict token that is not the one it holds: it was changed since you read it. Its current token is {current}.` | read the task again and repeat with data.conflict_token |
-| `SELECTOR_UNKNOWN` | `{selector} is not a bracket kind declared in scope {scope}. Declared: {declared}.` | use a declared one |
-| `SCOPE_KIND_UNSUPPORTED` | `{scope} is a {kind} scope, and this service does not carry tasks in one. Name a project or a global scope instead.` | name a project or a global scope |
-| `SCOPE_READ_ONLY` | `{call} writes, and you may read {scope} without writing to it. Reading it is unaffected; the write right is granted with the membership.` | ask whoever administers the membership of this scope |
-| `SCOPE_LOCKED` | `{scope} is locked, so it refuses every write whatever your role. Reading it is unaffected. The lock is lifted where it was set.` | wait for the lock to be lifted, or read instead |
-| `IDEMPOTENCY_KEY_REUSED` | `The idempotency key {key} was spent on a different call, or with different arguments, in scope {scope} within the last 24 hours.` | choose a new key |
-| `CALL_NOT_AT_THIS_ADDRESS` | `{call} cannot be made on {address}: it applies to {applies}.` | address the call where it applies |
-| `UNEXPECTED_FAILURE` | `{call} on {address} failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report reference {reference}.` | report the reference |
+| `NOT_FOUND` | `nothing is addressed here. Check the address, and that you are a member of the scope it names.` | Check the scope and the address. |
+| `STATE_DOES_NOT_ALLOW` | `{call} is not possible on {address}: it is {state}, and {call} applies {applies}. You can: {calls}.` | Make one of the calls in data.next. |
+| `ROLE_DOES_NOT_ALLOW` | `{call} can only be made by {role}. You take part in {address} as {participation}.` | Make one of the calls in data.next. |
+| `NOT_THE_HOLDER` | `{call} is the holder's call, and you do not hold {address}: {why}.` | Claim the task first, or wait until its holder gives it back. |
+| `RECEIPT_WRONG` | `{call} needs the receipt your claim handed out for {address}: the receipt given is not the one it holds.` | Pass the receipt from your latest claim. |
+| `CHILDREN_NOT_FINISHED` | `{call} would close the bracket root {address} while {count} task(s) of the bracket are unfinished: {children}. {confirm}` | Repeat the call with data.confirmation, or finish the tasks in data.children first. |
+| `DEFERRAL_PENDING` | `{call} is not possible on {address} before {not_before}: the task was deferred until then.` | Take the task up after that instant, or take up another task now. |
+| `NOTHING_TO_TAKE` | `Nothing in {collection} that your patterns match can be taken up right now: every such task is a draft, held, paused, delivered, closed or deferred.` | List the tasks with the query call. |
+| `CLAIM_DURATION_INVALID` | `duration is not valid for {call}: it is a positive ISO-8601 duration such as PT2H.` | Send the duration as a positive ISO-8601 duration such as PT2H. |
+| `PAGE_SIZE_REJECTED` | `page_size is not valid for {call}: it is a whole number from 1 to {max}.` | Send page_size as a whole number within the bounds the message names. |
+| `CURSOR_MALFORMED` | `after is not a cursor {query} handed out: it is the next_cursor of the previous page.` | Call the query again from the first page. |
+| `CURSOR_FOREIGN` | `{call} carries a cursor of another listing: its {differs} is not the one this call asks for. A cursor continues only the listing that handed it out.` | Repeat the call with the arguments that handed the cursor out. |
+| `SORT_UNDECLARED` | `sort is not valid for {call}: it is one of {declared}.` | Send sort as one of the sorts the message names. |
+| `ARGUMENT_UNKNOWN` | `{subject} has no {kind} named {name}. It has: {known}.` | Use one of the names the message lists. |
+| `ARGUMENT_MISSING` | `{call} needs {name}: {what}.` | Repeat the call with the argument the message names. |
+| `ARGUMENT_INVALID` | `{name} is not valid for {call}: {why}.` | Send the argument in the form the message describes. |
+| `CONFLICT_TOKEN_STALE` | `{call} on {address} carries a conflict token that is not the one it holds: it was changed since you read it. Its current token is {current}.` | Read the task again and repeat the call with data.conflict_token. |
+| `SELECTOR_UNKNOWN` | `selector is not a bracket kind declared in scope {scope}. Declared: {declared}.` | Use one of the declared bracket kinds. |
+| `SCOPE_KIND_UNSUPPORTED` | `{scope} is a {kind} scope, and this service does not carry tasks in one. Name a project or a global scope instead.` | Name a project or a global scope. |
+| `SCOPE_READ_ONLY` | `{call} writes, and you may read {scope} without writing to it. Reading it is unaffected; the write right is granted with the membership.` | Ask whoever administers the membership of this scope for the write right. |
+| `SCOPE_LOCKED` | `{scope} is locked, so it refuses every write whatever your role. Reading it is unaffected. The lock is lifted where it was set.` | Wait for the lock to be lifted, or read instead. |
+| `IDEMPOTENCY_KEY_REUSED` | `The idempotency key given was spent on a different call, or with different arguments, in scope {scope} within the last 24 hours.` | Choose a new key. |
+| `CALL_NOT_AT_THIS_ADDRESS` | `{call} cannot be made on {address}: it applies to {applies}.` | Address the call where it applies. |
+| `UNEXPECTED_FAILURE` | `{call} on {address} failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report reference {reference}.` | Report the reference. |
 
 A closed task refuses with the terminal variant of `STATE_DOES_NOT_ALLOW`:
 `{call} is not possible on {address}: it is {state} and finished. Nothing further can be done with it.`

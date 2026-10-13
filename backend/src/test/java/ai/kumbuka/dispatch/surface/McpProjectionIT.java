@@ -240,8 +240,8 @@ class McpProjectionIT {
                 "page_size", outside)));
             assertThat(refusal.get("reason")).as("%s", outside).isEqualTo("PAGE_SIZE_REJECTED");
             assertThat(String.valueOf(refusal.get("message"))).as("%s", outside)
-                .contains("page_size = " + outside + " ")
-                .contains("from 1 to 200");
+                .isEqualTo("page_size is not valid for dispatch_query: it is a whole number "
+                    + "from 1 to 200.");
             assertThat(dataOf(refusal)).as("%s", outside)
                 .containsEntry("offenders", List.of("page_size"));
         }
@@ -285,7 +285,8 @@ class McpProjectionIT {
             "after", "not-a-cursor")));
         assertThat(malformed.get("reason")).isEqualTo("CURSOR_MALFORMED");
         assertThat(String.valueOf(malformed.get("message")))
-            .isEqualTo("after = not-a-cursor is not a cursor dispatch_query handed out.");
+            .isEqualTo("after is not a cursor dispatch_query handed out: it is the "
+                + "next_cursor of the previous page.");
         assertThat(dataOf(malformed)).containsEntry("offenders", List.of("after"))
             .doesNotContainValue("not-a-cursor");
         Map<String, Object> sorted = Mcp.refusal(Mcp.call("dispatch_query", Map.of(

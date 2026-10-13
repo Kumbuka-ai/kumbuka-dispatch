@@ -47,7 +47,7 @@ public enum TaskVerb {
             Proof.NONE),
         takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
         moves(ACTIVE, null, null, Holding.TAKE, null),
-        "Takes up the next open task addressed to you, without naming one."),
+        "Takes up the next open task addressed to you; the service picks which."),
 
     RELEASE("release",
         when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
@@ -61,7 +61,8 @@ public enum TaskVerb {
             Proof.RECEIPT),
         takes(TaskInput.Deferral.class, null),
         moves(OPEN, null, null, Holding.DROP, TextType.REMARK),
-        "Gives the task back until an instant you name; nobody can take it before."),
+        "Gives the task back until an instant you name; from then on it is open to be "
+            + "taken again."),
 
     RENEW("renew",
         when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
