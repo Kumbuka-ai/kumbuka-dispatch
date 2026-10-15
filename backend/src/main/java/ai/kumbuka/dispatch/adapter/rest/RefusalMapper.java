@@ -7,92 +7,125 @@
  */
 package ai.kumbuka.dispatch.adapter.rest;
 
-import ai.kumbuka.dispatch.adapter.payload.Answers;
+import ai.kumbuka.dispatch.adapter.payload.DomainRefusals;
+import ai.kumbuka.dispatch.adapter.payload.Payloads;
 import ai.kumbuka.dispatch.domain.DispatchException;
-import ai.kumbuka.dispatch.surface.Argument;
-import ai.kumbuka.dispatch.surface.ArgumentPath;
-import ai.kumbuka.dispatch.surface.ProcessVerb;
-import ai.kumbuka.dispatch.surface.ReasonMapping;
+import ai.kumbuka.dispatch.surface.AddressParser;
+import ai.kumbuka.dispatch.surface.Refusal;
 import ai.kumbuka.dispatch.surface.RefusalCode;
-import ai.kumbuka.dispatch.surface.Refused;
 import ai.kumbuka.dispatch.surface.SurfaceException;
 import ai.kumbuka.dispatch.surface.UnexpectedFailures;
+import ai.kumbuka.dispatch.surface.VerbName;
+import ai.kumbuka.dispatch.surface.VerbSurface;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
 import org.jboss.logging.Logger;
 
+import java.time.Clock;
+import java.util.Optional;
+
 /**
- * The HTTP status of every refusal, and the refusals that arise outside a call.
+ * Every refusal of the REST surface, in its envelope and with its status: the
+ * outermost edge, and with {@code McpAdapter} the only place a refusal is
+ * caught (C8.2).
  *
- * <p>A call's refusal is built by {@code CallRouter} and answered by {@link
- * TaskResource} with the status this table gives its reason: one entry per
- * reason, a {@code switch} with no default, so an added reason is a compile
- * error rather than a silent 500.
- *
- * <p>What arrives here as an exception was raised before a call was made —
- * the tenant binding of the request, a resource other than the verb surface —
- * and is answered in the same envelope with what can be said without a call.
+ * <p>One mapper per type, nested here: the surface's refusals, which arrive
+ * worded; the domain's, which are worded here against the call the request
+ * became; and everything else, which is ours and answered as {@code
+ * UNEXPECTED_FAILURE} with a reference (C8.3). The status of a refusal is its
+ * code's, from the catalogue.
  */
 @Provider
-public class RefusalMapper implements ExceptionMapper<Refused> {
+public class RefusalMapper implements ExceptionMapper<SurfaceException> {
 
     private static final Logger LOG = Logger.getLogger(RefusalMapper.class);
 
+    /** Where an unexpected failure's log line says the request was, when it became no call. */
+    private static final String UNREAD = "<unread>";
+
     @Override
-    public Response toResponse(Refused refused) {
-        return answer(refused);
+    public Response toResponse(SurfaceException refused) {
+        LOG.debugf("refusal: %s", refused.refusal().code());
+        return answer(refused.refusal(), refused.allow());
     }
 
-    /** The status of one reason on this surface. */
-    public static int statusOf(RefusalCode code) {
-        return switch (code) {
-            case ARGUMENT_UNKNOWN, ARGUMENT_MISSING, ARGUMENT_INVALID,
-                 CLAIM_DURATION_INVALID, PAGE_SIZE_REJECTED, CURSOR_MALFORMED,
-                 CURSOR_FOREIGN, SORT_UNDECLARED -> 400;
-            case ROLE_DOES_NOT_ALLOW, NOT_THE_HOLDER, RECEIPT_WRONG, SCOPE_READ_ONLY -> 403;
-            case NOT_FOUND -> 404;
-            case CALL_NOT_AT_THIS_ADDRESS -> 405;
-            case STATE_DOES_NOT_ALLOW, CHILDREN_NOT_FINISHED, DEFERRAL_PENDING,
-                 NOTHING_TO_TAKE, IDEMPOTENCY_KEY_REUSED, SCOPE_LOCKED -> 409;
-            case CONFLICT_TOKEN_STALE -> 412;
-            case SELECTOR_UNKNOWN, SCOPE_KIND_UNSUPPORTED -> 422;
-            case UNEXPECTED_FAILURE -> 500;
-        };
-    }
-
-    private static Response answer(Refused refused) {
-        return Response.status(statusOf(refused.code()))
+    /** One refusal as an HTTP response: its code's status, its envelope, and for a 405 the methods. */
+    static Response answer(Refusal refusal, String allow) {
+        Response.ResponseBuilder response = Response.status(refusal.code().status())
             .type(MediaType.APPLICATION_JSON)
-            .entity(Answers.envelope(refused))
-            .build();
+            .entity(Payloads.refusal(refusal));
+        if (allow != null) {
+            response.header(HttpHeaders.ALLOW, allow);
+        }
+        return response.build();
     }
 
-    /** A kernel refusal raised outside a call: the not-found class, or ours. */
+    /**
+     * A refusal of the domain. Under a call it is worded against that call,
+     * with the task's situation read again; outside one only the not-found
+     * class can be said, and anything else is ours.
+     */
     @Provider
     public static class Domain implements ExceptionMapper<DispatchException> {
 
+        @Inject CallContext context;
+        @Inject VerbSurface verbs;
+        @Inject Clock clock;
+
         @Override
         public Response toResponse(DispatchException e) {
-            RefusalCode code = ReasonMapping.of(e.reason());
-            LOG.debugf("refusal outside a call: %s", e.reason());
-            return answer(code == RefusalCode.NOT_FOUND
-                ? Refused.notFound()
-                : UnexpectedFailures.refuse(null, "<unread>", e));
+            LOG.debugf("refusal: %s", e.reason());
+            if (!context.made()) {
+                return answer(RefusalCode.of(e.reason()) == RefusalCode.NOT_FOUND
+                    ? Refusal.notFound()
+                    : UnexpectedFailures.refuse(null, UNREAD, e), null);
+            }
+            return answer(DomainRefusals.of(e, context.surface(), context.actor(),
+                context.verb(), context.given(), this::readQuietly, clock), null);
+        }
+
+        /**
+         * The task at a complete address, read in a transaction of its own
+         * after the refused one rolled back; empty where the caller may not
+         * read it, which is itself a refusal and the reason this read lives
+         * at the edge.
+         */
+        private Optional<VerbSurface.Result> readQuietly(String complete) {
+            try {
+                AddressParser.Parts parts = AddressParser.uri(complete);
+                return Optional.of(verbs.read(context.actor(), new VerbSurface.Item(
+                    parts.scope(), AddressParser.item(parts.selector(), parts.id()))));
+            } catch (DispatchException | SurfaceException unreadable) {
+                return Optional.empty();
+            }
         }
     }
 
-    /** A malformed address raised outside a call. */
+    /**
+     * Everything that is no refusal (C8.3). A {@link WebApplicationException}
+     * is the framework's own answer — a route that does not exist, a method
+     * the route does not take — and goes back unchanged; anything else is a
+     * defect on our side, logged once with a reference and answered with it.
+     */
     @Provider
-    public static class Form implements ExceptionMapper<SurfaceException> {
+    public static class Unexpected implements ExceptionMapper<Throwable> {
+
+        @Inject CallContext context;
 
         @Override
-        public Response toResponse(SurfaceException e) {
-            // The parser's own message quotes the address it could not read,
-            // and a refusal echoes no value the caller sent (DEC-0042).
-            return answer(Refused.requestInvalid(
-                ArgumentPath.of(ProcessVerb.READ.argument("address", Argument.Placement.TOP))));
+        public Response toResponse(Throwable failure) {
+            if (failure instanceof WebApplicationException framework) {
+                return framework.getResponse();
+            }
+            VerbName call = context.made()
+                ? VerbName.of(context.verb(), context.surface()) : null;
+            return answer(UnexpectedFailures.refuse(call,
+                context.made() ? DomainRefusals.whereIn(context.given()) : UNREAD, failure), null);
         }
     }
 }

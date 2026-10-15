@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.architecture;
 
 import org.junit.jupiter.api.Test;
@@ -18,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * together, and {@code UnexpectedFailureReferenceTest} watches it do so.
  *
  * <p>This is what keeps them together as the tree grows. {@code
- * Refused.unexpected} stays public — the probes need to build the envelope
+ * Refusal.unexpected} stays public — the probes need to build the envelope
  * without raising a failure — so a seventh throw site could call it directly,
  * and that is exactly the kind of thing added in a hurry beside six that do it
  * right. Measured in review on 2026-09-19: six sites, one of which logged, and
@@ -38,7 +45,7 @@ class UnmintedReferenceTest {
             if (source.getFileName().toString().equals(THE_MINT)) {
                 continue;
             }
-            if (SourceTree.code(source).contains("Refused.unexpected(")) {
+            if (SourceTree.code(source).contains("Refusal.unexpected(")) {
                 offenders.add(source.getFileName().toString());
             }
         }
@@ -65,6 +72,6 @@ class UnmintedReferenceTest {
     private static boolean theMintItself(Path root) {
         return SourceTree.files(root).stream()
             .filter(f -> f.getFileName().toString().equals(THE_MINT))
-            .anyMatch(f -> SourceTree.code(f).contains("Refused.unexpected("));
+            .anyMatch(f -> SourceTree.code(f).contains("Refusal.unexpected("));
     }
 }

@@ -1,8 +1,16 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The rule that keeps the caller's free field from becoming a junk drawer.
@@ -68,66 +76,79 @@ public final class Metadata {
      * accepted and then read back as something the caller did not send.
      */
     public static void validate(Map<String, Object> metadata) {
+        problem(metadata).ifPresent(message -> {
+            throw new DispatchException(DispatchException.Reason.METADATA_REFUSED, message);
+        });
+    }
+
+    /**
+     * What makes metadata unable to be a pointer, worded for a human; empty
+     * where it can be one. The same check as {@link #validate}, for a caller
+     * that decides rather than refuses.
+     */
+    public static Optional<String> problem(Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
-            return;
+            return Optional.empty();
         }
         for (Map.Entry<String, Object> entry : metadata.entrySet()) {
-            checkValue(entry.getKey(), entry.getValue());
+            String found = valueProblem(entry.getKey(), entry.getValue());
+            if (found != null) {
+                return Optional.of(found);
+            }
         }
+        return Optional.empty();
     }
 
-    private static void checkValue(String key, Object value) {
+    private static String valueProblem(String key, Object value) {
         if (value == null) {
-            return;
+            return null;
         }
         if (value instanceof String s) {
-            checkElement(key, s);
-            return;
+            return elementProblem(key, s);
         }
         if (value instanceof List<?> list) {
-            checkList(key, list);
-            return;
+            return listProblem(key, list);
         }
-        throw new DispatchException(DispatchException.Reason.METADATA_REFUSED,
-            "metadata '" + key + "' is a " + value.getClass().getSimpleName()
-                + ". A value is a String or a list of Strings; metadata carry an address "
-                + "or an identifier, and a nested object, number or boolean is neither.");
+        return "metadata '" + key + "' is a " + value.getClass().getSimpleName()
+            + ". A value is a String or a list of Strings; metadata carry an address "
+            + "or an identifier, and a nested object, number or boolean is neither.";
     }
 
-    private static void checkList(String key, List<?> list) {
+    private static String listProblem(String key, List<?> list) {
         int index = 0;
         for (Object element : list) {
             if (element == null) {
-                throw new DispatchException(DispatchException.Reason.METADATA_REFUSED,
-                    "metadata '" + key + "'[" + index + "] is null. A list of identifiers "
-                        + "does not carry gaps; a missing entry is one fewer entry.");
+                return "metadata '" + key + "'[" + index + "] is null. A list of identifiers "
+                    + "does not carry gaps; a missing entry is one fewer entry.";
             }
             if (!(element instanceof String s)) {
-                throw new DispatchException(DispatchException.Reason.METADATA_REFUSED,
-                    "metadata '" + key + "'[" + index + "] is a "
-                        + element.getClass().getSimpleName()
-                        + ". A list value carries Strings; a list of lists or of numbers "
-                        + "would be a second level of structure, and metadata are one "
-                        + "level deep.");
+                return "metadata '" + key + "'[" + index + "] is a "
+                    + element.getClass().getSimpleName()
+                    + ". A list value carries Strings; a list of lists or of numbers "
+                    + "would be a second level of structure, and metadata are one "
+                    + "level deep.";
             }
-            checkElement(key + "[" + index + "]", s);
+            String found = elementProblem(key + "[" + index + "]", s);
+            if (found != null) {
+                return found;
+            }
             index++;
         }
+        return null;
     }
 
-    private static void checkElement(String label, String value) {
+    private static String elementProblem(String label, String value) {
         if (value.length() > MAX_VALUE_LENGTH) {
-            throw new DispatchException(DispatchException.Reason.METADATA_REFUSED,
-                "metadata '" + label + "' is " + value.length() + " characters. Metadata "
-                    + "carry an address or an identifier; anything this long is prose, "
-                    + "and prose belongs in the body where the freeze protects it.");
+            return "metadata '" + label + "' is " + value.length() + " characters. Metadata "
+                + "carry an address or an identifier; anything this long is prose, "
+                + "and prose belongs in the body where the freeze protects it.";
         }
         if (carriesCredentials(value)) {
-            throw new DispatchException(DispatchException.Reason.METADATA_REFUSED,
-                "metadata '" + label + "' is a URL carrying credentials. This service "
-                    + "holds pointers and never follows them, so a credential stored "
-                    + "here can only ever be read by somebody — never used.");
+            return "metadata '" + label + "' is a URL carrying credentials. This service "
+                + "holds pointers and never follows them, so a credential stored "
+                + "here can only ever be read by somebody — never used.";
         }
+        return null;
     }
 
     /** Userinfo in a URL: the {@code user:password@host} form. */

@@ -45,8 +45,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>The cases are collected by code and the collection is held against
  * {@link RefusalCode#values()}: a code added to the catalogue without a case
  * here turns this red. {@code UNEXPECTED_FAILURE} has no rule a caller can
- * break and is probed in {@code CallRouterTest}, under a kernel that fails
- * with the marker in its arguments and in its own message.
+ * break and is probed in {@code UnexpectedFailureIT}, under a verb surface that
+ * fails with the marker in its own message.
  *
  * <p>Red probe, observed: against the catalogue before the amendment of
  * 2026-10-13, which filled {@code {value}} into five patterns, this turns red
@@ -95,11 +95,14 @@ class RefusalEchoesNoValueIT {
             "zz_unknown", MARKER));
         mcp(RefusalCode.ARGUMENT_MISSING, "dispatch_create", with(collection,
             "fields", Map.of("title", MARKER)));
-        mcp(RefusalCode.ARGUMENT_INVALID, "dispatch_read", Map.of("address", MARKER));
+        mcp(RefusalCode.ADDRESS_MALFORMED, "dispatch_read", Map.of("address", MARKER));
         mcp(RefusalCode.ARGUMENT_INVALID, "dispatch_query", with(collection,
             "state", MARKER));
-        mcp(RefusalCode.SELECTOR_UNKNOWN, "dispatch_create", Map.of(
+        mcp(RefusalCode.SELECTOR_UNDECLARED, "dispatch_create", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", MARKER,
+            "fields", Map.of("title", MARKER, "apparatus", "code")));
+        mcp(RefusalCode.SELECTOR_WITHDRAWN, "dispatch_create", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.WITHDRAWN_SELECTOR,
             "fields", Map.of("title", MARKER, "apparatus", "code")));
         mcp(RefusalCode.SCOPE_KIND_UNSUPPORTED, "dispatch_create", Map.of(
             "scope", SurfaceFixture.PRIVATE_SCOPE, "selector", SurfaceFixture.SELECTOR,
@@ -125,9 +128,16 @@ class RefusalEchoesNoValueIT {
         Response notHere = given().contentType(ContentType.JSON)
             .queryParam("remark", MARKER)
             .post(SurfaceFixture.collection() + ":send");
-        recordRaised(RefusalCode.CALL_NOT_AT_THIS_ADDRESS, notHere.jsonPath().getString("reason"),
+        recordRaised(RefusalCode.VERB_NOT_CARRIED, notHere.jsonPath().getString("reason"),
             notHere.asString());
-        refusedCalls.add(new String[] {"dispatch_send", "CALL_NOT_AT_THIS_ADDRESS"});
+        refusedCalls.add(new String[] {"dispatch_send", "VERB_NOT_CARRIED"});
+
+        Response notAnObject = given().contentType(ContentType.JSON)
+            .body("[\"" + MARKER + "\"]")
+            .post(SurfaceFixture.collection());
+        recordRaised(RefusalCode.PAYLOAD_MALFORMED, notAnObject.jsonPath().getString("reason"),
+            notAnObject.asString());
+        refusedCalls.add(new String[] {"dispatch_create", "PAYLOAD_MALFORMED"});
 
         // -- about a task the caller may see ------------------------------
         String open = SurfaceFixture.address(SurfaceFixture.open("open", "code"));
@@ -135,6 +145,8 @@ class RefusalEchoesNoValueIT {
             "conflict_token", token(open)));
         mcp(RefusalCode.CONFLICT_TOKEN_STALE, "dispatch_withdraw", Map.of("address", open,
             "conflict_token", MARKER));
+        mcp(RefusalCode.CONFLICT_TOKEN_MISSING, "dispatch_withdraw", Map.of("address", open,
+            "fields", Map.of("remark", MARKER)));
 
         String root = SurfaceFixture.address(SurfaceFixture.open("a root", "code"));
         Mcp.answer(Mcp.call("dispatch_create", Map.of("scope", SurfaceFixture.SCOPE,
@@ -150,9 +162,9 @@ class RefusalEchoesNoValueIT {
         SurfaceFixture.asExecutor(identity);
         mcp(RefusalCode.ROLE_DOES_NOT_ALLOW, "dispatch_withdraw", Map.of("address", open,
             "conflict_token", MARKER));
-        mcp(RefusalCode.NOTHING_TO_TAKE, "dispatch_claim_next", with(collection,
+        mcp(RefusalCode.DRAW_EMPTY, "dispatch_claim_next", with(collection,
             "apparatus", List.of(MARKER)));
-        mcp(RefusalCode.CLAIM_DURATION_INVALID, "dispatch_claim", Map.of("address", open,
+        mcp(RefusalCode.ARGUMENT_INVALID, "dispatch_claim", Map.of("address", open,
             "duration", MARKER));
         mcp(RefusalCode.ARGUMENT_INVALID, "dispatch_claim_next", with(collection,
             "apparatus", List.of(MARKER + "_")));
@@ -164,7 +176,7 @@ class RefusalEchoesNoValueIT {
             "receipt", receipt, "fields", Map.of("not_before", MARKER)));
 
         SurfaceFixture.asOtherExecutor(identity);
-        mcp(RefusalCode.NOT_THE_HOLDER, "dispatch_deliver", Map.of("address", open,
+        mcp(RefusalCode.CLAIM_HELD, "dispatch_deliver", Map.of("address", open,
             "receipt", MARKER, "fields", Map.of("text", MARKER)));
 
         SurfaceFixture.asExecutor(identity);
@@ -175,6 +187,15 @@ class RefusalEchoesNoValueIT {
         SurfaceFixture.asOtherExecutor(identity);
         mcp(RefusalCode.DEFERRAL_PENDING, "dispatch_claim", Map.of("address", open,
             "idempotency_key", MARKER));
+
+        SurfaceFixture.asConsole(identity);
+        String brief = SurfaceFixture.address(SurfaceFixture.open("brief", "code"));
+        SurfaceFixture.asExecutor(identity);
+        String briefReceipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
+            Map.of("address", brief, "duration", "PT0.001S"))).get("receipt"));
+        pause();
+        mcp(RefusalCode.LEASE_LAPSED, "dispatch_deliver", Map.of("address", brief,
+            "receipt", briefReceipt, "fields", Map.of("text", MARKER)));
 
         // -- the verdict --------------------------------------------------
         List<RefusalCode> uncovered = new ArrayList<>(List.of(RefusalCode.values()));
@@ -247,8 +268,9 @@ class RefusalEchoesNoValueIT {
             Map.of("title", "a draft", "apparatus", "code"))));
         answers.add(refused("dispatch_update", Map.of("address", draft,
             "conflict_token", token(draft), "fields", Map.of(MARKER, "x"))));
-        answers.add(refused(MARKER, Map.of()));
-        answers.add(refused("dispatch_" + MARKER, Map.of()));
+        // An undeclared tool is a fault of the protocol, not a refused call (C4.3).
+        answers.add(Mcp.call(MARKER, Map.of()).asString());
+        answers.add(Mcp.call("dispatch_" + MARKER, Map.of()).asString());
         answers.add(Mcp.rpc(MARKER, Map.of()).asString());
         answers.add(Mcp.rpc("tools/" + MARKER, Map.of()).asString());
         answers.add(given().contentType(ContentType.JSON)
@@ -399,6 +421,16 @@ class RefusalEchoesNoValueIT {
         Map<String, Object> more = new LinkedHashMap<>(arguments);
         more.put(name, value);
         return more;
+    }
+
+    /** Long enough for a lease of a millisecond to have ended. */
+    private static void pause() {
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
     }
 
     private static String token(String address) {

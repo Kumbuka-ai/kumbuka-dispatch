@@ -144,7 +144,7 @@ class DeclarationEndpointIT {
     }
 
     @Test
-    void the_declaration_carries_its_version_on_both_surfaces() {
+    void the_declaration_carries_its_version() {
         Response rest = given().get("/api/declaration");
         assertThat(rest.statusCode()).isEqualTo(200);
         Map<String, Object> declaration = rest.jsonPath().getMap("$");
@@ -160,9 +160,9 @@ class DeclarationEndpointIT {
         assertThat(rest.header("ETag")).as("and travels as the entity tag")
             .contains(version);
 
-        assertThat(given().get("/mcp/declaration").jsonPath().getString("version"))
-            .as("the declaration beside the assistant surface is the same declaration")
-            .isEqualTo(version);
+        assertThat(given().get("/mcp/declaration").statusCode())
+            .as("the declaration is served at /api/declaration and nowhere else (C5.1)")
+            .isEqualTo(404);
         assertThat(given().get("/api/declaration").jsonPath().getString("version"))
             .as("and a second read gives the same version").isEqualTo(version);
     }

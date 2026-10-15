@@ -83,7 +83,6 @@ binding	-	POST	/api/{scope}/{selector}/{id}	item	-
 
 extension	-	GET	/api/whoami	none	-
 extension	-	POST	/mcp	none	-
-extension	-	GET	/mcp/declaration	none	-
 # The declaration on the REST surface, which the router reads (ADR-0039): a read
 # of the scheme, effect-free.
 extension	-	GET	/api/declaration	none	-

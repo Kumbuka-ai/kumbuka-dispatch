@@ -1,7 +1,15 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
 
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -39,180 +47,107 @@ import java.util.regex.Pattern;
  */
 public final class AddressParser {
 
-    /**
-     * The scope, as a DNS label: lower case, digits and inner hyphens, at most
-     * sixty-three characters.
-     */
+    /** The scheme of this service's addresses. */
+    public static final String SCHEME = "dispatch";
+
     private static final Pattern SCOPE = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
 
-    /**
-     * The selector, as it is declared. Lower case, digits and inner hyphens —
-     * the same shape as a scope, minus the length ceiling a DNS label carries.
-     */
     private static final Pattern SELECTOR = Pattern.compile("[a-z0-9]([a-z0-9-]*[a-z0-9])?");
 
-    /**
-     * The id: {@code <number>.<sub>}.
-     *
-     * <p>No leading zeroes on either part, and that is form rather than taste:
-     * {@code 07.1} and {@code 7.1} would be two strings for one task, which
-     * is the same identity-by-leniency the case rule refuses.
-     *
-     * <p>At most nine digits on either part, so every number this production
-     * admits fits an {@code int} and is parsed below without a failure. A
-     * longer one is a malformed address, refused as any other form error.
-     */
     private static final Pattern ID = Pattern.compile("(0|[1-9]\\d{0,8})\\.(0|[1-9]\\d{0,8})");
 
     private AddressParser() {
     }
 
-    /**
-     * The scope name, checked against the authority production.
-     *
-     * @return the same string, unchanged. Nothing is normalised here: a value
-     *         this method altered would be a second identity for the one that
-     *         arrived.
-     */
-    public static String scope(String raw) {
-        String candidate = requirePresent(raw, "scope");
-        if (!SCOPE.matcher(candidate).matches()) {
-            throw malformed("the scope '" + candidate + "' is not a DNS label. Lower case, "
-                + "digits and inner hyphens, at most 63 characters. Upper case is rejected "
-                + "rather than folded: folding would make two strings resolve to one scope.");
-        }
-        return candidate;
+    /** The parts of a complete address, each checked by its own production. */
+    public record Parts(String scope, String selector, String id) {
     }
 
-    /** The selector name, checked against the production and not resolved. */
-    public static String selector(String raw) {
-        String candidate = requirePresent(raw, "selector");
-        if (!SELECTOR.matcher(candidate).matches()) {
-            throw malformed("the selector '" + candidate + "' is not a declared name's shape. "
-                + "Lower case, digits and inner hyphens. Whether it is declared at all is a "
-                + "different question, answered further in and against a scope.");
-        }
-        return candidate;
+    // ======================================================================
+    // Reading, without refusing: the caller decides what a refusal names
+    // ======================================================================
+
+    /** The scope, where the text is a DNS label; empty otherwise. */
+    public static Optional<String> scopeOf(String raw) {
+        return present(raw) && SCOPE.matcher(raw).matches() ? Optional.of(raw) : Optional.empty();
     }
 
-    /**
-     * The item part of a complete address.
-     *
-     * <p>Takes the selector as well because an address is four parts and a
-     * three-part one has no meaning here — the reservation on a truncated
-     * address is what makes {@code scope/selector} a collection rather than
-     * "all the objects of this scope".
-     */
-    public static ExchangeAddress item(String rawSelector, String rawId) {
-        String selector = selector(rawSelector);
-        String candidate = requirePresent(rawId, "id");
+    /** The bracket kind, where the text has a declared name's shape; empty otherwise. */
+    public static Optional<String> selectorOf(String raw) {
+        return present(raw) && SELECTOR.matcher(raw).matches()
+            ? Optional.of(raw) : Optional.empty();
+    }
 
-        Matcher m = ID.matcher(candidate);
+    /** The task a bracket kind and an id name, where both are in the grammar. */
+    public static Optional<ExchangeAddress> itemOf(String rawSelector, String rawId) {
+        if (selectorOf(rawSelector).isEmpty() || !present(rawId)) {
+            return Optional.empty();
+        }
+        Matcher m = ID.matcher(rawId);
         if (!m.matches()) {
-            throw malformed("the id '" + candidate + "' is not a task address. The form is "
-                + "<number>.<sub>, such as '149.2'; an addendum is not addressed, it hangs on "
-                + "the text it supplements.");
+            return Optional.empty();
         }
-
-        return new ExchangeAddress(
-            selector,
-            Integer.parseInt(m.group(1)),
-            Integer.parseInt(m.group(2)));
+        return Optional.of(new ExchangeAddress(rawSelector, Integer.parseInt(m.group(1)),
+            Integer.parseInt(m.group(2))));
     }
 
     /**
-     * Renders an address back into the id part of a path.
-     *
-     * <p>The canonical form is generated here and what arrived is never passed
-     * through, so a tolerated trailing slash does not survive into a
-     * {@code Location} header.
+     * The parts of a complete address {@code dispatch://<scope>/<selector>/<id>},
+     * where every part is in the grammar; empty otherwise. A trailing slash
+     * changes nothing about what is addressed and is tolerated.
      */
+    public static Optional<Parts> partsOf(String raw) {
+        String prefix = SCHEME + "://";
+        if (!present(raw) || !raw.startsWith(prefix)) {
+            return Optional.empty();
+        }
+        String rest = raw.substring(prefix.length());
+        if (rest.endsWith("/")) {
+            rest = rest.substring(0, rest.length() - 1);
+        }
+        String[] parts = rest.split("/", -1);
+        if (parts.length != 3 || scopeOf(parts[0]).isEmpty()
+                || itemOf(parts[1], parts[2]).isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new Parts(parts[0], parts[1], parts[2]));
+    }
+
+    // ======================================================================
+    // Reading, refusing what is not an address
+    // ======================================================================
+
+    /**
+     * The parts of a complete address, or a refusal: {@code ADDRESS_MALFORMED}
+     * naming the address argument, and nothing of what arrived.
+     */
+    public static Parts uri(String raw) {
+        return partsOf(raw).orElseThrow(AddressParser::malformed);
+    }
+
+    /** The task a bracket kind and an id name, or the same refusal. */
+    public static ExchangeAddress item(String rawSelector, String rawId) {
+        return itemOf(rawSelector, rawId).orElseThrow(AddressParser::malformed);
+    }
+
+    // ======================================================================
+    // Writing
+    // ======================================================================
+
     public static String render(ExchangeAddress address) {
         return address.number() + "." + address.sub();
     }
 
-    /** The complete address of a collection, for the refusals that name one. */
     public static String completeCollection(String scopeSlug, String selector) {
         return SCHEME + "://" + scopeSlug + "/" + selector;
     }
 
-    /**
-     * The scheme this service answers for, in leading position of an address.
-     *
-     * <p>Present in the MCP form and absent from the REST path, and that is
-     * not an inconsistency: the scheme is the routing decision. Inbound over
-     * MCP there is no request line for an address to travel in, so it arrives
-     * complete in the body and the scheme comes with it; inbound over REST the
-     * path is what routed, and a scheme repeated there would be a second place
-     * for the routing to be decided.
-     */
-    public static final String SCHEME = "dispatch";
-
-    /**
-     * The three occupied parts of a complete address, as they arrive over MCP.
-     *
-     * @param scope    the scope name, in the authority position
-     * @param selector the declared bracket name
-     * @param id       the id part, still raw
-     */
-    public record Parts(String scope, String selector, String id) {
+    private static boolean present(String raw) {
+        return raw != null && !raw.isBlank();
     }
 
-    /**
-     * Splits {@code dispatch://scope/selector/id} into its parts, and refuses
-     * everything that is not one.
-     *
-     * <p>An address is a URI with the scheme leading and the scope as a DNS
-     * label in the authority position. It is split here by the production
-     * rather than by a URI library, for the same reason validation precedes
-     * parsing everywhere else: a library normalises, and a normalisation is an
-     * identity statement made by somebody who was not asked.
-     *
-     * <p>A trailing slash is tolerated because it changes nothing about which
-     * object is addressed — the occupied parts decide that. Upper case is not
-     * folded.
-     */
-    public static Parts uri(String raw) {
-        String candidate = requirePresent(raw, "address");
-        String prefix = SCHEME + "://";
-
-        if (!candidate.startsWith(prefix)) {
-            throw malformed("the address '" + candidate + "' does not name the dispatch "
-                + "scheme. A complete address is '" + prefix + "<scope>/<selector>/<id>', "
-                + "with the scheme leading and the scope in the authority position.");
-        }
-
-        String rest = candidate.substring(prefix.length());
-        if (rest.endsWith("/")) {
-            rest = rest.substring(0, rest.length() - 1);
-        }
-
-        String[] parts = rest.split("/", -1);
-        if (parts.length != 3) {
-            throw malformed("the address '" + candidate + "' occupies " + parts.length
-                + " part(s) after the scheme, and a complete address occupies three: scope, "
-                + "selector and id. Truncation is recognised by which parts are occupied, "
-                + "and a verb acting on an existing object takes a complete address.");
-        }
-
-        // Each part is validated by its own production, and the whole address
-        // is rejected if any of them fails. Validating here rather than at the
-        // call site is what keeps the MCP and the REST entrance on one grammar.
-        scope(parts[0]);
-        item(parts[1], parts[2]);
-        return new Parts(parts[0], parts[1], parts[2]);
-    }
-
-    private static String requirePresent(String raw, String part) {
-        if (raw == null || raw.isBlank()) {
-            throw malformed("the " + part + " part of the address is empty. An address is "
-                + "recognised by which of its parts are occupied, so an empty one is not a "
-                + "shorter address but a broken one.");
-        }
-        return raw;
-    }
-
-    private static SurfaceException malformed(String message) {
-        return new SurfaceException(SurfaceException.Reason.ADDRESS_MALFORMED, message);
+    private static SurfaceException malformed() {
+        return new SurfaceException(Refusal.requestInvalid(
+            ArgumentPath.of(ProcessVerb.READ.argument("address", Argument.Placement.TOP))));
     }
 }

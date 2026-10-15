@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
@@ -29,6 +36,9 @@ public final class SurfaceFixture {
 
     /** A selector V5 declares for this deployment's own scope. */
     public static final String SELECTOR = "sprint";
+
+    /** A selector declared in the ordinary scope and withdrawn: nothing is created under it. */
+    public static final String WITHDRAWN_SELECTOR = "retired";
 
     /** The three scopes beside the ordinary one, by the names a caller uses. */
     public static final String GLOBAL_SCOPE = SubstrateDatabaseResource.GLOBAL_SCOPE_SLUG;
@@ -80,6 +90,13 @@ public final class SurfaceFixture {
     public static void stage() {
         PlatformFixture.grantDirectoryAccess();
         declareSelectorInTheOtherScopes();
+        PlatformFixture.run(
+            "INSERT INTO dispatch.selector (tenant_id, scope_id, name, next_number, withdrawn) "
+                + "SELECT '" + SubstrateDatabaseResource.TENANT_ID + "', '"
+                + SubstrateDatabaseResource.SCOPE_ID + "', '" + WITHDRAWN_SELECTOR + "', 1, true "
+                + "WHERE NOT EXISTS (SELECT 1 FROM dispatch.selector WHERE scope_id = '"
+                + SubstrateDatabaseResource.SCOPE_ID + "' AND name = '" + WITHDRAWN_SELECTOR
+                + "')");
         for (String subject : new String[] {CONSOLE, OTHER_CONSOLE, EXECUTOR,
             OTHER_EXECUTOR}) {
             PlatformFixture.run(

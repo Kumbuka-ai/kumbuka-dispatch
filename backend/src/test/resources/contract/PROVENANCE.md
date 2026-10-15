@@ -102,3 +102,20 @@ the fixed values in `contract/TargetSurface.java`, both written from the
 specification and neither from the code. A copy that is stale turns a test red
 and somebody looks; an expectation derived from the declaration it checks is
 green for ever and says nothing.
+
+## The amendment of 2026-10-16: the service contract
+
+Rewritten from the platform service contract, `code-conventions/service-contract.md`
+(platform-specs commit `df81898`, ratified 2026-10-15). The codes and statuses are the
+contract's table C8.7 wherever it names the condition: a holder's call by a caller who holds
+nothing is `CLAIM_HELD` where another executor holds the task, the state's refusal where nobody
+does, and `LEASE_LAPSED` where the caller's own lease ended; `NOTHING_TO_TAKE` is `DRAW_EMPTY`,
+`SELECTOR_UNKNOWN` is `SELECTOR_UNDECLARED` beside a new `SELECTOR_WITHDRAWN`, a call at an
+address it does not apply at or a verb this service does not carry is `VERB_NOT_CARRIED` with
+`data.accepts`, an address out of the grammar is `ADDRESS_MALFORMED`, a body that is no object
+`PAYLOAD_MALFORMED`, a lease that is no positive duration `ARGUMENT_INVALID`, and a call fenced
+by the conflict token that arrives without one `CONFLICT_TOKEN_MISSING`, refused by the kernel
+after the scope resolves. `CONFLICT_TOKEN_STALE` carries the task as it stands (DEC-0041). The
+declaration is served at `/api/declaration` alone, with placements `TOP` and `FIELDS`, defaults
+in their own JSON type, and a role only on a restricted call (C5.1, C5.4). The texts are
+unchanged but for the messages and remedies of the codes that are new.

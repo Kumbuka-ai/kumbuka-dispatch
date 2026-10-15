@@ -78,8 +78,8 @@ class LocalMcpOffIT {
             .as("the resource is not a bean of this build").isFalse();
         assertThat(Arc.container().instance(DeclarationGuard.class).isAvailable())
             .as("nor is the start-up guard of the declaration").isFalse();
-        assertThat(Arc.container().instance(CallRouter.class).isAvailable())
-            .as("the router both surfaces share stays").isTrue();
+        assertThat(Arc.container().instance(VerbSurface.class).isAvailable())
+            .as("the verb surface both adapters call stays").isTrue();
     }
 
     @Test

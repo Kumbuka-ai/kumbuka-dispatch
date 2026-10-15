@@ -21,7 +21,7 @@ import java.util.Objects;
 public final class ArgumentName {
 
     /** The one nested object a call may carry. */
-    public static final ArgumentName FIELDS = new ArgumentName(CallArguments.FIELDS);
+    public static final ArgumentName FIELDS = new ArgumentName(Argument.FIELDS);
 
     private final String name;
 

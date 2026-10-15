@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.contract;
 
 import ai.kumbuka.dispatch.surface.Mcp;
@@ -72,7 +79,7 @@ class ProcessSurfaceIT {
         SurfaceFixture.asExecutor(identity);
         Response notHeld = Mcp.call("dispatch_read_text", Map.of("address", address,
             "part", "dispatch"));
-        assertThat(Mcp.reason(notHeld)).isEqualTo("NOT_THE_HOLDER");
+        assertThat(Mcp.reason(notHeld)).isEqualTo("STATE_DOES_NOT_ALLOW");
         answers.add(notHeld);
 
         // It claims, reads the commission, asks.

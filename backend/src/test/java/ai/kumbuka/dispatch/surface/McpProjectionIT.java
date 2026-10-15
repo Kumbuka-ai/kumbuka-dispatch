@@ -99,16 +99,16 @@ class McpProjectionIT {
                 "dispatch_deliver_return", "dispatch_ask_commissioner", "dispatch_decline",
                 "send", "claim")) {
             String before = Writes.snapshot();
-            Map<String, Object> refusal = Mcp.refusal(Mcp.call(earlier,
-                Map.of("address", open)));
-            assertThat(refusal.get("reason")).as(earlier).isEqualTo("ARGUMENT_UNKNOWN");
-            @SuppressWarnings("unchecked")
-            List<String> accepts = (List<String>) dataOf(refusal).get("accepts");
+            Response answer = Mcp.call(earlier, Map.of("address", open));
+            assertThat(answer.jsonPath().getInt("error.code"))
+                .as("an unknown tool is the protocol's invalid params (C4.3): %s", earlier)
+                .isEqualTo(-32602);
+            List<String> accepts = answer.jsonPath().getList("error.data.accepts", String.class);
             assertThat(accepts)
-                .as("the refusal names the calls it does know, and not the one that arrived "
+                .as("the error names the tools it does know, and not the one that arrived "
                     + "(DEC-0043 R19)")
                 .contains("dispatch_claim").doesNotContain(earlier);
-            assertThat(String.valueOf(refusal.get("message")).split("[ ,.:]"))
+            assertThat(answer.jsonPath().getString("error.message").split("[ ,.:]"))
                 .as("nor does its message, word for word").doesNotContain(earlier);
             assertThat(Writes.snapshot()).as("%s wrote nothing", earlier).isEqualTo(before);
         }

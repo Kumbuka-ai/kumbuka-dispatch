@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.architecture;
 
 import org.junit.jupiter.api.Test;
@@ -41,6 +48,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Runs as a plain unit test: it reads enum constants and needs no database.
  */
 class RefusalReasonFormTest {
+
+    /** The surface's exception: it carries the catalogue's codes, not an enum of its own. */
+    private static final String SURFACE_EXCEPTION = SourceTree.BASE + ".surface.SurfaceException";
 
     /**
      * Words that are not subjects, however they are spelled.
@@ -117,6 +127,12 @@ class RefusalReasonFormTest {
     }
 
     /** Every refusal reason this service declares, from the enums themselves. */
+    /**
+     * Every reason this service can refuse with: the {@code Reason} enum of
+     * each exception type that has one, and the refusal catalogue, {@code
+     * surface.RefusalCode} (C8.5), whose codes the surface's own exception
+     * carries in place of an enum of its own.
+     */
     private static List<String> reasonsOf(Path root) {
         List<String> reasons = new ArrayList<>();
         for (Path file : SourceTree.files(root)) {
@@ -125,14 +141,19 @@ class RefusalReasonFormTest {
                 continue;
             }
             Class<?> reason = reasonEnumOf(fqcn);
-            assertThat(reason)
-                .as("%s must declare a Reason enum: an exception type without one is "
-                    + "outside the typed refusal model, which is the thing this checks",
-                    fqcn)
-                .isNotNull();
+            if (reason == null) {
+                assertThat(fqcn)
+                    .as("%s declares no Reason enum, so it must be the surface's exception, "
+                        + "which carries the catalogue's codes", fqcn)
+                    .isEqualTo(SURFACE_EXCEPTION);
+                continue;
+            }
             for (Object constant : reason.getEnumConstants()) {
                 reasons.add(((Enum<?>) constant).name());
             }
+        }
+        for (Object constant : catalogue().getEnumConstants()) {
+            reasons.add(((Enum<?>) constant).name());
         }
         assertThat(reasons)
             .as("this service declares refusal reasons; finding none would mean the "
@@ -141,13 +162,19 @@ class RefusalReasonFormTest {
         return reasons;
     }
 
-    /**
-     * The nested {@code Reason} enum of an exception type, or null.
-     *
-     * <p>Loaded without initialising: annotation and constant reflection needs
-     * the class linked, not initialised, and initialising application classes
-     * from a unit test would drag in CDI.
-     */
+    /** The catalogue, by the name it carries in every service (C2.4). */
+    private static Class<?> catalogue() {
+        try {
+            Class<?> loaded = Class.forName(SourceTree.BASE + ".surface.RefusalCode", false,
+                RefusalReasonFormTest.class.getClassLoader());
+            assertThat(loaded.isEnum()).as("the refusal catalogue is an enum").isTrue();
+            return loaded;
+        } catch (ClassNotFoundException absent) {
+            throw new AssertionError("the refusal catalogue surface.RefusalCode is absent",
+                absent);
+        }
+    }
+
     private static Class<?> reasonEnumOf(String fqcn) {
         try {
             Class<?> loaded = Class.forName(fqcn + "$Reason", false,

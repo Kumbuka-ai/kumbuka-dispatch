@@ -234,6 +234,12 @@ public interface RefusalMessages {
     String selectorUnknown();
 
     @Message
+    String selectorWithdrawn();
+
+    @Message
+    String conflictTokenMissing(VerbName call);
+
+    @Message
     String scopeKindUnsupported();
 
     @Message

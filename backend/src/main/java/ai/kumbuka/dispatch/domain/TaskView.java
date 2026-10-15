@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.domain;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -66,6 +67,16 @@ public record TaskView(
 
     /** One text that exists, without its content. */
     public record TextHead(TextType type, String addendumSuffix) {
+
+        /** One text that exists, as a head lists it: its type, and its suffix where it has one. */
+        Map<String, Object> fields() {
+            Map<String, Object> rendered = new LinkedHashMap<>();
+            rendered.put("type", type.wireName());
+            if (addendumSuffix != null) {
+                rendered.put("suffix", addendumSuffix);
+            }
+            return rendered;
+        }
     }
 
     public TaskView {
@@ -78,6 +89,47 @@ public record TaskView(
      *
      * @param texts the texts that exist, by type and suffix, in the order written
      */
+    /**
+     * The task's fields as an answer carries them (C7.1): lean for a writing
+     * call — the state with its attributes and, for the holder, the end of
+     * the lease — and the full head for a read or a listing, which adds the
+     * title, the apparatus, both metadata, the technical address as {@code
+     * identity}, who holds the task, and the texts that exist by type and
+     * suffix. The one mapping of this object type to the wire; an absent
+     * value is left out, and an instant stays an instant for the serialiser to
+     * write (C7.3).
+     */
+    public Map<String, Object> fields(boolean head) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("state", state.wireName());
+        putIfPresent(fields, "hold_reason", holdReason == null ? null : holdReason.wireName());
+        putIfPresent(fields, "outcome", outcome == null ? null : outcome.wireName());
+        putIfPresent(fields, "not_before", notBefore);
+        putIfPresent(fields, "lease_expires_at", leaseExpiresAt);
+        if (!head) {
+            return fields;
+        }
+        fields.put("title", title);
+        fields.put("apparatus", apparatus);
+        fields.put("identity", ExchangeAddress.SCHEME + "://" + identity);
+        fields.put("holder", holder.wireName());
+        fields.put("lapse_count", lapseCount);
+        if (holdReason == HoldReason.QUESTION && questionOptions != null) {
+            fields.put("question", questionOptions);
+        }
+        putIfPresent(fields, "dispatch_metadata", dispatchMetadata);
+        putIfPresent(fields, "return_metadata", returnMetadata);
+        putIfPresent(fields, "curated_in", curatedIn);
+        fields.put("texts", texts.stream().map(TextHead::fields).toList());
+        return fields;
+    }
+
+    private static void putIfPresent(Map<String, Object> fields, String name, Object value) {
+        if (value != null) {
+            fields.put(name, value);
+        }
+    }
+
     static TaskView of(Task task, TaskSituation situation, Actor caller, List<TextHead> texts,
                        String curatedIn) {
         HolderState holder = HolderState.of(situation.holder(), caller);

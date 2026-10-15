@@ -31,7 +31,7 @@ class RestRouteFormTest {
 
     @Test
     void every_route_has_the_form_of_its_effect_class() {
-        for (RestRoute route : RestRoute.values()) {
+        for (CustomMethod route : CustomMethod.values()) {
             ProcessVerb verb = route.verb();
             String form = route.method() + " " + route.depth() + (route.custom() ? " :call" : "");
             String expected = switch (verb.effectClass()) {
@@ -48,7 +48,7 @@ class RestRouteFormTest {
             assertThat(form).as("%s is declared %s", verb.call(), verb.effectClass())
                 .isEqualTo(expected);
         }
-        assertThat(Arrays.stream(RestRoute.values()).map(RestRoute::verb).distinct().count())
+        assertThat(Arrays.stream(CustomMethod.values()).map(CustomMethod::verb).distinct().count())
             .as("every call has its route").isEqualTo(ProcessVerb.values().length);
     }
 }

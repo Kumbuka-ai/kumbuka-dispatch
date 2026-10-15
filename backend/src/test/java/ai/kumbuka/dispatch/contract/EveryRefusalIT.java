@@ -221,14 +221,14 @@ class EveryRefusalIT {
             .isEqualTo("other");
         Map<String, Object> other = Mcp.refusal(Mcp.call("dispatch_deliver", Map.of(
             "address", address, "receipt", receipt, "fields", Map.of("text", "mine"))));
-        assertThat(other.get("reason")).isEqualTo("NOT_THE_HOLDER");
+        assertThat(other.get("reason")).isEqualTo("CLAIM_HELD");
         assertThat(String.valueOf(other.get("message"))).contains("another executor holds");
 
         SurfaceFixture.asExecutor(identity);
         lapse(address);
         Map<String, Object> lapsed = Mcp.refusal(Mcp.call("dispatch_renew", Map.of(
             "address", address, "receipt", receipt)));
-        assertThat(lapsed.get("reason")).isEqualTo("NOT_THE_HOLDER");
+        assertThat(lapsed.get("reason")).isEqualTo("LEASE_LAPSED");
         assertThat(String.valueOf(lapsed.get("message"))).contains("your lease on this task ended");
     }
 
@@ -311,7 +311,7 @@ class EveryRefusalIT {
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_claim_next", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
             "apparatus", List.of("nobody-is-this"))));
-        assertThat(refusal.get("reason")).isEqualTo("NOTHING_TO_TAKE");
+        assertThat(refusal.get("reason")).isEqualTo("DRAW_EMPTY");
         assertThat(String.valueOf(data(refusal).get("next"))).contains("dispatch_query");
     }
 
@@ -321,9 +321,9 @@ class EveryRefusalIT {
         SurfaceFixture.asExecutor(identity);
         String before = Writes.snapshot();
         assertThat(Mcp.reason(Mcp.call("dispatch_claim", Map.of("address", address,
-            "duration", "soon")))).isEqualTo("CLAIM_DURATION_INVALID");
+            "duration", "soon")))).isEqualTo("ARGUMENT_INVALID");
         assertThat(Mcp.reason(Mcp.call("dispatch_claim", Map.of("address", address,
-            "duration", "PT0S")))).isEqualTo("CLAIM_DURATION_INVALID");
+            "duration", "PT0S")))).isEqualTo("ARGUMENT_INVALID");
         assertThat(Writes.snapshot()).isEqualTo(before);
     }
 
@@ -350,7 +350,7 @@ class EveryRefusalIT {
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_create", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", "no-such-kind",
             "fields", Map.of("title", "t", "apparatus", "code"))));
-        assertThat(refusal.get("reason")).isEqualTo("SELECTOR_UNKNOWN");
+        assertThat(refusal.get("reason")).isEqualTo("SELECTOR_UNDECLARED");
         assertThat(String.valueOf(refusal.get("message")))
             .as("the declared bracket kinds are the tenant's vocabulary, and the one sent the "
                 + "caller's input (DEC-0043 R18)")
@@ -376,17 +376,20 @@ class EveryRefusalIT {
         Response refused = given().contentType(ContentType.JSON)
             .post(SurfaceFixture.collection() + ":send");
         assertThat(refused.statusCode()).isEqualTo(405);
-        assertThat(refused.jsonPath().getString("reason")).isEqualTo("CALL_NOT_AT_THIS_ADDRESS");
+        assertThat(refused.jsonPath().getString("reason")).isEqualTo("VERB_NOT_CARRIED");
         assertThat(refused.header("Allow")).isEqualTo("POST, GET");
+        assertThat(refused.jsonPath().getList("data.accepts", String.class))
+            .as("the verbs this address carries (C3.3)")
+            .containsExactly("create", "query", "claim_next");
     }
 
     @Test
     void the_argument_refusals_name_the_argument() {
         String address = SurfaceFixture.address(SurfaceFixture.open("argued", "code"));
-        assertThat(Mcp.reason(Mcp.call("dispatch_send", Map.of("address", address))))
+        assertThat(Mcp.reason(Mcp.call("dispatch_read", Map.of())))
             .isEqualTo("ARGUMENT_MISSING");
         assertThat(Mcp.reason(Mcp.call("dispatch_read", Map.of("address", "sprint/1.0"))))
-            .isEqualTo("ARGUMENT_INVALID");
+            .isEqualTo("ADDRESS_MALFORMED");
         assertThat(Mcp.reason(Mcp.call("dispatch_read_text", Map.of("address", address,
             "part", "everything")))).isEqualTo("ARGUMENT_INVALID");
     }

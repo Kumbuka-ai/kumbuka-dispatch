@@ -24,6 +24,10 @@ import java.util.Set;
  * the production packages, so a declaration that changes is compared with
  * what it was meant to be and not with itself.
  *
+ * <p>The codes are the platform's table (service contract C8.7, platform-specs
+ * {@code df81898}) wherever it names the condition, and the placements are
+ * {@code TOP} and {@code FIELDS} as rule C5.4 writes them.
+ *
  * <p>Where the router's own lists of reasons differ, the transcript follows
  * the service, and the difference is the router's to take up: {@code create}
  * meets the state of a closed parent, {@code annotate} the state of a draft,
@@ -47,11 +51,13 @@ public final class DeclarationTranscript {
                        List<String> arguments) {
     }
 
-    private static final List<String> COMMON = List.of("NOT_FOUND", "ARGUMENT_UNKNOWN",
-        "ARGUMENT_MISSING", "ARGUMENT_INVALID", "ROLE_DOES_NOT_ALLOW", "SELECTOR_UNKNOWN",
-        "SCOPE_KIND_UNSUPPORTED", "CALL_NOT_AT_THIS_ADDRESS", "UNEXPECTED_FAILURE");
+    private static final List<String> COMMON = List.of("NOT_FOUND", "PAYLOAD_MALFORMED",
+        "ADDRESS_MALFORMED", "ARGUMENT_UNKNOWN", "ARGUMENT_MISSING", "ARGUMENT_INVALID",
+        "ROLE_DOES_NOT_ALLOW", "SELECTOR_UNDECLARED", "SELECTOR_WITHDRAWN",
+        "SCOPE_KIND_UNSUPPORTED", "VERB_NOT_CARRIED", "UNEXPECTED_FAILURE");
     private static final List<String> WRITE = List.of("SCOPE_READ_ONLY", "SCOPE_LOCKED");
-    private static final List<String> HOLDER = List.of("NOT_THE_HOLDER", "RECEIPT_WRONG");
+    private static final List<String> HOLDER = List.of("CLAIM_HELD", "LEASE_LAPSED",
+        "STATE_DOES_NOT_ALLOW", "RECEIPT_WRONG");
 
     /**
      * Every call by its identity, in the order of TAR-0004 section 3. An
@@ -62,55 +68,55 @@ public final class DeclarationTranscript {
 
     private static Map<String, Call> calls() {
         Map<String, Call> calls = new LinkedHashMap<>();
-        String address = "address:string:top:required";
-        String token = "conflict_token:string:top:required";
-        String receipt = "receipt:string:top:required";
-        String duration = "duration:string:top:optional=PT30M";
-        String key = "idempotency_key:string:top:optional";
-        String confirmation = "confirmation:string:top:optional";
-        String remark = "remark:string:fields:optional";
-        String remarkRequired = "remark:string:fields:required";
-        String scope = "scope:string:top:required";
-        String selector = "selector:string:top:required";
+        String address = "address:string:TOP:required";
+        String token = "conflict_token:string:TOP:required";
+        String receipt = "receipt:string:TOP:required";
+        String duration = "duration:string:TOP:optional=PT30M";
+        String key = "idempotency_key:string:TOP:optional";
+        String confirmation = "confirmation:string:TOP:optional";
+        String remark = "remark:string:FIELDS:optional";
+        String remarkRequired = "remark:string:FIELDS:required";
+        String scope = "scope:string:TOP:required";
+        String selector = "selector:string:TOP:required";
 
         put(calls, "send", "ITEM_TRANSITION", "TASK_LEAN",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE"), address, token);
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token);
         put(calls, "claim", "ITEM_TRANSITION", "CLAIM_RECEIPT",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CLAIM_DURATION_INVALID",
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW",
                 "DEFERRAL_PENDING", "IDEMPOTENCY_KEY_REUSED"), address, duration, key);
         put(calls, "claim_next", "COLLECTION_COMPOUND", "CLAIM_RECEIPT",
-            reasons(WRITE, "CLAIM_DURATION_INVALID", "NOTHING_TO_TAKE",
+            reasons(WRITE, "DRAW_EMPTY",
                 "IDEMPOTENCY_KEY_REUSED"),
-            scope, selector, "apparatus:array:top:required", duration, key);
+            scope, selector, "apparatus:array:TOP:required", duration, key);
         put(calls, "release", "ITEM_TRANSITION", "TASK_LEAN",
             holder("STATE_DOES_NOT_ALLOW"), address, receipt, remark);
         put(calls, "defer", "ITEM_TRANSITION", "TASK_LEAN",
             holder("STATE_DOES_NOT_ALLOW"), address, receipt,
-            "not_before:string:fields:required", remark);
+            "not_before:string:FIELDS:required", remark);
         put(calls, "renew", "ITEM_TRANSITION", "TASK_LEAN",
-            holder("STATE_DOES_NOT_ALLOW", "CLAIM_DURATION_INVALID"), address, receipt,
+            holder("STATE_DOES_NOT_ALLOW"), address, receipt,
             duration);
         put(calls, "ask", "ITEM_TRANSITION", "TASK_LEAN",
             holder("STATE_DOES_NOT_ALLOW"), address, receipt,
-            "question:string:fields:required", "options:array:fields:optional",
-            "free_text:boolean:fields:optional=false");
+            "question:string:FIELDS:required", "options:array:FIELDS:optional",
+            "free_text:boolean:FIELDS:optional=false");
         put(calls, "answer", "ITEM_TRANSITION", "TASK_LEAN",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE"), address, token,
-            "option:string:fields:optional", "text:string:fields:optional");
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token,
+            "option:string:FIELDS:optional", "text:string:FIELDS:optional");
         put(calls, "hold", "ITEM_TRANSITION", "TASK_LEAN",
             holder("STATE_DOES_NOT_ALLOW"), address, receipt,
-            "reason:string:fields:required", remark);
+            "reason:string:FIELDS:required", remark);
         put(calls, "resume", "ITEM_TRANSITION", "TASK_LEAN",
-            holder("STATE_DOES_NOT_ALLOW", "CLAIM_DURATION_INVALID"), address, receipt,
+            holder("STATE_DOES_NOT_ALLOW"), address, receipt,
             duration);
         put(calls, "deliver", "ITEM_TRANSITION", "TASK_LEAN",
-            holder("STATE_DOES_NOT_ALLOW"), address, receipt, "text:string:fields:required",
-            "metadata:object:fields:optional");
+            holder("STATE_DOES_NOT_ALLOW"), address, receipt, "text:string:FIELDS:required",
+            "metadata:object:FIELDS:optional");
         put(calls, "rework", "ITEM_TRANSITION", "TASK_LEAN",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE"), address, token,
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token,
             remarkRequired);
         put(calls, "accept", "ITEM_TRANSITION", "TASK_LEAN",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE",
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING",
                 "CHILDREN_NOT_FINISHED"), address, token, confirmation);
         put(calls, "reject", "ITEM_TRANSITION", "TASK_LEAN",
             reasons(WRITE, "STATE_DOES_NOT_ALLOW"), address, remarkRequired);
@@ -118,37 +124,38 @@ public final class DeclarationTranscript {
             holder("STATE_DOES_NOT_ALLOW", "CHILDREN_NOT_FINISHED"), address, receipt,
             confirmation, remarkRequired);
         put(calls, "withdraw", "ITEM_TRANSITION", "TASK_LEAN",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE",
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING",
                 "CHILDREN_NOT_FINISHED"), address, token, confirmation, remark);
         put(calls, "create", "CREATE", "TASK_LEAN_CREATED",
             reasons(WRITE, "STATE_DOES_NOT_ALLOW", "IDEMPOTENCY_KEY_REUSED"), scope, selector,
-            "parent:string:top:optional", key, "title:string:fields:required",
-            "apparatus:string:fields:required", "text:string:fields:optional",
-            "metadata:object:fields:optional");
+            "parent:string:TOP:optional", key, "title:string:FIELDS:required",
+            "apparatus:string:FIELDS:required", "text:string:FIELDS:optional",
+            "metadata:object:FIELDS:optional");
         put(calls, "update", "FIELD_WRITE", "TASK_LEAN",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE"), address, token,
-            "title:string:fields:optional", "apparatus:string:fields:optional",
-            "text:string:fields:optional", "metadata:object:fields:optional");
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token,
+            "title:string:FIELDS:optional", "apparatus:string:FIELDS:optional",
+            "text:string:FIELDS:optional", "metadata:object:FIELDS:optional");
         put(calls, "delete", "ITEM_DELETE", "TASK_DELETED",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE"), address, token);
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token);
         put(calls, "read", "ITEM_READ", "TASK_HEAD", reasons(List.of()), address);
         put(calls, "read_text", "ITEM_READ_CALL", "TASK_TEXT",
-            reasons(List.of(), "NOT_THE_HOLDER"), address, "part:string:top:required");
+            reasons(List.of(), "CLAIM_HELD", "LEASE_LAPSED",
+                "STATE_DOES_NOT_ALLOW"), address, "part:string:TOP:required");
         put(calls, "query", "COLLECTION_READ", "TASK_LISTING",
             reasons(List.of(), "PAGE_SIZE_REJECTED", "CURSOR_MALFORMED", "CURSOR_FOREIGN",
                 "SORT_UNDECLARED"),
-            scope, selector, "state:string:top:optional", "apparatus:string:top:optional",
-            "bracket:string:top:optional", "address:string:top:optional",
-            "page_size:integer:top:optional=50", "after:string:top:optional",
-            "sort:string:top:optional=id", "direction:string:top:optional=asc");
+            scope, selector, "state:string:TOP:optional", "apparatus:string:TOP:optional",
+            "bracket:string:TOP:optional", "address:string:TOP:optional",
+            "page_size:integer:TOP:optional=50", "after:string:TOP:optional",
+            "sort:string:TOP:optional=id", "direction:string:TOP:optional=asc");
         put(calls, "annotate", "ITEM_TRANSITION", "TASK_LEAN",
             reasons(WRITE, "STATE_DOES_NOT_ALLOW", "IDEMPOTENCY_KEY_REUSED"), address, key,
-            "text:string:fields:required", "part:string:fields:required");
+            "text:string:FIELDS:required", "part:string:FIELDS:required");
         put(calls, "relate", "ITEM_TRANSITION", "TASK_LEAN",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE"), address, token,
-            "curated_in:string:fields:required");
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token,
+            "curated_in:string:FIELDS:required");
         put(calls, "unrelate", "ITEM_TRANSITION", "TASK_LEAN",
-            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE"), address, token);
+            reasons(WRITE, "STATE_DOES_NOT_ALLOW", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token);
         return java.util.Collections.unmodifiableMap(calls);
     }
 

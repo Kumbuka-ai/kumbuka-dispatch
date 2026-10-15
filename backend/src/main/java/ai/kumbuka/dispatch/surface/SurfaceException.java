@@ -1,60 +1,52 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 /**
- * A typed refusal the surface itself produces, as distinct from one the domain
- * produces.
+ * A refusal the surface decides: grammar and transport (C8.1).
  *
- * <p>The two are kept apart deliberately. {@code DispatchException} says
- * something about a task — its state, its holder, its texts — and the
- * domain is the only place that knows those things. This one says something
- * about the <em>call</em>: the address does not parse, the scheme does not
- * carry the verb, a writing verb arrived on a collection. None of that needs
- * a task to exist, and it is decided before one is looked for.
+ * <p>One of the two exception types that carry a refusal; the other is the
+ * domain's. This one says something about the <em>call</em> — an address that
+ * does not parse, an argument the call does not declare, a body that is no
+ * object, a verb not carried at this address — and is decided before a task
+ * is looked for. It carries the refusal as the caller is told it, so the edge
+ * that catches it maps it and adds nothing.
  *
- * <p>Every reason below names a status class and keeps it. A caller that has
- * to tell "you addressed this wrongly" from "that verb is not part of this
- * scheme" from "there is nothing there" cannot do it from prose, and a surface
- * that answered all three the same way would be indistinguishable from one
- * with unbuilt routes.
+ * <p>Raised by the form checks of the adapters and by the address grammar,
+ * caught only by {@code RefusalMapper} and {@code McpAdapter} (C8.2).
  */
 public class SurfaceException extends RuntimeException {
 
+    private static final long serialVersionUID = 1L;
+
+    private final transient Refusal refusal;
+    private final String allow;
+
+    public SurfaceException(Refusal refusal) {
+        this(refusal, null);
+    }
+
     /**
-     * The category of a surface refusal, and the HTTP status it carries.
-     *
-     * <p>The status travels with the reason rather than being decided at the
-     * mapper, because the choice is part of the published contract and a
-     * mapper is exactly where a choice gets quietly changed.
+     * A refusal of a method or a verb at an address, with the methods the
+     * address answers to, for the {@code Allow} header of a 405.
      */
-    public enum Reason {
-
-        /**
-         * The address violates the production. Decidable without knowing any
-         * scope, which is why answering it leaks nothing and why this check
-         * sits in front of everything else.
-         */
-        ADDRESS_MALFORMED(400);
-
-        private final int status;
-
-        Reason(int status) {
-            this.status = status;
-        }
-
-        /** The HTTP status this reason answers with, fixed at the reason. */
-        public int status() {
-            return status;
-        }
+    public SurfaceException(Refusal refusal, String allow) {
+        super(refusal.code().name(), null, false, false);
+        this.refusal = refusal;
+        this.allow = allow;
     }
 
-    private final transient Reason reason;
-
-    public SurfaceException(Reason reason, String message) {
-        super(message);
-        this.reason = reason;
+    public Refusal refusal() {
+        return refusal;
     }
 
-    public Reason reason() {
-        return reason;
+    /** The methods the address answers to, or null where the refusal is not a 405. */
+    public String allow() {
+        return allow;
     }
 }

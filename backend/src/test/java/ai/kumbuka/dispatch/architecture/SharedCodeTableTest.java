@@ -7,7 +7,6 @@
  */
 package ai.kumbuka.dispatch.architecture;
 
-import ai.kumbuka.dispatch.adapter.rest.RefusalMapper;
 import ai.kumbuka.dispatch.surface.RefusalCode;
 import org.junit.jupiter.api.Test;
 
@@ -162,7 +161,7 @@ class SharedCodeTableTest {
     private static Map<String, Integer> carried() {
         Map<String, Integer> carried = new LinkedHashMap<>();
         Arrays.stream(RefusalCode.values())
-            .forEach(code -> carried.put(code.name(), RefusalMapper.statusOf(code)));
+            .forEach(code -> carried.put(code.name(), code.status()));
         return carried;
     }
 }

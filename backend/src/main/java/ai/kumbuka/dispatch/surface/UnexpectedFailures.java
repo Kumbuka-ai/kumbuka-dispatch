@@ -9,35 +9,34 @@ package ai.kumbuka.dispatch.surface;
 
 import org.jboss.logging.Logger;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * The one place an {@code UNEXPECTED_FAILURE} is minted, so that its reference
- * is always in the log.
+ * is always in the log (C8.3).
  *
  * <p>The refusal tells the caller to report the reference in {@code
- * data.reference}, and section
- * 4.4 makes that a promise about the service and not only about the message:
- * the reference "is written to the service's log with the failure, on every
- * path that raises it". Measured in review on 2026-09-19 it was not — six throw sites
- * minted a fresh UUID each and one of them logged it, so five references in
- * five different refusals identified nothing at all, and a caller that did what
- * the message asked would have been asking about a number nobody could find.
+ * data.reference}, and that is a promise about the service: the reference is
+ * written to the log with the failure, on every path that raises it. So the
+ * mint and the log line are one act, and nobody adding a throw site can
+ * separate them.
  *
- * <p>So the mint and the log statement are one act and cannot be separated by
- * anybody adding the seventh throw site. {@link Refused#unexpected} stays
- * public because the probes need to build the envelope without raising a
- * failure; {@code UnmintedReferenceTest} is what keeps production code out
- * of it.
- *
- * <p>What goes in the log is the reference, the call, the address and the
- * cause. Not the caller, not the arguments: this service's logging convention
- * holds here too, and a failure report is not a licence to write a
- * commission's text where a log shipper can carry it out of the container.
+ * <p>The log line carries the reference, the call, the address and the class
+ * names of the exception chain — and never the exception object (DEC-0051,
+ * C13.2). A stack trace and an exception's message carry whatever the failing
+ * code held, a caller's value or a commission's text included, and a log
+ * shipper carries them out of the container past a boundary built as a
+ * missing grant. The class names say what failed; the reference finds the
+ * line.
  */
 public final class UnexpectedFailures {
 
     private static final Logger LOG = Logger.getLogger(UnexpectedFailures.class);
+
+    /** How deep the chain of causes is followed: a cycle must not hang the log line. */
+    private static final int CHAIN_LIMIT = 8;
 
     private UnexpectedFailures() {
     }
@@ -48,21 +47,29 @@ public final class UnexpectedFailures {
      * @param call    the call, or null for a request that reached no call
      * @param address where the call was made, for the log line alone: the
      *                refusal names no address
-     * @param cause   what actually went wrong, or null where the failure
-     *                arrived as a typed refusal the surface cannot serve.
-     *                Logged, never sent: a stack trace is both unreadable to a
-     *                caller and a disclosure.
+     * @param cause   what went wrong, or null where the failure arrived as a
+     *                typed refusal the surface cannot serve
      */
-    public static Refused refuse(VerbName call, String address, Throwable cause) {
+    public static Refusal refuse(VerbName call, String address, Throwable cause) {
         String named = call == null ? "this request" : call.toString();
         String reference = UUID.randomUUID().toString();
+        String chain = classNames(cause);
+        LOG.errorf("unexpected failure on %s at %s, reference %s, cause %s", named, address,
+            reference, chain);
+        return Refusal.unexpected(call, reference);
+    }
+
+    /** The class names of an exception and its causes, outermost first. */
+    static String classNames(Throwable cause) {
         if (cause == null) {
-            LOG.errorf("unexpected failure on %s at %s, reference %s", named, address,
-                reference);
-        } else {
-            LOG.errorf(cause, "unexpected failure on %s at %s, reference %s", named, address,
-                reference);
+            return "none";
         }
-        return Refused.unexpected(call, reference);
+        List<String> names = new ArrayList<>();
+        Throwable at = cause;
+        while (at != null && names.size() < CHAIN_LIMIT) {
+            names.add(at.getClass().getName());
+            at = at.getCause() == at ? null : at.getCause();
+        }
+        return String.join(" <- ", names);
     }
 }

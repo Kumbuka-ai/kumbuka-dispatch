@@ -27,9 +27,8 @@ import java.util.Map;
  * encoder will write.
  *
  * <p><strong>Where it lives.</strong> On the REST surface at {@code GET
- * /api/declaration}, which the router reads to build its surface (ADR-0039),
- * and beside the assistant surface at {@code GET /mcp/declaration}; both
- * serve {@link #asMap()}. Per call it carries the identity {@code
+ * /api/declaration} and nowhere else (C5.1), which the router reads to build
+ * its surface (ADR-0039); it serves {@link #asMap()}. Per call it carries the identity {@code
  * dispatch_<verb>}, the effect class by the router's name, the arguments with
  * their names, types, requiredness, defaults and closed sets of values with a
  * description each, the shape of the answer, the reasons a refusal may name,
@@ -66,9 +65,9 @@ public final class SurfaceDeclaration {
         return List.of(ProcessVerb.values());
     }
 
-    /** Every declared refusal, with its pattern and its remedy. */
-    public static List<ReasonCatalogue.Reason> reasons() {
-        return ReasonCatalogue.declared();
+    /** Every declared refusal, with its messages and its remedy. */
+    public static List<RefusalCode.Declared> reasons() {
+        return List.copyOf(RefusalCode.catalogue().values());
     }
 
     /**
@@ -122,7 +121,10 @@ public final class SurfaceDeclaration {
             call.put("rest_name", verb.verb());
             call.put("effect_class", verb.effectClass().name());
             call.put("transition", verb.isTransition());
-            call.put("role", verb.roleName());
+            if (verb.role() != null) {
+                // Only a restricted call carries a role (C5.4).
+                call.put("role", verb.roleName());
+            }
             call.put(DESCRIPTION, verb.description());
             if (verb.isTransition()) {
                 call.put("next_step", NextList.does(verb.transition()));
@@ -145,11 +147,11 @@ public final class SurfaceDeclaration {
             declared.put("name", argument.name());
             declared.put("type", argument.type());
             declared.put("required", argument.required());
-            declared.put("placement",
-                argument.placement().name().toLowerCase(java.util.Locale.ROOT));
-            if (!argument.required()) {
-                declared.put("default", Argument.UNSET.equals(argument.fallback())
-                    ? null : argument.fallback());
+            declared.put("placement", argument.placement().name());
+            if (!argument.required() && !Argument.UNSET.equals(argument.fallback())) {
+                // In its own JSON type (C5.4); an argument whose fallback is
+                // to stay unset declares none.
+                declared.put("default", typed(argument));
             }
             declared.put(DESCRIPTION, argument.description());
             if (argument.itemPattern() != null) {
@@ -171,10 +173,19 @@ public final class SurfaceDeclaration {
         return List.copyOf(arguments);
     }
 
+    /** A fallback as a value of the argument's own type: a number, a flag or text. */
+    private static Object typed(Argument argument) {
+        return switch (argument.type()) {
+            case Argument.INTEGER -> Long.parseLong(argument.fallback());
+            case Argument.BOOLEAN -> Boolean.parseBoolean(argument.fallback());
+            default -> argument.fallback();
+        };
+    }
+
     /** The reasons, each with its messages as their templates, and its remedy. */
     private static List<Map<String, Object>> reasonsAsMaps() {
         List<Map<String, Object>> reasons = new ArrayList<>();
-        for (ReasonCatalogue.Reason reason : ReasonCatalogue.declared()) {
+        for (RefusalCode.Declared reason : reasons()) {
             Map<String, Object> declared = new LinkedHashMap<>();
             declared.put("reason", reason.code().name());
             declared.put("message_pattern", reason.messages().get(0).template());
@@ -195,36 +206,17 @@ public final class SurfaceDeclaration {
     /**
      * Refuses a declaration that cannot be served, at start-up.
      *
-     * <p>Four checks, and each one names a way the surface would be broken in
-     * production without anybody noticing until a caller hit it: a reason with
-     * no pattern cannot be worded, a duplicate call name makes the tool list
-     * ambiguous, a call with no description is a call an assistant with no
-     * skill cannot use, and an argument with no description leaves {@code
-     * ARGUMENT_MISSING} with nothing to say the value is.
-     *
-     * <p>The fourth was named here and not implemented until 2026-09-19 —
-     * the javadoc said three checks ran and two did. A description of a check
-     * is not a check; {@code SurfaceDeclarationGuardTest} now observes each of
-     * the four refusing.
+     * <p>Four checks, each a way the surface would be broken in production
+     * without anybody noticing until a caller hit it: a duplicate call name
+     * makes the tool list ambiguous; a call with no description is a call an
+     * assistant with no skill cannot use; a description over {@link
+     * #DESCRIPTION_BUDGET} is cut by a caller that does not read it whole; and
+     * an argument with no description leaves {@code ARGUMENT_MISSING} with
+     * nothing to say the value is. That every refusal code can be worded is
+     * {@link RefusalCatalogueGuard}'s, which runs whether or not the assistant
+     * surface is built.
      */
     public static void requireServable() {
-        requireServable(ReasonCatalogue.byCode());
-    }
-
-    /**
-     * The same, against a catalogue handed in.
-     *
-     * <p>Exists so the red probe for A8 can observe the GUARD rather than the
-     * catalogue check it delegates to. The first version of that probe called
-     * {@link ReasonCatalogue#requireComplete(Map)} directly, and stayed green
-     * when the call was deleted from here — it was checking that the check
-     * works, not that anything runs it. A guard nobody calls is exactly as much
-     * use as no guard.
-     */
-    public static void requireServable(
-            Map<RefusalCode, ReasonCatalogue.Reason> catalogue) {
-        ReasonCatalogue.requireComplete(catalogue);
-
         requireDistinctNames(Arrays.stream(ProcessVerb.values()).map(ProcessVerb::call).toList());
         for (ProcessVerb verb : ProcessVerb.values()) {
             requireDescribed(verb.call(), verb.description());
@@ -292,7 +284,7 @@ public final class SurfaceDeclaration {
      * against.
      *
      * <p>Takes the call's name and its arguments rather than the enum
-     * constant, for the reason {@link ReasonCatalogue#requireComplete(Map)}
+     * constant, for the reason {@link RefusalCatalogueGuard#requireComplete(Map)}
      * takes a map: the real declaration is a constant that cannot be made
      * broken at runtime, so a check that only ever saw it could never be
      * OBSERVED refusing. A guard nobody has watched fail is a description of a
