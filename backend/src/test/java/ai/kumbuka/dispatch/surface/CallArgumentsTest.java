@@ -7,6 +7,9 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.junit.QuarkusTest;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.domain.PageRequest;
 import ai.kumbuka.dispatch.domain.SortKey;
@@ -38,6 +41,10 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
  * that is no whole number is refused as a page size too, and names the
  * argument and not its value in {@code offenders}.
  */
+// The texts a call answers with come from the message bundles, which the
+// running application builds: this test runs with it.
+@QuarkusTest
+@QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class CallArgumentsTest {
 
     static Stream<Arguments> taken() {

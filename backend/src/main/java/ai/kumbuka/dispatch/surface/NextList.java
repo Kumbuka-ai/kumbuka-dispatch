@@ -24,7 +24,8 @@ import java.util.List;
  *
  * <p>The list is the kernel's: {@link TaskView#next()} is {@code
  * Decision.openVerbs}, the transitions whose situational checks pass for this
- * caller, in table order, each with the sentence of its row. This class names
+ * caller, in table order, each with the sentence of its step in {@code
+ * messages/next.properties}. This class names
  * them on the caller's surface and adds one call the table cannot list,
  * because it is not a transition: {@code read_text}, first, at the two points
  * of the main course where the text is what the caller needs next (concept
@@ -32,15 +33,6 @@ import java.util.List;
  * of a delivered task, before it accepts.
  */
 public final class NextList {
-
-    /** The first entry of {@code next} after a claim: concept section 3.5, word for word. */
-    static final String READ_THE_COMMISSION =
-        "Reads the commission: the task's text, the work this claim takes on. Call it next, "
-            + "before you start the work.";
-
-    /** The first entry for the commissioner of a delivered task. */
-    static final String READ_THE_ANSWER =
-        "Reads the delivered answer, part \"return\". Do this before you accept it.";
 
     private NextList() {
     }
@@ -78,13 +70,14 @@ public final class NextList {
                                 boolean afterClaim) {
         List<Step> steps = new ArrayList<>();
         if (afterClaim && view.holder() == HolderState.SELF) {
-            steps.add(new Step(VerbName.of(ProcessVerb.READ_TEXT, surface), READ_THE_COMMISSION));
+            steps.add(new Step(VerbName.of(ProcessVerb.READ_TEXT, surface),
+                Texts.next().readTheCommission()));
         } else if (caller.isConsole() && view.state() == TaskState.DELIVERED) {
-            steps.add(new Step(VerbName.of(ProcessVerb.READ_TEXT, surface), READ_THE_ANSWER));
+            steps.add(new Step(VerbName.of(ProcessVerb.READ_TEXT, surface),
+                Texts.next().readTheAnswer()));
         }
         view.next().stream()
-            .map(verb -> new Step(VerbName.of(ProcessVerb.of(verb), surface),
-                verb.nextSentence()))
+            .map(verb -> new Step(VerbName.of(ProcessVerb.of(verb), surface), does(verb)))
             .forEach(steps::add);
         return List.copyOf(steps);
     }
@@ -101,27 +94,49 @@ public final class NextList {
         if (!next.isEmpty()) {
             return null;
         }
+        NoticeTexts notices = Texts.notices();
         return switch (view.state()) {
-            case DRAFT -> "the commissioner, to send it";
+            case DRAFT -> notices.waitingDraft();
             case OPEN -> view.notBefore() != null && view.notBefore().isAfter(now)
-                ? "the instant in fields.not_before, and then an executor to take it up"
-                : "an executor to take it up";
-            case ACTIVE -> "its holder";
-            case ON_HOLD -> onHold(view);
-            case DELIVERED -> "the commissioner, to accept the answer or send it back";
-            case CLOSED -> "nothing: the task is closed";
+                ? notices.waitingDeferred()
+                : notices.waitingOpen();
+            case ACTIVE -> notices.waitingActive();
+            case ON_HOLD -> onHold(view, notices);
+            case DELIVERED -> notices.waitingDelivered();
+            case CLOSED -> notices.waitingClosed();
         };
     }
 
-    private static String onHold(TaskView view) {
+    private static String onHold(TaskView view, NoticeTexts notices) {
         if (view.holdReason() == HoldReason.QUESTION) {
-            return "the commissioner, to answer the question";
+            return notices.waitingQuestion();
         }
         if (view.holder() == HolderState.NOBODY) {
-            return "a person, to move it out of the hold through the web interface, or the "
-                + "commissioner, to withdraw it: its lease lapsed three times and it has no "
-                + "holder";
+            return notices.waitingParked();
         }
-        return "its holder, to resume it";
+        return notices.waitingResume();
+    }
+
+    /** What one transition does, as its step of {@code next} says it. */
+    static String does(TaskVerb verb) {
+        NextTexts next = Texts.next();
+        return switch (verb) {
+            case SEND -> next.send();
+            case CLAIM -> next.claim();
+            case CLAIM_NEXT -> next.claimNext();
+            case RELEASE -> next.release();
+            case DEFER -> next.defer();
+            case RENEW -> next.renew();
+            case ASK -> next.ask();
+            case ANSWER -> next.answer();
+            case HOLD -> next.hold();
+            case RESUME -> next.resume();
+            case DELIVER -> next.deliver();
+            case REWORK -> next.rework();
+            case ACCEPT -> next.accept();
+            case REJECT -> next.reject();
+            case FAIL -> next.fail();
+            case WITHDRAW -> next.withdraw();
+        };
     }
 }

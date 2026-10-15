@@ -21,7 +21,9 @@ repository root for the full licence text.
 # The dispatch service's verb surface
 
 This document is the expectation the service's conformance tests read: the calls, what each one
-says about itself, and the refusals. It is written by hand from TAR-0004 and from the concept
+says about itself, and the refusals. Every text in it is the service's text as its message bundles
+hold it, under `src/main/resources/messages/`, and every text that tells a caller what to do is
+worded positively (DEC-0043 R21). It is written by hand from TAR-0004 and from the concept
 document named above, and never generated from the service's declaration. Where those two
 documents fix a text, it stands here word for word and is marked so; where they leave the wording
 to the service, the text below was written with this surface and is the service's
@@ -59,105 +61,102 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 ### 3.1 Transitions
 
 **`dispatch_send`**
-> Sends your draft: the task is frozen and becomes open, waiting for an executor to take it up.
-> Moves the task from draft to open (not final). Call as the commissioner, with the conflict token
-> of your last read.
+> Sends your draft: the task is frozen and opens for an executor to take it up. Moves the task from
+> draft to open (intermediate). Call as the commissioner, with the conflict token of your last read.
 >
-> After this the commission's text cannot change; add to it with dispatch_annotate. Withdraw it
-> with dispatch_withdraw.
+> From here on the commission's text stays as sent; add to it with dispatch_annotate. Withdraw the
+> task with dispatch_withdraw.
 
-**`dispatch_claim`** (concept section 3.5, word for word)
-> Takes up one open task and makes you its holder. Moves the task from open to active (not final).
-> Call as an executor, naming the task by its address.
+**`dispatch_claim`** (concept section 3.5, worded positively under DEC-0043 R21)
+> Takes up one open task and makes you its holder. Moves the task from open to active
+> (intermediate). Call as an executor, naming the task by its address.
 >
-> Returns a receipt and the end of your hold. Keep the receipt: every later call on this task
-> needs it.
+> Returns a receipt and the end of your hold. Keep the receipt: every later call on this task needs
+> it.
 >
-> The answer does NOT contain the task's text. Read it next with dispatch_read_text, part
-> "dispatch", before you start working.
+> The task's text comes from dispatch_read_text, part "dispatch": read it next, before you start
+> working.
 >
-> Your hold lasts 30 minutes unless you state a duration; extend it with dispatch_renew.
+> Your hold lasts 30 minutes, or the duration you state; extend it with dispatch_renew.
 
-**`dispatch_claim_next`** (concept section 3.5, word for word)
-> Takes up the next open task addressed to you, without naming one; use dispatch_claim when you
-> know the address. Moves the task from open to active (not final). Call as an executor with
+**`dispatch_claim_next`** (concept section 3.5, worded positively under DEC-0043 R21)
+> Takes up the next open task addressed to you, chosen by the service; use dispatch_claim when you
+> know the address. Moves the task from open to active (intermediate). Call as an executor with
 > scope, selector and apparatus.
 >
 > Returns the address, a receipt and the end of your hold. Keep the receipt: every later call on
 > this task needs it.
 >
-> The answer does NOT contain the task's text. Read it next with dispatch_read_text, part
-> "dispatch", before you start working.
+> The task's text comes from dispatch_read_text, part "dispatch": read it next, before you start
+> working.
 >
-> If nothing matches, nothing is taken.
+> dispatch_query lists the open tasks you can draw.
 
 **`dispatch_release`**
-> Gives a task you hold back: it is open again for any executor. Moves the task from active to
-> open (not final). Call as its holder, with your receipt. Use it when you lose control over the
-> run.
+> Gives a task you hold back: it is open again for any executor. Moves the task from active to open
+> (intermediate). Call as its holder, with your receipt, when you lose control over the run.
 >
-> To give it back until a later instant use dispatch_defer; if the work cannot be done,
-> dispatch_fail.
+> To give it back until a later instant use dispatch_defer; to close it as failed, dispatch_fail.
 
 **`dispatch_defer`**
-> Gives a task you hold back until an instant you name; nobody can take it up before then. Moves
-> the task from active to open (not final). Call as its holder, with your receipt. Use it for a
-> technical abort that a later attempt may overcome.
+> Gives a task you hold back until an instant you name; from that instant on an executor can take it
+> up. Moves the task from active to open (intermediate). Call as its holder, with your receipt, for
+> a technical abort that a later attempt may overcome.
 >
 > dispatch_read and dispatch_query show the instant.
 
 **`dispatch_renew`**
-> Extends your hold on a task you are working on. The task stays active (not final). Call as its
+> Extends your hold on a task you are working on. The task stays active (intermediate). Call as its
 > holder, with your receipt.
 >
 > The answer carries the new end of your hold.
 
 **`dispatch_ask`**
 > Pauses a task you hold and asks the commissioner a question, with answer options, free text
-> admitted, or both. Moves the task from active to on_hold (not final). Call as its holder, with
+> admitted, or both. Moves the task from active to on_hold (intermediate). Call as its holder, with
 > your receipt.
 >
-> You keep the task. The commissioner's dispatch_answer makes it active again with a fresh
-> 30-minute hold; read the answer with dispatch_read_text, part "thread".
+> You keep the task. The commissioner's dispatch_answer makes it active again with a fresh 30-minute
+> hold; read the answer with dispatch_read_text, part "thread".
 
 **`dispatch_answer`**
 > Answers the question the holder asked: name one of its options, or give text where free text is
-> admitted. Moves the task from on_hold to active (not final); the holder continues with a fresh
+> admitted. Moves the task from on_hold to active (intermediate); the holder continues with a fresh
 > 30-minute hold. Call as the commissioner, with the conflict token of your last read.
 >
 > Read the question first with dispatch_read_text, part "thread".
 
 **`dispatch_hold`**
 > Pauses a task you hold while it waits on a dependency or on something external. Moves the task
-> from active to on_hold (not final). Call as its holder, with your receipt. You keep the task;
-> the hold does not run out while it is paused.
+> from active to on_hold (intermediate). Call as its holder, with your receipt. You keep the task,
+> and your hold stays in place while the task is paused.
 >
 > Continue with dispatch_resume.
 
 **`dispatch_resume`**
-> Continues a task you paused with dispatch_hold. Moves the task from on_hold to active (not
-> final). Call as its holder, with your receipt.
+> Continues a task you paused with dispatch_hold. Moves the task from on_hold to active
+> (intermediate). Call as its holder, with your receipt.
 >
-> A question you asked is continued by the commissioner's dispatch_answer, not by this call.
+> A question you asked continues with the commissioner's dispatch_answer.
 
 **`dispatch_deliver`**
 > Delivers your answer, its text and your metadata in one act. Moves the task from active to
-> delivered (not final). Call as its holder, with your receipt.
+> delivered (intermediate). Call as its holder, with your receipt.
 >
-> You keep the task while the commissioner reviews it. It closes when accepted, or comes back to
-> you with a remark through dispatch_rework.
+> You keep the task while the commissioner reviews it. The commissioner closes it with
+> dispatch_accept, or sends it back to you with a remark through dispatch_rework.
 
 **`dispatch_rework`**
 > Sends a delivered answer back to its holder with a remark saying what to change. Moves the task
-> from delivered to active (not final); the holder continues with a fresh 30-minute hold. Call as
+> from delivered to active (intermediate); the holder continues with a fresh 30-minute hold. Call as
 > the commissioner, with the conflict token of your last read.
 >
 > Read the answer first with dispatch_read_text, part "return".
 
 **`dispatch_accept`**
-> Accepts the delivered answer and closes the task. Moves the task from delivered to closed,
-> outcome accepted (final). Call as the commissioner, with the conflict token of your last read;
-> the identity that delivered cannot accept.
+> Accepts the delivered answer and closes the task. Moves the task from delivered to closed, outcome
+> accepted (final). Call as the commissioner, with the conflict token of your last read; acceptance
+> is the act of an identity other than the one that delivered.
 >
 > Read the answer first with dispatch_read_text, part "return". On a bracket root with unfinished
 > children, repeat with the confirmation the refusal hands out.
@@ -167,16 +166,16 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 > closed, outcome rejected (final). Call as an executor.
 
 **`dispatch_fail`**
-> Closes a task you hold as failed, with a remark saying why. Moves the task from active or
-> on_hold to closed, outcome failed (final). Call as its holder, with your receipt. For a
-> technical abort use dispatch_defer; to hand the task back, dispatch_release.
+> Closes a task you hold as failed, with a remark saying why. Moves the task from active or on_hold
+> to closed, outcome failed (final). Call as its holder, with your receipt. For a technical abort
+> use dispatch_defer; to hand the task back, dispatch_release.
 >
 > On a bracket root with unfinished children, repeat with the confirmation the refusal hands out.
 
 **`dispatch_withdraw`**
-> Withdraws a commission that is no longer wanted. Moves the task from open, active, on_hold or
-> delivered to closed, outcome withdrawn (final). Call as the commissioner, with the conflict
-> token of your last read.
+> Withdraws a commission you give up. Moves the task from open, active, on_hold or delivered to
+> closed, outcome withdrawn (final). Call as the commissioner, with the conflict token of your last
+> read.
 >
 > On a bracket root with unfinished children the first call is refused and names them; repeat it
 > with the confirmation it hands out to withdraw them and the root together.
@@ -184,60 +183,60 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 ### 3.2 Calls that are not transitions
 
 **`dispatch_create`**
-> Creates a task as a draft, for you to complete and send. Without parent it opens a new bracket
-> and the task is its root; with parent it adds a child to that bracket. The service allocates the
+> Creates a task as a draft, for you to complete and send. With parent it adds a child to that
+> bracket; left out, it opens a new bracket and the task is its root. The service allocates the
 > number. Call as a commissioner; you become the task's commissioner.
 >
-> Nobody is offered the draft until you send it with dispatch_send. Change it with
-> dispatch_update, or discard it with dispatch_delete.
+> The draft stays yours until you send it with dispatch_send. Change it with dispatch_update, or
+> discard it with dispatch_delete.
 
 **`dispatch_update`**
-> Changes your draft: its title, apparatus, text or metadata; only what you give changes. Call as
-> the commissioner, with the conflict token of your last read. The task stays a draft.
+> Changes your draft: its title, apparatus, text or metadata; what you leave out stays as it is.
+> Call as the commissioner, with the conflict token of your last read. The task stays a draft.
 >
-> A sent task cannot be changed; add to its text with dispatch_annotate.
+> Once sent, a task keeps its text; add to it with dispatch_annotate.
 
 **`dispatch_delete`**
-> Deletes your draft outright; it leaves no trace. Call as the commissioner, with the conflict
-> token of your last read. Only a draft can be deleted; a sent task is withdrawn with
+> Deletes your draft outright and removes every trace of it. Call as the commissioner, with the
+> conflict token of your last read. Deleting applies to a draft; a sent task is withdrawn with
 > dispatch_withdraw.
 >
-> The answer carries the address the draft had, and nothing else.
+> The answer carries the address the draft had, and that alone.
 
 **`dispatch_read`**
-> Reads the head of one task: its state and attributes, whether you, someone else or nobody holds
-> it, its metadata, which texts it has, and the calls open to you with what each does, or what the
-> task waits for.
+> Reads the head of one task: its state and attributes, whether you or another executor holds it,
+> its metadata, which texts it has, and the calls open to you with what each does, or what the task
+> waits for.
 >
-> The answer does NOT contain the task's text; read that with dispatch_read_text.
+> The task's text comes from dispatch_read_text.
 
 **`dispatch_read_text`**
 > Reads one part of a task's text: "dispatch" (the commission), "return" (the valid answer),
 > "thread" (questions, answers, remarks and earlier answers, in order) or "addenda". One part per
 > call.
 >
-> The commissioner reads every part in every state; an executor reads only a task it holds. For
-> "dispatch" and "return" the answer says how many addenda the text has.
+> The commissioner reads every part in every state; an executor reads the parts of a task it holds.
+> For "dispatch" and "return" the answer says how many addenda the text has.
 
 **`dispatch_query`**
-> Lists the tasks of one bracket kind in a scope, without their text: each with its state,
-> attributes and the calls open to you. Narrow by state, apparatus, bracket or address;
-> comma-separated values are alternatives, and an undeclared filter is refused.
+> Lists the tasks of one bracket kind in a scope, each with its head: its state, attributes and the
+> calls open to you. Narrow by state, apparatus, bracket or address, the four declared filters;
+> comma-separated values are alternatives.
 >
-> One page per call, in address order unless you sort otherwise. While next_cursor is in the
+> One page per call, in address order or in the order sort names. While next_cursor is in the
 > answer, more follow: pass it as after, with the same other arguments, for the next page.
 
 **`dispatch_annotate`**
-> Adds an addendum to a text of a sent task: a supplement with its own time and author that cannot
-> be removed. Name the part it supplements. Call as the identity that wrote that text; the task's
-> state does not change.
+> Adds an addendum to a text of a sent task: a supplement with its own time and author that stays
+> for good. Name the part it supplements. Call as the identity that wrote that text; the task keeps
+> its state.
 >
 > Read addenda with dispatch_read_text, part "addenda".
 
 **`dispatch_relate`**
 > Records the object a closed task was curated into: another task you can see, in any scope and
-> bracket kind, never the task itself. Call as the commissioner, with the conflict token of your
-> last read. The task stays closed.
+> bracket kind, other than the task itself. Call as the commissioner, with the conflict token of
+> your last read. The task stays closed.
 >
 > Remove the relation with dispatch_unrelate.
 
@@ -314,9 +313,11 @@ Neither the message nor a member of `data` repeats the caller's input or the ten
 (DEC-0043 R18): no value the caller sent, no name a call does not declare, no scope, selector or
 address the caller named, no declared bracket kind of a scope, no conflict token in the message,
 no instant of a deferral. Where a statement needs one of these, the message points at the member
-of `data` or the read that shows it. The message names the argument and the form it takes; the
-form is one of the declared forms of section 5.1. Each reason has one remedy, an instruction
-worded as the act the caller takes, and so is the sentence of every step in `next`.
+of `data` or the read that shows it. The message names the argument and the form it takes: each form an
+argument takes is a message of its own, `invalid<Form>`. Each reason has one remedy, an instruction
+worded as the act the caller takes, and so is the sentence of every step in `next`. The patterns
+below are the bundle's templates: a placeholder is a call's name, an argument's path or name, a
+declared bound, or a list of them, and nothing else (DEC-0043 R18).
 
 | Reason | Remedy |
 |---|---|
@@ -347,95 +348,87 @@ worded as the act the caller takes, and so is the sentence of every step in `nex
 
 | Message | Reason | Pattern |
 |---|---|---|
-| `NOT_FOUND` | `NOT_FOUND` | `nothing is addressed here. Check the address, and that you are a member of the scope it names.` |
-| `STATE` | `STATE_DOES_NOT_ALLOW` | `{call} is not possible in the task's present state, which data.state shows. You can make: {calls}.` |
-| `STATE_NOTHING_OPEN` | `STATE_DOES_NOT_ALLOW` | `{call} is not possible in the task's present state, which data.state shows, and no call is open to you on it now; data.waiting_for says what it waits for.` |
-| `STATE_CLOSED` | `STATE_DOES_NOT_ALLOW` | `{call} is not possible on this task: it is closed and finished. Nothing further can be done with it.` |
-| `ROLE_COMMISSIONER` | `ROLE_DOES_NOT_ALLOW` | `{call} is the commissioner's call, and you take part in this task in another part.` |
-| `ROLE_EXECUTOR` | `ROLE_DOES_NOT_ALLOW` | `{call} is an executor's call, and you take part here in another part.` |
-| `ROLE_HOLDER` | `ROLE_DOES_NOT_ALLOW` | `{call} is the holder's call, and you take part in this task in another part.` |
-| `ROLE_AUTHOR` | `ROLE_DOES_NOT_ALLOW` | `{call} is the call of the identity that wrote the text it supplements.` |
-| `ROLE_OTHER_THAN_THE_DELIVERER` | `ROLE_DOES_NOT_ALLOW` | `{call} is the commissioner's call, made by an identity other than the one that delivered the answer.` |
-| `ROLE_CAPACITY` | `ROLE_DOES_NOT_ALLOW` | `{call} needs a caller holding the commissioning or the executing capacity, and exactly one of them.` |
-| `HOLDER_OTHER` | `NOT_THE_HOLDER` | `{call} is the holder's call, and another executor holds this task.` |
-| `HOLDER_NOBODY` | `NOT_THE_HOLDER` | `{call} is the holder's call, and nobody holds this task.` |
-| `HOLDER_LAPSED` | `NOT_THE_HOLDER` | `{call} is the holder's call, and your lease on this task ended.` |
-| `TEXT_HOLDER_OTHER` | `NOT_THE_HOLDER` | `{call} reads the text of a task its executor holds, and another executor holds this one.` |
-| `TEXT_HOLDER_NOBODY` | `NOT_THE_HOLDER` | `{call} reads the text of a task its executor holds, and nobody holds this one.` |
-| `TEXT_HOLDER_LAPSED` | `NOT_THE_HOLDER` | `{call} reads the text of a task its executor holds, and your lease on this one ended.` |
-| `RECEIPT_WRONG` | `RECEIPT_WRONG` | `{call} needs the receipt your claim handed out for this task: the receipt given is a different one.` |
-| `CHILDREN_NOT_FINISHED` | `CHILDREN_NOT_FINISHED` | `{call} would close a bracket root while tasks of its bracket are unfinished; data.children lists them. Repeat the call with data.confirmation to withdraw them and close the root.` |
-| `CHILDREN_CONFIRMATION_STALE` | `CHILDREN_NOT_FINISHED` | `{call} carries a confirmation that no longer holds: the unfinished tasks of the bracket changed since it was handed out, and data.children lists them now. Repeat the call with the one in data.confirmation.` |
-| `DEFERRAL_PENDING` | `DEFERRAL_PENDING` | `{call} is not possible yet: the task is deferred, and {read} shows until when, in fields.not_before.` |
-| `NOTHING_TO_TAKE` | `NOTHING_TO_TAKE` | `Nothing that your patterns match can be taken up in this bracket kind right now: every such task is a draft, held, paused, delivered, closed or deferred.` |
-| `CLAIM_DURATION_INVALID` | `CLAIM_DURATION_INVALID` | `duration is not valid for {call}: it is a positive ISO-8601 duration such as PT2H.` |
-| `PAGE_SIZE_REJECTED` | `PAGE_SIZE_REJECTED` | `page_size is not valid for {call}: it is a whole number from 1 to {max}.` |
-| `CURSOR_MALFORMED` | `CURSOR_MALFORMED` | `after is not a cursor {query} handed out: it is the next_cursor of the previous page.` |
-| `CURSOR_FOREIGN` | `CURSOR_FOREIGN` | `{call} carries a cursor of another listing: it was handed out for other values of {differs}. A cursor continues only the listing that handed it out.` |
-| `SORT_UNDECLARED` | `SORT_UNDECLARED` | `sort is not valid for {call}: it takes id or created_at.` |
-| `ARGUMENT_UNKNOWN` | `ARGUMENT_UNKNOWN` | `{call} takes these arguments: {accepts}.` |
-| `ARGUMENT_UNKNOWN_UNDER_FIELDS` | `ARGUMENT_UNKNOWN` | `{call} takes these arguments under fields: {accepts}.` |
-| `CALL_UNKNOWN` | `ARGUMENT_UNKNOWN` | `This service takes these calls: {accepts}.` |
-| `ARGUMENT_MISSING` | `ARGUMENT_MISSING` | `{call} needs {path}.` |
-| `ARGUMENT_MISSING_OPTIONS` | `ARGUMENT_MISSING` | `{call} needs fields.options, or fields.free_text set to true.` |
-| `ARGUMENT_MISSING_ANSWER` | `ARGUMENT_MISSING` | `{call} needs fields.option or fields.text.` |
-| `ARGUMENT_MISSING_CHANGE` | `ARGUMENT_MISSING` | `{call} needs at least one of fields.title, fields.apparatus, fields.text and fields.metadata.` |
-| `ARGUMENT_INVALID` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: {form}.` |
-| `ARGUMENT_INVALID_IN_REQUEST` | `ARGUMENT_INVALID` | `{path} is not valid for this request: {form}.` |
-| `VALUE_INVALID` | `ARGUMENT_INVALID` | `A value given is not valid for {call}: {form}.` |
-| `CONFLICT_TOKEN_STALE` | `CONFLICT_TOKEN_STALE` | `{call} carries a conflict token that is not the one the task holds: it was changed since you read it. Its current token is in data.conflict_token.` |
-| `SELECTOR_UNKNOWN` | `SELECTOR_UNKNOWN` | `selector names a bracket kind this scope does not declare.` |
-| `SCOPE_KIND_UNSUPPORTED` | `SCOPE_KIND_UNSUPPORTED` | `The scope named is of a kind this service carries no tasks in; it carries tasks in project and global scopes.` |
-| `SCOPE_READ_ONLY` | `SCOPE_READ_ONLY` | `{call} writes, and you may read this scope without writing to it. Reading it is unaffected; the write right is granted with the membership.` |
-| `SCOPE_LOCKED` | `SCOPE_LOCKED` | `This scope is locked, so it refuses every write whatever your role. Reading it is unaffected. The lock is lifted where it was set.` |
-| `IDEMPOTENCY_KEY_REUSED` | `IDEMPOTENCY_KEY_REUSED` | `The idempotency key given was spent on a different call, or with different arguments, in this scope within the last 24 hours.` |
-| `ROUTE_CREATE` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a bracket kind: POST /api/<scope>/<selector>.` |
-| `ROUTE_QUERY` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a bracket kind: GET /api/<scope>/<selector>.` |
-| `ROUTE_ON_A_BRACKET_KIND` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a bracket kind: POST /api/<scope>/<selector>:{call}.` |
-| `ROUTE_READ` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>.` |
-| `ROUTE_READ_CALL` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>:{call}.` |
-| `ROUTE_UPDATE` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: PATCH /api/<scope>/<selector>/<number>.<sub>.` |
-| `ROUTE_DELETE` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: DELETE /api/<scope>/<selector>/<number>.<sub>.` |
-| `ROUTE_ON_A_TASK` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: POST /api/<scope>/<selector>/<number>.<sub>:{call}.` |
-| `UNEXPECTED_FAILURE` | `UNEXPECTED_FAILURE` | `{call} failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |
-| `UNEXPECTED_FAILURE_OF_REQUEST` | `UNEXPECTED_FAILURE` | `The request failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |
-
-### 5.1 The forms an argument takes
-
-`ARGUMENT_INVALID` names the form the argument takes as one of these, in place of `{form}`:
-
-| Form | Text |
-|---|---|
-| `FIELDS_OBJECT` | `it carries the values this call writes, and is an object` |
-| `STRING` | `it is a string` |
-| `ONE_OF` | `it is one of the values the description of the argument lists` |
-| `LIST_OF_STRINGS` | `it is a list of strings, even when it carries one value` |
-| `OBJECT` | `it is an object` |
-| `BOOLEAN` | `it is true or false` |
-| `WHOLE_NUMBER` | `it is a whole number` |
-| `PARENT_ELSEWHERE` | `it names another scope or bracket kind than the call does, and a child is created in its root's bracket` |
-| `PARENT_NOT_A_ROOT` | `a parent is a bracket root, the <number>.0 of its bracket` |
-| `APPARATUS_PATTERN` | `a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*', and '*' is the only wildcard; the underscore and the percent sign carry a meaning of their own in the comparison and are excluded` |
-| `APPARATUS_UNBOUNDED` | `a pattern of nothing but '*' matches every apparatus, which is the blind draw the argument exists to refuse` |
-| `STATE_FILTER` | `it is one or more of draft, open, active, on_hold, delivered and closed, comma-separated` |
-| `BRACKET_FILTER` | `it is one or more bracket numbers, comma-separated` |
-| `ADDRESS_FILTER` | `it is one or more complete task addresses, comma-separated` |
-| `ADDRESS_FILTER_ELSEWHERE` | `a listing filters the tasks of its own scope and bracket kind` |
-| `VALUE_FILTER` | `it is one or more values, comma-separated` |
-| `LEASE_END` | `a lease ends before the year 294276` |
-| `INSTANT` | `an instant is written in ISO-8601 with its offset, such as 2026-10-07T09:00:00Z` |
-| `INSTANT_RANGE` | `an instant lies from 0001-01-01T00:00:00Z up to +294276-01-01T00:00:00Z` |
-| `ANSWER_ONE_OF_TWO` | `an answer names an option or carries text, not both` |
-| `ADDRESS` | `a task's address is written dispatch://<scope>/<selector>/<number>.<sub>` |
-| `SCOPE` | `a scope's name is a DNS label: lower case, digits and inner hyphens` |
-| `SELECTOR` | `a bracket kind's name is lower case, digits and inner hyphens` |
-| `METADATA` | `metadata carries your own keys, each value a string or a list of strings of at most 512 characters, and no URL carrying credentials` |
-| `CURATION_TARGET` | `it names another task than this one` |
-| `ADDENDUM_TARGET` | `it names a part the task carries a text of; the read of the task lists them under fields.texts` |
-| `ADDENDA_EXHAUSTED` | `that text already carries addenda a to z, and a further letter would reissue one that exists` |
-| `ANSWER_OPTION` | `it is one of the question's options, which the read of the task lists` |
-| `ANSWER_FREE_TEXT` | `the question admits no free text; name one of its options, which the read of the task lists` |
-| `VALUE` | `it is a value this call takes` |
-| `ONCE` | `it arrived twice: in the query or the body, and in the path or a header, and a call takes each argument once` |
-| `BODY` | `a body is a JSON object of the call's arguments` |
-| `SURFACE_HEADER` | `it takes the one value assistant, once, or is left out` |
+| `notFound` | `NOT_FOUND` | `nothing is addressed here. Check the address, and that you are a member of the scope it names.` |
+| `stateDoesNotAllow` | `STATE_DOES_NOT_ALLOW` | `{call} is not possible in the task's present state, which data.state shows. You can make: {#each calls}{it}{#if it_hasNext}, {/if}{/each}.` |
+| `stateNothingOpen` | `STATE_DOES_NOT_ALLOW` | `{call} is not possible in the task's present state, which data.state shows, and no call is open to you on it now; data.waiting_for says what it waits for.` |
+| `stateClosed` | `STATE_DOES_NOT_ALLOW` | `{call} is not possible on this task: it is closed and finished. Nothing further can be done with it.` |
+| `roleCommissioner` | `ROLE_DOES_NOT_ALLOW` | `{call} is the commissioner's call, and you take part in this task in another part.` |
+| `roleExecutor` | `ROLE_DOES_NOT_ALLOW` | `{call} is an executor's call, and you take part here in another part.` |
+| `roleHolder` | `ROLE_DOES_NOT_ALLOW` | `{call} is the holder's call, and you take part in this task in another part.` |
+| `roleAuthor` | `ROLE_DOES_NOT_ALLOW` | `{call} is the call of the identity that wrote the text it supplements.` |
+| `roleOtherThanTheDeliverer` | `ROLE_DOES_NOT_ALLOW` | `{call} is the commissioner's call, made by an identity other than the one that delivered the answer.` |
+| `roleCapacity` | `ROLE_DOES_NOT_ALLOW` | `{call} needs a caller holding the commissioning or the executing capacity, and exactly one of them.` |
+| `holderOther` | `NOT_THE_HOLDER` | `{call} is the holder's call, and another executor holds this task.` |
+| `holderNobody` | `NOT_THE_HOLDER` | `{call} is the holder's call, and nobody holds this task.` |
+| `holderLapsed` | `NOT_THE_HOLDER` | `{call} is the holder's call, and your lease on this task ended.` |
+| `textHolderOther` | `NOT_THE_HOLDER` | `{call} reads the text of a task its executor holds, and another executor holds this one.` |
+| `textHolderNobody` | `NOT_THE_HOLDER` | `{call} reads the text of a task its executor holds, and nobody holds this one.` |
+| `textHolderLapsed` | `NOT_THE_HOLDER` | `{call} reads the text of a task its executor holds, and your lease on this one ended.` |
+| `receiptWrong` | `RECEIPT_WRONG` | `{call} needs the receipt your claim handed out for this task: the receipt given is a different one.` |
+| `childrenNotFinished` | `CHILDREN_NOT_FINISHED` | `{call} would close a bracket root while tasks of its bracket are unfinished; data.children lists them. Repeat the call with data.confirmation to withdraw them and close the root.` |
+| `childrenConfirmationStale` | `CHILDREN_NOT_FINISHED` | `{call} carries a confirmation that no longer holds: the unfinished tasks of the bracket changed since it was handed out, and data.children lists them now. Repeat the call with the one in data.confirmation.` |
+| `deferralPending` | `DEFERRAL_PENDING` | `{call} is not possible yet: the task is deferred, and {read} shows until when, in fields.not_before.` |
+| `nothingToTake` | `NOTHING_TO_TAKE` | `Nothing that your patterns match can be taken up in this bracket kind right now: every such task is a draft, held, paused, delivered, closed or deferred.` |
+| `claimDurationInvalid` | `CLAIM_DURATION_INVALID` | `duration is not valid for {call}: it is a positive ISO-8601 duration such as PT2H.` |
+| `pageSizeRejected` | `PAGE_SIZE_REJECTED` | `page_size is not valid for {call}: it is a whole number from 1 to {max}.` |
+| `cursorMalformed` | `CURSOR_MALFORMED` | `after is not a cursor {query} handed out: it is the next_cursor of the previous page.` |
+| `cursorForeign` | `CURSOR_FOREIGN` | `{call} carries a cursor of another listing: it was handed out for other values of {#each differs}{it}{#if it_hasNext}, {/if}{/each}. A cursor continues only the listing that handed it out.` |
+| `sortUndeclared` | `SORT_UNDECLARED` | `sort is not valid for {call}: it takes id or created_at.` |
+| `argumentUnknown` | `ARGUMENT_UNKNOWN` | `{call} takes these arguments: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
+| `argumentUnknownUnderFields` | `ARGUMENT_UNKNOWN` | `{call} takes these arguments under fields: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
+| `callUnknown` | `ARGUMENT_UNKNOWN` | `This service takes these calls: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
+| `argumentMissing` | `ARGUMENT_MISSING` | `{call} needs {path}.` |
+| `argumentMissingOptions` | `ARGUMENT_MISSING` | `{call} needs fields.options, or fields.free_text set to true.` |
+| `argumentMissingAnswer` | `ARGUMENT_MISSING` | `{call} needs fields.option or fields.text.` |
+| `argumentMissingChange` | `ARGUMENT_MISSING` | `{call} needs at least one of fields.title, fields.apparatus, fields.text and fields.metadata.` |
+| `invalidFieldsObject` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it carries the values this call writes, and is an object.` |
+| `invalidString` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is a string.` |
+| `invalidOneOf` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one of the values the description of the argument lists.` |
+| `invalidListOfStrings` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is a list of strings, even when it carries one value.` |
+| `invalidObject` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is an object.` |
+| `invalidBoolean` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is true or false.` |
+| `invalidWholeNumber` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is a whole number.` |
+| `invalidParentElsewhere` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names another scope or bracket kind than the call does, and a child is created in its root's bracket.` |
+| `invalidParentNotARoot` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a parent is a bracket root, the <number>.0 of its bracket.` |
+| `invalidApparatusPattern` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*', and '*' is the only wildcard; the underscore and the percent sign carry a meaning of their own in the comparison and are excluded.` |
+| `invalidApparatusUnbounded` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a pattern of nothing but '*' matches every apparatus, which is the blind draw the argument exists to refuse.` |
+| `invalidStateFilter` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one or more of draft, open, active, on_hold, delivered and closed, comma-separated.` |
+| `invalidBracketFilter` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one or more bracket numbers, comma-separated.` |
+| `invalidAddressFilter` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one or more complete task addresses, comma-separated.` |
+| `invalidAddressFilterElsewhere` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a listing filters the tasks of its own scope and bracket kind.` |
+| `invalidValueFilter` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one or more values, comma-separated.` |
+| `invalidLeaseEnd` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a lease ends before the year 294276.` |
+| `invalidInstant` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: an instant is written in ISO-8601 with its offset, such as 2026-10-07T09:00:00Z.` |
+| `invalidInstantRange` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: an instant lies from 0001-01-01T00:00:00Z up to +294276-01-01T00:00:00Z.` |
+| `invalidAnswerOneOfTwo` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: an answer names an option or carries text, not both.` |
+| `invalidAddress` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a task's address is written dispatch://<scope>/<selector>/<number>.<sub>.` |
+| `invalidScope` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a scope's name is a DNS label: lower case, digits and inner hyphens.` |
+| `invalidSelector` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a bracket kind's name is lower case, digits and inner hyphens.` |
+| `invalidMetadata` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: metadata carries your own keys, each value a string or a list of strings of at most 512 characters, and no URL carrying credentials.` |
+| `invalidCurationTarget` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names another task than this one.` |
+| `invalidAddendumTarget` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a part the task carries a text of; the read of the task lists them under fields.texts.` |
+| `invalidAddendaExhausted` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: that text already carries addenda a to z, and a further letter would reissue one that exists.` |
+| `invalidAnswerOption` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one of the question's options, which the read of the task lists.` |
+| `invalidAnswerFreeText` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: the question admits no free text; name one of its options, which the read of the task lists.` |
+| `invalidOnce` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it arrived twice: in the query or the body, and in the path or a header, and a call takes each argument once.` |
+| `invalidBody` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a body is a JSON object of the call's arguments.` |
+| `invalidSurfaceHeader` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it takes the one value assistant, once, or is left out.` |
+| `invalidInRequest` | `ARGUMENT_INVALID` | `{path} is not valid for this request: a task's address is written dispatch://<scope>/<selector>/<number>.<sub>.` |
+| `valueInvalid` | `ARGUMENT_INVALID` | `A value given is not valid for {call}: it is a value this call takes.` |
+| `valueGivenTwice` | `ARGUMENT_INVALID` | `A value given is not valid for {call}: it arrived twice, in the query or the body and in the path or a header, and a call takes each argument once.` |
+| `conflictTokenStale` | `CONFLICT_TOKEN_STALE` | `{call} carries a conflict token that is not the one the task holds: it was changed since you read it. Its current token is in data.conflict_token.` |
+| `selectorUnknown` | `SELECTOR_UNKNOWN` | `selector names a bracket kind this scope does not declare.` |
+| `scopeKindUnsupported` | `SCOPE_KIND_UNSUPPORTED` | `The scope named is of a kind this service carries no tasks in; it carries tasks in project and global scopes.` |
+| `scopeReadOnly` | `SCOPE_READ_ONLY` | `{call} writes, and you may read this scope without writing to it. Reading it is unaffected; the write right is granted with the membership.` |
+| `scopeLocked` | `SCOPE_LOCKED` | `This scope is locked, so it refuses every write whatever your role. Reading it is unaffected. The lock is lifted where it was set.` |
+| `idempotencyKeyReused` | `IDEMPOTENCY_KEY_REUSED` | `The idempotency key given was spent on a different call, or with different arguments, in this scope within the last 24 hours.` |
+| `routeCreate` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a bracket kind: POST /api/<scope>/<selector>.` |
+| `routeQuery` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a bracket kind: GET /api/<scope>/<selector>.` |
+| `routeOnABracketKind` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a bracket kind: POST /api/<scope>/<selector>:{call}.` |
+| `routeRead` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>.` |
+| `routeReadCall` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>:{call}.` |
+| `routeUpdate` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: PATCH /api/<scope>/<selector>/<number>.<sub>.` |
+| `routeDelete` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: DELETE /api/<scope>/<selector>/<number>.<sub>.` |
+| `routeOnATask` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: POST /api/<scope>/<selector>/<number>.<sub>:{call}.` |
+| `unexpectedFailure` | `UNEXPECTED_FAILURE` | `{call} failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |
+| `unexpectedFailureOfRequest` | `UNEXPECTED_FAILURE` | `The request failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |

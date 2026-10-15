@@ -7,6 +7,9 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.junit.QuarkusTest;
 import ai.kumbuka.dispatch.contract.TargetSurface;
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;
@@ -41,6 +44,10 @@ import static org.mockito.Mockito.when;
  * reached, which {@code verifyNoInteractions} observes: nothing below the
  * router was called, so nothing could be written.
  */
+// The texts a call answers with come from the message bundles, which the
+// running application builds: this test runs with it.
+@QuarkusTest
+@QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class CallRouterTest {
 
     private static final Actor C = new Actor("commissioner", Actor.Kind.CONSOLE);

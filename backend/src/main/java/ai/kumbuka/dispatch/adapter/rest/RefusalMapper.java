@@ -79,7 +79,7 @@ public class RefusalMapper implements ExceptionMapper<Refused> {
             LOG.debugf("refusal outside a call: %s", e.reason());
             return answer(code == RefusalCode.NOT_FOUND
                 ? Refused.notFound()
-                : UnexpectedFailures.refuse(null, "the address given", e));
+                : UnexpectedFailures.refuse(null, "<unread>", e));
         }
     }
 

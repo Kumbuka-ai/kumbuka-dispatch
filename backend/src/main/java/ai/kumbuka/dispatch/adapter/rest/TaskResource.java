@@ -269,7 +269,7 @@ public class TaskResource {
             if (into.containsKey(given.getKey())) {
                 Argument argument = verb.argument(given.getKey(), Argument.Placement.TOP);
                 return argument == null
-                    ? Refused.valueInvalid(call, Form.ONCE)
+                    ? Refused.valueGivenTwice(call)
                     : Refused.argumentInvalid(call, ArgumentPath.of(argument), Form.ONCE);
             }
             into.put(given.getKey(), given.getValue());

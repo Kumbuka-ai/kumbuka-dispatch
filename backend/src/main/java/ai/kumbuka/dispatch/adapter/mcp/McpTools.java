@@ -10,6 +10,7 @@ package ai.kumbuka.dispatch.adapter.mcp;
 import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.CallArguments;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
+import ai.kumbuka.dispatch.surface.Texts;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -91,9 +92,7 @@ public final class McpTools {
         }
 
         Map<String, Object> schema = new LinkedHashMap<>(closedObject(properties, required));
-        schema.put(KEY_DESCRIPTION,
-            "What this call writes into the task. Values live here; the arguments that "
-                + "name the target live beside it.");
+        schema.put(KEY_DESCRIPTION, Texts.arguments().fields());
         return Map.copyOf(schema);
     }
 

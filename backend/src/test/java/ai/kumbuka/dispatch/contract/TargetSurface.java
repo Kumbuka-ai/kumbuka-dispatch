@@ -123,28 +123,29 @@ public final class TargetSurface {
         "apparatus");
 
     /**
-     * Concept section 3.5, word for word. The line breaks of the document's
-     * code blocks are its layout; a paragraph is a blank line.
+     * Concept section 3.5, worded positively under DEC-0043 R21 (the concept
+     * follows this wording). The line breaks of the document's code blocks are
+     * its layout; a paragraph is a blank line.
      */
     public static final String CLAIM_DESCRIPTION =
         "Takes up one open task and makes you its holder. Moves the task from open to "
-            + "active (not final). Call as an executor, naming the task by its address.\n\n"
+            + "active (intermediate). Call as an executor, naming the task by its address.\n\n"
             + "Returns a receipt and the end of your hold. Keep the receipt: every later "
             + "call on this task needs it.\n\n"
-            + "The answer does NOT contain the task's text. Read it next with "
-            + "dispatch_read_text, part \"dispatch\", before you start working.\n\n"
-            + "Your hold lasts 30 minutes unless you state a duration; extend it with "
+            + "The task's text comes from dispatch_read_text, part \"dispatch\": read it next, "
+            + "before you start working.\n\n"
+            + "Your hold lasts 30 minutes, or the duration you state; extend it with "
             + "dispatch_renew.";
 
     public static final String CLAIM_NEXT_DESCRIPTION =
-        "Takes up the next open task addressed to you, without naming one; use "
+        "Takes up the next open task addressed to you, chosen by the service; use "
             + "dispatch_claim when you know the address. Moves the task from open to active "
-            + "(not final). Call as an executor with scope, selector and apparatus.\n\n"
+            + "(intermediate). Call as an executor with scope, selector and apparatus.\n\n"
             + "Returns the address, a receipt and the end of your hold. Keep the receipt: "
             + "every later call on this task needs it.\n\n"
-            + "The answer does NOT contain the task's text. Read it next with "
-            + "dispatch_read_text, part \"dispatch\", before you start working.\n\n"
-            + "If nothing matches, nothing is taken.";
+            + "The task's text comes from dispatch_read_text, part \"dispatch\": read it next, "
+            + "before you start working.\n\n"
+            + "dispatch_query lists the open tasks you can draw.";
 
     public static final String APPARATUS_ARGUMENT =
         "Which apparatus you draw for. Every task is addressed to an apparatus: the kind of "
@@ -155,8 +156,8 @@ public final class TargetSurface {
 
     /** The sentence about the text, the same in both descriptions. */
     public static final String THE_TEXT_SENTENCE =
-        "The answer does NOT contain the task's text. Read it next with dispatch_read_text, "
-            + "part \"dispatch\", before you start working.";
+        "The task's text comes from dispatch_read_text, part \"dispatch\": read it next, "
+            + "before you start working.";
 
     /** The first entry of {@code next} after a claim. */
     public static final String FIRST_NEXT_CALL = "dispatch_read_text";

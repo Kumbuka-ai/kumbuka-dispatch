@@ -7,6 +7,9 @@
  */
 package ai.kumbuka.dispatch.contract;
 
+import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.junit.QuarkusTest;
 import ai.kumbuka.dispatch.adapter.mcp.McpTools;
 import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
@@ -36,6 +39,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * red; a description over 500 characters stops the service at start and with
  * it the build, and turns {@link #every_description_is_within_its_budget} red.
  */
+// The texts a call answers with come from the message bundles, which the
+// running application builds: this test runs with it.
+@QuarkusTest
+@QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class DeclarationConformanceTest {
 
     // =======================================================================
@@ -189,27 +196,28 @@ class DeclarationConformanceTest {
                 .isEqualTo(Contract.remedyOf(code.name()));
         }
         Map<String, String[]> messages = Contract.messages();
-        assertThat(Arrays.stream(ReasonCatalogue.Message.values()).map(Enum::name).toList())
+        assertThat(Arrays.stream(ReasonCatalogue.Message.values())
+                .map(ReasonCatalogue.Message::key).toList())
             .as("every message of the table is declared, and no other")
             .containsExactlyInAnyOrderElementsOf(messages.keySet());
         for (ReasonCatalogue.Message message : ReasonCatalogue.Message.values()) {
             assertThat(message.code().name())
                 .as("the reason %s is raised under", message)
-                .isEqualTo(messages.get(message.name())[0]);
-            assertThat(message.pattern())
-                .as("the pattern of %s", message)
-                .isEqualTo(messages.get(message.name())[1]);
+                .isEqualTo(messages.get(message.key())[0]);
+            assertThat(message.template())
+                .as("the template of %s", message)
+                .isEqualTo(messages.get(message.key())[1]);
         }
     }
 
     @Test
-    void the_forms_an_argument_takes_are_the_contract_copy_s() {
-        Map<String, String[]> forms = Contract.forms();
-        assertThat(Arrays.stream(Form.values()).map(Enum::name).toList())
-            .containsExactlyInAnyOrderElementsOf(forms.keySet());
+    void every_form_an_argument_takes_is_a_message_of_its_own() {
+        Map<String, String[]> messages = Contract.messages();
         for (Form form : Form.values()) {
-            assertThat(form.text()).as("the text of %s", form)
-                .isEqualTo(forms.get(form.name())[0]);
+            assertThat(form.message().code()).as("%s is a refusal of an argument", form)
+                .isEqualTo(RefusalCode.ARGUMENT_INVALID);
+            assertThat(messages).as("the contract states %s", form)
+                .containsKey(form.message().key());
         }
     }
 

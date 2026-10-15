@@ -128,7 +128,7 @@ public final class SurfaceDeclaration {
             Map<String, Object> declared = new LinkedHashMap<>();
             declared.put("reason", reason.code().name());
             declared.put("messages", reason.messages().stream()
-                .map(ReasonCatalogue.Message::pattern).toList());
+                .map(ReasonCatalogue.Message::template).toList());
             declared.put("remedy", reason.remedy());
             reasons.add(Map.copyOf(declared));
         }

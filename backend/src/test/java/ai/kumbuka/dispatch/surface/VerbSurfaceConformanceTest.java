@@ -1,5 +1,15 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.junit.QuarkusTest;
 import ai.kumbuka.dispatch.adapter.mcp.McpTools;
 import ai.kumbuka.dispatch.adapter.rest.RestRoute;
 import ai.kumbuka.dispatch.contract.TargetSurface;
@@ -43,6 +53,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * each turn {@link #every_declared_call_has_exactly_one_route_and_no_route_stands_without_one}
  * red.
  */
+// The texts a call answers with come from the message bundles, which the
+// running application builds: this test runs with it.
+@QuarkusTest
+@QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class VerbSurfaceConformanceTest {
 
     /** Where the build puts the application's classes, relative to the module. */

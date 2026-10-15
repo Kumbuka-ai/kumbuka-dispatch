@@ -7,6 +7,9 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -31,6 +34,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * comment asserting a guarantee no mechanism enforced. It is implemented now,
  * and this file is what makes that sentence checkable rather than hopeful.
  */
+// The texts a call answers with come from the message bundles, which the
+// running application builds: this test runs with it.
+@QuarkusTest
+@QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class SurfaceDeclarationGuardTest {
 
     /** The real declaration comes up. Without this the rest proves nothing. */
@@ -124,7 +131,7 @@ class SurfaceDeclarationGuardTest {
     @Test
     void an_argument_with_no_description_refuses_the_start() {
         assertThatThrownBy(() -> SurfaceDeclaration.requireDescribedArguments(
-            "dispatch_something", List.of(Argument.top("address", "string", "  "))))
+            "dispatch_something", List.of(Argument.top("address", "string", () -> "  "))))
             .as("RED STATE, observed: an argument with no description refuses the start, "
                 + "and names the argument")
             .isInstanceOf(IllegalStateException.class)

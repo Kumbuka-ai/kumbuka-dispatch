@@ -12,6 +12,7 @@ import ai.kumbuka.dispatch.surface.CallRouter;
 import ai.kumbuka.dispatch.surface.CallerActor;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.SurfaceDeclaration;
+import ai.kumbuka.dispatch.surface.Texts;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -73,7 +74,7 @@ public class McpAdapter {
     @POST
     public Response rpc(Map<String, Object> request) {
         if (request == null || !JSONRPC.equals(request.get(KEY_JSONRPC))) {
-            return error(null, INVALID_PARAMS, "a JSON-RPC 2.0 envelope is required");
+            return error(null, INVALID_PARAMS, Texts.protocol().envelopeRequired());
         }
 
         Object id = request.get(KEY_ID);
@@ -89,8 +90,7 @@ public class McpAdapter {
             case "tools/list" -> result(id, Map.of("tools", tools()));
             case "tools/call" -> result(id, call(arguments(request, "params")));
             // The method that arrived is the caller's and stays with it (DEC-0043 R19).
-            default -> error(id, METHOD_NOT_FOUND,
-                "This server speaks the methods initialize, tools/list and tools/call.");
+            default -> error(id, METHOD_NOT_FOUND, Texts.protocol().methodUnknown());
         };
     }
 

@@ -84,6 +84,9 @@ public class CallRouter {
     private static final String AFTER = "after";
     private static final String SORT = CallArguments.SORT;
 
+    /** Where an unexpected failure's log line says the call was made, when no address reads. */
+    private static final String UNREAD = "<unread>";
+
     /**
      * The first instant and the bound past the last a task stores, as the
      * start of a deferral and as the end of a lease: inside what the timestamp
@@ -649,7 +652,7 @@ public class CallRouter {
                     : Refused.argumentInvalid(call,
                         pathIn(verb, TEXT, Argument.Placement.FIELDS), Form.ANSWER_FREE_TEXT);
             }
-            default -> Refused.valueInvalid(call, Form.VALUE);
+            default -> Refused.valueInvalid(call);
         };
     }
 
@@ -760,18 +763,18 @@ public class CallRouter {
         Object address = given.get(ADDRESS);
         if (address != null) {
             String complete = wellFormed(String.valueOf(address));
-            return complete == null ? "the address given" : complete;
+            return complete == null ? UNREAD : complete;
         }
         Object scope = given.get(SCOPE);
         Object selector = given.get(SELECTOR);
         if (scope == null || selector == null) {
-            return "the address given";
+            return UNREAD;
         }
         try {
             return AddressParser.completeCollection(AddressParser.scope(String.valueOf(scope)),
                 AddressParser.selector(String.valueOf(selector)));
         } catch (RuntimeException malformed) {
-            return "the address given";
+            return UNREAD;
         }
     }
 

@@ -65,11 +65,22 @@ after a claim is concept section 3.5 as amended on the same branch. The
 descriptions of the calls are left as they were; their positive wording
 follows in the next change.
 
+## The amendment of 2026-10-15, second part: the texts in their bundles
+
+Every text the service addresses to a caller now lives in a Qute message
+bundle under `src/main/resources/messages/`, one per kind of text, and this
+copy states them as those files hold them: the descriptions of the calls, the
+messages of the refusals as their templates, the remedies. Every text that
+tells a caller what to do is worded positively under DEC-0043 R21, the
+descriptions of `dispatch_claim` and `dispatch_claim_next` included; the
+concept's section 3.5 follows this wording. Each form an argument takes is a
+message of its own, so the separate table of forms is gone.
+
 ## What is word for word, and what is not
 
-The descriptions of `dispatch_claim` and `dispatch_claim_next`, the description
-of the argument `apparatus` and the first entry of `next` after a claim are
-concept section 3.5 word for word; the line breaks of the concept's code blocks
+The description of the argument `apparatus` and the first entry of `next`
+after a claim are concept section 3.5 word for word, and the descriptions of
+`dispatch_claim` and `dispatch_claim_next` are that section worded positively; the line breaks of the concept's code blocks
 are its layout and are not part of the text. The concept fixes no other
 wording, so the remaining descriptions and the refusal patterns are written
 here, beside the surface, and are the service's proposal until the concept

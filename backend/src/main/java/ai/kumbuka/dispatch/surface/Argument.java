@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.surface;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * One argument of one call, and where it travels.
@@ -24,9 +25,9 @@ import java.util.List;
  * @param type        its JSON Schema type
  * @param required    whether the call refuses without it
  * @param placement   top level, or nested under {@code fields}
- * @param description what it is; also the {@code {what}} of an {@code
- *                    ARGUMENT_MISSING} refusal, which is why it reads as a noun
- *                    phrase rather than an instruction
+ * @param text        what it is: a reference to its text in {@code
+ *                    messages/argument.properties}, read when the text is
+ *                    needed and never when the declaration is built
  * @param itemPattern for an {@link #ARRAY} argument, the regular expression
  *                    every element obeys, or null. It travels into the
  *                    published schema so a conforming client can refuse a
@@ -41,16 +42,26 @@ import java.util.List;
  *                    declaration publishes it; null for a required argument
  */
 public record Argument(String name, String type, boolean required, Placement placement,
-                       String description, String itemPattern, List<Value> values,
+                       Supplier<String> text, String itemPattern, List<Value> values,
                        String fallback) {
 
     /**
      * One value of a closed set, and what choosing it means.
      *
-     * @param name        the value on the wire
-     * @param description what the value selects
+     * @param name the value on the wire
+     * @param text what the value selects, in {@code messages/value.properties}
      */
-    public record Value(String name, String description) {
+    public record Value(String name, Supplier<String> text) {
+
+        /** What the value selects, from its bundle. */
+        public String description() {
+            return text.get();
+        }
+    }
+
+    /** What the argument is, from its bundle. */
+    public String description() {
+        return text.get();
     }
 
     /**
@@ -112,46 +123,46 @@ public record Argument(String name, String type, boolean required, Placement pla
     }
 
     /** A required top-level argument. */
-    public static Argument top(String name, String type, String description) {
+    public static Argument top(String name, String type, Supplier<String> description) {
         return new Argument(name, type, true, Placement.TOP, description, null, List.of(),
             null);
     }
 
     /** An optional top-level argument and the value it takes when left out or null. */
     public static Argument top(String name, String type, String fallback,
-                               String description) {
+                               Supplier<String> description) {
         return new Argument(name, type, false, Placement.TOP, description, null, List.of(),
             fallback);
     }
 
     /** A required argument under {@code fields}. */
-    public static Argument field(String name, String type, String description) {
+    public static Argument field(String name, String type, Supplier<String> description) {
         return new Argument(name, type, true, Placement.FIELDS, description, null, List.of(),
             null);
     }
 
     /** An optional argument under {@code fields} and the value it takes when left out or null. */
     public static Argument field(String name, String type, String fallback,
-                                 String description) {
+                                 Supplier<String> description) {
         return new Argument(name, type, false, Placement.FIELDS, description, null, List.of(),
             fallback);
     }
 
     /** A required top-level list of strings, every element of which obeys one pattern. */
-    public static Argument topList(String name, String itemPattern, String description) {
+    public static Argument topList(String name, String itemPattern, Supplier<String> description) {
         return new Argument(name, ARRAY, true, Placement.TOP, description, itemPattern,
             List.of(), null);
     }
 
     /** A string that takes one of a closed set of values; fallback null where it is required. */
     public static Argument oneOf(String name, Placement placement, String fallback,
-                                 List<Value> values, String description) {
+                                 List<Value> values, Supplier<String> description) {
         return new Argument(name, STRING, fallback == null, placement, description, null,
             values, fallback);
     }
 
     /** One value of a closed set. */
-    public static Value value(String name, String description) {
+    public static Value value(String name, Supplier<String> description) {
         return new Value(name, description);
     }
 
