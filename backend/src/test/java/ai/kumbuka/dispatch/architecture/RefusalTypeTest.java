@@ -37,7 +37,7 @@ class RefusalTypeTest {
         "domain.DispatchException", "surface.SurfaceException");
 
     private static final Pattern EXTENDS = Pattern.compile(
-        "\\bclass\\s+(\\w+)[^{]*?\\bextends\\s+([\\w.]+)");
+        "\\bclass\\s+(\\w+)\\s+extends\\s+([\\w.]+)");
 
     @Test
     void the_main_tree_has_exactly_the_two_refusal_types() {

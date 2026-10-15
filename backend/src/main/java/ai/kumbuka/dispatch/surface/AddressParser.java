@@ -148,6 +148,6 @@ public final class AddressParser {
 
     private static SurfaceException malformed() {
         return new SurfaceException(Refusal.requestInvalid(
-            ArgumentPath.of(ProcessVerb.READ.argument("address", Argument.Placement.TOP))));
+            ArgumentPath.of(ProcessVerb.READ.declared("address", Argument.Placement.TOP))));
     }
 }

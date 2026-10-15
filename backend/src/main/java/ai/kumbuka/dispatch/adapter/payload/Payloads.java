@@ -12,6 +12,7 @@ import ai.kumbuka.dispatch.surface.NextList;
 import ai.kumbuka.dispatch.surface.Refusal;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Every answer and every refusal of the verb surface, as the record both
@@ -69,24 +70,18 @@ public final class Payloads {
      */
     public static RefusalPayload refusal(Refusal refusal) {
         Refusal.Data data = refusal.data();
+        if (data == null) {
+            return new RefusalPayload(refusal.code().name(), refusal.message(), null);
+        }
+        Map<String, Object> fields = data.current() == null ? null : data.current().fields(true);
+        List<NextStepPayload> next = data.next() == null ? null : next(data.next());
+        List<ChildPayload> children = data.children() == null ? null : data.children().stream()
+            .map(child -> new ChildPayload(child.address(), child.state(), next(child.next())))
+            .toList();
         return new RefusalPayload(refusal.code().name(), refusal.message(),
-            data == null ? null : new RefusalDataPayload(
-                data.attempted(),
-                data.address(),
-                data.state(),
-                data.current() == null ? null : data.current().fields(true),
-                data.next() == null ? null : next(data.next()),
-                data.waitingFor(),
-                data.offenders(),
-                data.accepts(),
-                data.children() == null ? null : data.children().stream()
-                    .map(child -> new ChildPayload(child.address(), child.state(),
-                        next(child.next())))
-                    .toList(),
-                data.confirmation(),
-                data.conflictToken(),
-                data.service(),
-                data.reference()));
+            new RefusalDataPayload(data.attempted(), data.address(), data.state(), fields, next,
+                data.waitingFor(), data.offenders(), data.accepts(), children,
+                data.confirmation(), data.conflictToken(), data.service(), data.reference()));
     }
 
     /** The calls open to a caller, each with the sentence that says what it does. */

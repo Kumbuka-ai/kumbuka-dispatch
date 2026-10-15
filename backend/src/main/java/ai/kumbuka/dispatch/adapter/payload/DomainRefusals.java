@@ -112,14 +112,24 @@ public final class DomainRefusals {
                 ArgumentPath.of(verb.topArguments()));
             case ARGUMENT_INVALID -> invalid(verb, call, given, e);
             case CONFLICT_TOKEN_MISSING -> Refusal.conflictTokenMissing(call);
-            default -> about(surface, actor, verb, call, given, e, code, read, clock);
+            default -> about(new Context(surface, actor, verb, call, given, read, clock), e, code);
         };
     }
 
+    /** The call a kernel refusal is worded against, and how its task is read again. */
+    private record Context(Surface surface, Actor actor, ProcessVerb verb, VerbName call,
+                           Map<String, Object> given, Reader read, Clock clock) {
+    }
+
     /** The refusals about a task the caller may see: they carry its situation. */
-    private static Refusal about(Surface surface, Actor actor, ProcessVerb verb, VerbName call,
-                                 Map<String, Object> given, DispatchException e,
-                                 RefusalCode code, Reader read, Clock clock) {
+    private static Refusal about(Context c, DispatchException e, RefusalCode code) {
+        Surface surface = c.surface();
+        Actor actor = c.actor();
+        ProcessVerb verb = c.verb();
+        VerbName call = c.call();
+        Reader read = c.read();
+        Clock clock = c.clock();
+        Map<String, Object> given = c.given();
         String target = targetIn(verb, given);
         if (actor == null) {
             // A token with no usable capacity reads nothing, so there is no

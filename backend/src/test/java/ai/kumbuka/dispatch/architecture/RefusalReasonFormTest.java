@@ -126,7 +126,6 @@ class RefusalReasonFormTest {
             .containsExactly("CONFLICT");
     }
 
-    /** Every refusal reason this service declares, from the enums themselves. */
     /**
      * Every reason this service can refuse with: the {@code Reason} enum of
      * each exception type that has one, and the refusal catalogue, {@code

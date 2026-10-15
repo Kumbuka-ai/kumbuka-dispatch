@@ -89,6 +89,19 @@ public record TaskView(
      *
      * @param texts the texts that exist, by type and suffix, in the order written
      */
+    static TaskView of(Task task, TaskSituation situation, Actor caller, List<TextHead> texts,
+                       String curatedIn) {
+        HolderState holder = HolderState.of(situation.holder(), caller);
+        return new TaskView(task.uuid, task.address(), situation.state(),
+            situation.holdReason(), task.outcome(), holder,
+            holder == HolderState.SELF ? task.leaseExpiresAt() : null,
+            task.notBefore(), task.questionOptions(), task.lapseCount(), task.title,
+            task.apparatus, task.dispatchMetadata, task.returnMetadata(),
+            task.conflictToken(), curatedIn,
+            texts,
+            Decision.openVerbs(situation, caller));
+    }
+
     /**
      * The task's fields as an answer carries them (C7.1): lean for a writing
      * call — the state with its attributes and, for the holder, the end of
@@ -128,18 +141,5 @@ public record TaskView(
         if (value != null) {
             fields.put(name, value);
         }
-    }
-
-    static TaskView of(Task task, TaskSituation situation, Actor caller, List<TextHead> texts,
-                       String curatedIn) {
-        HolderState holder = HolderState.of(situation.holder(), caller);
-        return new TaskView(task.uuid, task.address(), situation.state(),
-            situation.holdReason(), task.outcome(), holder,
-            holder == HolderState.SELF ? task.leaseExpiresAt() : null,
-            task.notBefore(), task.questionOptions(), task.lapseCount(), task.title,
-            task.apparatus, task.dispatchMetadata, task.returnMetadata(),
-            task.conflictToken(), curatedIn,
-            texts,
-            Decision.openVerbs(situation, caller));
     }
 }

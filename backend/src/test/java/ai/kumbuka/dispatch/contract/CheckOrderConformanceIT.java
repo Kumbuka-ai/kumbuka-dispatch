@@ -130,8 +130,7 @@ class CheckOrderConformanceIT {
         }
         if (address == null) {
             String collection = "/api/" + scope + "/" + selector;
-            return verb.equals("create") ? request.post(collection)
-                : request.post(collection + ":" + verb);
+            return request.post(verb.equals("create") ? collection : collection + ":" + verb);
         }
         return request.post(NotFoundIdentityIT.path(String.valueOf(address)) + ":" + verb);
     }

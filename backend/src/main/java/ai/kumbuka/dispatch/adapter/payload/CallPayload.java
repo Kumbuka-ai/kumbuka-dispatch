@@ -390,7 +390,20 @@ public final class CallPayload {
 
     /** The part of a text a read names. */
     public String textPart() {
-        return top(PART).toUpperCase(Locale.ROOT);
+        return required(PART).toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * A top-level argument the form check has already required: present by
+     * the time it is read, and a defect where it is not.
+     */
+    private String required(String name) {
+        String value = top(name);
+        if (value == null) {
+            throw new IllegalStateException(verb.call() + " carries no " + name
+                + " past the form check");
+        }
+        return value;
     }
 
     /** The part an addendum is written to. */

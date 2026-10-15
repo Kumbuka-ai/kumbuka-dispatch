@@ -218,6 +218,8 @@ public enum ProcessVerb {
 
         static final String REMARK = "remark";
 
+        static final String RECEIPT = "receipt";
+
         private Shared() {
         }
     }
@@ -245,7 +247,7 @@ public enum ProcessVerb {
     }
 
     private static Argument receipt() {
-        return Argument.top("receipt", Argument.STRING, () -> Texts.arguments().receipt());
+        return Argument.top(Shared.RECEIPT, Argument.STRING, () -> Texts.arguments().receipt());
     }
 
     private static Argument duration() {
@@ -354,6 +356,15 @@ public enum ProcessVerb {
             .orElse(null);
     }
 
+    /** The declared argument of this name at one level; a defect where there is none. */
+    public Argument declared(String name, Argument.Placement placement) {
+        Argument argument = argument(name, placement);
+        if (argument == null) {
+            throw new IllegalStateException(call() + " declares no " + name);
+        }
+        return argument;
+    }
+
     /** Every declared top-level name, {@code fields} included where the call writes. */
     public List<String> topNames() {
         List<String> names = new java.util.ArrayList<>(
@@ -448,12 +459,12 @@ public enum ProcessVerb {
         if (this != READ && this != READ_TEXT && this != QUERY && this != CLAIM_NEXT) {
             codes.add(RefusalCode.STATE_DOES_NOT_ALLOW);
         }
-        if (argument("receipt", Argument.Placement.TOP) != null || this == READ_TEXT) {
+        if (argument(Shared.RECEIPT, Argument.Placement.TOP) != null || this == READ_TEXT) {
             codes.add(RefusalCode.CLAIM_HELD);
             codes.add(RefusalCode.LEASE_LAPSED);
             codes.add(RefusalCode.STATE_DOES_NOT_ALLOW);
         }
-        if (argument("receipt", Argument.Placement.TOP) != null) {
+        if (argument(Shared.RECEIPT, Argument.Placement.TOP) != null) {
             codes.add(RefusalCode.RECEIPT_WRONG);
         }
         if (argument("conflict_token", Argument.Placement.TOP) != null) {

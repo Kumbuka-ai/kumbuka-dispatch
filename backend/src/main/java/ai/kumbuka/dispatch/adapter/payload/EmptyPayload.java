@@ -8,5 +8,6 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
 /** The empty object: the answer to {@code ping}, and an offer with no options. */
+@SuppressWarnings("java:S2094") // The empty JSON object is the protocol's answer, by type.
 public record EmptyPayload() {
 }

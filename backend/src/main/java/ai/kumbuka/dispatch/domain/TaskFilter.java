@@ -121,14 +121,12 @@ public record TaskFilter(
         if (value == null) {
             return List.of();
         }
-        List<String> parts = new ArrayList<>();
-        for (String part : value.split(",", -1)) {
-            parts.add(part.trim());
-        }
-        for (int i = 0; i < parts.size(); i++) {
-            if (parts.get(i).isEmpty()) {
-                throw refused(field, "an empty value", parts.size(), i);
-            }
+        List<String> parts = java.util.Arrays.stream(value.split(",", -1)).map(String::trim)
+            .toList();
+        int empty = java.util.stream.IntStream.range(0, parts.size())
+            .filter(i -> parts.get(i).isEmpty()).findFirst().orElse(-1);
+        if (empty >= 0) {
+            throw refused(field, "an empty value", parts.size(), empty);
         }
         return parts;
     }

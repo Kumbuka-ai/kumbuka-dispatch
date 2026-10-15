@@ -192,8 +192,8 @@ class RefusalEchoesNoValueIT {
         String brief = SurfaceFixture.address(SurfaceFixture.open("brief", "code"));
         SurfaceFixture.asExecutor(identity);
         String briefReceipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
-            Map.of("address", brief, "duration", "PT0.001S"))).get("receipt"));
-        pause();
+            Map.of("address", brief))).get("receipt"));
+        lapse(brief);
         mcp(RefusalCode.LEASE_LAPSED, "dispatch_deliver", Map.of("address", brief,
             "receipt", briefReceipt, "fields", Map.of("text", MARKER)));
 
@@ -450,14 +450,12 @@ class RefusalEchoesNoValueIT {
         return more;
     }
 
-    /** Long enough for a lease of a millisecond to have ended. */
-    private static void pause() {
-        try {
-            Thread.sleep(50);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(e);
-        }
+    /** Ends the lease of a task as the clock would. */
+    private static void lapse(String address) {
+        String identity = Mcp.field(Mcp.answer(Mcp.call("dispatch_read",
+            Map.of("address", address))), "identity").substring("dispatch://".length());
+        ai.kumbuka.dispatch.platform.PlatformFixture.run("UPDATE dispatch.task SET "
+            + "lease_expires_at = now() - interval '1 minute' WHERE uuid = '" + identity + "'");
     }
 
     private static String token(String address) {

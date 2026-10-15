@@ -57,6 +57,9 @@ public final class Metadata {
      */
     static final int MAX_VALUE_LENGTH = 512;
 
+    /** How a refusal of metadata names the key it is about. */
+    private static final String LABEL = "metadata '";
+
     private Metadata() {
     }
 
@@ -109,7 +112,7 @@ public final class Metadata {
         if (value instanceof List<?> list) {
             return listProblem(key, list);
         }
-        return "metadata '" + key + "' is a " + value.getClass().getSimpleName()
+        return LABEL + key + "' is a " + value.getClass().getSimpleName()
             + ". A value is a String or a list of Strings; metadata carry an address "
             + "or an identifier, and a nested object, number or boolean is neither.";
     }
@@ -118,11 +121,11 @@ public final class Metadata {
         int index = 0;
         for (Object element : list) {
             if (element == null) {
-                return "metadata '" + key + "'[" + index + "] is null. A list of identifiers "
+                return LABEL + key + "'[" + index + "] is null. A list of identifiers "
                     + "does not carry gaps; a missing entry is one fewer entry.";
             }
             if (!(element instanceof String s)) {
-                return "metadata '" + key + "'[" + index + "] is a "
+                return LABEL + key + "'[" + index + "] is a "
                     + element.getClass().getSimpleName()
                     + ". A list value carries Strings; a list of lists or of numbers "
                     + "would be a second level of structure, and metadata are one "
@@ -139,12 +142,12 @@ public final class Metadata {
 
     private static String elementProblem(String label, String value) {
         if (value.length() > MAX_VALUE_LENGTH) {
-            return "metadata '" + label + "' is " + value.length() + " characters. Metadata "
+            return LABEL + label + "' is " + value.length() + " characters. Metadata "
                 + "carry an address or an identifier; anything this long is prose, "
                 + "and prose belongs in the body where the freeze protects it.";
         }
         if (carriesCredentials(value)) {
-            return "metadata '" + label + "' is a URL carrying credentials. This service "
+            return LABEL + label + "' is a URL carrying credentials. This service "
                 + "holds pointers and never follows them, so a credential stored "
                 + "here can only ever be read by somebody — never used.";
         }
