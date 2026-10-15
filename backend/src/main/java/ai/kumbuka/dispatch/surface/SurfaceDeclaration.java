@@ -55,6 +55,9 @@ public final class SurfaceDeclaration {
      */
     public static final int DESCRIPTION_BUDGET = 500;
 
+    /** The member that carries a text describing a call, an argument or a value. */
+    private static final String DESCRIPTION = "description";
+
     private SurfaceDeclaration() {
     }
 
@@ -120,7 +123,7 @@ public final class SurfaceDeclaration {
             call.put("effect_class", verb.effectClass().name());
             call.put("transition", verb.isTransition());
             call.put("role", verb.roleName());
-            call.put("description", verb.description());
+            call.put(DESCRIPTION, verb.description());
             if (verb.isTransition()) {
                 call.put("next_step", NextList.does(verb.transition()));
             }
@@ -148,7 +151,7 @@ public final class SurfaceDeclaration {
                 declared.put("default", Argument.UNSET.equals(argument.fallback())
                     ? null : argument.fallback());
             }
-            declared.put("description", argument.description());
+            declared.put(DESCRIPTION, argument.description());
             if (argument.itemPattern() != null) {
                 declared.put("item_pattern", argument.itemPattern());
             }
@@ -158,7 +161,7 @@ public final class SurfaceDeclaration {
                     .map(value -> {
                         Map<String, Object> described = new LinkedHashMap<>();
                         described.put("value", value.name());
-                        described.put("description", value.description());
+                        described.put(DESCRIPTION, value.description());
                         return described;
                     })
                     .toList());

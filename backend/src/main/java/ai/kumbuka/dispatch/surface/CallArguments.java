@@ -137,10 +137,7 @@ public final class CallArguments {
     private void refuseMistyped() {
         for (Argument argument : verb.arguments()) {
             Object value = levelOf(argument).get(argument.name());
-            if (value == null) {
-                continue;
-            }
-            Form form = mistyped(argument, value);
+            Form form = value == null ? null : mistyped(argument, value);
             if (form == null) {
                 continue;
             }

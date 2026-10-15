@@ -159,9 +159,9 @@ class MessageBundleTest {
     }
 
     private static List<String> localizedFiles() {
-        Path messages = Files.isDirectory(Paths.get("src/main/resources/messages"))
-            ? Paths.get("src/main/resources/messages")
-            : Paths.get("backend/src/main/resources/messages");
+        Path messages = Paths.get(Files.isDirectory(Paths.get("src/main/resources/messages"))
+            ? "src/main/resources/messages"
+            : "backend/src/main/resources/messages");
         assertThat(Files.isDirectory(messages)).as("the bundle files are found").isTrue();
         try (Stream<Path> files = Files.list(messages)) {
             return files.map(f -> f.getFileName().toString())

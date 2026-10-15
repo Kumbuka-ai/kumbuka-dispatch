@@ -92,8 +92,7 @@ public class RefusalMapper implements ExceptionMapper<Refused> {
             // The parser's own message quotes the address it could not read,
             // and a refusal echoes no value the caller sent (DEC-0042).
             return answer(Refused.requestInvalid(
-                ArgumentPath.of(ProcessVerb.READ.argument("address", Argument.Placement.TOP)),
-                ai.kumbuka.dispatch.surface.Form.ADDRESS));
+                ArgumentPath.of(ProcessVerb.READ.argument("address", Argument.Placement.TOP))));
         }
     }
 }

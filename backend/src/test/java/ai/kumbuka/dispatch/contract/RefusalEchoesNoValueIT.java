@@ -125,7 +125,7 @@ class RefusalEchoesNoValueIT {
         Response notHere = given().contentType(ContentType.JSON)
             .queryParam("remark", MARKER)
             .post(SurfaceFixture.collection() + ":send");
-        record(RefusalCode.CALL_NOT_AT_THIS_ADDRESS, notHere.jsonPath().getString("reason"),
+        recordRaised(RefusalCode.CALL_NOT_AT_THIS_ADDRESS, notHere.jsonPath().getString("reason"),
             notHere.asString());
         refusedCalls.add(new String[] {"dispatch_send", "CALL_NOT_AT_THIS_ADDRESS"});
 
@@ -365,9 +365,8 @@ class RefusalEchoesNoValueIT {
         }
         io.restassured.path.json.JsonPath json = io.restassured.path.json.JsonPath.from(answer);
         Object structured = json.get("result.structuredContent");
-        Map<String, Object> envelope = structured instanceof Map<?, ?>
-            ? json.getMap("result.structuredContent")
-            : json.getMap("$");
+        Map<String, Object> envelope = json.getMap(structured instanceof Map<?, ?>
+            ? "result.structuredContent" : "$");
         String message = String.valueOf(envelope.get("message"));
         assertThat(message).as(answer)
             .doesNotContain(SurfaceFixture.SCOPE)
@@ -385,11 +384,11 @@ class RefusalEchoesNoValueIT {
 
     private void mcp(RefusalCode expected, String tool, Map<String, Object> arguments) {
         Response answer = Mcp.call(tool, arguments);
-        record(expected, Mcp.reason(answer), answer.asString());
+        recordRaised(expected, Mcp.reason(answer), answer.asString());
         refusedCalls.add(new String[] {tool, expected.name()});
     }
 
-    private void record(RefusalCode expected, String reason, String answer) {
+    private void recordRaised(RefusalCode expected, String reason, String answer) {
         assertThat(reason).as("the case for %s raises it: %s", expected, answer)
             .isEqualTo(expected.name());
         raised.computeIfAbsent(expected, c -> new ArrayList<>()).add(answer);

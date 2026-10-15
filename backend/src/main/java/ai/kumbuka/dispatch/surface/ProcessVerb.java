@@ -194,7 +194,7 @@ public enum ProcessVerb {
                     Argument.value("return", () -> Texts.values().annotatePartReturn()),
                     Argument.value("question", () -> Texts.values().annotatePartQuestion()),
                     Argument.value("answer", () -> Texts.values().annotatePartAnswer()),
-                    Argument.value("remark", () -> Texts.values().annotatePartRemark())),
+                    Argument.value(Shared.REMARK, () -> Texts.values().annotatePartRemark())),
                 () -> Texts.arguments().annotatePart()))),
 
     RELATE("relate", null, Participation.COMMISSIONER, () -> Texts.tools().relate(),
@@ -215,6 +215,8 @@ public enum ProcessVerb {
     private static final class Shared {
 
         static final String APPARATUS = "apparatus";
+
+        static final String REMARK = "remark";
 
         private Shared() {
         }
@@ -262,8 +264,9 @@ public enum ProcessVerb {
 
     private static Argument remark(boolean required) {
         return required
-            ? Argument.field("remark", Argument.STRING, () -> Texts.arguments().remarkRequired())
-            : Argument.field("remark", Argument.STRING, Argument.UNSET,
+            ? Argument.field(Shared.REMARK, Argument.STRING,
+                () -> Texts.arguments().remarkRequired())
+            : Argument.field(Shared.REMARK, Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().remarkOptional());
     }
 

@@ -21,20 +21,38 @@ import java.util.List;
 public enum AnswerShape {
 
     /** The lean answer of a writing call. */
-    TASK_LEAN(List.of("address", "fields", "conflict_token", "next", "[waiting_for]")),
+    TASK_LEAN(Members.LEAN),
     /** The lean answer at 201 with Location: create. */
-    TASK_LEAN_CREATED(List.of("address", "fields", "conflict_token", "next", "[waiting_for]")),
+    TASK_LEAN_CREATED(Members.LEAN),
     /** The lean answer with the claim's receipt. */
-    CLAIM_RECEIPT(List.of("address", "fields", "conflict_token", "next", "[waiting_for]",
-        "receipt")),
+    CLAIM_RECEIPT(Members.with(Members.LEAN, "receipt")),
     /** The full head of a task; never its text. */
-    TASK_HEAD(List.of("address", "fields", "conflict_token", "next", "[waiting_for]")),
+    TASK_HEAD(Members.LEAN),
     /** One page of heads, and the cursor of the next page where one follows. */
     TASK_LISTING(List.of("objects", "[next_cursor]")),
     /** One part of a task's text: the only answer that carries one. */
-    TASK_TEXT(List.of("address", "part", "texts", "addenda")),
+    TASK_TEXT(List.of(Members.ADDRESS, "part", "texts", "addenda")),
     /** The address a deleted draft had, and nothing else. */
-    TASK_DELETED(List.of("address"));
+    TASK_DELETED(List.of(Members.ADDRESS));
+
+    /** The members several shapes share. */
+    private static final class Members {
+
+        static final String ADDRESS = "address";
+
+        /** The lean answer: the task's address, its fields, its token, its next steps. */
+        static final List<String> LEAN = List.of(ADDRESS, "fields", "conflict_token", "next",
+            "[waiting_for]");
+
+        static List<String> with(List<String> members, String more) {
+            List<String> all = new java.util.ArrayList<>(members);
+            all.add(more);
+            return List.copyOf(all);
+        }
+
+        private Members() {
+        }
+    }
 
     private final List<String> members;
 

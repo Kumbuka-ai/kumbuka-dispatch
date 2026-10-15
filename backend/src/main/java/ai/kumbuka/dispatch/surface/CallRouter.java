@@ -83,6 +83,7 @@ public class CallRouter {
     private static final String PAGE_SIZE = CallArguments.PAGE_SIZE;
     private static final String AFTER = "after";
     private static final String SORT = CallArguments.SORT;
+    private static final String OPTION = "option";
 
     /** Where an unexpected failure's log line says the call was made, when no address reads. */
     private static final String UNREAD = "<unread>";
@@ -439,11 +440,11 @@ public class CallRouter {
     }
 
     private static TaskInput reply(CallArguments in) {
-        String option = in.field("option");
+        String option = in.field(OPTION);
         String text = in.field(TEXT);
         if (option == null && text == null) {
             throw Refused.argumentMissing(in.call(), Refused.Missing.ANSWER,
-                List.of(in.fieldPath("option"), in.fieldPath(TEXT)));
+                List.of(in.fieldPath(OPTION), in.fieldPath(TEXT)));
         }
         if (option != null && text != null) {
             throw Refused.argumentInvalid(in.call(), in.fieldPath(TEXT), Form.ANSWER_ONE_OF_TWO);
@@ -645,10 +646,10 @@ public class CallRouter {
             case ANSWER_NOT_AN_OPTION -> {
                 // The options are the question's text, so they are pointed
                 // at and not listed: a refusal carries no text of a task.
-                boolean option = fieldIn(given, "option") != null;
+                boolean option = fieldIn(given, OPTION) != null;
                 yield option
                     ? Refused.argumentInvalid(call,
-                        pathIn(verb, "option", Argument.Placement.FIELDS), Form.ANSWER_OPTION)
+                        pathIn(verb, OPTION, Argument.Placement.FIELDS), Form.ANSWER_OPTION)
                     : Refused.argumentInvalid(call,
                         pathIn(verb, TEXT, Argument.Placement.FIELDS), Form.ANSWER_FREE_TEXT);
             }

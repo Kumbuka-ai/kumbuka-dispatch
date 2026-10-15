@@ -417,7 +417,7 @@ public class Refused extends RuntimeException {
     }
 
     /** A part of a request outside any call arrived in a form it cannot take. */
-    public static Refused requestInvalid(ArgumentPath path, Form form) {
+    public static Refused requestInvalid(ArgumentPath path) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put(OFFENDERS, wire(List.of(path)));
         return new Refused(Message.INVALID_IN_REQUEST, Texts.refusals().invalidInRequest(path),
