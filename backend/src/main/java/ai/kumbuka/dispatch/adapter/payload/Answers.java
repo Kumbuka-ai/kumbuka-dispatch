@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.HoldReason;
@@ -10,7 +17,6 @@ import ai.kumbuka.dispatch.surface.Refused;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -60,7 +66,7 @@ public final class Answers {
         answer.put(ADDRESS, answered.address());
         answer.put(FIELDS, fields(answered.view(), answered.head()));
         answer.put("conflict_token", answered.view().conflictToken());
-        answer.put("next", steps(answered.next()));
+        answer.put("next", NextList.wire(answered.next()));
         if (answered.waitingFor() != null) {
             answer.put("waiting_for", answered.waitingFor());
         }
@@ -103,11 +109,15 @@ public final class Answers {
         return rendered;
     }
 
-    /** A listing: the heads, and whether the page bound cut it. */
+    /**
+     * A listing: one page of heads, and {@code next_cursor} where more follow.
+     * On the last page it is absent, which is the only sign that it is the
+     * last.
+     */
     public static Map<String, Object> listing(CallRouter.Listed listed) {
         Map<String, Object> listing = new LinkedHashMap<>();
-        listing.put("tasks", listed.heads().stream().map(Answers::answer).toList());
-        listing.put("cut", listed.cut());
+        listing.put("objects", listed.heads().stream().map(Answers::answer).toList());
+        putIfPresent(listing, "next_cursor", listed.nextCursor());
         return listing;
     }
 
@@ -127,15 +137,6 @@ public final class Answers {
         }).toList());
         answer.put("addenda", text.addenda());
         return answer;
-    }
-
-    private static List<Map<String, String>> steps(List<NextList.Step> next) {
-        return next.stream().map(step -> {
-            Map<String, String> rendered = new LinkedHashMap<>();
-            rendered.put("call", step.call());
-            rendered.put("does", step.does());
-            return rendered;
-        }).toList();
     }
 
     /**

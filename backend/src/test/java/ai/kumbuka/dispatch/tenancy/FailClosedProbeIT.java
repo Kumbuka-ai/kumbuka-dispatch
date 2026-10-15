@@ -1,7 +1,15 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.tenancy;
 
 import ai.kumbuka.dispatch.domain.DomainFixture;
 import ai.kumbuka.dispatch.domain.IdempotencyKey;
+import ai.kumbuka.dispatch.domain.PageRequest;
 import ai.kumbuka.dispatch.domain.TaskFilter;
 import ai.kumbuka.dispatch.domain.TaskService;
 import ai.kumbuka.dispatch.domain.TaskView;
@@ -111,7 +119,8 @@ class FailClosedProbeIT {
                 Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.task DISABLE ROW LEVEL SECURITY");
 
                 try (AutoCloseable ignored = tenantContext.bind(tenantA)) {
-                    List<TaskView> listed = tasks.query(SCOPE, "sprint", TaskFilter.none(), 100,
+                    List<TaskView> listed = tasks.query(SCOPE, "sprint", TaskFilter.none(),
+                        PageRequest.of(100L, null, null, null),
                         PROBE).tasks();
                     assertThat(listed).extracting(TaskView::title)
                         .as("with the policy disabled, the ORM filter is the only thing "

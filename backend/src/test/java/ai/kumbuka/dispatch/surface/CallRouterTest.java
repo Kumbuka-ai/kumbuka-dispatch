@@ -1,5 +1,15 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.junit.QuarkusTest;
 import ai.kumbuka.dispatch.contract.TargetSurface;
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;
@@ -34,6 +44,10 @@ import static org.mockito.Mockito.when;
  * reached, which {@code verifyNoInteractions} observes: nothing below the
  * router was called, so nothing could be written.
  */
+// The texts a call answers with come from the message bundles, which the
+// running application builds: this test runs with it.
+@QuarkusTest
+@QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class CallRouterTest {
 
     private static final Actor C = new Actor("commissioner", Actor.Kind.CONSOLE);
@@ -60,7 +74,11 @@ class CallRouterTest {
                 "dispatch_accept_return", "dispatch_decline", "dispatch_close_bracket")) {
             Refused refused = refusal(router.call(Surface.MCP, () -> C, earlier, Map.of()));
             assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-            assertThat(refused.getMessage()).contains(earlier).contains("call");
+            assertThat(refused.getMessage() + refused.data())
+                .as("the name that arrived stays with the caller (DEC-0043 R19)")
+                .doesNotContain(earlier);
+            assertThat(refused.data()).containsEntry(Refused.ACCEPTS,
+                ProcessVerb.names(Surface.MCP));
         }
         for (String earlier : List.of("abandon", "block", "close", "consume", "takeup")) {
             Refused refused = refusal(router.call(Surface.REST, () -> C, earlier, Map.of()));
@@ -76,7 +94,9 @@ class CallRouterTest {
             top.put("invented", "x");
             Refused atTop = refusal(router.call(Surface.MCP, () -> C, call.call(), top));
             assertThat(atTop.code()).as(call.call()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-            assertThat(atTop.getMessage()).as(call.call()).contains("invented");
+            assertThat(atTop.getMessage() + atTop.data()).as(call.call())
+                .doesNotContain("invented");
+            assertThat(atTop.data()).as(call.call()).containsKey(Refused.ACCEPTS);
 
             Map<String, Object> nested = new LinkedHashMap<>(complete(call));
             Map<String, Object> fields = new LinkedHashMap<>(fieldsOf(nested));
@@ -84,8 +104,8 @@ class CallRouterTest {
             nested.put(CallArguments.FIELDS, fields);
             Refused below = refusal(router.call(Surface.MCP, () -> C, call.call(), nested));
             assertThat(below.code()).as(call.call()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-            assertThat(below.getMessage()).as(call.call())
-                .contains(call.hasFields() ? "invented_field" : CallArguments.FIELDS);
+            assertThat(below.getMessage() + below.data()).as(call.call())
+                .doesNotContain("invented_field");
         }
         verifyNoInteractions(verbs);
     }
@@ -123,11 +143,13 @@ class CallRouterTest {
             Refused overMcp = refusal(router.call(Surface.MCP, () -> C, "dispatch_read",
                 Map.of("address", past)));
             assertThat(overMcp.code()).as(past).isEqualTo(RefusalCode.ARGUMENT_INVALID);
-            assertThat(overMcp.getMessage()).startsWith("address = " + past);
+            assertThat(overMcp.getMessage()).startsWith("address is not valid for ")
+                .doesNotContain(past);
             Refused overRest = refusal(router.call(Surface.REST, () -> C, "read",
                 Map.of("address", past)));
             assertThat(overRest.code()).as(past).isEqualTo(RefusalCode.ARGUMENT_INVALID);
-            assertThat(overRest.getMessage()).startsWith("address = " + past);
+            assertThat(overRest.getMessage()).startsWith("address is not valid for ")
+                .doesNotContain(past);
         }
         verifyNoInteractions(verbs);
     }
@@ -137,13 +159,15 @@ class CallRouterTest {
         Refused lease = refusal(router.call(Surface.MCP, () -> H, "dispatch_claim",
             Map.of("address", ADDRESS, "duration", "PT3000000000H")));
         assertThat(lease.code()).isEqualTo(RefusalCode.ARGUMENT_INVALID);
-        assertThat(lease.getMessage()).startsWith("duration = PT3000000000H");
+        assertThat(lease.getMessage()).startsWith("duration is not valid for dispatch_claim")
+            .doesNotContain("PT3000000000H");
         for (String notBefore : List.of("+1000000000-01-01T00:00:00Z", "-5000-01-01T00:00:00Z")) {
             Refused deferral = refusal(router.call(Surface.MCP, () -> H, "dispatch_defer",
                 Map.of("address", ADDRESS, "receipt", "r",
                     "fields", Map.of("not_before", notBefore))));
             assertThat(deferral.code()).as(notBefore).isEqualTo(RefusalCode.ARGUMENT_INVALID);
-            assertThat(deferral.getMessage()).startsWith("not_before = " + notBefore);
+            assertThat(deferral.getMessage()).startsWith("fields.not_before is not valid for ")
+                .doesNotContain(notBefore);
         }
         verifyNoInteractions(verbs);
     }
@@ -177,7 +201,7 @@ class CallRouterTest {
             "holder", "self");
         Refused refused = refusal(router.call(Surface.MCP, () -> C, "dispatch_query", query));
         assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-        assertThat(refused.getMessage()).contains("holder");
+        assertThat(refused.getMessage() + refused.data()).doesNotContain("holder");
         verifyNoInteractions(verbs);
     }
 
@@ -239,8 +263,8 @@ class CallRouterTest {
 
         assertThat(refused.code()).isEqualTo(RefusalCode.CONFLICT_TOKEN_STALE);
         assertThat(refused.data()).containsEntry(Refused.CONFLICT_TOKEN, "the-current-token");
-        assertThat(refused.getMessage()).contains("the-current-token")
-            .doesNotContain("kernel words");
+        assertThat(refused.getMessage()).contains("data.conflict_token")
+            .doesNotContain("the-current-token").doesNotContain("kernel words");
         assertThat(refused.data()).containsEntry(Refused.STATE, "open");
     }
 
@@ -274,7 +298,7 @@ class CallRouterTest {
                 case Argument.OBJECT -> Map.of();
                 default -> argument.values().isEmpty()
                     ? valueFor(argument.name())
-                    : argument.values().get(0);
+                    : argument.valueNames().get(0);
             };
             (argument.isField() ? fields : arguments).put(argument.name(), value);
         }
@@ -298,6 +322,30 @@ class CallRouterTest {
     private static Map<String, Object> fieldsOf(Map<String, Object> arguments) {
         Object fields = arguments.get(CallArguments.FIELDS);
         return fields instanceof Map ? (Map<String, Object>) fields : Map.of();
+    }
+
+    /**
+     * The one code no caller can raise on the wire, held to DEC-0042 here: a
+     * kernel that fails with the caller's value in its own message, under a
+     * call that carries it, answers with neither. The wire half of the probe
+     * is {@code RefusalEchoesNoValueIT}.
+     */
+    @Test
+    void an_unexpected_failure_gives_back_no_value_the_call_carried() {
+        String marker = "zzecho7319";
+        when(verbs.create(any(), any(), any(), any(), any(), any()))
+            .thenThrow(new IllegalStateException("broke on " + marker));
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("scope", "probe");
+        arguments.put("selector", "sprint");
+        arguments.put("fields", Map.of("title", marker, "apparatus", "code"));
+
+        Refused refused = refusal(router.call(Surface.MCP, () -> C, "dispatch_create",
+            arguments));
+
+        assertThat(refused.code()).isEqualTo(RefusalCode.UNEXPECTED_FAILURE);
+        assertThat(refused.getMessage()).doesNotContain(marker);
+        assertThat(String.valueOf(refused.data())).doesNotContain(marker);
     }
 
     private static Refused refusal(CallRouter.Outcome outcome) {

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import java.util.List;
@@ -47,5 +54,30 @@ public final class ApparatusPatterns {
             }
         }
         return null;
+    }
+
+    /**
+     * The position of the first pattern that breaks the character rule,
+     * counted from zero, or -1 where every one keeps it. A refusal names the
+     * position and never the pattern (DEC-0043 R19).
+     */
+    public static int firstMalformedAt(List<String> patterns) {
+        for (int i = 0; i < patterns.size(); i++) {
+            String pattern = patterns.get(i);
+            if (pattern == null || !WELL_FORMED.matcher(pattern).matches()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** The position of the first pattern of nothing but {@code *}, or -1. */
+    public static int firstUnboundedAt(List<String> patterns) {
+        for (int i = 0; i < patterns.size(); i++) {
+            if (ONLY_WILDCARDS.matcher(patterns.get(i)).matches()) {
+                return i;
+            }
+        }
+        return -1;
     }
 }

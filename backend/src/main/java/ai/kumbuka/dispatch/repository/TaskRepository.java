@@ -1,10 +1,24 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.repository;
 
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
+import ai.kumbuka.dispatch.domain.PageCursor;
+import ai.kumbuka.dispatch.domain.PageRequest;
 import ai.kumbuka.dispatch.domain.Selector;
+import ai.kumbuka.dispatch.domain.SortKey;
 import ai.kumbuka.dispatch.domain.SpentTaskKey;
 import ai.kumbuka.dispatch.domain.Task;
+import ai.kumbuka.dispatch.domain.TaskFilter;
+import ai.kumbuka.dispatch.domain.TaskSituation;
+import ai.kumbuka.dispatch.domain.TaskState;
 import ai.kumbuka.dispatch.domain.TaskText;
+import ai.kumbuka.dispatch.domain.TaskView;
 import ai.kumbuka.dispatch.domain.TextType;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -14,9 +28,13 @@ import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -38,6 +56,13 @@ public class TaskRepository {
 
     /** The prefix of the draw's apparatus parameters, numbered from zero. */
     private static final String P_APPARATUS = "ap";
+
+    /** The opening of a conjunct of alternatives. */
+    private static final String AND_OPEN = "  AND (";
+
+    /** The prefixes of a listing's address parameters, numbered from zero. */
+    private static final String P_ADDRESS_NUMBER = "an";
+    private static final String P_ADDRESS_SUB = "as";
 
     @Inject EntityManager em;
 
@@ -114,23 +139,6 @@ public class TaskRepository {
     }
 
     /**
-     * The task with this surrogate in whatever scope of the tenant holds it.
-     *
-     * <p>For the target of {@code curated_in}, which may lie in any scope of
-     * the tenant. The tenant filter and the row policy still bind it.
-     */
-    @Transactional
-    public Optional<Task> findAnywhere(Long id) {
-        return Optional.ofNullable(id).flatMap(key -> em.createQuery("""
-                SELECT t FROM Task t WHERE t.id = :id
-                """, Task.class)
-            .setParameter("id", key)
-            .getResultList()
-            .stream()
-            .findFirst());
-    }
-
-    /**
      * The children of a bracket, each locked for the caller's transaction, in
      * sub order.
      *
@@ -183,30 +191,164 @@ public class TaskRepository {
     }
 
     /**
-     * The tasks of a selector whose apparatus matches one of the patterns, in
-     * address order. Every pattern list may be empty, which narrows nothing.
+     * One page of a selector's tasks: narrowed by the filter, ordered by the
+     * sort, after the cursor's position, at most {@code pageSize + 1} rows.
+     *
+     * <p>Everything a listing narrows by stands in this statement, so the
+     * database cuts the page and no path loads the tasks of a selector to cut
+     * them afterwards. The row past the page is read so the caller can tell
+     * whether a next page exists without counting.
+     *
+     * <p><strong>The effective state stands here as a predicate</strong>,
+     * because a keyset bound is only correct when every row that falls out of
+     * the page falls out in the statement. It is the table of {@link
+     * TaskSituation#of} over the same three columns, the stored state, the end
+     * of the lease and the lapse count, as {@link #lockNextDrawable} states
+     * the drawable set: a lapsed lease is {@code open} short of the lapse
+     * that parks it and {@code on_hold} from there on. {@code
+     * EffectiveStateFilterIT} holds the two to the same answer for every row
+     * shape, so the copy cannot drift from the kernel unseen.
+     *
+     * <p>The keyset is a row-value comparison on the sort's columns, the
+     * address always last, so the order is total within a selector.
+     *
+     * <p><strong>The selector stands here by its id, not by its name.</strong>
+     * Each order has an index whose key is the tenant, the scope, the selector
+     * and then the sort's columns, and the planner walks it in order only when
+     * every column before the sort is a constant of the statement. Named
+     * through a join on the selector's name, the selector's id is a value of
+     * the join and not a constant, and the planner sorted every task of the
+     * selector for each page, with either index in place ({@code
+     * TaskListingPlanIT}).
      */
     @Transactional
-    public List<Task> listing(UUID scopeId, String selector, List<String> apparatusPatterns,
-                              Collection<Integer> numbers) {
+    public List<Task> page(UUID scopeId, Selector selector, TaskFilter filter, PageRequest page,
+                           Optional<PageCursor.Position> after, Instant now) {
+        boolean desc = page.direction() == SortKey.Direction.DESC;
+        boolean byCreation = page.sort() == SortKey.CREATED_AT;
         StringBuilder jpql = new StringBuilder("""
             SELECT t FROM Task t
-            WHERE t.scopeId = :scope AND t.selector.name = :sel
+            WHERE t.scopeId = :scope AND t.selector.id = :sel
             """);
-        appendApparatus(jpql, apparatusPatterns.size(), "t.apparatus");
-        if (!numbers.isEmpty()) {
+        appendApparatus(jpql, filter.apparatusPatterns().size(), "t.apparatus");
+        if (!filter.brackets().isEmpty()) {
             jpql.append("  AND t.number IN :numbers\n");
         }
-        jpql.append("ORDER BY t.number, t.sub");
+        List<ExchangeAddress> addresses = filter.addresses().stream()
+            .filter(a -> a.selector().equals(selector.name))
+            .toList();
+        if (!filter.addresses().isEmpty()) {
+            appendAddresses(jpql, addresses.size());
+        }
+        StatePredicate states = StatePredicate.of(filter.states());
+        jpql.append(states.jpql());
+        if (after.isPresent()) {
+            String op = desc ? "<" : ">";
+            jpql.append(byCreation
+                ? "  AND (t.createdAt, t.number, t.sub) " + op + " (:kc, :kn, :ks)\n"
+                : "  AND (t.number, t.sub) " + op + " (:kn, :ks)\n");
+        }
+        String dir = desc ? " DESC" : " ASC";
+        jpql.append("ORDER BY ")
+            .append(byCreation ? "t.createdAt" + dir + ", " : "")
+            .append("t.number").append(dir).append(", t.sub").append(dir);
 
         var query = em.createQuery(jpql.toString(), Task.class)
             .setParameter(P_SCOPE, scopeId)
-            .setParameter(P_SELECTOR, selector);
-        bindApparatus(query, apparatusPatterns);
-        if (!numbers.isEmpty()) {
-            query.setParameter("numbers", numbers);
+            .setParameter(P_SELECTOR, selector.id)
+            .setMaxResults(page.pageSize() + 1);
+        bindApparatus(query, filter.apparatusPatterns());
+        if (!filter.brackets().isEmpty()) {
+            query.setParameter("numbers", filter.brackets());
         }
+        for (int i = 0; i < addresses.size(); i++) {
+            query.setParameter(P_ADDRESS_NUMBER + i, addresses.get(i).number());
+            query.setParameter(P_ADDRESS_SUB + i, addresses.get(i).sub());
+        }
+        states.bind(query, now);
+        after.ifPresent(position -> {
+            query.setParameter("kn", position.number());
+            query.setParameter("ks", position.sub());
+            if (byCreation) {
+                query.setParameter("kc", position.createdAt());
+            }
+        });
         return query.getResultList();
+    }
+
+    /**
+     * The address conjunct: one alternative per address of the listing's own
+     * selector. A filter that names addresses and none of this selector
+     * matches nothing, and says so with an empty alternative.
+     */
+    private static void appendAddresses(StringBuilder query, int addresses) {
+        if (addresses == 0) {
+            query.append("  AND 1 = 0\n");
+            return;
+        }
+        query.append(AND_OPEN);
+        for (int i = 0; i < addresses; i++) {
+            query.append(i == 0 ? "" : " OR ")
+                .append("(t.number = :").append(P_ADDRESS_NUMBER).append(i)
+                .append(" AND t.sub = :").append(P_ADDRESS_SUB).append(i).append(')');
+        }
+        query.append(")\n");
+    }
+
+    /**
+     * The effective states a listing admits, as one JPQL conjunct.
+     *
+     * <p>Stored {@code active} with a running lease is {@code active}; with a
+     * lapsed lease, or none, it is {@code open} while fewer lapses than {@link
+     * TaskSituation#LAPSES_TO_PARK} minus one are recorded and {@code on_hold}
+     * from there on. Every other stored state is the effective one.
+     */
+    private record StatePredicate(String jpql, boolean usesNow, boolean usesPark) {
+
+        private static final String LAPSED =
+            "(t.state = 'active' AND (t.leaseExpiresAt IS NULL OR t.leaseExpiresAt <= :now))";
+
+        static StatePredicate of(Set<TaskState> states) {
+            if (states.isEmpty()) {
+                return new StatePredicate("", false, false);
+            }
+            boolean now = false;
+            boolean park = false;
+            List<String> alternatives = new ArrayList<>();
+            for (TaskState state : states.stream().sorted().toList()) {
+                switch (state) {
+                    case ACTIVE -> {
+                        alternatives.add("(t.state = 'active' AND t.leaseExpiresAt > :now)");
+                        now = true;
+                    }
+                    case OPEN -> {
+                        alternatives.add("t.state = 'open' OR (" + LAPSED
+                            + " AND t.lapseCount < :park)");
+                        now = true;
+                        park = true;
+                    }
+                    case ON_HOLD -> {
+                        alternatives.add("t.state = 'on_hold' OR (" + LAPSED
+                            + " AND t.lapseCount >= :park)");
+                        now = true;
+                        park = true;
+                    }
+                    case DRAFT, DELIVERED, CLOSED ->
+                        alternatives.add("t.state = '" + state.wireName() + "'");
+                }
+            }
+            return new StatePredicate(AND_OPEN + String.join(" OR ", alternatives) + ")\n",
+                now, park);
+        }
+
+        void bind(jakarta.persistence.Query query, Instant now) {
+            if (usesNow) {
+                query.setParameter("now", now);
+            }
+            if (usesPark) {
+                query.setParameter("park", (short) (TaskSituation.LAPSES_TO_PARK - 1));
+            }
+        }
     }
 
     /**
@@ -281,7 +423,7 @@ public class TaskRepository {
         if (patterns == 0) {
             return;
         }
-        query.append("  AND (");
+        query.append(AND_OPEN);
         for (int i = 0; i < patterns; i++) {
             query.append(i == 0 ? "" : " OR ").append(column).append(" LIKE :")
                 .append(P_APPARATUS).append(i);
@@ -369,17 +511,66 @@ public class TaskRepository {
             .getResultList();
     }
 
-    /** Every text of several tasks, in the order written. */
+    /**
+     * The texts of several tasks as a listing names them: type and suffix, in
+     * the order written, by task. The bodies are not read.
+     */
     @Transactional
-    public List<TaskText> texts(Collection<Long> taskIds) {
+    public Map<Long, List<TaskView.TextHead>> textHeads(Collection<Long> taskIds) {
         if (taskIds.isEmpty()) {
-            return List.of();
+            return Map.of();
         }
-        return em.createQuery("""
-                SELECT x FROM TaskText x WHERE x.taskId IN :tasks ORDER BY x.taskId, x.id
-                """, TaskText.class)
+        List<Object[]> rows = em.createQuery("""
+                SELECT x.taskId, x.textType, x.addendumSuffix FROM TaskText x
+                WHERE x.taskId IN :tasks ORDER BY x.taskId, x.id
+                """, Object[].class)
             .setParameter("tasks", taskIds)
             .getResultList();
+        Map<Long, List<TaskView.TextHead>> heads = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            heads.computeIfAbsent((Long) row[0], id -> new ArrayList<>())
+                .add(new TaskView.TextHead(TextType.fromWireName((String) row[1]),
+                    (String) row[2]));
+        }
+        return heads;
+    }
+
+    /**
+     * The complete addresses of several tasks of the tenant, in whatever scope
+     * holds them, by surrogate: the targets of {@code curated_in} for a page,
+     * in one statement.
+     *
+     * <p>A task whose scope the bound subject may not see is absent from the
+     * answer, exactly as one that does not exist: the scope's name comes from
+     * the subject-filtered view of the platform's read contract, which
+     * answers no row for such a scope.
+     *
+     * <p>Native because the scope's name lives in that view, which the ORM
+     * does not map; the tenant policy binds the task rows, the view filters
+     * by subject.
+     */
+    @Transactional
+    public Map<Long, String> completeAddresses(Collection<Long> taskIds) {
+        if (taskIds.isEmpty()) {
+            return Map.of();
+        }
+        List<?> rows = em.createNativeQuery("""
+                SELECT t.id, s.slug, sel.name, t.number, t.sub
+                FROM dispatch.task t
+                JOIN dispatch.selector sel ON sel.id = t.selector_id
+                JOIN platform.scope_access s ON s.scope_id = t.scope_id
+                WHERE t.id IN (:tasks)
+                """)
+            .setParameter("tasks", taskIds)
+            .getResultList();
+        Map<Long, String> complete = new LinkedHashMap<>();
+        for (Object entry : rows) {
+            Object[] row = (Object[]) entry;
+            ExchangeAddress address = new ExchangeAddress((String) row[2],
+                ((Number) row[3]).intValue(), ((Number) row[4]).intValue());
+            complete.put(((Number) row[0]).longValue(), address.complete((String) row[1]));
+        }
+        return complete;
     }
 
     /** The highest addendum letter on one type of a task's texts, or null. */

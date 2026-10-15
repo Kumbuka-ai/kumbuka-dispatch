@@ -180,7 +180,7 @@ class AddendumVisibilityIT {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> onlyTask(Map<String, Object> listing, String address) {
-        List<Map<String, Object>> tasks = (List<Map<String, Object>>) listing.get("tasks");
+        List<Map<String, Object>> tasks = (List<Map<String, Object>>) listing.get("objects");
         assertThat(tasks).extracting(t -> t.get("address"))
             .as("the query narrowed to this task").containsExactly(address);
         return tasks.get(0);

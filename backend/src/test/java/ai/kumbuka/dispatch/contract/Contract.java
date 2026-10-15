@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.contract;
 
 import java.io.IOException;
@@ -74,32 +81,39 @@ public final class Contract {
 
     /** The reasons of the table, in its order. */
     public static List<String> declaredReasons() {
-        return List.copyOf(table().keySet());
+        return List.copyOf(table("| Reason | Remedy |").keySet());
     }
 
-    /** One reason's message pattern, as the table writes it. */
-    public static String patternOf(String reason) {
-        String[] row = table().get(reason);
+    /** The remedy the contract declares for one reason. */
+    public static String remedyOf(String reason) {
+        String[] row = table("| Reason | Remedy |").get(reason);
         return row == null ? null : row[0];
     }
 
-    /** One reason's remedy, as the table writes it. */
-    public static String remedyOf(String reason) {
-        String[] row = table().get(reason);
-        return row == null ? null : row[1];
+    /**
+     * Every message the contract declares, by its key: the reason it is raised
+     * under, and its pattern.
+     */
+    public static Map<String, String[]> messages() {
+        return table("| Message | Reason | Pattern |");
     }
 
-    /** Collapses every run of whitespace to one space, for comparing prose. */
+    /** Every form an argument takes, by its key: its text. */
+    public static Map<String, String[]> forms() {
+        return table("| Form | Text |");
+    }
+
     public static String collapsed(String text) {
         return text.replaceAll("\\s+", " ").trim();
     }
 
-    private static Map<String, String[]> table() {
+    /** The rows of the table under one header line, by their first cell. */
+    private static Map<String, String[]> table(String header) {
         Map<String, String[]> rows = new LinkedHashMap<>();
         boolean inTable = false;
         for (String line : text().split("\n", -1)) {
             String trimmed = line.trim();
-            if (trimmed.startsWith("| Reason |")) {
+            if (trimmed.startsWith(header)) {
                 inTable = true;
                 continue;
             }
@@ -110,10 +124,14 @@ public final class Contract {
                 continue;
             }
             String[] cells = trimmed.split("\\|", -1);
-            rows.put(unquote(cells[1]), new String[] {unquote(cells[2]), cells[3].trim()});
+            String[] rest = new String[cells.length - 3];
+            for (int i = 2; i < cells.length - 1; i++) {
+                rest[i - 2] = unquote(cells[i]);
+            }
+            rows.put(unquote(cells[1]), rest);
         }
         if (rows.isEmpty()) {
-            throw new IllegalStateException("no reasons were found in the contract's table.");
+            throw new IllegalStateException("no table '" + header + "' in the contract.");
         }
         return rows;
     }

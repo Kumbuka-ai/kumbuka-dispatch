@@ -1,10 +1,21 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.contract;
 
+import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.junit.QuarkusTest;
 import ai.kumbuka.dispatch.adapter.mcp.McpTools;
 import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.ReasonCatalogue;
 import ai.kumbuka.dispatch.surface.RefusalCode;
+import ai.kumbuka.dispatch.surface.Form;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.SurfaceDeclaration;
 import org.junit.jupiter.api.Test;
@@ -28,6 +39,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * red; a description over 500 characters stops the service at start and with
  * it the build, and turns {@link #every_description_is_within_its_budget} red.
  */
+// The texts a call answers with come from the message bundles, which the
+// running application builds: this test runs with it.
+@QuarkusTest
+@QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class DeclarationConformanceTest {
 
     // =======================================================================
@@ -176,16 +191,34 @@ class DeclarationConformanceTest {
             .as("every reason of the table is declared, and no other")
             .containsExactlyInAnyOrderElementsOf(Contract.declaredReasons());
         for (RefusalCode code : RefusalCode.values()) {
-            assertThat(ReasonCatalogue.of(code).pattern())
-                .as("the pattern of %s", code)
-                .isEqualTo(Contract.patternOf(code.name()));
             assertThat(ReasonCatalogue.of(code).remedy())
                 .as("the remedy of %s", code)
                 .isEqualTo(Contract.remedyOf(code.name()));
         }
-        assertThat(Contract.text())
-            .as("and the terminal variant of the state refusal")
-            .contains(ReasonCatalogue.TERMINAL_STATE_PATTERN);
+        Map<String, String[]> messages = Contract.messages();
+        assertThat(Arrays.stream(ReasonCatalogue.Message.values())
+                .map(ReasonCatalogue.Message::key).toList())
+            .as("every message of the table is declared, and no other")
+            .containsExactlyInAnyOrderElementsOf(messages.keySet());
+        for (ReasonCatalogue.Message message : ReasonCatalogue.Message.values()) {
+            assertThat(message.code().name())
+                .as("the reason %s is raised under", message)
+                .isEqualTo(messages.get(message.key())[0]);
+            assertThat(message.template())
+                .as("the template of %s", message)
+                .isEqualTo(messages.get(message.key())[1]);
+        }
+    }
+
+    @Test
+    void every_form_an_argument_takes_is_a_message_of_its_own() {
+        Map<String, String[]> messages = Contract.messages();
+        for (Form form : Form.values()) {
+            assertThat(form.message().code()).as("%s is a refusal of an argument", form)
+                .isEqualTo(RefusalCode.ARGUMENT_INVALID);
+            assertThat(messages).as("the contract states %s", form)
+                .containsKey(form.message().key());
+        }
     }
 
     @Test

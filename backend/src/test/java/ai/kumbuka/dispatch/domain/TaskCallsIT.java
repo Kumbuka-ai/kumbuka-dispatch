@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.platform.PlatformFixture;
@@ -109,7 +116,8 @@ class TaskCallsIT {
         TaskView first = tasks.create(SCOPE, SELECTOR, null, draft, C, key);
         TaskView repeat = tasks.create(SCOPE, SELECTOR, null, draft, C, key);
         assertThat(repeat.address()).isEqualTo(first.address());
-        assertThat(tasks.query(SCOPE, SELECTOR, TaskFilter.none(), 10, C).tasks()).hasSize(1);
+        assertThat(tasks.query(SCOPE, SELECTOR, TaskFilter.none(), TaskStage.page(10), C).tasks())
+            .hasSize(1);
 
         assertRefused(() -> tasks.create(SCOPE, SELECTOR, null,
                 new TaskService.Draft("other", "code", null, null), C, key),
@@ -192,7 +200,7 @@ class TaskCallsIT {
         answers.add(tasks.act(SCOPE, d.address(), TaskVerb.REWORK, TaskCall.by(C)
             .withConflictToken(stage.token(s)).with(new TaskInput.RequiredRemark(MARK + "remark"))));
         answers.add(tasks.read(SCOPE, d.address(), C));
-        answers.add(tasks.query(SCOPE, SELECTOR, TaskFilter.none(), 10, C));
+        answers.add(tasks.query(SCOPE, SELECTOR, TaskFilter.none(), TaskStage.page(10), C));
 
         assertThat(answers).allSatisfy(answer -> assertThat(answer.toString())
             .as("an answer that is not read_text carries no text of the task")
@@ -302,14 +310,17 @@ class TaskCallsIT {
     }
 
     @Test
-    void query_cuts_at_the_page_bound_and_says_so() {
+    void query_cuts_at_the_page_size_and_hands_out_a_cursor_only_while_more_follow() {
         create(null, "one");
         create(null, "two");
         create(null, "three");
-        TaskListing page = tasks.query(SCOPE, SELECTOR, TaskFilter.none(), 2, C);
+        Page page = tasks.query(SCOPE, SELECTOR, TaskFilter.none(),
+            TaskStage.page(2), C);
         assertThat(page.tasks()).hasSize(2);
-        assertThat(page.cut()).isTrue();
-        assertThat(tasks.query(SCOPE, SELECTOR, TaskFilter.none(), 3, C).cut()).isFalse();
+        assertThat(page.nextCursor()).as("two of three: more follow").isPresent();
+        assertThat(tasks.query(SCOPE, SELECTOR, TaskFilter.none(),
+                TaskStage.page(3), C).nextCursor())
+            .as("three of three: the last page carries no cursor").isEmpty();
     }
 
     // =======================================================================
@@ -402,7 +413,7 @@ class TaskCallsIT {
         String token = stage.token(s);
         tasks.read(SCOPE, s.address(), K);
         tasks.readText(SCOPE, s.address(), TextPart.DISPATCH, H);
-        tasks.query(SCOPE, SELECTOR, TaskFilter.none(), 10, K);
+        tasks.query(SCOPE, SELECTOR, TaskFilter.none(), TaskStage.page(10), K);
         assertThat(stage.token(s)).as("read, read_text and query write nothing").isEqualTo(token);
         assertThat(TaskStage.row(s.identity()).updatedBy()).isEqualTo(H.subject());
     }
@@ -455,7 +466,8 @@ class TaskCallsIT {
     }
 
     private List<ExchangeAddress> addresses(Map<String, String> filter) {
-        return tasks.query(SCOPE, SELECTOR, TaskFilter.of(filter), 50, C).tasks().stream()
+        return tasks.query(SCOPE, SELECTOR, TaskFilter.of(filter), TaskStage.page(50), C).tasks()
+            .stream()
             .map(TaskView::address).toList();
     }
 }

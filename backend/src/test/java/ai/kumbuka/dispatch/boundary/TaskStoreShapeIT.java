@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.boundary;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -76,6 +83,40 @@ class TaskStoreShapeIT {
                         + "end, so the order the test holds no longer matches")
                     .isNotEqualTo(TASK_COLUMNS)
                     .endsWith("planted_later");
+            } finally {
+                c.rollback();
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // The two orders a listing pages in, each with an index to walk
+    // ------------------------------------------------------------------
+
+    /** The orders of a listing, written out: by address, and by creation. */
+    private static final List<String> BY_ADDRESS = List.of(
+        "tenant_id", "scope_id", "selector_id", "number", "sub");
+    private static final List<String> BY_CREATION = List.of(
+        "tenant_id", "scope_id", "selector_id", "created_at", "number", "sub");
+
+    @Test
+    void a_listing_has_an_index_for_each_order_it_pages_in() throws SQLException {
+        try (Connection c = admin()) {
+            assertThat(indexes(c, "task"))
+                .as("the address order walks the address key, the creation order its index")
+                .contains(BY_ADDRESS, BY_CREATION);
+        }
+    }
+
+    @Test
+    void a_dropped_index_leaves_the_order_without_one() throws SQLException {
+        try (Connection c = admin()) {
+            c.setAutoCommit(false);
+            try {
+                exec(c, "DROP INDEX dispatch.idx_task_created_address");
+                assertThat(indexes(c, "task"))
+                    .as("RED STATE, observed: without the index the creation order has none")
+                    .doesNotContain(BY_CREATION);
             } finally {
                 c.rollback();
             }
@@ -386,6 +427,27 @@ class TaskStoreShapeIT {
             try (ResultSet rs = st.executeQuery()) {
                 while (rs.next()) {
                     out.add(rs.getString(1));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The key columns of every index on a table, each in its order. */
+    private static List<List<String>> indexes(Connection c, String table) throws SQLException {
+        List<List<String>> out = new ArrayList<>();
+        try (var st = c.prepareStatement("""
+                SELECT array_to_string(ARRAY(
+                         SELECT a.attname FROM unnest(i.indkey) WITH ORDINALITY k(attnum, n)
+                         JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+                         ORDER BY k.n), ',')
+                  FROM pg_index i
+                 WHERE i.indrelid = ('dispatch.' || ?)::regclass
+                """)) {
+            st.setString(1, table);
+            try (ResultSet rs = st.executeQuery()) {
+                while (rs.next()) {
+                    out.add(List.of(rs.getString(1).split(",")));
                 }
             }
         }

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.contract;
 
 import java.util.LinkedHashMap;
@@ -16,7 +23,11 @@ import java.util.Map;
  * <p>Where the table leaves a name open, the name the service chose stands
  * here, marked: the filters of {@code query} ("filters" in the table; the
  * concept's section 5 names state, apparatus pattern, bracket and a list of
- * addresses) and its page bound ("page bound"; {@code limit}).
+ * addresses). The page of {@code query} is no longer the service's choice:
+ * {@code page_size}, {@code after}, {@code sort} and {@code direction} are
+ * the request the platform's pagination frame fixes for every primary object
+ * (ratified by the operator 2026-10-11, the substance of ADR-0049), and they
+ * stand here from that frame.
  */
 public final class TargetSurface {
 
@@ -90,9 +101,11 @@ public final class TargetSurface {
             List.of("address", "conflict_token", "confirmation"), List.of("remark")));
         table.put("read", new Arguments(List.of("address"), List.of()));
         table.put("read_text", new Arguments(List.of("address", "part"), List.of()));
-        // "filters, page bound": the names are the service's (see the class comment).
+        // "filters": the names are the service's; the page is the pagination
+        // frame's (see the class comment).
         table.put("query", new Arguments(
-            List.of("scope", "selector", "state", "apparatus", "bracket", "address", "limit"),
+            List.of("scope", "selector", "state", "apparatus", "bracket", "address",
+                "page_size", "after", "sort", "direction"),
             List.of()));
         table.put("annotate", new Arguments(List.of("address", "idempotency_key"),
             List.of("text", "part")));
@@ -110,28 +123,29 @@ public final class TargetSurface {
         "apparatus");
 
     /**
-     * Concept section 3.5, word for word. The line breaks of the document's
-     * code blocks are its layout; a paragraph is a blank line.
+     * Concept section 3.5, worded positively under DEC-0043 R21 (the concept
+     * follows this wording). The line breaks of the document's code blocks are
+     * its layout; a paragraph is a blank line.
      */
     public static final String CLAIM_DESCRIPTION =
         "Takes up one open task and makes you its holder. Moves the task from open to "
-            + "active (not final). Call as an executor, naming the task by its address.\n\n"
+            + "active (intermediate). Call as an executor, naming the task by its address.\n\n"
             + "Returns a receipt and the end of your hold. Keep the receipt: every later "
             + "call on this task needs it.\n\n"
-            + "The answer does NOT contain the task's text. Read it next with "
-            + "dispatch_read_text, part \"dispatch\", before you start working.\n\n"
-            + "Your hold lasts 30 minutes unless you state a duration; extend it with "
+            + "The task's text comes from dispatch_read_text, part \"dispatch\": read it next, "
+            + "before you start working.\n\n"
+            + "Your hold lasts 30 minutes, or the duration you state; extend it with "
             + "dispatch_renew.";
 
     public static final String CLAIM_NEXT_DESCRIPTION =
-        "Takes up the next open task addressed to you, without naming one; use "
+        "Takes up the next open task addressed to you, chosen by the service; use "
             + "dispatch_claim when you know the address. Moves the task from open to active "
-            + "(not final). Call as an executor with scope, selector and apparatus.\n\n"
+            + "(intermediate). Call as an executor with scope, selector and apparatus.\n\n"
             + "Returns the address, a receipt and the end of your hold. Keep the receipt: "
             + "every later call on this task needs it.\n\n"
-            + "The answer does NOT contain the task's text. Read it next with "
-            + "dispatch_read_text, part \"dispatch\", before you start working.\n\n"
-            + "If nothing matches, nothing is taken.";
+            + "The task's text comes from dispatch_read_text, part \"dispatch\": read it next, "
+            + "before you start working.\n\n"
+            + "dispatch_query lists the open tasks you can draw.";
 
     public static final String APPARATUS_ARGUMENT =
         "Which apparatus you draw for. Every task is addressed to an apparatus: the kind of "
@@ -142,13 +156,14 @@ public final class TargetSurface {
 
     /** The sentence about the text, the same in both descriptions. */
     public static final String THE_TEXT_SENTENCE =
-        "The answer does NOT contain the task's text. Read it next with dispatch_read_text, "
-            + "part \"dispatch\", before you start working.";
+        "The task's text comes from dispatch_read_text, part \"dispatch\": read it next, "
+            + "before you start working.";
 
     /** The first entry of {@code next} after a claim. */
     public static final String FIRST_NEXT_CALL = "dispatch_read_text";
     public static final String FIRST_NEXT_DOES =
-        "Reads the commission. Do this first: the claim did not return it.";
+        "Reads the commission: the task's text, the work this claim takes on. Call it next, "
+            + "before you start the work.";
 
     private static List<String> concat(List<String> a, List<String> b) {
         List<String> all = new java.util.ArrayList<>(a);

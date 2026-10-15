@@ -1,5 +1,15 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -30,6 +40,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * characters" would leave that licence resting on the regular expression being
  * read correctly. These two cases are the backing for it.
  */
+// The texts a call answers with come from the message bundles, which the
+// running application builds: this test runs with it.
+@QuarkusTest
+@QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class ApparatusPatternTest {
 
     private static final String ADMITTED = "ADMITTED";
@@ -184,7 +198,7 @@ class ApparatusPatternTest {
         }
         try {
             List<String> given = new CallArguments(ProcessVerb.CLAIM_NEXT,
-                "dispatch_claim_next", arguments).list("apparatus", Argument.Placement.TOP);
+                Surface.MCP, arguments).list("apparatus", Argument.Placement.TOP);
             if (ApparatusPatterns.firstMalformed(given) != null) {
                 return MALFORMED;
             }

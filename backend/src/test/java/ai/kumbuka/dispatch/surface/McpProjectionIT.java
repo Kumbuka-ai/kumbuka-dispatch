@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.contract.TargetSurface;
@@ -95,9 +102,14 @@ class McpProjectionIT {
             Map<String, Object> refusal = Mcp.refusal(Mcp.call(earlier,
                 Map.of("address", open)));
             assertThat(refusal.get("reason")).as(earlier).isEqualTo("ARGUMENT_UNKNOWN");
-            assertThat(String.valueOf(refusal.get("message")))
-                .as("the refusal names the call it does not know, and the ones it does")
-                .contains(earlier).contains("dispatch_claim");
+            @SuppressWarnings("unchecked")
+            List<String> accepts = (List<String>) dataOf(refusal).get("accepts");
+            assertThat(accepts)
+                .as("the refusal names the calls it does know, and not the one that arrived "
+                    + "(DEC-0043 R19)")
+                .contains("dispatch_claim").doesNotContain(earlier);
+            assertThat(String.valueOf(refusal.get("message")).split("[ ,.:]"))
+                .as("nor does its message, word for word").doesNotContain(earlier);
             assertThat(Writes.snapshot()).as("%s wrote nothing", earlier).isEqualTo(before);
         }
     }
@@ -110,8 +122,9 @@ class McpProjectionIT {
             String before = Writes.snapshot();
             Map<String, Object> atTop = Mcp.refusal(Mcp.call(call.call(), top));
             assertThat(atTop.get("reason")).as(call.call()).isEqualTo("ARGUMENT_UNKNOWN");
-            assertThat(String.valueOf(atTop.get("message"))).as(call.call())
-                .contains("invented");
+            assertThat(String.valueOf(atTop.get("message")) + atTop.get("data")).as(call.call())
+                .doesNotContain("invented");
+            assertThat(dataOf(atTop)).as(call.call()).containsKey("accepts");
             assertThat(Writes.snapshot()).as("%s wrote nothing", call.call()).isEqualTo(before);
 
             Map<String, Object> nested = new LinkedHashMap<>(complete(call));
@@ -123,15 +136,17 @@ class McpProjectionIT {
             Map<String, Object> below = Mcp.refusal(Mcp.call(call.call(), nested));
             assertThat(below.get("reason")).as("%s.fields", call.call())
                 .isEqualTo("ARGUMENT_UNKNOWN");
+            assertThat(String.valueOf(below.get("message")) + below.get("data"))
+                .as("%s.fields", call.call()).doesNotContain("invented_field");
             assertThat(String.valueOf(below.get("message"))).as("%s.fields", call.call())
-                .contains(call.hasFields() ? "invented_field" : "fields");
+                .contains(call.hasFields() ? "under fields" : "takes these arguments");
             assertThat(Writes.snapshot()).as("%s.fields wrote nothing", call.call())
                 .isEqualTo(before);
         }
     }
 
     @Test
-    void every_undeclared_argument_of_a_level_is_named_in_one_refusal() {
+    void every_level_with_an_undeclared_argument_is_answered_with_what_it_accepts() {
         Map<String, Object> filters = new LinkedHashMap<>();
         filters.put("scope", SurfaceFixture.SCOPE);
         filters.put("selector", SurfaceFixture.SELECTOR);
@@ -140,9 +155,11 @@ class McpProjectionIT {
         Map<String, Object> atTop = Mcp.refusal(Mcp.call("dispatch_query", filters));
         assertThat(atTop.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(String.valueOf(atTop.get("message")))
-            .as("both filters, in the order the call carried them, and the declared ones")
-            .contains("named status, holder.")
-            .contains("state, apparatus, bracket, address");
+            .as("the declared arguments, and neither of the names that arrived")
+            .isEqualTo("dispatch_query takes these arguments: scope, selector, state, "
+                + "apparatus, bracket, address, page_size, after, sort, direction.");
+        assertThat(String.valueOf(atTop.get("data"))).doesNotContain("status")
+            .doesNotContain("holder");
 
         String before = Writes.snapshot();
         Map<String, Object> fields = new LinkedHashMap<>();
@@ -155,7 +172,10 @@ class McpProjectionIT {
             "fields", fields)));
         assertThat(below.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(String.valueOf(below.get("message")))
-            .contains("argument under fields named colour, weight.");
+            .isEqualTo("dispatch_create takes these arguments under fields: fields.title, "
+                + "fields.apparatus, fields.text, fields.metadata.");
+        assertThat(dataOf(below)).containsEntry("accepts", List.of("fields.title",
+            "fields.apparatus", "fields.text", "fields.metadata"));
         assertThat(Writes.snapshot()).as("the create wrote nothing").isEqualTo(before);
 
         Map<String, Object> both = new LinkedHashMap<>();
@@ -167,8 +187,8 @@ class McpProjectionIT {
         assertThat(topFirst.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(String.valueOf(topFirst.get("message")))
             .as("the top level is refused first, and alone")
-            .contains("argument named stray.")
-            .doesNotContain("colour");
+            .startsWith("dispatch_create takes these arguments: ")
+            .doesNotContain("stray").doesNotContain("colour");
         assertThat(Writes.snapshot()).as("nor did the one with both").isEqualTo(before);
     }
 
@@ -178,17 +198,23 @@ class McpProjectionIT {
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
             "holder", "self")));
         assertThat(refusal.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
-        assertThat(String.valueOf(refusal.get("message"))).contains("holder")
+        assertThat(String.valueOf(refusal.get("message"))).doesNotContain("holder")
             .as("and names the filters it has instead")
             .contains("state, apparatus, bracket, address");
+        assertThat(dataOf(refusal)).as("the declared arguments, never the name or its value")
+            .containsEntry("accepts", List.of("scope", "selector", "state", "apparatus",
+                "bracket", "address", "page_size", "after", "sort", "direction"))
+            .containsEntry("attempted", "dispatch_query")
+            .doesNotContainKey("offenders")
+            .doesNotContainValue("self");
 
         Map<String, Object> listed = Mcp.answer(Mcp.call("dispatch_query", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
             "address", open, "state", "open")));
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> tasks = (List<Map<String, Object>>) listed.get("tasks");
+        List<Map<String, Object>> tasks = (List<Map<String, Object>>) listed.get("objects");
         assertThat(tasks).extracting(t -> t.get("address")).containsExactly(open);
-        assertThat(listed.get("cut")).isEqualTo(false);
+        assertThat(listed).as("one page holds it all: no cursor").doesNotContainKey("next_cursor");
 
         String draft = String.valueOf(Mcp.answer(Mcp.call("dispatch_create", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
@@ -197,7 +223,7 @@ class McpProjectionIT {
         List<Map<String, Object>> both = (List<Map<String, Object>>) Mcp.answer(Mcp.call(
             "dispatch_query", Map.of("scope", SurfaceFixture.SCOPE,
                 "selector", SurfaceFixture.SELECTOR, "address", open + "," + draft)))
-            .get("tasks");
+            .get("objects");
         assertThat(both).extracting(t -> t.get("address"), Mcp::nextCalls)
             .as("each entry carries its own next")
             .anySatisfy(t -> assertThat(t.toList()).containsExactly(draft,
@@ -220,23 +246,82 @@ class McpProjectionIT {
     }
 
     @Test
-    void a_whole_number_past_the_range_is_refused_by_name_and_not_read_as_another() {
-        for (long beyond : List.of(4294967297L, 2147483648L, -2147483649L)) {
+    void a_page_size_outside_its_bounds_is_refused_by_name_and_not_read_as_another() {
+        List<Object> invalid = List.of(0L, 201L, 4294967297L, 2147483648L, -2147483649L,
+            "abc", "7.5", 7.5d);
+        for (Object outside : invalid) {
             Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
                 "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-                "limit", beyond)));
-            assertThat(refusal.get("reason")).as("%s", beyond).isEqualTo("ARGUMENT_INVALID");
-            assertThat(String.valueOf(refusal.get("message"))).as("%s", beyond)
-                .contains("limit = " + beyond + " ")
-                .contains("too large");
+                "page_size", outside)));
+            assertThat(refusal.get("reason")).as("%s", outside).isEqualTo("PAGE_SIZE_REJECTED");
+            assertThat(String.valueOf(refusal.get("message"))).as("%s", outside)
+                .isEqualTo("page_size is not valid for dispatch_query: it is a whole number "
+                    + "from 1 to 200.");
+            assertThat(dataOf(refusal)).as("%s", outside)
+                .containsEntry("offenders", List.of("page_size"));
         }
-        Map<String, Object> listed = Mcp.answer(Mcp.call("dispatch_query", Map.of(
+        assertThat(Mcp.answer(Mcp.call("dispatch_query", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-            "limit", Integer.MAX_VALUE)));
-        assertThat(listed.get("cut")).as("the largest whole number is taken").isEqualTo(false);
+            "page_size", 200)))).as("the largest page is taken, under objects")
+            .containsKey("objects").doesNotContainKey("tasks");
+        assertThat(Mcp.reason(Mcp.call("dispatch_query", Map.of(
+                "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+                "limit", 10))))
+            .as("the earlier page bound is not an argument any more")
+            .isEqualTo("ARGUMENT_UNKNOWN");
+    }
+
+    @Test
+    void a_cursor_continues_its_own_listing_and_is_refused_for_another_or_when_unread() {
+        for (int i = 0; i < 2; i++) {
+            SurfaceFixture.open("cursor " + i, "code");
+        }
+        Map<String, Object> first = Mcp.answer(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "page_size", 1)));
+        String cursor = String.valueOf(first.get("next_cursor"));
+        assertThat(first.get("next_cursor")).as("more follow").isNotNull();
+
+        Map<String, Object> second = Mcp.answer(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "page_size", 1, "after", cursor)));
+        assertThat(second.get("objects")).as("the next page")
+            .isNotEqualTo(first.get("objects"));
+
+        Map<String, Object> foreign = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "page_size", 1, "after", cursor, "direction", "desc")));
+        assertThat(foreign.get("reason")).isEqualTo("CURSOR_FOREIGN");
+        assertThat(String.valueOf(foreign.get("message"))).contains("direction");
+        assertThat(dataOf(foreign)).containsEntry("offenders", List.of("after"));
+
+        Map<String, Object> malformed = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "after", "not-a-cursor")));
+        assertThat(malformed.get("reason")).isEqualTo("CURSOR_MALFORMED");
+        assertThat(String.valueOf(malformed.get("message")))
+            .isEqualTo("after is not a cursor dispatch_query handed out: it is the "
+                + "next_cursor of the previous page.");
+        assertThat(dataOf(malformed)).containsEntry("offenders", List.of("after"))
+            .doesNotContainValue("not-a-cursor");
+        Map<String, Object> sorted = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "sort", "title")));
+        assertThat(sorted.get("reason")).isEqualTo("SORT_UNDECLARED");
+        assertThat(dataOf(sorted)).containsEntry("offenders", List.of("sort"));
+        Map<String, Object> sideways = Mcp.refusal(Mcp.call("dispatch_query", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "direction", "sideways")));
+        assertThat(sideways.get("reason")).isEqualTo("ARGUMENT_INVALID");
+        assertThat(dataOf(sideways)).containsEntry("offenders", List.of("direction"));
     }
 
     // -----------------------------------------------------------------------
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> dataOf(Map<String, Object> refusal) {
+        return (Map<String, Object>) refusal.get("data");
+    }
 
     /** Every mandatory argument of a call, with a value of the right shape. */
     private Map<String, Object> complete(ProcessVerb call) {

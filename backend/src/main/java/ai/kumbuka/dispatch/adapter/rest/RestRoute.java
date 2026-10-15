@@ -1,4 +1,15 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.adapter.rest;
+
+import ai.kumbuka.dispatch.surface.ProcessVerb;
+import ai.kumbuka.dispatch.surface.Refused;
+import ai.kumbuka.dispatch.surface.Surface;
 
 import java.util.Arrays;
 import java.util.Optional;
@@ -95,6 +106,33 @@ public enum RestRoute {
     /** Whether the call is named in colon notation after the address. */
     public boolean custom() {
         return custom;
+    }
+
+    /** The declared call this route makes. */
+    public ProcessVerb verb() {
+        return ProcessVerb.byName(Surface.REST, call);
+    }
+
+    /**
+     * The form of this route as a refusal of a call sent elsewhere names it:
+     * one declared message per form, so the refusal carries no part of the
+     * address the request was sent to.
+     */
+    public Refused.Route refusalRoute() {
+        if (depth == Depth.COLLECTION) {
+            if (custom) {
+                return Refused.Route.ON_A_BRACKET_KIND;
+            }
+            return "GET".equals(method) ? Refused.Route.QUERY : Refused.Route.CREATE;
+        }
+        if (custom) {
+            return "GET".equals(method) ? Refused.Route.READ_CALL : Refused.Route.ON_A_TASK;
+        }
+        return switch (method) {
+            case "GET" -> Refused.Route.READ;
+            case "PATCH" -> Refused.Route.UPDATE;
+            default -> Refused.Route.DELETE;
+        };
     }
 
     /** The outward form, as a caller writes it. */

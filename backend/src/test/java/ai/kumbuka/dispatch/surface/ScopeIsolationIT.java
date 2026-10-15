@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -130,9 +137,11 @@ class ScopeIsolationIT {
             .as("a refusal about a scope names the call it refused and no offenders")
             .containsKey("attempted").doesNotContainKey("offenders");
         assertThat(collection.jsonPath().getString("message"))
-            .as("the pattern names the kind, which is what tells the caller WHICH of its "
-                + "scopes it reached rather than only that this one was wrong")
-            .contains("private");
+            .as("the message names the kinds this service carries tasks in, and neither the "
+                + "scope the caller named nor its kind, which is the caller's input to look "
+                + "up (DEC-0043 R18)")
+            .contains("project and global scopes")
+            .doesNotContain(SurfaceFixture.PRIVATE_SCOPE);
 
         assertSameRestRefusal(collection, item,
             "the collection form and the complete address are two methods on the surface, "
@@ -145,7 +154,8 @@ class ScopeIsolationIT {
         Response item = mcpItemRead(SurfaceFixture.PRIVATE_SCOPE);
 
         assertThat(reason(collection)).isEqualTo("SCOPE_KIND_UNSUPPORTED");
-        assertThat(message(collection)).contains("private");
+        assertThat(message(collection)).contains("project and global scopes")
+            .doesNotContain(SurfaceFixture.PRIVATE_SCOPE);
 
         assertSameMcpRefusal(collection, item,
             "the two address forms are two methods here as well, and this surface builds "
@@ -201,10 +211,10 @@ class ScopeIsolationIT {
             .isEqualTo(403);
         assertThat(collectionWrite.jsonPath().getString("reason")).isEqualTo("SCOPE_READ_ONLY");
         assertThat(collectionWrite.jsonPath().getString("message"))
-            .as("the pattern names the scope, because the remedy is that scope's "
-                + "membership and a caller told only 'you may not write' does not know "
-                + "whose membership to ask about")
-            .contains(SurfaceFixture.SCOPE);
+            .as("the message speaks of this scope and does not name it: the caller named it "
+                + "and holds the name (DEC-0043 R18)")
+            .contains("this scope")
+            .doesNotContain(SurfaceFixture.SCOPE);
 
         assertSameRestRefusalBarTheCall(collectionWrite, itemWrite,
             "the write right is the platform's answer about the membership and does not "
@@ -287,7 +297,8 @@ class ScopeIsolationIT {
             .as("the order of the two checks holds on this surface as well, and it holds "
                 + "for the same reason: they share the one directory call")
             .isEqualTo("SCOPE_LOCKED");
-        assertThat(message(collectionWrite)).contains(SurfaceFixture.LOCKED_SCOPE);
+        assertThat(message(collectionWrite)).contains("This scope is locked")
+            .doesNotContain(SurfaceFixture.LOCKED_SCOPE);
 
         assertSameMcpRefusal(collectionWrite, itemWrite,
             "a lock is a property of the scope here too");

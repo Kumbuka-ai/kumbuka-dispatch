@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -122,10 +129,15 @@ class RestSurfaceIT {
             assertThat(refused.statusCode()).isEqualTo(400);
             assertThat(refused.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         }
-        assertThat(inBody.jsonPath().getString("message")).contains("invented");
-        assertThat(inFields.jsonPath().getString("message")).contains("date");
-        assertThat(inQuery.jsonPath().getString("message")).contains("invented");
-        assertThat(onAWrite.jsonPath().getString("message")).contains("remark");
+        assertThat(inBody.asString()).doesNotContain("invented");
+        assertThat(inFields.asString()).doesNotContain("date");
+        assertThat(inQuery.asString()).doesNotContain("invented");
+        assertThat(onAWrite.jsonPath().getList("data.accepts", String.class))
+            .as("remark is written, so it belongs under fields, which reject declares")
+            .containsExactly("address", "fields");
+        assertThat(inFields.jsonPath().getList("data.accepts", String.class))
+            .containsExactly("fields.title", "fields.apparatus", "fields.text",
+                "fields.metadata");
         assertThat(Writes.snapshot()).as("none of them wrote").isEqualTo(before);
     }
 
@@ -134,19 +146,21 @@ class RestSurfaceIT {
         Response refused = given().get(SurfaceFixture.collection() + "?holder=self");
         assertThat(refused.statusCode()).isEqualTo(400);
         assertThat(refused.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
-        assertThat(refused.jsonPath().getString("message")).contains("holder");
+        assertThat(refused.asString()).doesNotContain("holder");
+        assertThat(refused.jsonPath().getList("data.accepts", String.class))
+            .contains("state", "apparatus", "bracket", "address");
     }
 
     @Test
-    void every_undeclared_argument_of_a_level_is_named_in_one_refusal() {
+    void every_level_with_an_undeclared_argument_is_answered_with_what_it_accepts() {
         Response atTop = given().get(SurfaceFixture.collection() + "?status=open&holder=self");
         assertThat(atTop.statusCode()).isEqualTo(400);
         assertThat(atTop.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(atTop.jsonPath().getString("message"))
-            .as("both filters, in the order of the query map, which keeps no order of the "
-                + "query string, and the declared ones")
-            .containsPattern("named (status, holder|holder, status)\\.")
-            .contains("state, apparatus, bracket, address");
+            .as("the declared arguments, and neither of the names that arrived")
+            .isEqualTo("query takes these arguments: scope, selector, state, apparatus, "
+                + "bracket, address, page_size, after, sort, direction.");
+        assertThat(atTop.asString()).doesNotContain("status").doesNotContain("holder");
 
         String before = Writes.snapshot();
         Map<String, Object> fields = new LinkedHashMap<>();
@@ -159,7 +173,8 @@ class RestSurfaceIT {
         assertThat(below.statusCode()).isEqualTo(400);
         assertThat(below.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(below.jsonPath().getString("message"))
-            .contains("argument under fields named colour, weight.");
+            .isEqualTo("create takes these arguments under fields: fields.title, "
+                + "fields.apparatus, fields.text, fields.metadata.");
         assertThat(Writes.snapshot()).as("the create wrote nothing").isEqualTo(before);
 
         Response topFirst = given().contentType(ContentType.JSON)
@@ -169,24 +184,69 @@ class RestSurfaceIT {
         assertThat(topFirst.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(topFirst.jsonPath().getString("message"))
             .as("the top level is refused first, and alone")
-            .contains("argument named stray.")
-            .doesNotContain("colour");
+            .startsWith("create takes these arguments: ")
+            .doesNotContain("stray").doesNotContain("colour");
         assertThat(Writes.snapshot()).as("nor did the one with both").isEqualTo(before);
     }
 
     @Test
-    void a_whole_number_past_the_range_is_refused_by_name() {
-        for (String beyond : List.of("4294967297", "2147483648", "-2147483649")) {
-            Response refused = given().get(SurfaceFixture.collection() + "?limit=" + beyond);
-            assertThat(refused.statusCode()).as(beyond).isEqualTo(400);
-            assertThat(refused.jsonPath().getString("reason")).as(beyond)
-                .isEqualTo("ARGUMENT_INVALID");
-            assertThat(refused.jsonPath().getString("message")).as(beyond)
-                .contains("limit = " + beyond + " ")
-                .contains("too large");
+    void a_page_size_outside_its_bounds_is_refused_by_name_and_the_bounds_are_taken() {
+        for (String outside : List.of("0", "-1", "201", "4294967297", "-2147483649", "abc",
+                "7.5")) {
+            Response refused = given().get(SurfaceFixture.collection() + "?page_size=" + outside);
+            assertThat(refused.statusCode()).as(outside).isEqualTo(400);
+            assertThat(refused.jsonPath().getString("reason")).as(outside)
+                .isEqualTo("PAGE_SIZE_REJECTED");
+            assertThat(refused.jsonPath().getString("message")).as(outside)
+                .startsWith("page_size is not valid for ")
+                .endsWith("it is a whole number from 1 to 200.");
+            assertThat(refused.jsonPath().getList("data.offenders", String.class)).as(outside)
+                .containsExactly("page_size");
         }
-        Response listed = given().get(SurfaceFixture.collection() + "?limit=2147483647");
-        assertThat(listed.statusCode()).as("the largest whole number is taken").isEqualTo(200);
+        for (String bound : List.of("1", "200")) {
+            assertThat(given().get(SurfaceFixture.collection() + "?page_size=" + bound)
+                .statusCode()).as("%s is taken", bound).isEqualTo(200);
+        }
+        Response earlier = given().get(SurfaceFixture.collection() + "?limit=10");
+        assertThat(earlier.jsonPath().getString("reason"))
+            .as("the earlier page bound is not an argument any more")
+            .isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(earlier.statusCode()).isEqualTo(400);
+        assertThat(earlier.jsonPath().getList("data.accepts", String.class))
+            .contains("page_size").doesNotContain("limit");
+
+        Response sideways = given().get(SurfaceFixture.collection() + "?direction=sideways");
+        assertThat(sideways.statusCode()).isEqualTo(400);
+        assertThat(sideways.jsonPath().getString("reason")).isEqualTo("ARGUMENT_INVALID");
+        assertThat(sideways.jsonPath().getList("data.offenders", String.class))
+            .containsExactly("direction");
+    }
+
+    @Test
+    void a_listing_pages_over_rest_by_its_cursor_and_refuses_a_sort_it_does_not_declare() {
+        for (int i = 0; i < 3; i++) {
+            SurfaceFixture.open("paged " + i, "code");
+        }
+        List<String> seen = new java.util.ArrayList<>();
+        String after = null;
+        int pages = 0;
+        do {
+            Response page = given().get(SurfaceFixture.collection() + "?page_size=1"
+                + (after == null ? "" : "&after=" + after));
+            assertThat(page.statusCode()).isEqualTo(200);
+            seen.addAll(page.jsonPath().getList("objects.address", String.class));
+            after = page.jsonPath().getString("next_cursor");
+            assertThat(++pages).as("the walk ends").isLessThan(1000);
+        } while (after != null);
+        assertThat(seen).doesNotHaveDuplicates().hasSize(pages);
+
+        Response sorted = given().get(SurfaceFixture.collection() + "?sort=title");
+        assertThat(sorted.statusCode()).isEqualTo(400);
+        assertThat(sorted.jsonPath().getString("reason")).isEqualTo("SORT_UNDECLARED");
+        assertThat(sorted.jsonPath().getString("message")).doesNotContain("title")
+            .contains("id or created_at");
+        assertThat(sorted.jsonPath().getList("data.offenders", String.class))
+            .containsExactly("sort");
     }
 
     @Test
@@ -200,7 +260,10 @@ class RestSurfaceIT {
             assertThat(refused.statusCode()).as(earlier).isEqualTo(405);
             assertThat(refused.jsonPath().getString("reason")).as(earlier)
                 .isEqualTo("ARGUMENT_UNKNOWN");
-            assertThat(refused.jsonPath().getString("message")).contains(earlier);
+            assertThat(refused.asString()).as(earlier).doesNotContain(":" + earlier)
+                .doesNotContain("\"" + earlier + "\"");
+            assertThat(refused.jsonPath().getList("data.accepts", String.class)).as(earlier)
+                .hasSize(25).contains("send", "accept");
         }
         assertThat(Writes.snapshot()).isEqualTo(before);
     }

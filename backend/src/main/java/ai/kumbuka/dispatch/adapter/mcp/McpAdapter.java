@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.adapter.mcp;
 
 import ai.kumbuka.dispatch.adapter.payload.Answers;
@@ -5,6 +12,7 @@ import ai.kumbuka.dispatch.surface.CallRouter;
 import ai.kumbuka.dispatch.surface.CallerActor;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.SurfaceDeclaration;
+import ai.kumbuka.dispatch.surface.Texts;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -66,7 +74,7 @@ public class McpAdapter {
     @POST
     public Response rpc(Map<String, Object> request) {
         if (request == null || !JSONRPC.equals(request.get(KEY_JSONRPC))) {
-            return error(null, INVALID_PARAMS, "a JSON-RPC 2.0 envelope is required");
+            return error(null, INVALID_PARAMS, Texts.protocol().envelopeRequired());
         }
 
         Object id = request.get(KEY_ID);
@@ -81,9 +89,8 @@ public class McpAdapter {
             case "initialize" -> result(id, initialize());
             case "tools/list" -> result(id, Map.of("tools", tools()));
             case "tools/call" -> result(id, call(arguments(request, "params")));
-            default -> error(id, METHOD_NOT_FOUND,
-                "'" + method + "' is not a method of this server. It speaks initialize, "
-                    + "tools/list and tools/call.");
+            // The method that arrived is the caller's and stays with it (DEC-0043 R19).
+            default -> error(id, METHOD_NOT_FOUND, Texts.protocol().methodUnknown());
         };
     }
 

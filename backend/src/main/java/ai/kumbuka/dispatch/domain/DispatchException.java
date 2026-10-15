@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import java.util.List;
@@ -123,6 +130,30 @@ public class DispatchException extends RuntimeException {
          * that was never asked.
          */
         FILTER_VALUE_REFUSED,
+
+        /**
+         * A page size outside 1 to {@link PageRequest#MAX_PAGE_SIZE}.
+         *
+         * <p>Refused rather than clamped: a page silently cut to the bound
+         * reads as the whole list.
+         */
+        PAGE_SIZE_REJECTED,
+
+        /** A cursor this service did not hand out, in any version it reads. */
+        CURSOR_MALFORMED,
+
+        /**
+         * A cursor handed out for another listing: another scope, selector,
+         * filter, sort key or direction.
+         *
+         * <p>Its own reason rather than a malformed cursor, because the remedy
+         * differs: the cursor is sound, and the call it came with is not the
+         * one that produced it.
+         */
+        CURSOR_FOREIGN,
+
+        /** A sort key or direction a listing does not declare. */
+        SORT_UNDECLARED,
 
         /**
          * A curation named the task being curated as its own target.

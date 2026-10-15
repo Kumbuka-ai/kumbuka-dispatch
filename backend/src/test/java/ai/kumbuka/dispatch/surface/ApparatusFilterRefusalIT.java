@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -114,9 +121,11 @@ class ApparatusFilterRefusalIT {
                 .isEqualTo(400);
             assertThat(refused.jsonPath().getString("reason")).isEqualTo("ARGUMENT_INVALID");
             assertThat(refused.jsonPath().getString("message"))
-                .as("the offending pattern is named: this refusal is about one value and a "
-                    + "caller sending several has no other way to tell which")
-                .contains(malformed);
+                .as("the argument and the form it takes are named, and the pattern sent is "
+                    + "not: a refusal gives back no value the caller sent (DEC-0042)")
+                .startsWith("apparatus is not valid for ")
+                .contains("A-Z, a-z, 0-9")
+                .doesNotContain(malformed);
             assertNothingWasClaimed();
         }
     }
@@ -144,9 +153,12 @@ class ApparatusFilterRefusalIT {
         assertThat(refused.statusCode()).isEqualTo(400);
         assertThat(refused.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(refused.jsonPath().getString("message"))
-            .as("the field is named. A refusal whose whole content is a name and that "
-                + "does not carry the name sends the caller reading its own body")
-            .contains("apparatuses");
+            .as("the name that arrived stays with the caller, who holds it; the refusal "
+                + "lists the names the call declares, against which the caller compares its "
+                + "own (DEC-0043 R19)")
+            .doesNotContain("apparatuses");
+        assertThat(refused.jsonPath().getList("data.accepts", String.class))
+            .containsExactly("scope", "selector", "apparatus", "duration", "idempotency_key");
         assertNothingWasClaimed();
     }
 

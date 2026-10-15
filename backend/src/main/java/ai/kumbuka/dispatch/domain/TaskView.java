@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import java.time.Instant;
@@ -66,8 +73,12 @@ public record TaskView(
         next = List.copyOf(next);
     }
 
-    /** The head for {@code caller}, as the task stands in {@code situation}. */
-    static TaskView of(Task task, TaskSituation situation, Actor caller, List<TaskText> texts,
+    /**
+     * The head for {@code caller}, as the task stands in {@code situation}.
+     *
+     * @param texts the texts that exist, by type and suffix, in the order written
+     */
+    static TaskView of(Task task, TaskSituation situation, Actor caller, List<TextHead> texts,
                        String curatedIn) {
         HolderState holder = HolderState.of(situation.holder(), caller);
         return new TaskView(task.uuid, task.address(), situation.state(),
@@ -76,7 +87,7 @@ public record TaskView(
             task.notBefore(), task.questionOptions(), task.lapseCount(), task.title,
             task.apparatus, task.dispatchMetadata, task.returnMetadata(),
             task.conflictToken(), curatedIn,
-            texts.stream().map(x -> new TextHead(x.type(), x.addendumSuffix)).toList(),
+            texts,
             Decision.openVerbs(situation, caller));
     }
 }

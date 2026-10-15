@@ -1,6 +1,12 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
-import ai.kumbuka.dispatch.repository.ScopeAccessRepository;
 import ai.kumbuka.dispatch.repository.TaskRepository;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -51,7 +57,6 @@ public class TaskService {
 
     @Inject TaskRepository tasks;
     @Inject SelectorRegistry selectors;
-    @Inject ScopeAccessRepository scopes;
 
     private final Clock clock;
 
@@ -211,31 +216,47 @@ public class TaskService {
     }
 
     /**
-     * The heads of a selector's tasks, narrowed by the declared filter, in
-     * address order, up to {@code limit}. Writes nothing.
+     * One page of the heads of a selector's tasks, narrowed by the declared
+     * filter, in the order asked for. Writes nothing.
+     *
+     * <p>The database does the narrowing, the ordering and the cut: the
+     * effective state, the keyset after the cursor and the bound of the page
+     * are all in the one statement, so no path loads the tasks of a selector
+     * to cut them afterwards. One more task than the page holds is read, and
+     * its presence is what says that a next page exists. The texts of the page
+     * are read as type and suffix only, and the curation targets of the page in
+     * one statement.
+     *
+     * @throws DispatchException {@code CURSOR_MALFORMED} or {@code CURSOR_FOREIGN}
+     *                           for a cursor that does not continue this listing
      */
     @Transactional
-    public TaskListing query(UUID scopeId, String selector, TaskFilter filter, int limit,
-                             Actor caller) {
-        if (limit < 1) {
-            throw new DispatchException(DispatchException.Reason.FILTER_VALUE_REFUSED,
-                "the page bound is at least 1, was " + limit + ".", List.of("limit"));
-        }
-        selectors.requireDeclared(scopeId, selector);
+    public Page query(UUID scopeId, String selector, TaskFilter filter, PageRequest page,
+                      Actor caller) {
+        Selector declared = selectors.requireDeclared(scopeId, selector);
+        PageCursor.Binding binding = PageCursor.Binding.of(scopeId, selector, filter, page);
+        Optional<PageCursor.Position> after = page.after()
+            .map(raw -> PageCursor.decode(raw).continuing(binding));
         Instant now = now();
 
-        List<Task> matching = tasks.listing(scopeId, selector, filter.apparatusPatterns(),
-                filter.brackets()).stream()
-            .filter(t -> filter.admits(TaskSituation.of(t, now, List.of()).state(), t.address()))
-            .toList();
-        List<Task> page = matching.stream().limit(limit).toList();
-        List<TaskText> texts = tasks.texts(page.stream().map(t -> t.id).toList());
+        List<Task> read = tasks.page(scopeId, declared, filter, page, after, now);
+        boolean more = read.size() > page.pageSize();
+        List<Task> shown = more ? read.subList(0, page.pageSize()) : read;
 
-        List<TaskView> heads = page.stream()
+        Map<Long, List<TaskView.TextHead>> texts = tasks.textHeads(
+            shown.stream().map(t -> t.id).toList());
+        Map<Long, String> curated = tasks.completeAddresses(shown.stream()
+            .map(Task::curatedInId).filter(Objects::nonNull).distinct().toList());
+        List<TaskView> heads = shown.stream()
             .map(t -> TaskView.of(t, TaskSituation.of(t, now, List.of()), caller,
-                texts.stream().filter(x -> x.taskId.equals(t.id)).toList(), curatedIn(t)))
+                texts.getOrDefault(t.id, List.of()),
+                t.curatedInId() == null ? null : curated.get(t.curatedInId())))
             .toList();
-        return new TaskListing(heads, matching.size() > page.size());
+        Optional<String> next = more
+            ? Optional.of(new PageCursor(binding,
+                PageCursor.Position.of(shown.get(shown.size() - 1))).encode())
+            : Optional.empty();
+        return new Page(heads, next);
     }
 
     /**
@@ -575,7 +596,8 @@ public class TaskService {
 
     private TaskView view(Task task, Actor caller) {
         TaskSituation s = situation(task);
-        return TaskView.of(task, s, caller, tasks.texts(task.id), curatedIn(task));
+        return TaskView.of(task, s, caller, tasks.textHeads(List.of(task.id))
+            .getOrDefault(task.id, List.of()), curatedIn(task));
     }
 
     /**
@@ -594,13 +616,8 @@ public class TaskService {
      * its scope; the target's scope answers for the bound subject.
      */
     private String curatedIn(Task task) {
-        if (task.curatedInId() == null) {
-            return null;
-        }
-        return tasks.findAnywhere(task.curatedInId())
-            .flatMap(target -> scopes.slugOf(target.scopeId)
-                .map(slug -> target.address().complete(slug)))
-            .orElse(null);
+        Long target = task.curatedInId();
+        return target == null ? null : tasks.completeAddresses(List.of(target)).get(target);
     }
 
     private Task requireClosedForRelation(UUID scopeId, ExchangeAddress address,

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.platform.PlatformFixture;
@@ -25,8 +32,14 @@ import java.util.UUID;
 final class TaskStage {
 
     static final Actor C = TransitionMatrixTest.C;
+
     static final Actor H = TransitionMatrixTest.H;
     static final Actor K = TransitionMatrixTest.K;
+
+    /** The first page of a listing in address order, at most {@code size} tasks. */
+    static PageRequest page(long size) {
+        return PageRequest.of(size, null, null, null);
+    }
 
     static final List<String> SITUATIONS = List.of("draft", "open", "deferred", "active",
         "lapsed", "asked", "waiting", "blocked", "parked", "delivered", "closed");
