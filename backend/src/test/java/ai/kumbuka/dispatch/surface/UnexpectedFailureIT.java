@@ -46,6 +46,10 @@ import static org.mockito.Mockito.when;
  * <p>The verb surface is replaced for the run by one that fails with a
  * caller's value in its message, so the failure is provoked where a real one
  * would arise, below the adapter, and the answer is read for that value.
+ *
+ * <p>RED STATE, observed 2026-10-16 against the tree of the guards' commit, with
+ * this class copied in: on both surfaces the log record carried the exception
+ * object.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)

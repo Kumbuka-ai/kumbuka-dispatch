@@ -15,7 +15,7 @@ import java.util.List;
  *
  * <p>The names are the router's for this scheme ({@code VerbCatalog}, enum
  * {@code ResponseShape}, read 2026-10-15). The members are this service's,
- * as {@code adapter/payload/Answers} writes them; a member in brackets is
+ * as the records of {@code adapter.payload} write them; a member in brackets is
  * there only where it applies.
  */
 public enum AnswerShape {

@@ -39,6 +39,17 @@ import java.time.temporal.ChronoUnit;
 @Singleton
 public class SerialisationCustomizer implements ObjectMapperCustomizer {
 
+    /**
+     * Applied last, after the customizer that registers Jackson's own module
+     * for {@code java.time}: applied earlier, that module's serializer for an
+     * instant would replace the one below, and an instant would be written to
+     * the nanosecond again.
+     */
+    @Override
+    public int priority() {
+        return MINIMUM_PRIORITY;
+    }
+
     @Override
     public void customize(ObjectMapper mapper) {
         mapper.setDefaultPropertyInclusion(

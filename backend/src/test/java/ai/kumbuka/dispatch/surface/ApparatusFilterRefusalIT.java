@@ -187,7 +187,7 @@ class ApparatusFilterRefusalIT {
      * schema, one layer earlier and under its own code.
      *
      * <p>Named here so the two surfaces' answers to the same mistake sit side
-     * by side. They are not the same mechanism — {@code CallArguments} closes
+     * by side. They are not the same mechanism — {@code CallPayload} closes
      * every call of this surface, while REST closes this one body — and the
      * code a caller sees is the same either way.
      */

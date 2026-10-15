@@ -299,10 +299,13 @@ class TaskCallsIT {
 
         DispatchException undeclared = catchThrowableOfType(DispatchException.class, () ->
             TaskFilter.of(new java.util.TreeMap<>(Map.of("status", "open", "holder", "self"))));
-        assertThat(undeclared.offenders()).as("every undeclared field, in one refusal")
-            .containsExactlyInAnyOrder("status", "holder");
+        assertThat(undeclared.offenders())
+            .as("every undeclared field in one refusal, naming none of them: the names are "
+                + "the caller's (DEC-0043 R19)")
+            .isEmpty();
         assertThat(undeclared.getMessage()).as("and the fields it has instead")
-            .contains("state, apparatus, bracket, address");
+            .contains("state, apparatus, bracket, address")
+            .doesNotContain("status").doesNotContain("holder");
         assertRefused(() -> TaskFilter.of(Map.of("state", "")),
             DispatchException.Reason.FILTER_VALUE_REFUSED);
         assertRefused(() -> TaskFilter.of(Map.of("apparatus", "code,")),

@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>The three refusals about a scope are raised in {@code ScopeIsolationIT};
  * {@code UNEXPECTED_FAILURE} has no rule a caller can break and is observed in
- * {@code UnexpectedFailureReferenceTest} and {@code CallRouterTest}.
+ * {@code UnexpectedFailureIT} and {@code CallBindingIT}.
  *
  * <p>Red probe, observed: with the current token left out of the refusal of a
  * stale conflict token, {@link #a_stale_conflict_token_is_refused_with_the_current_one}

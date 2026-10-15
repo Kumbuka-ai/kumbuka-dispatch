@@ -50,7 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * string or a header cannot carry a {@code null}, so the calls reached by GET
  * and DELETE are compared on the assistant surface alone.
  *
- * <p>RED STATE, observed 2026-10-15: with the line in {@code CallArguments}
+ * <p>RED STATE, observed 2026-10-15: with the line in {@code CallPayload}
  * that drops a {@code null} removed, this turns red on all twenty-five calls
  * over MCP, each for the undeclared name sent as {@code null}, which is then
  * refused as {@code ARGUMENT_UNKNOWN} where its absence goes on to the

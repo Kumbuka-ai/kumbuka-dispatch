@@ -93,7 +93,9 @@ class CallPayloadIT {
     @ParameterizedTest
     @MethodSource("taken")
     void a_whole_number_is_taken_whatever_its_shape(Object given, long read) {
-        assertThat(query(given).wholeNumber("page_size")).isEqualTo(read);
+        assertThat(CallPayload.wholeOf(given))
+            .as("read as a whole number before the page's bounds are applied")
+            .isEqualTo(read);
     }
 
     @ParameterizedTest

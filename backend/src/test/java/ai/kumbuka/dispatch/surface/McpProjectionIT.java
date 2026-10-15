@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * under an earlier name is refused as unknown.
  *
  * <p>Red probe, observed: with the closure of the {@code fields} level removed
- * from {@code CallArguments}, the invented field is no longer refused and
+ * from {@code CallPayload}, the invented field is no longer refused and
  * {@link #every_call_refuses_an_invented_argument_by_name_at_either_level_and_writes_nothing}
  * turns red.
  */

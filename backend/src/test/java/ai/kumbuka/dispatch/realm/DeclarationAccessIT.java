@@ -34,6 +34,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * tree, through {@link DeclarationShapeTest#violations}: the declaration
  * carries the texts of the message bundles, which only the running service
  * can render.
+ *
+ * <p>RED STATE, observed 2026-10-16 against the tree of the guards' commit: the
+ * declaration answered at {@code /mcp/declaration} as well, and its shape broke
+ * the schema with placements in lower case, defaults as text and a role on
+ * calls that are not restricted.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
