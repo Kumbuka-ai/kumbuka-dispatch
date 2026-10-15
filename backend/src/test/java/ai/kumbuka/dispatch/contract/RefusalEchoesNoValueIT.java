@@ -205,7 +205,8 @@ class RefusalEchoesNoValueIT {
 
         Map<RefusalCode, List<String>> echoing = new LinkedHashMap<>();
         raised.forEach((code, answers) -> {
-            List<String> echoed = answers.stream().filter(a -> a.contains(MARKER)).toList();
+            List<String> echoed = answers.stream().map(RefusalEchoesNoValueIT::withoutReadState)
+                .filter(a -> a.contains(MARKER)).toList();
             if (!echoed.isEmpty()) {
                 echoing.put(code, echoed);
             }
@@ -350,6 +351,7 @@ class RefusalEchoesNoValueIT {
 
         // -- the verdict --------------------------------------------------
         List<String> echoing = answers.stream()
+            .map(RefusalEchoesNoValueIT::withoutReadState)
             .filter(answer -> answer.contains(MARKER))
             .toList();
         assertThat(echoing).as("answers that repeat what the caller put in").isEmpty();
@@ -398,8 +400,33 @@ class RefusalEchoesNoValueIT {
         if (data instanceof Map<?, ?> members) {
             Map<Object, Object> rest = new LinkedHashMap<>(members);
             rest.remove("children");
+            // The task as the caller's own read would answer it, which a stale
+            // conflict token carries under DEC-0041: not bound by R18.
+            rest.remove("address");
+            rest.remove("fields");
             assertThat(String.valueOf(rest)).as(answer).doesNotContain(SurfaceFixture.SCOPE);
         }
+    }
+
+    /**
+     * The answer without the task as the caller's own read would answer it:
+     * the address and fields a stale conflict token carries (DEC-0041), which
+     * DEC-0043 R18 does not bind because they are not a repetition of the call.
+     */
+    @SuppressWarnings("unchecked")
+    private static String withoutReadState(String answer) {
+        if (!answer.startsWith("{") || !answer.contains("CONFLICT_TOKEN_STALE")) {
+            return answer;
+        }
+        Map<String, Object> json = io.restassured.path.json.JsonPath.from(answer).getMap("$");
+        Map<String, Object> result = (Map<String, Object>) json.get("result");
+        Map<String, Object> envelope = result == null ? json
+            : (Map<String, Object>) result.get("structuredContent");
+        Map<String, Object> data = (Map<String, Object>) envelope.get("data");
+        Map<String, Object> rest = new LinkedHashMap<>(data);
+        rest.remove("address");
+        rest.remove("fields");
+        return envelope.get("reason") + " " + envelope.get("message") + " " + rest;
     }
 
     // -----------------------------------------------------------------------

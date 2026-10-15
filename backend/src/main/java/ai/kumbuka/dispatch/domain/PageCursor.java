@@ -53,6 +53,9 @@ public record PageCursor(Binding binding, Position position) {
     private static final String SEPARATOR = "|";
     private static final int FIELDS = 9;
     private static final int MARK_LENGTH = 16;
+
+    /** The argument that carries a cursor, by its declared name. */
+    static final String AFTER = "after";
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
 
@@ -83,7 +86,11 @@ public record PageCursor(Binding binding, Position position) {
                 page.sort(), page.direction());
         }
 
-        /** What differs from another binding, by name, in a fixed order. */
+        /**
+         * What differs from another binding, as the declared arguments of a
+         * listing that carry it, in a fixed order: the four filters for a
+         * filter that differs, since its fingerprint does not say which.
+         */
         List<String> differences(Binding other) {
             List<String> differ = new ArrayList<>();
             if (!scope.equals(other.scope)) {
@@ -93,7 +100,7 @@ public record PageCursor(Binding binding, Position position) {
                 differ.add("selector");
             }
             if (!filter.equals(other.filter)) {
-                differ.add("filter");
+                differ.addAll(TaskFilter.Field.wireNames());
             }
             if (sort != other.sort) {
                 differ.add("sort");
@@ -146,19 +153,19 @@ public record PageCursor(Binding binding, Position position) {
             String plain = new String(DECODER.decode(raw), StandardCharsets.UTF_8);
             String[] f = plain.split("\\|", -1);
             if (f.length != FIELDS || !VERSION.equals(f[0])) {
-                throw malformed(raw);
+                throw malformed();
             }
-            Binding binding = new Binding(f[1], f[2], f[3], sortOf(f[4], raw),
-                directionOf(f[5], raw));
+            Binding binding = new Binding(f[1], f[2], f[3], sortOf(f[4]),
+                directionOf(f[5]));
             int number = Integer.parseInt(f[6]);
             int sub = Integer.parseInt(f[7]);
             if (number < 1 || sub < 0 || binding.scope.isEmpty() || binding.selector.isEmpty()
                     || binding.filter.isEmpty()) {
-                throw malformed(raw);
+                throw malformed();
             }
             return new PageCursor(binding, new Position(number, sub, Instant.parse(f[8])));
         } catch (IllegalArgumentException | DateTimeParseException unreadable) {
-            throw malformed(raw);
+            throw malformed();
         }
     }
 
@@ -179,27 +186,31 @@ public record PageCursor(Binding binding, Position position) {
         return position;
     }
 
-    private static SortKey sortOf(String wireName, String raw) {
+    private static SortKey sortOf(String wireName) {
         for (SortKey key : SortKey.values()) {
             if (key.wireName().equals(wireName)) {
                 return key;
             }
         }
-        throw malformed(raw);
+        throw malformed();
     }
 
-    private static SortKey.Direction directionOf(String wireName, String raw) {
+    private static SortKey.Direction directionOf(String wireName) {
         for (SortKey.Direction d : SortKey.Direction.values()) {
             if (d.wireName().equals(wireName)) {
                 return d;
             }
         }
-        throw malformed(raw);
+        throw malformed();
     }
 
-    private static DispatchException malformed(String raw) {
+    /**
+     * The refusal names the argument and not the cursor sent: a refusal
+     * repeats nothing the caller sent (DEC-0042, DEC-0043 R18).
+     */
+    private static DispatchException malformed() {
         return new DispatchException(DispatchException.Reason.CURSOR_MALFORMED,
-            "the cursor is not one this service handed out.", List.of(String.valueOf(raw)));
+            "the cursor is not one this service handed out.", List.of(AFTER));
     }
 
     /** A short, stable, one-way mark of a value. */

@@ -62,7 +62,11 @@ public final class Payloads {
             text.addenda());
     }
 
-    /** A refusal, in the envelope both surfaces answer it with (C8.4). */
+    /**
+     * A refusal, in the envelope both surfaces answer it with (C8.4). A stale
+     * conflict token carries the task's fields as the caller's read would
+     * answer them, the full head (DEC-0041).
+     */
     public static RefusalPayload refusal(Refusal refusal) {
         Refusal.Data data = refusal.data();
         return new RefusalPayload(refusal.code().name(), refusal.message(),
@@ -70,7 +74,7 @@ public final class Payloads {
                 data.attempted(),
                 data.address(),
                 data.state(),
-                data.current() == null ? null : data.current().fields(false),
+                data.current() == null ? null : data.current().fields(true),
                 data.next() == null ? null : next(data.next()),
                 data.waitingFor(),
                 data.offenders(),

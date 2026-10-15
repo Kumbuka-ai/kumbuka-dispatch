@@ -172,19 +172,15 @@ public final class DomainRefusals {
     }
 
     /**
-     * What differs between a cursor's listing and the call, as the arguments
-     * that carry it: the kernel says {@code filter} for the four filters, and
-     * the refusal names them.
+     * What differs between a cursor's listing and the call, as the declared
+     * arguments that carry it, which is how the kernel names them.
      */
     private static List<ArgumentName> differing(ProcessVerb verb, List<String> differ) {
         List<ArgumentName> names = new ArrayList<>();
-        for (String part : differ) {
-            List<String> carried = "filter".equals(part) ? CallPayload.FILTERS : List.of(part);
-            for (String name : carried) {
-                Argument argument = verb.argument(name, Argument.Placement.TOP);
-                if (argument != null) {
-                    names.add(ArgumentName.of(argument));
-                }
+        for (String name : differ) {
+            Argument argument = verb.argument(name, Argument.Placement.TOP);
+            if (argument != null) {
+                names.add(ArgumentName.of(argument));
             }
         }
         return names;

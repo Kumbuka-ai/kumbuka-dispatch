@@ -246,7 +246,7 @@ class TaskPagingIT {
         assertForeign(() -> tasks.query(SCOPE, OTHER_SELECTOR, TaskFilter.none(), next, C),
             "selector");
         assertForeign(() -> tasks.query(SCOPE, SELECTOR, TaskFilter.of(Map.of("state", "open")),
-            next, C), "filter");
+            next, C), "state", "apparatus", "bracket", "address");
         assertForeign(() -> tasks.query(SCOPE, SELECTOR, TaskFilter.none(),
             new PageRequest(1, SortKey.CREATED_AT, SortKey.Direction.ASC, Optional.of(cursor)),
             C), "sort");
@@ -423,11 +423,17 @@ class TaskPagingIT {
         }
     }
 
+    /**
+     * A foreign cursor is refused naming what differs, by the declared
+     * arguments of the listing that carry it: a filter that differs is named
+     * as the four filters, since its fingerprint does not say which.
+     */
     private static void assertForeign(org.assertj.core.api.ThrowableAssert.ThrowingCallable call,
-                                      String differs) {
+                                      String... differs) {
         DispatchException refused = catchThrowableOfType(DispatchException.class, call);
-        assertThat(refused).as("refused as foreign: %s", differs).isNotNull();
+        assertThat(refused).as("refused as foreign: %s", List.of(differs)).isNotNull();
         assertThat(refused.reason()).isEqualTo(DispatchException.Reason.CURSOR_FOREIGN);
-        assertThat(refused.offenders()).as("and it names what differs").containsExactly(differs);
+        assertThat(refused.offenders()).as("and it names what differs by declared argument")
+            .containsExactly(differs);
     }
 }
