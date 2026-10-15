@@ -19,6 +19,7 @@ import ai.kumbuka.dispatch.domain.TaskVerb;
 import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.ApparatusPatterns;
 import ai.kumbuka.dispatch.surface.Argument;
+import ai.kumbuka.dispatch.surface.Bound;
 import ai.kumbuka.dispatch.surface.ArgumentPath;
 import ai.kumbuka.dispatch.surface.Form;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
@@ -130,7 +131,7 @@ public final class CallPayload {
      * @throws SurfaceException {@code ARGUMENT_UNKNOWN}, {@code ARGUMENT_INVALID}
      *                          or {@code ARGUMENT_MISSING}, naming the argument;
      *                          {@code PAGE_SIZE_REJECTED} for a page size that is
-     *                          no whole number, {@code SORT_UNDECLARED} for a
+     *                          no whole number or lies outside the page, {@code SORT_UNDECLARED} for a
      *                          sort the listing does not declare
      */
     public CallPayload(ProcessVerb verb, Surface surface, Map<String, Object> arguments) {
@@ -200,6 +201,7 @@ public final class CallPayload {
             Object value = levelOf(argument).get(argument.name());
             Form form = value == null ? null : mistyped(argument, value);
             if (form == null) {
+                refuseOutsideThePage(argument, value);
                 continue;
             }
             if (PAGE_SIZE.equals(argument.name())) {
@@ -213,6 +215,21 @@ public final class CallPayload {
                 throw refused(Refusal.sortUndeclared(call, List.of(ArgumentPath.of(argument))));
             }
             throw refused(Refusal.argumentInvalid(call, positionOf(argument, value), form));
+        }
+    }
+
+    /**
+     * Refuses a page size that is a whole number outside the page, 1 to {@link
+     * Bound#PAGE_SIZE_MAX}: a form the declaration fixes, decided before any
+     * scope is resolved (ADR-0049, C1.2).
+     */
+    private void refuseOutsideThePage(Argument argument, Object value) {
+        if (value == null || !PAGE_SIZE.equals(argument.name())) {
+            return;
+        }
+        Long size = wholeOf(value);
+        if (size != null && (size < 1 || size > Bound.PAGE_SIZE_MAX.value())) {
+            throw refused(Refusal.pageSizeRejected(call, List.of(ArgumentPath.of(argument))));
         }
     }
 

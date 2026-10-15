@@ -7,11 +7,11 @@
  */
 package ai.kumbuka.dispatch.architecture;
 
+import ai.kumbuka.dispatch.adapter.mcp.McpTools;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -86,12 +86,18 @@ class ToolNameTest {
         return offenders;
     }
 
-    /** The service binding: the three names of every declared call. */
+    /**
+     * The service binding: the three names of every declared call, the tool
+     * name as the assistant surface lists it, in the order of the declaration.
+     */
     private static List<Names> declared() {
-        List<Names> names = Arrays.stream(ProcessVerb.values())
-            .map(verb -> new Names(verb.call(), verb.verb(), verb.call()))
-            .toList();
-        assertThat(names).as("the declaration must have been read").isNotEmpty();
+        List<String> tools = McpTools.names();
+        ProcessVerb[] verbs = ProcessVerb.values();
+        assertThat(tools).as("one tool per declared call").hasSize(verbs.length);
+        List<Names> names = new ArrayList<>();
+        for (int i = 0; i < verbs.length; i++) {
+            names.add(new Names(verbs[i].call(), verbs[i].verb(), tools.get(i)));
+        }
         return names;
     }
 }

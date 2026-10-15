@@ -111,9 +111,34 @@ class CallPayloadIT {
     @ParameterizedTest
     @MethodSource("outsideThePage")
     void a_whole_number_outside_the_page_is_refused_as_a_page_size(Object given) {
-        Long read = query(given).wholeNumber("page_size");
+        Refusal refused = Wire.refused(() -> query(given));
+        assertThat(refused.code()).isEqualTo(RefusalCode.PAGE_SIZE_REJECTED);
+        assertThat(Wire.data(refused)).containsEntry("offenders", List.of("page_size"));
+    }
+
+    /**
+     * The edges of the page, as the form check takes them: the exact bounds
+     * and the shapes of a whole number at them are taken, one past either
+     * bound and a number with a fraction are refused.
+     */
+    @Test
+    void the_page_takes_its_exact_bounds_and_refuses_one_past_them() {
+        assertThat(query(1).page().pageSize()).as("the smallest page").isEqualTo(1);
+        assertThat(query(200).page().pageSize()).as("the largest page").isEqualTo(200);
+        assertThat(query(1.0d).page().pageSize()).as("1.0 is the whole number 1").isEqualTo(1);
+        for (Object past : List.of(0, 201, 1.5d)) {
+            Refusal refused = Wire.refused(() -> query(past));
+            assertThat(refused.code()).as("%s", past).isEqualTo(RefusalCode.PAGE_SIZE_REJECTED);
+            assertThat(Wire.data(refused)).as("%s", past)
+                .containsEntry("offenders", List.of("page_size"));
+        }
+    }
+
+    /** The kernel holds the same bounds, a second net under the form check. */
+    @Test
+    void the_kernel_refuses_a_page_outside_its_bounds_as_well() {
         DispatchException refused = catchThrowableOfType(DispatchException.class,
-            () -> PageRequest.of(read, null, SortKey.Direction.ASC, null));
+            () -> PageRequest.of(201L, null, SortKey.Direction.ASC, null));
         assertThat(refused.reason()).isEqualTo(DispatchException.Reason.PAGE_SIZE_REJECTED);
     }
 

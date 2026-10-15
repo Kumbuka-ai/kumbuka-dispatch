@@ -1,0 +1,134 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
+package ai.kumbuka.dispatch.surface;
+
+import io.smallrye.config.PropertiesConfigSource;
+import io.smallrye.config.SmallRyeConfigBuilder;
+import org.eclipse.microprofile.config.Config;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * C15.2 — the acting identity is the token's subject, and the audience is
+ * checked; the service does not start otherwise.
+ *
+ * <h2>Why this matters here</h2>
+ *
+ * The principal is the subject of every actor: who claimed, delivered and
+ * accepted a task, what a receipt and an idempotency key are bound to, and
+ * what tells the holder of a task from every other executor. An unpinned
+ * principal therefore does not merely record the wrong name: a holder whose
+ * principal changes is refused its own task, and the write before it
+ * succeeded.
+ *
+ * <p>The memory service and the core carry the same guard, under the same
+ * name.
+ *
+ * <h2>Why the shipped file is read as well</h2>
+ *
+ * The test profile disables the bearer tenant, so the guard stands down when
+ * the suite boots and the shipped values are never exercised by it. Reading
+ * the artefact is what closes that gap: the running configuration cannot
+ * answer a question about the file a deployment ships.
+ */
+class IdentityConfigurationGuardTest {
+
+    private static final Path SHIPPED = Path.of("src/main/resources/application.properties");
+
+    @Test
+    void the_shipped_configuration_pins_the_principal_and_names_an_audience()
+            throws IOException {
+        String shipped = Files.readString(SHIPPED);
+
+        assertThat(shipped)
+            .as("the acting identity is derived from the token's stable subject, never "
+                + "from a display name: Quarkus falls through upn -> preferred_username -> "
+                + "sub for a service application unless it is pinned")
+            .contains(IdentityConfigurationGuard.PRINCIPAL_CLAIM_KEY + "="
+                + IdentityConfigurationGuard.EXPECTED_PRINCIPAL_CLAIM);
+        assertThat(shipped)
+            .as("and the platform's one audience (ADR-0034) is configured, with the "
+                + "environment variable a deployment overrides it with")
+            .contains(IdentityConfigurationGuard.AUDIENCE_KEY + "=${DISPATCH_OIDC_AUDIENCE:");
+    }
+
+    @Test
+    void a_principal_resolved_from_anything_but_the_subject_refuses_the_start() {
+        assertThatThrownBy(() -> IdentityConfigurationGuard.verify(configOf(
+                IdentityConfigurationGuard.PRINCIPAL_CLAIM_KEY, "preferred_username",
+                IdentityConfigurationGuard.AUDIENCE_KEY, "https://platform.kumbuka.ai/mcp")))
+            .as("RED STATE, observed: a principal resolved from a claim other than the "
+                + "subject must refuse the start")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(IdentityConfigurationGuard.PRINCIPAL_CLAIM_KEY)
+            .as("and the message says why, because an operator reading it has to decide "
+                + "between changing the value and changing the realm")
+            .hasMessageContaining("refused its own task");
+    }
+
+    @Test
+    void an_absent_principal_claim_refuses_the_start_too() {
+        assertThatThrownBy(() -> IdentityConfigurationGuard.verify(configOf(
+                IdentityConfigurationGuard.AUDIENCE_KEY, "https://platform.kumbuka.ai/mcp")))
+            .isInstanceOf(IllegalStateException.class)
+            .as("absent is not a weaker form of wrong: unset is exactly the state in "
+                + "which Quarkus falls through to preferred_username")
+            .hasMessageContaining(IdentityConfigurationGuard.PRINCIPAL_CLAIM_KEY);
+    }
+
+    @Test
+    void an_unset_audience_refuses_the_start_because_unset_means_unchecked() {
+        assertThatThrownBy(() -> IdentityConfigurationGuard.verify(configOf(
+                IdentityConfigurationGuard.PRINCIPAL_CLAIM_KEY, "sub")))
+            .isInstanceOf(IllegalStateException.class)
+            .as("an unset audience does not fail in Quarkus — it means the audience is "
+                + "not validated at all, so a token minted for any other resource would "
+                + "be accepted, with a clean start and no error")
+            .hasMessageContaining(IdentityConfigurationGuard.AUDIENCE_KEY);
+    }
+
+    @Test
+    void a_pinned_principal_with_an_audience_starts() {
+        assertThatCode(() -> IdentityConfigurationGuard.verify(configOf(
+                IdentityConfigurationGuard.PRINCIPAL_CLAIM_KEY, "sub",
+                IdentityConfigurationGuard.AUDIENCE_KEY, "https://platform.kumbuka.ai/mcp")))
+            .as("the other half: without it every refusal above would hold just as well "
+                + "against a guard that refuses everything")
+            .doesNotThrowAnyException();
+    }
+
+    @Test
+    void a_disabled_bearer_tenant_stands_the_guard_down() {
+        assertThatCode(() -> IdentityConfigurationGuard.verify(configOf(
+                IdentityConfigurationGuard.TENANT_ENABLED_KEY, "false")))
+            .as("a disabled tenant validates no token, so there is no principal to pin "
+                + "and no audience to check; asserting about one would be asserting about "
+                + "a surface that is not there. The default is true, so silence never "
+                + "disarms the guard")
+            .doesNotThrowAnyException();
+    }
+
+    private static Config configOf(String... namesAndValues) {
+        Map<String, String> properties = new LinkedHashMap<>();
+        for (int i = 0; i < namesAndValues.length; i += 2) {
+            properties.put(namesAndValues[i], namesAndValues[i + 1]);
+        }
+        return new SmallRyeConfigBuilder()
+            .withSources(new PropertiesConfigSource(properties, "the probe's own", 100))
+            .build();
+    }
+}
