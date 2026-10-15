@@ -76,6 +76,15 @@ descriptions of `dispatch_claim` and `dispatch_claim_next` included; the
 concept's section 3.5 follows this wording. Each form an argument takes is a
 message of its own, so the separate table of forms is gone.
 
+## The amendment of 2026-10-15, third part: the declaration published
+
+Section 6 is written from ADR-0039 as ratified on 2026-10-15: the declaration
+held by the service, on its REST surface, with an effect class drawn from the
+router's closed set, under a version. The counter-probe of the endpoint is
+`contract/DeclarationTranscript.java`, transcribed from the router's
+definitions, concept section 3.2 and DEC-0043 R17, and importing nothing from
+the service.
+
 ## What is word for word, and what is not
 
 The description of the argument `apparatus` and the first entry of `next`

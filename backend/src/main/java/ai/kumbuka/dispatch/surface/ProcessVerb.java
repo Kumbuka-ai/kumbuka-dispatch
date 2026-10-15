@@ -385,6 +385,98 @@ public enum ProcessVerb {
         return Arrays.stream(values()).map(v -> v.on(surface)).toList();
     }
 
+    /**
+     * The effect class of this call, by the router's name for it (ADR-0039):
+     * the form its HTTP request takes. {@code RestRouteFormTest} holds the
+     * REST routes of this service to it.
+     */
+    public EffectClass effectClass() {
+        return switch (this) {
+            case CREATE -> EffectClass.CREATE;
+            case UPDATE -> EffectClass.FIELD_WRITE;
+            case DELETE -> EffectClass.ITEM_DELETE;
+            case READ -> EffectClass.ITEM_READ;
+            case READ_TEXT -> EffectClass.ITEM_READ_CALL;
+            case QUERY -> EffectClass.COLLECTION_READ;
+            case CLAIM_NEXT -> EffectClass.COLLECTION_COMPOUND;
+            default -> EffectClass.ITEM_TRANSITION;
+        };
+    }
+
+    /** The shape of this call's answer. */
+    public AnswerShape answerShape() {
+        return switch (this) {
+            case CREATE -> AnswerShape.TASK_LEAN_CREATED;
+            case CLAIM, CLAIM_NEXT -> AnswerShape.CLAIM_RECEIPT;
+            case READ -> AnswerShape.TASK_HEAD;
+            case QUERY -> AnswerShape.TASK_LISTING;
+            case READ_TEXT -> AnswerShape.TASK_TEXT;
+            case DELETE -> AnswerShape.TASK_DELETED;
+            default -> AnswerShape.TASK_LEAN;
+        };
+    }
+
+    /** Whether this call only reads: it leaves the scope as it is. */
+    public boolean reads() {
+        return this == READ || this == READ_TEXT || this == QUERY;
+    }
+
+    /**
+     * The reasons a refusal of this call may name, in the order of the codes.
+     *
+     * <p>Read off the declaration: every call can be refused for its address,
+     * its arguments, its caller and its scope; a call that writes for the
+     * scope's right and lock; a call on a task for the task's state; and each
+     * argument for the refusals that belong to it -- a receipt, a conflict
+     * token, a confirmation, a duration, a key, the page of a listing.
+     */
+    public java.util.Set<RefusalCode> refusals() {
+        java.util.Set<RefusalCode> codes = java.util.EnumSet.of(
+            RefusalCode.NOT_FOUND, RefusalCode.ARGUMENT_UNKNOWN, RefusalCode.ARGUMENT_MISSING,
+            RefusalCode.ARGUMENT_INVALID, RefusalCode.ROLE_DOES_NOT_ALLOW,
+            RefusalCode.SELECTOR_UNKNOWN, RefusalCode.SCOPE_KIND_UNSUPPORTED,
+            RefusalCode.CALL_NOT_AT_THIS_ADDRESS, RefusalCode.UNEXPECTED_FAILURE);
+        if (!reads()) {
+            codes.add(RefusalCode.SCOPE_READ_ONLY);
+            codes.add(RefusalCode.SCOPE_LOCKED);
+        }
+        if (this != READ && this != READ_TEXT && this != QUERY && this != CLAIM_NEXT) {
+            codes.add(RefusalCode.STATE_DOES_NOT_ALLOW);
+        }
+        if (argument("receipt", Argument.Placement.TOP) != null) {
+            codes.add(RefusalCode.NOT_THE_HOLDER);
+            codes.add(RefusalCode.RECEIPT_WRONG);
+        }
+        if (this == READ_TEXT) {
+            codes.add(RefusalCode.NOT_THE_HOLDER);
+        }
+        if (argument("conflict_token", Argument.Placement.TOP) != null) {
+            codes.add(RefusalCode.CONFLICT_TOKEN_STALE);
+        }
+        if (argument("confirmation", Argument.Placement.TOP) != null) {
+            codes.add(RefusalCode.CHILDREN_NOT_FINISHED);
+        }
+        if (argument("duration", Argument.Placement.TOP) != null) {
+            codes.add(RefusalCode.CLAIM_DURATION_INVALID);
+        }
+        if (argument("idempotency_key", Argument.Placement.TOP) != null) {
+            codes.add(RefusalCode.IDEMPOTENCY_KEY_REUSED);
+        }
+        if (this == CLAIM) {
+            codes.add(RefusalCode.DEFERRAL_PENDING);
+        }
+        if (this == CLAIM_NEXT) {
+            codes.add(RefusalCode.NOTHING_TO_TAKE);
+        }
+        if (this == QUERY) {
+            codes.add(RefusalCode.PAGE_SIZE_REJECTED);
+            codes.add(RefusalCode.CURSOR_MALFORMED);
+            codes.add(RefusalCode.CURSOR_FOREIGN);
+            codes.add(RefusalCode.SORT_UNDECLARED);
+        }
+        return java.util.Collections.unmodifiableSet(codes);
+    }
+
     /** The role as the declaration publishes it. */
     public String roleName() {
         return role == null ? "any" : role.name().toLowerCase(Locale.ROOT);

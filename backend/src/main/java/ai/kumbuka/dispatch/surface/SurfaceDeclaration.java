@@ -26,13 +26,15 @@ import java.util.Map;
  * types, no JSON annotations, and a projection to nested maps that any JSON
  * encoder will write.
  *
- * <p><strong>Where it lives in the published artefact.</strong> In the library
- * jar this module already publishes beside its image
- * ({@code ai.kumbuka:kumbuka-dispatch}), as this class; and on the wire at
- * {@code GET /declaration}, which serves {@link #asMap()}. Two homes for one
- * value and not two values: the endpoint is a projection of the class, so a
- * consumer that cannot take a Java dependency reads the same declaration over
- * HTTP that a consumer who can reads directly.
+ * <p><strong>Where it lives.</strong> On the REST surface at {@code GET
+ * /api/declaration}, which the router reads to build its surface (ADR-0039),
+ * and beside the assistant surface at {@code GET /mcp/declaration}; both
+ * serve {@link #asMap()}. Per call it carries the identity {@code
+ * dispatch_<verb>}, the effect class by the router's name, the arguments with
+ * their names, types, requiredness, defaults and closed sets of values with a
+ * description each, the shape of the answer, the reasons a refusal may name,
+ * and the texts the call addresses to a caller. Per reason it carries the
+ * templates of its messages and its remedy. The whole carries a version.
  */
 public final class SurfaceDeclaration {
 
@@ -44,7 +46,7 @@ public final class SurfaceDeclaration {
      * changed — and the service's version moves for reasons that have nothing
      * to do with it.
      */
-    public static final String SHAPE_VERSION = "2";
+    public static final String SHAPE_VERSION = "3";
 
     /**
      * The most characters a call's description may carry (concept section
@@ -67,35 +69,68 @@ public final class SurfaceDeclaration {
     }
 
     /**
-     * The whole declaration as nested maps, ready for any JSON encoder.
+     * The whole declaration as nested maps, ready for any JSON encoder, with
+     * its version first.
      *
      * <p>Built rather than annotated. An annotated record would tie the shape
      * that travels between two services to whichever JSON library this one
      * happens to use, and the consumer of this declaration is a different
      * service with a different one.
+     *
+     * <p><strong>The version</strong> is the SHA-256 of the declaration's
+     * canonical text ({@link CanonicalJson}), everything but the version
+     * itself: names, types, sets, codes and texts. Equal declarations carry
+     * equal versions on every start and host, so a consumer can tell when
+     * what it serves changed and record which version it served (ADR-0039).
      */
     public static Map<String, Object> asMap() {
+        Map<String, Object> content = content();
+        Map<String, Object> declaration = new LinkedHashMap<>();
+        declaration.put("version", CanonicalJson.version(content));
+        declaration.putAll(content);
+        return java.util.Collections.unmodifiableMap(declaration);
+    }
+
+    /** The version of the declaration this service serves. */
+    public static String version() {
+        return CanonicalJson.version(content());
+    }
+
+    private static Map<String, Object> content() {
         Map<String, Object> declaration = new LinkedHashMap<>();
         declaration.put("shape_version", SHAPE_VERSION);
         declaration.put("service", "dispatch");
         declaration.put("scheme", "dispatch");
         declaration.put("address_form", "dispatch://<scope>/<selector>/<number>.<sub>");
         declaration.put("technical_address_form", "dispatch://<uuid>");
+        declaration.put("effect_classes", java.util.Arrays.stream(EffectClass.values())
+            .map(Enum::name).toList());
         declaration.put("calls", callsAsMaps());
         declaration.put("reasons", reasonsAsMaps());
-        return Map.copyOf(declaration);
+        return declaration;
     }
 
     private static List<Map<String, Object>> callsAsMaps() {
         List<Map<String, Object>> calls = new ArrayList<>();
         for (ProcessVerb verb : ProcessVerb.values()) {
             Map<String, Object> call = new LinkedHashMap<>();
+            call.put("identity", verb.call());
             call.put("call", verb.call());
+            call.put("rest_name", verb.verb());
+            call.put("effect_class", verb.effectClass().name());
             call.put("transition", verb.isTransition());
-            call.put("description", verb.description());
             call.put("role", verb.roleName());
+            call.put("description", verb.description());
+            if (verb.isTransition()) {
+                call.put("next_step", NextList.does(verb.transition()));
+            }
             call.put("arguments", argumentsAsMaps(verb));
-            calls.add(Map.copyOf(call));
+            Map<String, Object> answer = new LinkedHashMap<>();
+            answer.put("shape", verb.answerShape().name());
+            answer.put("members", verb.answerShape().members());
+            call.put("answer", answer);
+            call.put("refusals", verb.refusals().stream().map(Enum::name).toList());
+            calls.add(call);
         }
         return List.copyOf(calls);
     }
@@ -109,28 +144,47 @@ public final class SurfaceDeclaration {
             declared.put("required", argument.required());
             declared.put("placement",
                 argument.placement().name().toLowerCase(java.util.Locale.ROOT));
+            if (!argument.required()) {
+                declared.put("default", Argument.UNSET.equals(argument.fallback())
+                    ? null : argument.fallback());
+            }
             declared.put("description", argument.description());
             if (argument.itemPattern() != null) {
                 declared.put("item_pattern", argument.itemPattern());
             }
             if (!argument.values().isEmpty()) {
                 declared.put("values", argument.valueNames());
+                declared.put("value_descriptions", argument.values().stream()
+                    .map(value -> {
+                        Map<String, Object> described = new LinkedHashMap<>();
+                        described.put("value", value.name());
+                        described.put("description", value.description());
+                        return described;
+                    })
+                    .toList());
             }
-            arguments.add(Map.copyOf(declared));
+            arguments.add(declared);
         }
         return List.copyOf(arguments);
     }
 
-    /** The reasons, each with its message pattern and its remedy. */
+    /** The reasons, each with its messages as their templates, and its remedy. */
     private static List<Map<String, Object>> reasonsAsMaps() {
         List<Map<String, Object>> reasons = new ArrayList<>();
         for (ReasonCatalogue.Reason reason : ReasonCatalogue.declared()) {
             Map<String, Object> declared = new LinkedHashMap<>();
             declared.put("reason", reason.code().name());
+            declared.put("message_pattern", reason.messages().get(0).template());
             declared.put("messages", reason.messages().stream()
-                .map(ReasonCatalogue.Message::template).toList());
+                .map(message -> {
+                    Map<String, Object> declaredMessage = new LinkedHashMap<>();
+                    declaredMessage.put("key", message.key());
+                    declaredMessage.put("template", message.template());
+                    return declaredMessage;
+                })
+                .toList());
             declared.put("remedy", reason.remedy());
-            reasons.add(Map.copyOf(declared));
+            reasons.add(declared);
         }
         return List.copyOf(reasons);
     }

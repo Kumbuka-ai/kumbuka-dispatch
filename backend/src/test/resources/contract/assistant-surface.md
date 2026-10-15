@@ -432,3 +432,19 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `routeOnATask` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: POST /api/<scope>/<selector>/<number>.<sub>:{call}.` |
 | `unexpectedFailure` | `UNEXPECTED_FAILURE` | `{call} failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |
 | `unexpectedFailureOfRequest` | `UNEXPECTED_FAILURE` | `The request failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |
+
+## 6. The declaration
+
+The service publishes its declaration on its REST surface at `GET /api/declaration`, for any
+authenticated caller, and the same declaration beside the assistant surface at `GET
+/mcp/declaration` (ADR-0039). Per call it states the identity `dispatch_<verb>` and the REST name,
+the effect class by the router's name (`ITEM_TRANSITION`, `COLLECTION_COMPOUND`, `CREATE`,
+`FIELD_WRITE`, `ITEM_DELETE`, `ITEM_READ`, `ITEM_READ_CALL`, `COLLECTION_READ`), the arguments with
+name, type, placement, requiredness, the default of an optional one (`null` where it sets
+nothing), the closed set of values with a description per value, the shape of the answer with its
+members, the reasons a refusal of the call may name, its description and, for a transition, the
+sentence of its step in `next`. Per reason it states the templates of its messages and its remedy.
+The whole carries `version`, `sha256:` and the hex digest of the declaration's canonical text --
+every member but the version, object members ordered by name, no whitespace -- which the answer
+also carries as its `ETag`.
+

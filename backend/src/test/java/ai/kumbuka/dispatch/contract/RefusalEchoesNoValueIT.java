@@ -52,6 +52,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 2026-10-13, which filled {@code {value}} into five patterns, this turns red
  * on {@code CLAIM_DURATION_INVALID}, {@code PAGE_SIZE_REJECTED}, {@code
  * CURSOR_MALFORMED}, {@code SORT_UNDECLARED} and {@code ARGUMENT_INVALID}.
+ *
+ * <p>Every refusal raised here is also held against the declaration on the
+ * REST surface: its code is one the declaration names for the call it
+ * refused. RED STATE, observed 2026-10-15: {@code SORT_UNDECLARED} left out
+ * of the declared set of {@code dispatch_query} turns this red on exactly
+ * that pair.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -63,6 +69,9 @@ class RefusalEchoesNoValueIT {
     @Inject TestIdentityAssociation identity;
 
     private final Map<RefusalCode, List<String>> raised = new EnumMap<>(RefusalCode.class);
+
+    /** Each refusal raised, as the call it refused and its code. */
+    private final List<String[]> refusedCalls = new ArrayList<>();
 
     @BeforeEach
     void stage() {
@@ -118,6 +127,7 @@ class RefusalEchoesNoValueIT {
             .post(SurfaceFixture.collection() + ":send");
         record(RefusalCode.CALL_NOT_AT_THIS_ADDRESS, notHere.jsonPath().getString("reason"),
             notHere.asString());
+        refusedCalls.add(new String[] {"dispatch_send", "CALL_NOT_AT_THIS_ADDRESS"});
 
         // -- about a task the caller may see ------------------------------
         String open = SurfaceFixture.address(SurfaceFixture.open("open", "code"));
@@ -180,6 +190,21 @@ class RefusalEchoesNoValueIT {
             }
         });
         assertThat(echoing).as("refusals that give back the value the caller sent").isEmpty();
+
+        // -- every code raised is one the declaration names for its call --
+        Map<String, Object> declaration = given().get("/api/declaration").jsonPath().getMap("$");
+        Map<String, List<String>> declared = new LinkedHashMap<>();
+        for (Object call : (List<?>) declaration.get("calls")) {
+            Map<?, ?> each = (Map<?, ?>) call;
+            declared.put(String.valueOf(each.get("identity")),
+                ((List<?>) each.get("refusals")).stream().map(String::valueOf).toList());
+        }
+        List<String> undeclared = refusedCalls.stream()
+            .filter(pair -> !declared.get(pair[0]).contains(pair[1]))
+            .map(pair -> pair[0] + " " + pair[1])
+            .toList();
+        assertThat(undeclared).as("refusals the declaration does not name for their call")
+            .isEmpty();
     }
 
     // =======================================================================
@@ -361,6 +386,7 @@ class RefusalEchoesNoValueIT {
     private void mcp(RefusalCode expected, String tool, Map<String, Object> arguments) {
         Response answer = Mcp.call(tool, arguments);
         record(expected, Mcp.reason(answer), answer.asString());
+        refusedCalls.add(new String[] {tool, expected.name()});
     }
 
     private void record(RefusalCode expected, String reason, String answer) {

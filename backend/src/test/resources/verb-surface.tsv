@@ -1,3 +1,9 @@
+# Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Kumbuka and is licensed under the GNU Affero
+# General Public License v3.0 only. See the LICENSE file in the
+# repository root for the full licence text.
+#
 # The REST surface of the dispatch service.
 #
 # THIS FILE IS THE EXPECTATION. It is written by hand from TAR-0004 section 3
@@ -78,3 +84,6 @@ binding	-	POST	/api/{scope}/{selector}/{id}	item	-
 extension	-	GET	/api/whoami	none	-
 extension	-	POST	/mcp	none	-
 extension	-	GET	/mcp/declaration	none	-
+# The declaration on the REST surface, which the router reads (ADR-0039): a read
+# of the scheme, effect-free.
+extension	-	GET	/api/declaration	none	-
