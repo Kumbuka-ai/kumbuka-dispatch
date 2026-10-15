@@ -104,37 +104,45 @@ class CallArgumentsTest {
     }
 
     // ======================================================================
-    // offenders: the arguments a refusal concerns, by name and never by value
+    // offenders: the arguments a refusal concerns, by name and never by value;
+    // an undeclared name is answered with the declared ones (DEC-0043 R19)
     // ======================================================================
 
     @Test
-    void unknown_arguments_are_named_together_in_offenders() {
+    void unknown_arguments_are_answered_with_the_arguments_the_call_accepts() {
         Map<String, Object> arguments = given(10);
         arguments.put("limit", "5");
         arguments.put("cursor", "secret-value");
 
         Refused refused = catchThrowableOfType(Refused.class,
-            () -> new CallArguments(ProcessVerb.QUERY, "dispatch_query", arguments));
+            () -> new CallArguments(ProcessVerb.QUERY, Surface.MCP, arguments));
 
         assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
         assertThat(refused.data()).containsEntry("attempted", "dispatch_query")
-            .containsEntry("offenders", List.of("limit", "cursor"));
-        assertThat(String.valueOf(refused.data())).doesNotContain("secret-value");
+            .containsEntry("accepts", List.of("scope", "selector", "state", "apparatus",
+                "bracket", "address", "page_size", "after", "sort", "direction"))
+            .doesNotContainKey("offenders");
+        assertThat(refused.getMessage() + refused.data())
+            .as("neither the unknown names nor their values come back")
+            .doesNotContain("limit").doesNotContain("cursor").doesNotContain("secret-value");
     }
 
     @Test
-    void an_unknown_argument_under_fields_is_named_with_its_path() {
+    void an_unknown_argument_under_fields_is_answered_with_the_fields_the_call_accepts() {
         Map<String, Object> arguments = new LinkedHashMap<>();
         arguments.put("address", "dispatch://probe-scope/sprint/1.0");
         arguments.put("conflict_token", "t");
         arguments.put("fields", Map.of("draft", "a text"));
 
         Refused refused = catchThrowableOfType(Refused.class,
-            () -> new CallArguments(ProcessVerb.UPDATE, "dispatch_update", arguments));
+            () -> new CallArguments(ProcessVerb.UPDATE, Surface.MCP, arguments));
 
         assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-        assertThat(refused.data()).containsEntry("offenders", List.of("fields.draft"));
-        assertThat(refused.getMessage()).contains("argument under fields named draft");
+        assertThat(refused.data()).containsEntry("accepts", List.of("fields.title",
+            "fields.apparatus", "fields.text", "fields.metadata"));
+        assertThat(refused.getMessage()).isEqualTo("dispatch_update takes these arguments "
+            + "under fields: fields.title, fields.apparatus, fields.text, fields.metadata.");
+        assertThat(refused.getMessage() + refused.data()).doesNotContain("draft");
     }
 
     @Test
@@ -143,11 +151,39 @@ class CallArgumentsTest {
         arguments.put("direction", "sideways");
 
         Refused refused = catchThrowableOfType(Refused.class,
-            () -> new CallArguments(ProcessVerb.QUERY, "dispatch_query", arguments));
+            () -> new CallArguments(ProcessVerb.QUERY, Surface.MCP, arguments));
 
         assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_INVALID);
         assertThat(refused.data()).containsEntry("offenders", List.of("direction"));
-        assertThat(refused.data().values()).doesNotContain("sideways");
+        assertThat(refused.getMessage() + refused.data()).doesNotContain("sideways");
+    }
+
+    @Test
+    void a_sort_outside_its_values_is_undeclared_and_names_sort() {
+        Map<String, Object> arguments = given(10);
+        arguments.put("sort", "title");
+
+        Refused refused = catchThrowableOfType(Refused.class,
+            () -> new CallArguments(ProcessVerb.QUERY, Surface.MCP, arguments));
+
+        assertThat(refused.code()).isEqualTo(RefusalCode.SORT_UNDECLARED);
+        assertThat(refused.data()).containsEntry("offenders", List.of("sort"));
+        assertThat(refused.getMessage() + refused.data()).doesNotContain("title");
+    }
+
+    @Test
+    void a_value_of_a_list_that_is_no_string_is_named_by_its_position() {
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("address", "dispatch://probe-scope/sprint/1.0");
+        arguments.put("receipt", "r");
+        arguments.put("fields", Map.of("question", "q", "options",
+            java.util.Arrays.asList("yes", 7, "no")));
+
+        Refused refused = catchThrowableOfType(Refused.class,
+            () -> new CallArguments(ProcessVerb.ASK, Surface.MCP, arguments));
+
+        assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_INVALID);
+        assertThat(refused.data()).containsEntry("offenders", List.of("fields.options[1]"));
     }
 
     @Test
@@ -156,7 +192,7 @@ class CallArgumentsTest {
         arguments.put("scope", "probe-scope");
 
         Refused refused = catchThrowableOfType(Refused.class,
-            () -> new CallArguments(ProcessVerb.QUERY, "dispatch_query", arguments));
+            () -> new CallArguments(ProcessVerb.QUERY, Surface.MCP, arguments));
 
         assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_MISSING);
         assertThat(refused.data()).containsEntry("offenders", List.of("selector"));
@@ -164,27 +200,94 @@ class CallArgumentsTest {
 
     @Test
     void the_refusals_of_the_page_name_their_one_argument() {
-        assertThat(Refused.pageSizeRejected("q", 200).data())
+        VerbName q = VerbName.of(ProcessVerb.QUERY, Surface.MCP);
+        assertThat(Refused.pageSizeRejected(q, path("page_size")).data())
             .containsEntry("offenders", List.of("page_size"));
-        assertThat(Refused.cursorMalformed("q", "dispatch_query").data())
+        assertThat(Refused.cursorMalformed(q, q, path("after")).data())
             .containsEntry("offenders", List.of("after"));
-        assertThat(Refused.cursorForeign("q", List.of("scope")).data())
+        assertThat(Refused.cursorForeign(q, List.of(), path("after")).data())
             .containsEntry("offenders", List.of("after"));
-        assertThat(Refused.sortUndeclared("q", List.of("id", "created_at")).data())
+        assertThat(Refused.sortUndeclared(q, path("sort")).data())
             .containsEntry("offenders", List.of("sort"));
     }
 
     @Test
-    void an_unknown_call_is_no_argument_and_names_no_offenders() {
-        Refused refused = Refused.callUnknown("dispatch_list", "call", "dispatch_list",
-            List.of("dispatch_query"));
+    void an_unknown_call_is_answered_with_the_calls_there_are() {
+        Refused refused = Refused.callUnknown(VerbName.all(Surface.MCP));
 
         assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-        assertThat(refused.data()).containsOnlyKeys("attempted");
+        assertThat(refused.data()).containsOnlyKeys("accepts");
+        @SuppressWarnings("unchecked")
+        List<String> accepts = (List<String>) refused.data().get("accepts");
+        assertThat(accepts).hasSize(25).contains("dispatch_claim", "dispatch_query");
+    }
+
+    // ======================================================================
+    // null is an argument not sent (DEC-0043 R17)
+    // ======================================================================
+
+    @Test
+    void an_optional_argument_sent_as_null_takes_its_fallback() {
+        Map<String, Object> arguments = given(null);
+        arguments.put("sort", null);
+        arguments.put("after", null);
+
+        CallArguments read = new CallArguments(ProcessVerb.QUERY, Surface.MCP, arguments);
+
+        assertThat(read.wholeNumber("page_size")).isNull();
+        assertThat(read.top("sort")).isNull();
+        assertThat(read.top("after")).isNull();
+    }
+
+    @Test
+    void a_required_argument_sent_as_null_is_missing() {
+        Map<String, Object> arguments = given(10);
+        arguments.put("selector", null);
+
+        Refused refused = catchThrowableOfType(Refused.class,
+            () -> new CallArguments(ProcessVerb.QUERY, Surface.MCP, arguments));
+
+        assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_MISSING);
+        assertThat(refused.data()).containsEntry("offenders", List.of("selector"));
+    }
+
+    @Test
+    void an_undeclared_name_sent_as_null_is_no_argument() {
+        Map<String, Object> arguments = given(10);
+        arguments.put("limit", null);
+
+        CallArguments read = new CallArguments(ProcessVerb.QUERY, Surface.MCP, arguments);
+
+        assertThat(read.wholeNumber("page_size")).isEqualTo(10L);
+    }
+
+    @Test
+    void fields_sent_as_null_are_no_fields_and_a_null_under_fields_is_absent() {
+        Map<String, Object> create = new LinkedHashMap<>();
+        create.put("scope", "probe-scope");
+        create.put("selector", "sprint");
+        create.put("fields", null);
+        Refused withoutFields = catchThrowableOfType(Refused.class,
+            () -> new CallArguments(ProcessVerb.CREATE, Surface.MCP, create));
+        assertThat(withoutFields.code()).isEqualTo(RefusalCode.ARGUMENT_MISSING);
+        assertThat(withoutFields.data()).containsEntry("offenders", List.of("fields.title"));
+
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("title", "a title");
+        fields.put("apparatus", "code");
+        fields.put("text", null);
+        fields.put("undeclared", null);
+        create.put("fields", fields);
+        CallArguments read = new CallArguments(ProcessVerb.CREATE, Surface.MCP, create);
+        assertThat(read.field("text")).isNull();
+    }
+
+    private static ArgumentPath path(String name) {
+        return ArgumentPath.of(ProcessVerb.QUERY.argument(name, Argument.Placement.TOP));
     }
 
     private static CallArguments query(Object pageSize) {
-        return new CallArguments(ProcessVerb.QUERY, "dispatch_query", given(pageSize));
+        return new CallArguments(ProcessVerb.QUERY, Surface.MCP, given(pageSize));
     }
 
     private static Map<String, Object> given(Object pageSize) {

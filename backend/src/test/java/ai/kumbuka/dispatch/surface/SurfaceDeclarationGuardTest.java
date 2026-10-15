@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import org.junit.jupiter.api.Test;
@@ -52,19 +59,19 @@ class SurfaceDeclarationGuardTest {
             .hasMessageContaining("NOT_THE_HOLDER");
     }
 
-    /** A declared reason with a blank pattern is refused the same way. */
+    /** A declared reason with no message is refused the same way. */
     @Test
-    void a_reason_with_a_blank_pattern_refuses_the_start() {
+    void a_reason_with_no_message_refuses_the_start() {
         Map<RefusalCode, ReasonCatalogue.Reason> blanked =
             new LinkedHashMap<>(ReasonCatalogue.byCode());
         blanked.put(RefusalCode.NOT_FOUND,
-            new ReasonCatalogue.Reason(RefusalCode.NOT_FOUND, "  ", "check scope"));
+            new ReasonCatalogue.Reason(RefusalCode.NOT_FOUND, List.of(), "check scope"));
 
         assertThatThrownBy(() -> SurfaceDeclaration.requireServable(blanked))
-            .as("RED STATE, observed: a reason declared with a blank pattern refuses the "
+            .as("RED STATE, observed: a reason declared with no message refuses the "
                 + "start — a refusal nobody could word is not a declared refusal")
             .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("without a pattern");
+            .hasMessageContaining("without a message");
     }
 
     /** Two calls under one name are refused: a flat tool list reaches one of them only. */
@@ -110,14 +117,14 @@ class SurfaceDeclarationGuardTest {
      * An argument with no description is refused, because the description is
      * what a refusal says the value IS.
      *
-     * <p>{@code ARGUMENT_MISSING} renders "{@code <call> needs <name>: <what>}"
-     * and the {@code what} is this text. Without it the refusal stops exactly
-     * where the caller needed it to start.
+     * <p>The declaration is what a caller reads to learn what an argument is;
+     * an {@code ARGUMENT_MISSING} names the argument and leaves the rest to
+     * it. Without a description the caller has nothing to fill it with.
      */
     @Test
     void an_argument_with_no_description_refuses_the_start() {
         assertThatThrownBy(() -> SurfaceDeclaration.requireDescribedArguments(
-            "dispatch_something", List.of(Argument.top("address", "string", true, "  "))))
+            "dispatch_something", List.of(Argument.top("address", "string", "  "))))
             .as("RED STATE, observed: an argument with no description refuses the start, "
                 + "and names the argument")
             .isInstanceOf(IllegalStateException.class)

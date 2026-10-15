@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import org.jboss.logging.Logger;
@@ -8,7 +15,8 @@ import java.util.UUID;
  * The one place an {@code UNEXPECTED_FAILURE} is minted, so that its reference
  * is always in the log.
  *
- * <p>The refusal tells the caller "Report reference {@code <ref>}", and section
+ * <p>The refusal tells the caller to report the reference in {@code
+ * data.reference}, and section
  * 4.4 makes that a promise about the service and not only about the message:
  * the reference "is written to the service's log with the failure, on every
  * path that raises it". Measured in review on 2026-09-19 it was not — six throw sites
@@ -37,20 +45,24 @@ public final class UnexpectedFailures {
     /**
      * Records the failure and answers the caller with its reference.
      *
-     * @param cause what actually went wrong, or null where the failure arrived
-     *              as a typed refusal the surface cannot serve. Logged, never
-     *              sent: a stack trace is both unreadable to a caller and a
-     *              disclosure.
+     * @param call    the call, or null for a request that reached no call
+     * @param address where the call was made, for the log line alone: the
+     *                refusal names no address
+     * @param cause   what actually went wrong, or null where the failure
+     *                arrived as a typed refusal the surface cannot serve.
+     *                Logged, never sent: a stack trace is both unreadable to a
+     *                caller and a disclosure.
      */
-    public static Refused refuse(String call, String address, Throwable cause) {
+    public static Refused refuse(VerbName call, String address, Throwable cause) {
+        String named = call == null ? "this request" : call.toString();
         String reference = UUID.randomUUID().toString();
         if (cause == null) {
-            LOG.errorf("unexpected failure on %s at %s, reference %s", call, address,
+            LOG.errorf("unexpected failure on %s at %s, reference %s", named, address,
                 reference);
         } else {
-            LOG.errorf(cause, "unexpected failure on %s at %s, reference %s", call, address,
+            LOG.errorf(cause, "unexpected failure on %s at %s, reference %s", named, address,
                 reference);
         }
-        return Refused.unexpected(call, address, reference);
+        return Refused.unexpected(call, reference);
     }
 }

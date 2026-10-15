@@ -71,10 +71,12 @@ class RemedyIsAnInstructionTest {
         }
         sentences.put("read_text for the commissioner", NextList.READ_THE_ANSWER);
         @SuppressWarnings("unchecked")
-        List<NextList.Step> drawn = (List<NextList.Step>) Refused.nothingToTake(
-            "dispatch_claim_next", "dispatch://probe/sprint", "dispatch_query")
+        List<Map<String, String>> drawn = (List<Map<String, String>>) Refused.nothingToTake(
+            VerbName.of(ProcessVerb.CLAIM_NEXT, Surface.MCP),
+            VerbName.of(ProcessVerb.QUERY, Surface.MCP))
             .data().get(Refused.NEXT);
-        drawn.forEach(step -> sentences.put(step.call() + " after an empty draw", step.does()));
+        drawn.forEach(step -> sentences.put(step.get("call") + " after an empty draw",
+            step.get("does")));
 
         Map<String, String> negated = new LinkedHashMap<>();
         sentences.forEach((step, sentence) -> {

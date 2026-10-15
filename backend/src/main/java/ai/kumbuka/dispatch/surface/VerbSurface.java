@@ -149,16 +149,14 @@ public class VerbSurface {
      * which refuses it by its state.
      */
     @Transactional
-    public Result annotate(Actor actor, Item at, TextType part, String text, String call,
-                           IdempotencyKey key) {
+    public Result annotate(Actor actor, Item at, TextType part, String text, VerbName call,
+                           ArgumentPath partPath, IdempotencyKey key) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
         TaskView head = tasks.read(scopeId, at.address(), actor);
         boolean written = head.texts().stream()
             .anyMatch(x -> x.type() == part && x.addendumSuffix() == null);
         if (!written && head.state() != TaskState.DRAFT) {
-            throw Refused.argumentInvalid(call, "part",
-                at.complete() + " has no " + part.wireName() + " text for an addendum to "
-                    + "supplement");
+            throw Refused.argumentInvalid(call, partPath, Form.ADDENDUM_TARGET);
         }
         return new Result(at.scope(),
             tasks.annotate(scopeId, at.address(), part, text, actor, key));

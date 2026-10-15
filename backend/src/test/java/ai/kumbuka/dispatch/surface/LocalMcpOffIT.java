@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.adapter.mcp.McpAdapter;
@@ -121,7 +128,9 @@ class LocalMcpOffIT {
 
         assertThat(refused.statusCode()).isEqualTo(400);
         assertThat(refused.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
-        assertThat(refused.jsonPath().getString("message")).contains("invented");
+        assertThat(refused.jsonPath().getString("message")).doesNotContain("invented");
+        assertThat(refused.jsonPath().getList("data.accepts", String.class))
+            .contains("scope", "selector", "fields");
         assertThat(Writes.snapshot()).as("and it wrote nothing").isEqualTo(before);
     }
 }

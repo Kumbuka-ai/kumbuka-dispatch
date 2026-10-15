@@ -48,6 +48,23 @@ the caller takes, and so is the sentence of every step in `next`. The
 descriptions of the calls are left as they were: their wording follows a
 decision of its own.
 
+## The amendment of 2026-10-15: the platform's vocabulary, and null
+
+Rewritten from DEC-0043 R17 to R19 and DEC-0042 as ratified on 2026-10-15
+(platform-specs PR #9). JSON `null` on an argument is the argument absent, and
+every optional argument's description names its fallback. A refusal repeats
+neither the caller's input nor the tenant's vocabulary: no message names a
+scope, a bracket kind, an address, a state, a conflict token or the instant of
+a deferral, and each points at the member of `data` or the read that shows
+it. A name a call does not declare is answered with the names it does declare,
+under `data.accepts`, and a wrong value of several is named by its position.
+Each refusal is now worded from one of several declared messages, so the
+table lists messages beside the reasons they are raised under, and the forms
+an argument takes are a declared set of their own. The first entry of `next`
+after a claim is concept section 3.5 as amended on the same branch. The
+descriptions of the calls are left as they were; their positive wording
+follows in the next change.
+
 ## What is word for word, and what is not
 
 The descriptions of `dispatch_claim` and `dispatch_claim_next`, the description

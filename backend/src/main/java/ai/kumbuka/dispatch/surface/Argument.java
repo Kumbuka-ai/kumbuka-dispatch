@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import java.util.List;
@@ -26,11 +33,25 @@ import java.util.List;
  *                    malformed element before sending it; the surface enforces
  *                    the same rule
  * @param values      the closed set of values a {@link #STRING} argument takes,
- *                    or empty where it takes any string. Published as the
- *                    schema's {@code enum} and enforced by the surface
+ *                    each with what it means, or empty where it takes any
+ *                    string. Published as the schema's {@code enum} and
+ *                    enforced by the surface
+ * @param fallback    the value an optional argument takes when it is left out
+ *                    or sent as {@code null} (DEC-0043 R17), as the
+ *                    declaration publishes it; null for a required argument
  */
 public record Argument(String name, String type, boolean required, Placement placement,
-                       String description, String itemPattern, List<String> values) {
+                       String description, String itemPattern, List<Value> values,
+                       String fallback) {
+
+    /**
+     * One value of a closed set, and what choosing it means.
+     *
+     * @param name        the value on the wire
+     * @param description what the value selects
+     */
+    public record Value(String name, String description) {
+    }
 
     /**
      * The JSON Schema type of nearly every argument: an address, a receipt and
@@ -50,6 +71,14 @@ public record Argument(String name, String type, boolean required, Placement pla
 
     /** A whole number: the page bound of a listing. */
     public static final String INTEGER = "integer";
+
+    /**
+     * The fallback of an optional argument that sets nothing when it is left
+     * out: the call proceeds as if the argument did not exist. Published as a
+     * {@code default} of JSON {@code null}; the description says what the
+     * call does then.
+     */
+    public static final String UNSET = "";
 
     /** Where an argument sits in the call. */
     public enum Placement {
@@ -72,29 +101,63 @@ public record Argument(String name, String type, boolean required, Placement pla
 
     public Argument {
         values = List.copyOf(values);
+        if (required && fallback != null) {
+            throw new IllegalArgumentException(name + " is required and declares a fallback");
+        }
+        if (!required && fallback == null) {
+            throw new IllegalArgumentException(name + " is optional and declares no fallback: "
+                + "DEC-0043 R17 has every optional argument name the value it takes when left "
+                + "out or sent as null");
+        }
     }
 
-    public static Argument top(String name, String type, boolean required, String description) {
-        return new Argument(name, type, required, Placement.TOP, description, null, List.of());
+    /** A required top-level argument. */
+    public static Argument top(String name, String type, String description) {
+        return new Argument(name, type, true, Placement.TOP, description, null, List.of(),
+            null);
     }
 
-    public static Argument field(String name, String type, boolean required,
+    /** An optional top-level argument and the value it takes when left out or null. */
+    public static Argument top(String name, String type, String fallback,
+                               String description) {
+        return new Argument(name, type, false, Placement.TOP, description, null, List.of(),
+            fallback);
+    }
+
+    /** A required argument under {@code fields}. */
+    public static Argument field(String name, String type, String description) {
+        return new Argument(name, type, true, Placement.FIELDS, description, null, List.of(),
+            null);
+    }
+
+    /** An optional argument under {@code fields} and the value it takes when left out or null. */
+    public static Argument field(String name, String type, String fallback,
                                  String description) {
-        return new Argument(name, type, required, Placement.FIELDS, description, null,
-            List.of());
+        return new Argument(name, type, false, Placement.FIELDS, description, null, List.of(),
+            fallback);
     }
 
-    /** A top-level list of strings, every element of which obeys one pattern. */
-    public static Argument topList(String name, boolean required, String itemPattern,
-                                   String description) {
-        return new Argument(name, ARRAY, required, Placement.TOP, description, itemPattern,
-            List.of());
+    /** A required top-level list of strings, every element of which obeys one pattern. */
+    public static Argument topList(String name, String itemPattern, String description) {
+        return new Argument(name, ARRAY, true, Placement.TOP, description, itemPattern,
+            List.of(), null);
     }
 
-    /** A string that takes one of a closed set of values. */
-    public static Argument oneOf(String name, Placement placement, boolean required,
-                                 List<String> values, String description) {
-        return new Argument(name, STRING, required, placement, description, null, values);
+    /** A string that takes one of a closed set of values; fallback null where it is required. */
+    public static Argument oneOf(String name, Placement placement, String fallback,
+                                 List<Value> values, String description) {
+        return new Argument(name, STRING, fallback == null, placement, description, null,
+            values, fallback);
+    }
+
+    /** One value of a closed set. */
+    public static Value value(String name, String description) {
+        return new Value(name, description);
+    }
+
+    /** The names of the closed set of values, in their declared order; empty where there is none. */
+    public List<String> valueNames() {
+        return values.stream().map(Value::name).toList();
     }
 
     public boolean isField() {

@@ -7,8 +7,6 @@
  */
 package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.domain.PageRequest;
-
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.LinkedHashMap;
@@ -31,6 +29,13 @@ import java.util.regex.Pattern;
  * before that walk finishes, which is what "nothing was written" in an
  * argument refusal is a statement about.
  *
+ * <p><strong>{@code null} is absent</strong> (DEC-0043 R17). An argument sent
+ * as JSON {@code null} is dropped before anything is checked, at the top and
+ * under {@code fields}, and {@code fields} sent as {@code null} is no {@code
+ * fields}: an optional argument then takes its declared fallback, a required
+ * one is refused as missing, and a name the call does not declare is not
+ * refused at all, exactly as if the caller had left it out.
+ *
  * <p>Both surfaces build the same map — MCP from the tool call's arguments,
  * REST from the path, the {@code If-Match} header, the query and the body — so
  * a call is closed against one declaration whichever way it arrived. A schema
@@ -41,8 +46,11 @@ public final class CallArguments {
     /** The one nested object a call may carry, by the name DEC-0040 gives it. */
     public static final String FIELDS = "fields";
 
-    /** The page bound of a listing: the one argument whose value refusal has its own code. */
+    /** The page bound of a listing: an argument whose value refusal has its own code. */
     public static final String PAGE_SIZE = "page_size";
+
+    /** The order of a listing: an argument whose value refusal has its own code. */
+    public static final String SORT = "sort";
 
     private static final BigDecimal LONG_MAX = BigDecimal.valueOf(Long.MAX_VALUE);
     private static final BigDecimal LONG_MIN = BigDecimal.valueOf(Long.MIN_VALUE);
@@ -51,7 +59,7 @@ public final class CallArguments {
     private static final int MAX_LONG_DIGITS = 18;
 
     private final ProcessVerb verb;
-    private final String call;
+    private final VerbName call;
     private final Map<String, Object> top;
     private final Map<String, Object> written;
 
@@ -59,15 +67,18 @@ public final class CallArguments {
      * Reads the arguments of one call, refusing anything the declaration does
      * not admit.
      *
-     * @param call the call's name as the caller made it, for the refusal
+     * @param surface the surface the call arrived on, which names it in a
+     *                refusal
      * @throws Refused {@code ARGUMENT_UNKNOWN}, {@code ARGUMENT_INVALID} or
      *                 {@code ARGUMENT_MISSING}, naming the argument; {@code
-     *                 PAGE_SIZE_REJECTED} for a page size that is no whole number
+     *                 PAGE_SIZE_REJECTED} for a page size that is no whole
+     *                 number, {@code SORT_UNDECLARED} for a sort the listing
+     *                 does not declare
      */
-    public CallArguments(ProcessVerb verb, String call, Map<String, Object> arguments) {
+    public CallArguments(ProcessVerb verb, Surface surface, Map<String, Object> arguments) {
         this.verb = verb;
-        this.call = call;
-        this.top = arguments == null ? Map.of() : new LinkedHashMap<>(arguments);
+        this.call = VerbName.of(verb, surface);
+        this.top = present(arguments);
         this.written = nestedFields();
 
         refuseUndeclared();
@@ -75,39 +86,51 @@ public final class CallArguments {
         refuseMissing();
     }
 
-    @SuppressWarnings("unchecked")
+    /** The members of one level that carry a value: a {@code null} is a member not sent. */
+    private static Map<String, Object> present(Map<?, ?> level) {
+        Map<String, Object> carried = new LinkedHashMap<>();
+        if (level != null) {
+            level.forEach((name, value) -> {
+                if (value != null) {
+                    carried.put(String.valueOf(name), value);
+                }
+            });
+        }
+        return carried;
+    }
+
     private Map<String, Object> nestedFields() {
         Object nested = top.get(FIELDS);
         if (nested == null || !verb.hasFields()) {
             return Map.of();
         }
-        if (!(nested instanceof Map)) {
-            throw Refused.argumentInvalid(call, FIELDS,
-                "it carries the values this call writes, and is an object");
+        if (!(nested instanceof Map<?, ?> map)) {
+            throw Refused.argumentInvalid(call, ArgumentPath.FIELDS, Form.FIELDS_OBJECT);
         }
-        Map<String, Object> carried = new LinkedHashMap<>();
-        ((Map<Object, Object>) nested).forEach((k, v) -> carried.put(String.valueOf(k), v));
-        return carried;
+        return present(map);
     }
 
     private void refuseUndeclared() {
-        refuseUndeclared(top, verb.topNames(), "argument", "");
+        List<ArgumentPath> topLevel = new java.util.ArrayList<>(
+            ArgumentPath.of(verb.topArguments()));
+        if (verb.hasFields()) {
+            topLevel.add(ArgumentPath.FIELDS);
+        }
+        refuseUndeclared(top, verb.topNames(), false, topLevel);
         refuseUndeclared(written, verb.fieldArguments().stream().map(Argument::name).toList(),
-            "argument under fields", FIELDS + ".");
+            true, ArgumentPath.of(verb.fieldArguments()));
     }
 
     /**
-     * Refuses every name of one level the declaration does not hold, in one
-     * refusal; {@code path} is what {@code offenders} writes before each.
+     * Refuses a level that carries a name the declaration does not hold. The
+     * refusal names none of them (DEC-0043 R19): it lists what the level
+     * accepts.
      */
-    private void refuseUndeclared(Map<String, Object> level, List<String> declared, String kind,
-                                  String path) {
-        List<String> undeclared = level.keySet().stream()
-            .filter(name -> !declared.contains(name))
-            .toList();
-        if (!undeclared.isEmpty()) {
-            throw Refused.argumentUnknown(call, kind, undeclared,
-                undeclared.stream().map(name -> path + name).toList(), declared);
+    private void refuseUndeclared(Map<String, Object> level, List<String> declared,
+                                  boolean underFields, List<ArgumentPath> accepts) {
+        boolean undeclared = level.keySet().stream().anyMatch(name -> !declared.contains(name));
+        if (undeclared) {
+            throw Refused.argumentUnknown(call, underFields, accepts);
         }
     }
 
@@ -117,46 +140,67 @@ public final class CallArguments {
             if (value == null) {
                 continue;
             }
-            String why = mistyped(argument, value);
-            if (why != null && PAGE_SIZE.equals(argument.name())) {
+            Form form = mistyped(argument, value);
+            if (form == null) {
+                continue;
+            }
+            if (PAGE_SIZE.equals(argument.name())) {
                 // ADR-0049: every page size a listing cannot take is refused
                 // as one, a value that is no whole number as much as one out
                 // of bounds, so a caller correcting it branches on one code.
-                throw Refused.pageSizeRejected(call, PageRequest.MAX_PAGE_SIZE);
+                throw Refused.pageSizeRejected(call, ArgumentPath.of(argument));
             }
-            if (why != null) {
-                throw Refused.argumentInvalid(call, pathOf(argument), why);
+            if (SORT.equals(argument.name()) && form == Form.ONE_OF) {
+                // ADR-0049: a sort the listing does not declare has its own code.
+                throw Refused.sortUndeclared(call, ArgumentPath.of(argument));
             }
+            throw Refused.argumentInvalid(call, positionOf(argument, value), form);
         }
     }
 
-    private static String mistyped(Argument argument, Object value) {
+    private static Form mistyped(Argument argument, Object value) {
         return switch (argument.type()) {
             case Argument.STRING -> {
                 if (value instanceof Map || value instanceof List) {
-                    yield "it is a string";
+                    yield Form.STRING;
                 }
                 if (!argument.values().isEmpty()
-                        && !argument.values().contains(String.valueOf(value))) {
-                    yield "it is one of " + String.join(", ", argument.values());
+                        && !argument.valueNames().contains(String.valueOf(value))) {
+                    yield Form.ONE_OF;
                 }
                 yield null;
             }
             case Argument.ARRAY -> value instanceof List<?> list
                     && list.stream().allMatch(String.class::isInstance)
                 ? null
-                : "it is a list of strings, even when it carries one value";
-            case Argument.OBJECT -> value instanceof Map ? null : "it is an object";
+                : Form.LIST_OF_STRINGS;
+            case Argument.OBJECT -> value instanceof Map ? null : Form.OBJECT;
             case Argument.BOOLEAN -> value instanceof Boolean
                     || "true".equals(value) || "false".equals(value)
                 ? null
-                : "it is true or false";
+                : Form.BOOLEAN;
             // Whether the number is one the call can take is the call's own
             // refusal: a page size outside its bounds is refused as one, and
             // so is one that is no whole number (refuseMistyped).
-            case Argument.INTEGER -> wholeOf(value) == null ? "it is a whole number" : null;
-            default -> "its declared type is " + argument.type();
+            case Argument.INTEGER -> wholeOf(value) == null ? Form.WHOLE_NUMBER : null;
+            default -> throw new IllegalStateException(
+                argument.name() + " is declared with a type the surface does not read");
         };
+    }
+
+    /**
+     * Where a refused value stands: the argument, and for a list the position
+     * of the first element that is no string (DEC-0043 R19).
+     */
+    private static ArgumentPath positionOf(Argument argument, Object value) {
+        if (Argument.ARRAY.equals(argument.type()) && value instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                if (!(list.get(i) instanceof String)) {
+                    return ArgumentPath.of(argument, i);
+                }
+            }
+        }
+        return ArgumentPath.of(argument);
     }
 
     private void refuseMissing() {
@@ -169,7 +213,7 @@ public final class CallArguments {
                 || (value instanceof String s && s.isBlank())
                 || (value instanceof List<?> l && l.isEmpty());
             if (absent) {
-                throw Refused.argumentMissing(call, pathOf(argument), argument.description());
+                throw Refused.argumentMissing(call, ArgumentPath.of(argument));
             }
         }
     }
@@ -178,18 +222,32 @@ public final class CallArguments {
         return argument.isField() ? written : top;
     }
 
-    /** An argument's name as a refusal names it: under {@code fields}, with its path. */
-    private static String pathOf(Argument argument) {
-        return argument.isField() ? FIELDS + "." + argument.name() : argument.name();
-    }
-
     // ======================================================================
     // Reading values. Every one of them has passed the three checks above.
     // ======================================================================
 
-    /** The call's name as the caller made it. */
-    public String call() {
+    /** The call's name on the surface it arrived on, as a refusal names it. */
+    public VerbName call() {
         return call;
+    }
+
+    /** The declared argument of this name at one level; a defect where there is none. */
+    public Argument declared(String name, Argument.Placement placement) {
+        Argument argument = verb.argument(name, placement);
+        if (argument == null) {
+            throw new IllegalStateException(verb.call() + " declares no " + name);
+        }
+        return argument;
+    }
+
+    /** The path of the declared top-level argument of this name. */
+    public ArgumentPath topPath(String name) {
+        return ArgumentPath.of(declared(name, Argument.Placement.TOP));
+    }
+
+    /** The path of the declared argument of this name under {@code fields}. */
+    public ArgumentPath fieldPath(String name) {
+        return ArgumentPath.of(declared(name, Argument.Placement.FIELDS));
     }
 
     public ProcessVerb verb() {

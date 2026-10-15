@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import java.util.ArrayList;
@@ -107,7 +114,7 @@ public final class SurfaceDeclaration {
                 declared.put("item_pattern", argument.itemPattern());
             }
             if (!argument.values().isEmpty()) {
-                declared.put("values", argument.values());
+                declared.put("values", argument.valueNames());
             }
             arguments.add(Map.copyOf(declared));
         }
@@ -120,7 +127,8 @@ public final class SurfaceDeclaration {
         for (ReasonCatalogue.Reason reason : ReasonCatalogue.declared()) {
             Map<String, Object> declared = new LinkedHashMap<>();
             declared.put("reason", reason.code().name());
-            declared.put("message_pattern", reason.pattern());
+            declared.put("messages", reason.messages().stream()
+                .map(ReasonCatalogue.Message::pattern).toList());
             declared.put("remedy", reason.remedy());
             reasons.add(Map.copyOf(declared));
         }

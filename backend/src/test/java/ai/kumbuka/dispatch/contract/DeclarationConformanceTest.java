@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.contract;
 
 import ai.kumbuka.dispatch.adapter.mcp.McpTools;
@@ -5,6 +12,7 @@ import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.ReasonCatalogue;
 import ai.kumbuka.dispatch.surface.RefusalCode;
+import ai.kumbuka.dispatch.surface.Form;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.SurfaceDeclaration;
 import org.junit.jupiter.api.Test;
@@ -176,16 +184,33 @@ class DeclarationConformanceTest {
             .as("every reason of the table is declared, and no other")
             .containsExactlyInAnyOrderElementsOf(Contract.declaredReasons());
         for (RefusalCode code : RefusalCode.values()) {
-            assertThat(ReasonCatalogue.of(code).pattern())
-                .as("the pattern of %s", code)
-                .isEqualTo(Contract.patternOf(code.name()));
             assertThat(ReasonCatalogue.of(code).remedy())
                 .as("the remedy of %s", code)
                 .isEqualTo(Contract.remedyOf(code.name()));
         }
-        assertThat(Contract.text())
-            .as("and the terminal variant of the state refusal")
-            .contains(ReasonCatalogue.TERMINAL_STATE_PATTERN);
+        Map<String, String[]> messages = Contract.messages();
+        assertThat(Arrays.stream(ReasonCatalogue.Message.values()).map(Enum::name).toList())
+            .as("every message of the table is declared, and no other")
+            .containsExactlyInAnyOrderElementsOf(messages.keySet());
+        for (ReasonCatalogue.Message message : ReasonCatalogue.Message.values()) {
+            assertThat(message.code().name())
+                .as("the reason %s is raised under", message)
+                .isEqualTo(messages.get(message.name())[0]);
+            assertThat(message.pattern())
+                .as("the pattern of %s", message)
+                .isEqualTo(messages.get(message.name())[1]);
+        }
+    }
+
+    @Test
+    void the_forms_an_argument_takes_are_the_contract_copy_s() {
+        Map<String, String[]> forms = Contract.forms();
+        assertThat(Arrays.stream(Form.values()).map(Enum::name).toList())
+            .containsExactlyInAnyOrderElementsOf(forms.keySet());
+        for (Form form : Form.values()) {
+            assertThat(form.text()).as("the text of %s", form)
+                .isEqualTo(forms.get(form.name())[0]);
+        }
     }
 
     @Test

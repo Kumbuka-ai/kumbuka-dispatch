@@ -110,15 +110,15 @@ class EveryRefusalIT {
             with(with(collection, "after", cursor), "sort", "created_at")));
         assertThat(foreign.get("reason")).isEqualTo("CURSOR_FOREIGN");
         assertThat(foreign.get("message"))
-            .isEqualTo("dispatch_query carries a cursor of another listing: its sort is not "
-                + "the one this call asks for. A cursor continues only the listing that "
-                + "handed it out.");
+            .isEqualTo("dispatch_query carries a cursor of another listing: it was handed out "
+                + "for other values of sort. A cursor continues only the listing that handed it "
+                + "out.");
 
         Map<String, Object> sort = Mcp.refusal(Mcp.call("dispatch_query",
             with(collection, "sort", "uuid")));
         assertThat(sort.get("reason")).isEqualTo("SORT_UNDECLARED");
         assertThat(sort.get("message"))
-            .isEqualTo("sort is not valid for dispatch_query: it is one of id, created_at.");
+            .isEqualTo("sort is not valid for dispatch_query: it takes id or created_at.");
 
         for (Map<String, Object> refusal : List.of(size, malformed, foreign, sort)) {
             assertThat(data(refusal)).as("the call, and no state: %s", refusal)
@@ -142,7 +142,11 @@ class EveryRefusalIT {
 
         assertThat(refusal.get("reason")).isEqualTo("STATE_DOES_NOT_ALLOW");
         assertThat(String.valueOf(refusal.get("message")))
-            .contains("dispatch_send", address, "open", "only in draft");
+            .as("the call, where its state stands, and the calls there are -- and neither the "
+                + "address the caller named nor the state, which data.state carries")
+            .isEqualTo("dispatch_send is not possible in the task's present state, which "
+                + "data.state shows. You can make: dispatch_withdraw.")
+            .doesNotContain(address);
         Map<String, Object> data = data(refusal);
         assertThat(data.get("attempted")).isEqualTo("dispatch_send");
         assertThat(data.get("state")).isEqualTo("open");
@@ -162,7 +166,10 @@ class EveryRefusalIT {
 
         assertThat(refusal.get("reason")).isEqualTo("STATE_DOES_NOT_ALLOW");
         assertThat(String.valueOf(refusal.get("message")))
-            .contains("on_hold (question)", "dependency or something external");
+            .startsWith("dispatch_resume is not possible in the task's present state");
+        assertThat(data(refusal).get("state"))
+            .as("the hold reason stands in the state the refusal carries")
+            .isEqualTo("on_hold (question)");
         assertThat(String.valueOf(data(refusal).get("next")))
             .as("the holder can still fail the task while the question is pending")
             .contains("dispatch_fail");
@@ -187,7 +194,8 @@ class EveryRefusalIT {
             "address", address, "conflict_token", "any")));
         assertThat(refusal.get("reason")).isEqualTo("ROLE_DOES_NOT_ALLOW");
         assertThat(String.valueOf(refusal.get("message")))
-            .contains("the commissioner", "candidate");
+            .isEqualTo("dispatch_withdraw is the commissioner's call, and you take part in "
+                + "this task in another part.");
     }
 
     @Test
@@ -214,14 +222,14 @@ class EveryRefusalIT {
         Map<String, Object> other = Mcp.refusal(Mcp.call("dispatch_deliver", Map.of(
             "address", address, "receipt", receipt, "fields", Map.of("text", "mine"))));
         assertThat(other.get("reason")).isEqualTo("NOT_THE_HOLDER");
-        assertThat(String.valueOf(other.get("message"))).contains("another executor holds it");
+        assertThat(String.valueOf(other.get("message"))).contains("another executor holds");
 
         SurfaceFixture.asExecutor(identity);
         lapse(address);
         Map<String, Object> lapsed = Mcp.refusal(Mcp.call("dispatch_renew", Map.of(
             "address", address, "receipt", receipt)));
         assertThat(lapsed.get("reason")).isEqualTo("NOT_THE_HOLDER");
-        assertThat(String.valueOf(lapsed.get("message"))).contains("your lease on it ended");
+        assertThat(String.valueOf(lapsed.get("message"))).contains("your lease on this task ended");
     }
 
     @Test
@@ -288,7 +296,13 @@ class EveryRefusalIT {
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_claim",
             Map.of("address", address)));
         assertThat(refusal.get("reason")).isEqualTo("DEFERRAL_PENDING");
-        assertThat(String.valueOf(refusal.get("message"))).contains(later);
+        assertThat(String.valueOf(refusal.get("message")))
+            .as("the instant is the earlier input of another caller: the message points at "
+                + "the read that shows it (DEC-0043 R18)")
+            .contains("dispatch_read", "fields.not_before")
+            .doesNotContain(later);
+        assertThat(Mcp.field(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", address))),
+            "not_before")).isEqualTo(later);
     }
 
     @Test
@@ -321,7 +335,8 @@ class EveryRefusalIT {
             "address", address, "conflict_token", "2000-01-01T00:00:00Z")));
         assertThat(refusal.get("reason")).isEqualTo("CONFLICT_TOKEN_STALE");
         assertThat(data(refusal).get("conflict_token")).isEqualTo(current);
-        assertThat(String.valueOf(refusal.get("message"))).contains(current);
+        assertThat(String.valueOf(refusal.get("message"))).contains("data.conflict_token")
+            .doesNotContain(current);
 
         Response rest = given().header("If-Match", "\"2000-01-01T00:00:00Z\"")
             .post(SurfaceFixture.item(address.substring(address.lastIndexOf('/') + 1))
@@ -331,12 +346,16 @@ class EveryRefusalIT {
     }
 
     @Test
-    void an_undeclared_bracket_kind_names_the_declared_ones() {
+    void an_undeclared_bracket_kind_is_refused_naming_no_bracket_kind() {
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_create", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", "no-such-kind",
             "fields", Map.of("title", "t", "apparatus", "code"))));
         assertThat(refusal.get("reason")).isEqualTo("SELECTOR_UNKNOWN");
-        assertThat(String.valueOf(refusal.get("message"))).contains(SurfaceFixture.SELECTOR);
+        assertThat(String.valueOf(refusal.get("message")))
+            .as("the declared bracket kinds are the tenant's vocabulary, and the one sent the "
+                + "caller's input (DEC-0043 R18)")
+            .isEqualTo("selector names a bracket kind this scope does not declare.")
+            .doesNotContain(SurfaceFixture.SELECTOR).doesNotContain("no-such-kind");
     }
 
     @Test

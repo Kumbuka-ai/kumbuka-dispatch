@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.adapter.rest;
 
 import ai.kumbuka.dispatch.adapter.payload.Answers;
@@ -5,7 +12,11 @@ import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.CallRouter;
 import ai.kumbuka.dispatch.surface.CallerActor;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
+import ai.kumbuka.dispatch.surface.Argument;
+import ai.kumbuka.dispatch.surface.ArgumentPath;
+import ai.kumbuka.dispatch.surface.Form;
 import ai.kumbuka.dispatch.surface.Refused;
+import ai.kumbuka.dispatch.surface.VerbName;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -184,16 +195,17 @@ public class TaskResource {
             ? selectorSegment : idSegment);
         RestRoute route = RestRoute.find(method, depth, at[1]).orElse(null);
         if (route == null) {
-            return notHere(method, depth, at[1], scope, selectorSegment, at[0]);
+            return notHere(depth, at[1]);
         }
         List<String> named = headers.surface();
         if (!named.isEmpty() && !List.of(ASSISTANT).equals(named)) {
-            return refusal(Refused.argumentInvalid(route.call(), SURFACE,
-                "it takes the one value " + ASSISTANT
-                    + ", once, or is left out"), null);
+            return refusal(Refused.argumentInvalid(VerbName.of(route.verb(), Surface.REST),
+                ArgumentPath.of(ArgumentPath.Transport.SURFACE_HEADER), Form.SURFACE_HEADER),
+                null);
         }
         Surface surface = named.isEmpty() ? Surface.REST : Surface.MCP;
-        String call = nameOn(surface, route);
+        String call = route.verb().on(surface);
+        VerbName refusing = VerbName.of(route.verb(), surface);
 
         Map<String, Object> arguments = new LinkedHashMap<>();
         if (depth == RestRoute.Depth.COLLECTION) {
@@ -207,9 +219,9 @@ public class TaskResource {
         if (ifMatch != null && !ifMatch.isBlank()) {
             arguments.put("conflict_token", unquote(ifMatch.trim()));
         }
-        Refused collision = merge(call, arguments, query(uri), "the query");
+        Refused collision = merge(refusing, route.verb(), arguments, query(uri));
         if (collision == null) {
-            collision = mergeBody(call, arguments, body);
+            collision = mergeBody(refusing, route.verb(), arguments, body);
         }
         if (collision != null) {
             return refusal(collision, null);
@@ -220,60 +232,19 @@ public class TaskResource {
     }
 
     /**
-     * The name a route's call goes by on a surface. Every route is a call of
-     * the declaration under its REST name; {@code VerbSurfaceConformanceTest}
-     * turns red on one that is not.
-     */
-    private static String nameOn(Surface surface, RestRoute route) {
-        return ProcessVerb.byName(Surface.REST, route.call()).on(surface);
-    }
-
-    /**
      * A request at an address no route serves with that method and verb: 405
      * with {@code Allow}. Where the verb is a call of this surface at another
      * depth, the refusal says where it applies; otherwise it names the calls
-     * there are, and an earlier name is answered exactly so.
+     * there are. Neither names a value the request carried: no path segment
+     * and no verb that the declaration does not hold (DEC-0043 R18, R19).
      */
-    private Response notHere(String method, RestRoute.Depth depth, String verb, String scope,
-                             String selectorSegment, String at) {
-        String attempted = verb == null ? method : verb;
-        // The segments are named only once they read as a scope and a
-        // bracket kind: a refusal echoes no value the caller sent (DEC-0042).
-        String scopeNamed = segmentOr(() -> AddressParser.scope(scope), "<scope>");
-        String selector = segmentOr(() -> AddressParser.selector(
-            depth == RestRoute.Depth.COLLECTION ? at : selectorSegment), "<selector>");
+    private Response notHere(RestRoute.Depth depth, String verb) {
         ProcessVerb declared = verb == null ? null : ProcessVerb.byName(Surface.REST, verb);
-        Refused refused;
-        if (declared != null) {
-            String address = depth == RestRoute.Depth.COLLECTION
-                ? AddressParser.SCHEME + "://" + scopeNamed + "/" + selector
-                : AddressParser.SCHEME + "://" + scopeNamed + "/" + selector + "/"
-                    + segmentOr(() -> {
-                        var item = AddressParser.item(selector, at);
-                        return item.number() + "." + item.sub();
-                    }, "<number>.<sub>");
-            refused = Refused.callNotAtThisAddress(attempted, address,
-                RestRoute.of(verb)
-                    .map(route -> route.method() + " /api/" + scopeNamed + "/" + selector
-                        + (route.depth() == RestRoute.Depth.ITEM ? "/<number>.<sub>" : "")
-                        + (route.custom() ? ":" + route.call() : ""))
-                    .orElse("no route of this surface"));
-        } else {
-            refused = Refused.callUnknown(attempted,
-                verb == null ? "route for " + method + " at this address" : "call", attempted,
-                ProcessVerb.names(Surface.REST));
-        }
+        Refused refused = declared == null
+            ? Refused.callUnknown(VerbName.all(Surface.REST))
+            : Refused.callNotAtThisAddress(VerbName.of(declared, Surface.REST),
+                RestRoute.of(verb).map(RestRoute::refusalRoute).orElseThrow());
         return refusal(refused, RestRoute.allow(depth));
-    }
-
-    /** A path segment as the parser reads it, or the placeholder where it reads as none. */
-    private static String segmentOr(java.util.function.Supplier<String> parsed,
-                                    String placeholder) {
-        try {
-            return parsed.get();
-        } catch (RuntimeException malformed) {
-            return placeholder;
-        }
     }
 
     private static Map<String, Object> query(UriInfo uri) {
@@ -283,22 +254,31 @@ public class TaskResource {
         return flat;
     }
 
-    /** Adds what one part of the request carries; refuses an argument given twice. */
-    private static Refused merge(String call, Map<String, Object> into,
-                                 Map<String, Object> from, String part) {
+    /**
+     * Adds what one part of the request carries; refuses an argument given
+     * twice. What the path and the headers carry are declared arguments of the
+     * call, so a name that arrives twice is always one the declaration holds.
+     */
+    private static Refused merge(VerbName call, ProcessVerb verb, Map<String, Object> into,
+                                 Map<String, Object> from) {
         for (Map.Entry<String, Object> given : from.entrySet()) {
+            if (given.getValue() == null) {
+                // JSON null is an argument not sent (DEC-0043 R17).
+                continue;
+            }
             if (into.containsKey(given.getKey())) {
-                return Refused.argumentInvalid(call, given.getKey(),
-                    "it arrived twice: in " + part + " and "
-                        + "in the path or a header, and a call takes each argument once");
+                Argument argument = verb.argument(given.getKey(), Argument.Placement.TOP);
+                return argument == null
+                    ? Refused.valueInvalid(call, Form.ONCE)
+                    : Refused.argumentInvalid(call, ArgumentPath.of(argument), Form.ONCE);
             }
             into.put(given.getKey(), given.getValue());
         }
         return null;
     }
 
-    @SuppressWarnings("unchecked")
-    private Refused mergeBody(String call, Map<String, Object> into, String body) {
+    private Refused mergeBody(VerbName call, ProcessVerb verb, Map<String, Object> into,
+                              String body) {
         if (body == null || body.isBlank()) {
             return null;
         }
@@ -306,14 +286,15 @@ public class TaskResource {
         try {
             parsed = json.readValue(body, Object.class);
         } catch (JsonProcessingException e) {
-            return Refused.argumentInvalid(call, "body",
-                "a body is a JSON object of the call's arguments");
+            parsed = null;
         }
-        if (!(parsed instanceof Map)) {
-            return Refused.argumentInvalid(call, "body",
-                "a body is a JSON object of the call's arguments");
+        if (!(parsed instanceof Map<?, ?> map)) {
+            return Refused.argumentInvalid(call, ArgumentPath.of(ArgumentPath.Transport.BODY),
+                Form.BODY);
         }
-        return merge(call, into, (Map<String, Object>) parsed, "the body");
+        Map<String, Object> carried = new LinkedHashMap<>();
+        map.forEach((name, value) -> carried.put(String.valueOf(name), value));
+        return merge(call, verb, into, carried);
     }
 
     // ======================================================================

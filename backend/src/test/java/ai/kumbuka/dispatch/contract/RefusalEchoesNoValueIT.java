@@ -182,6 +182,180 @@ class RefusalEchoesNoValueIT {
         assertThat(echoing).as("refusals that give back the value the caller sent").isEmpty();
     }
 
+    // =======================================================================
+    // DEC-0043 R18, R19: the marker in every place a caller can put one,
+    // every hint provoked, and neither the scope nor the bracket kind named
+    // =======================================================================
+
+    /**
+     * The caller's input and the tenant's vocabulary are in no refusal and no
+     * hint, wherever the caller put them.
+     *
+     * <p>The first half places the marker where the cases above do not: as
+     * the name of an undeclared argument at both levels, of an undeclared
+     * call on both surfaces and of an undeclared protocol method, as a scope,
+     * a bracket kind and a path segment, as the value of every closed set
+     * ({@code sort}, {@code direction}, {@code part}, {@code reason}), as one
+     * of several patterns and filter values, and as every transport artefact.
+     * The second half gives a task a title, a text, an apparatus, metadata
+     * and question options that carry the marker, moves it through the
+     * states in which {@code next} and {@code waiting_for} speak, and reads
+     * the hints of every one. The scope's and the bracket kind's own names
+     * are the caller's input too: no message carries them, and no member of
+     * {@code data} but the addresses of {@code data.children}, which are the
+     * answer a read would give (DEC-0043, "What R18 does not bind").
+     *
+     * <p>RED STATE, observed 2026-10-15: the protocol's refusal of an unknown
+     * method changed for the run to quote the method that arrived turns this
+     * red on exactly the two answers that carry it, the marker as a method and
+     * as {@code tools/<marker>}.
+     */
+    @Test
+    void no_refusal_and_no_hint_repeats_the_callers_input_or_the_tenants_vocabulary() {
+        List<String> answers = new ArrayList<>();
+        Map<String, Object> collection = Map.of("scope", SurfaceFixture.SCOPE,
+            "selector", SurfaceFixture.SELECTOR);
+
+        // -- names the caller made up ------------------------------------
+        answers.add(refused("dispatch_query", with(collection, MARKER, "x")));
+        String draft = SurfaceFixture.address(SurfaceFixture.idOf(SurfaceFixture.create(
+            Map.of("title", "a draft", "apparatus", "code"))));
+        answers.add(refused("dispatch_update", Map.of("address", draft,
+            "conflict_token", token(draft), "fields", Map.of(MARKER, "x"))));
+        answers.add(refused(MARKER, Map.of()));
+        answers.add(refused("dispatch_" + MARKER, Map.of()));
+        answers.add(Mcp.rpc(MARKER, Map.of()).asString());
+        answers.add(Mcp.rpc("tools/" + MARKER, Map.of()).asString());
+        answers.add(given().contentType(ContentType.JSON)
+            .post(SurfaceFixture.collection() + ":" + MARKER).asString());
+        answers.add(given().contentType(ContentType.JSON)
+            .post(SurfaceFixture.item("1.0") + ":" + MARKER).asString());
+        answers.add(given().get("/api/" + MARKER + "/" + MARKER + ":claim_next").asString());
+        answers.add(given().contentType(ContentType.JSON).body(Map.of("scope", MARKER))
+            .post(SurfaceFixture.collection()).asString());
+        answers.add(given().contentType(ContentType.JSON).header("Kumbuka-Surface", MARKER)
+            .post(SurfaceFixture.collection()).asString());
+
+        // -- a scope, a bracket kind, an address -------------------------
+        answers.add(refused("dispatch_query", Map.of("scope", MARKER,
+            "selector", SurfaceFixture.SELECTOR)));
+        answers.add(refused("dispatch_query", Map.of("scope", SurfaceFixture.SCOPE,
+            "selector", MARKER)));
+        answers.add(refused("dispatch_claim_next", Map.of("scope", SurfaceFixture.SCOPE,
+            "selector", MARKER, "apparatus", List.of("code"))));
+        answers.add(refused("dispatch_read", Map.of("address",
+            "dispatch://" + SurfaceFixture.SCOPE + "/" + MARKER + "/1.0")));
+        answers.add(refused("dispatch_read", Map.of("address",
+            SurfaceFixture.address("1.0") + MARKER)));
+        answers.add(refused("dispatch_create", with(collection, "parent", MARKER)));
+
+        // -- every closed set, every list, every transport artefact ------
+        answers.add(refused("dispatch_query", with(collection, "sort", MARKER)));
+        answers.add(refused("dispatch_query", with(collection, "direction", MARKER)));
+        answers.add(refused("dispatch_query", with(collection, "page_size", MARKER)));
+        answers.add(refused("dispatch_query", with(collection, "after", MARKER)));
+        answers.add(refused("dispatch_query", with(collection, "state", "open," + MARKER)));
+        answers.add(refused("dispatch_query", with(collection, "bracket", "1," + MARKER)));
+        answers.add(refused("dispatch_query", with(collection, "apparatus", "code," + MARKER
+            + "_")));
+        answers.add(refused("dispatch_query", with(collection, "address",
+            SurfaceFixture.address("1.0") + "," + MARKER)));
+        String open = SurfaceFixture.address(SurfaceFixture.open("open " + MARKER, MARKER));
+        answers.add(refused("dispatch_read_text", Map.of("address", open, "part", MARKER)));
+        answers.add(refused("dispatch_withdraw", Map.of("address", open,
+            "conflict_token", MARKER)));
+        answers.add(refused("dispatch_withdraw", Map.of("address", open,
+            "conflict_token", token(open), "fields", Map.of("remark", List.of(MARKER)))));
+
+        SurfaceFixture.asExecutor(identity);
+        answers.add(refused("dispatch_claim_next", with(collection, "apparatus",
+            List.of("code", "review", MARKER + "%"))));
+        answers.add(refused("dispatch_claim_next", with(collection, "apparatus",
+            List.of("code", "*"))));
+        answers.add(refused("dispatch_claim", Map.of("address", open, "duration", MARKER)));
+        String receipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
+            Map.of("address", open, "idempotency_key", MARKER))).get("receipt"));
+        answers.add(refused("dispatch_hold", Map.of("address", open, "receipt", receipt,
+            "fields", Map.of("reason", MARKER))));
+        answers.add(refused("dispatch_ask", Map.of("address", open, "receipt", receipt,
+            "fields", Map.of("question", MARKER, "options", List.of(MARKER, 7)))));
+        answers.add(refused("dispatch_renew", Map.of("address", open, "receipt", MARKER)));
+        answers.add(refused("dispatch_annotate", Map.of("address", open,
+            "fields", Map.of("text", MARKER, "part", MARKER))));
+
+        // -- the hints of a task that carries the marker everywhere ------
+        Mcp.answer(Mcp.call("dispatch_ask", Map.of("address", open, "receipt", receipt,
+            "fields", Map.of("question", MARKER, "options", List.of(MARKER, "other")))));
+        answers.add(hints(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", open)))));
+        SurfaceFixture.asConsole(identity);
+        answers.add(hints(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", open)))));
+        answers.add(refused("dispatch_answer", Map.of("address", open,
+            "conflict_token", token(open), "fields", Map.of("option", MARKER + "x"))));
+        Mcp.answer(Mcp.call("dispatch_answer", Map.of("address", open,
+            "conflict_token", token(open), "fields", Map.of("option", MARKER))));
+        SurfaceFixture.asExecutor(identity);
+        answers.add(hints(Mcp.answer(Mcp.call("dispatch_deliver", Map.of("address", open,
+            "receipt", receipt, "fields", Map.of("text", MARKER,
+                "metadata", Map.of(MARKER, MARKER)))))));
+        answers.add(hints(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", open)))));
+        SurfaceFixture.asConsole(identity);
+        answers.add(hints(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", open)))));
+
+        // -- the verdict --------------------------------------------------
+        List<String> echoing = answers.stream()
+            .filter(answer -> answer.contains(MARKER))
+            .toList();
+        assertThat(echoing).as("answers that repeat what the caller put in").isEmpty();
+        assertThat(raised.values().stream().flatMap(List::stream).toList())
+            .as("refusals of the first test that name the scope or the bracket kind")
+            .allSatisfy(RefusalEchoesNoValueIT::namesNeitherScopeNorBracketKind);
+        assertThat(answers).as("and neither do these")
+            .allSatisfy(RefusalEchoesNoValueIT::namesNeitherScopeNorBracketKind);
+    }
+
+    /** The answer of a call that is refused, as the caller receives it. */
+    private static String refused(String tool, Map<String, Object> arguments) {
+        Response answer = Mcp.call(tool, arguments);
+        assertThat(answer.jsonPath().getBoolean("result.isError"))
+            .as("%s is refused: %s", tool, answer.asString()).isTrue();
+        return answer.asString();
+    }
+
+    /** What an answer says of its own accord: its next steps and what it waits for. */
+    @SuppressWarnings("unchecked")
+    private static String hints(Map<String, Object> answer) {
+        return String.valueOf(answer.get("next")) + " " + answer.get("waiting_for");
+    }
+
+    /**
+     * Neither the scope nor the bracket kind the caller named stands in a
+     * message, nor in any member of {@code data} but the addresses of the
+     * unfinished children.
+     */
+    private static void namesNeitherScopeNorBracketKind(String answer) {
+        if (!answer.startsWith("{")) {
+            // The hints of an answer, as hints() renders them: no member of an envelope.
+            assertThat(answer).doesNotContain(SurfaceFixture.SCOPE);
+            return;
+        }
+        io.restassured.path.json.JsonPath json = io.restassured.path.json.JsonPath.from(answer);
+        Object structured = json.get("result.structuredContent");
+        Map<String, Object> envelope = structured instanceof Map<?, ?>
+            ? json.getMap("result.structuredContent")
+            : json.getMap("$");
+        String message = String.valueOf(envelope.get("message"));
+        assertThat(message).as(answer)
+            .doesNotContain(SurfaceFixture.SCOPE)
+            .doesNotContain("/" + SurfaceFixture.SELECTOR)
+            .doesNotContainIgnoringCase(" " + SurfaceFixture.SELECTOR + " ");
+        Object data = envelope.get("data");
+        if (data instanceof Map<?, ?> members) {
+            Map<Object, Object> rest = new LinkedHashMap<>(members);
+            rest.remove("children");
+            assertThat(String.valueOf(rest)).as(answer).doesNotContain(SurfaceFixture.SCOPE);
+        }
+    }
+
     // -----------------------------------------------------------------------
 
     private void mcp(RefusalCode expected, String tool, Map<String, Object> arguments) {

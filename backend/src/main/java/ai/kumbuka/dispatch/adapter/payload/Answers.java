@@ -67,7 +67,7 @@ public final class Answers {
         answer.put(ADDRESS, answered.address());
         answer.put(FIELDS, fields(answered.view(), answered.head()));
         answer.put("conflict_token", answered.view().conflictToken());
-        answer.put("next", steps(answered.next()));
+        answer.put("next", NextList.wire(answered.next()));
         if (answered.waitingFor() != null) {
             answer.put("waiting_for", answered.waitingFor());
         }
@@ -138,15 +138,6 @@ public final class Answers {
         }).toList());
         answer.put("addenda", text.addenda());
         return answer;
-    }
-
-    private static List<Map<String, String>> steps(List<NextList.Step> next) {
-        return next.stream().map(step -> {
-            Map<String, String> rendered = new LinkedHashMap<>();
-            rendered.put("call", step.call());
-            rendered.put("does", step.does());
-            return rendered;
-        }).toList();
     }
 
     /**

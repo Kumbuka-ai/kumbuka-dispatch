@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.adapter.mcp;
 
 import ai.kumbuka.dispatch.adapter.payload.Answers;
@@ -81,9 +88,9 @@ public class McpAdapter {
             case "initialize" -> result(id, initialize());
             case "tools/list" -> result(id, Map.of("tools", tools()));
             case "tools/call" -> result(id, call(arguments(request, "params")));
+            // The method that arrived is the caller's and stays with it (DEC-0043 R19).
             default -> error(id, METHOD_NOT_FOUND,
-                "'" + method + "' is not a method of this server. It speaks initialize, "
-                    + "tools/list and tools/call.");
+                "This server speaks the methods initialize, tools/list and tools/call.");
         };
     }
 

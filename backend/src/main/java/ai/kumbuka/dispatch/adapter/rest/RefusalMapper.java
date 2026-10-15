@@ -9,6 +9,9 @@ package ai.kumbuka.dispatch.adapter.rest;
 
 import ai.kumbuka.dispatch.adapter.payload.Answers;
 import ai.kumbuka.dispatch.domain.DispatchException;
+import ai.kumbuka.dispatch.surface.Argument;
+import ai.kumbuka.dispatch.surface.ArgumentPath;
+import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.ReasonMapping;
 import ai.kumbuka.dispatch.surface.RefusalCode;
 import ai.kumbuka.dispatch.surface.Refused;
@@ -76,7 +79,7 @@ public class RefusalMapper implements ExceptionMapper<Refused> {
             LOG.debugf("refusal outside a call: %s", e.reason());
             return answer(code == RefusalCode.NOT_FOUND
                 ? Refused.notFound()
-                : UnexpectedFailures.refuse("this request", "the address given", e));
+                : UnexpectedFailures.refuse(null, "the address given", e));
         }
     }
 
@@ -88,8 +91,9 @@ public class RefusalMapper implements ExceptionMapper<Refused> {
         public Response toResponse(SurfaceException e) {
             // The parser's own message quotes the address it could not read,
             // and a refusal echoes no value the caller sent (DEC-0042).
-            return answer(Refused.argumentInvalid("this request", "address",
-                "a task's address is written dispatch://<scope>/<selector>/<number>.<sub>"));
+            return answer(Refused.requestInvalid(
+                ArgumentPath.of(ProcessVerb.READ.argument("address", Argument.Placement.TOP)),
+                ai.kumbuka.dispatch.surface.Form.ADDRESS));
         }
     }
 }

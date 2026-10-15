@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.adapter.mcp;
 
 import ai.kumbuka.dispatch.surface.Argument;
@@ -110,7 +117,7 @@ public final class McpTools {
             }
         }
         if (!argument.values().isEmpty()) {
-            property.put("enum", argument.values());
+            property.put("enum", argument.valueNames());
         }
         property.put(KEY_DESCRIPTION, argument.description());
         return Map.copyOf(property);

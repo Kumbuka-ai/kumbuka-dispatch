@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
@@ -28,7 +35,8 @@ public final class NextList {
 
     /** The first entry of {@code next} after a claim: concept section 3.5, word for word. */
     static final String READ_THE_COMMISSION =
-        "Reads the commission. Do this first: the claim did not return it.";
+        "Reads the commission: the task's text, the work this claim takes on. Call it next, "
+            + "before you start the work.";
 
     /** The first entry for the commissioner of a delivered task. */
     static final String READ_THE_ANSWER =
@@ -38,7 +46,26 @@ public final class NextList {
     }
 
     /** One open call: its name on the caller's surface, and what it does. */
-    public record Step(String call, String does) {
+    public record Step(VerbName name, String does) {
+
+        /** The call as the wire carries it. */
+        public String call() {
+            return name.toString();
+        }
+    }
+
+    /**
+     * Steps as the wire carries them: {@code call} and {@code does}. Built
+     * here rather than left to a JSON encoder, which would write the record's
+     * components and not its wire form.
+     */
+    public static List<java.util.Map<String, String>> wire(List<Step> steps) {
+        return steps.stream().map(step -> {
+            java.util.Map<String, String> rendered = new java.util.LinkedHashMap<>();
+            rendered.put("call", step.call());
+            rendered.put("does", step.does());
+            return rendered;
+        }).toList();
     }
 
     /**
@@ -51,12 +78,13 @@ public final class NextList {
                                 boolean afterClaim) {
         List<Step> steps = new ArrayList<>();
         if (afterClaim && view.holder() == HolderState.SELF) {
-            steps.add(new Step(ProcessVerb.READ_TEXT.on(surface), READ_THE_COMMISSION));
+            steps.add(new Step(VerbName.of(ProcessVerb.READ_TEXT, surface), READ_THE_COMMISSION));
         } else if (caller.isConsole() && view.state() == TaskState.DELIVERED) {
-            steps.add(new Step(ProcessVerb.READ_TEXT.on(surface), READ_THE_ANSWER));
+            steps.add(new Step(VerbName.of(ProcessVerb.READ_TEXT, surface), READ_THE_ANSWER));
         }
         view.next().stream()
-            .map(verb -> new Step(ProcessVerb.of(verb).on(surface), verb.nextSentence()))
+            .map(verb -> new Step(VerbName.of(ProcessVerb.of(verb), surface),
+                verb.nextSentence()))
             .forEach(steps::add);
         return List.copyOf(steps);
     }
@@ -76,8 +104,7 @@ public final class NextList {
         return switch (view.state()) {
             case DRAFT -> "the commissioner, to send it";
             case OPEN -> view.notBefore() != null && view.notBefore().isAfter(now)
-                ? "the instant it was deferred to, " + view.notBefore()
-                    + ", and then an executor to take it up"
+                ? "the instant in fields.not_before, and then an executor to take it up"
                 : "an executor to take it up";
             case ACTIVE -> "its holder";
             case ON_HOLD -> onHold(view);

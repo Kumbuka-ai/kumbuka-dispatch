@@ -7,42 +7,38 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * The message pattern and the remedy of every declared refusal.
+ * Every message a refusal can carry, and the remedy of every reason.
  *
  * <p>This is the half of the declaration that makes "a refusal explains
- * itself" checkable rather than hoped for. A pattern here is the shape the
- * message takes; the values are filled in where the refusal is raised, because
- * that is the only place that knows them. Keeping the shape here and the
- * values there is what stops the same refusal being worded three ways by three
- * throw sites — the failure mode the measured surface had, where one refusal
- * named the kernel and another named the caller.
+ * itself" checkable rather than hoped for. A refusal is worded from exactly
+ * one declared {@link Message}; the place that raises it chooses which and
+ * supplies the placeholders, and nothing else. A message is therefore the
+ * same sentence wherever it is raised, and a sentence a raising place makes
+ * up cannot reach a caller.
  *
  * <p><strong>The start-up guard reads this.</strong> Every {@link RefusalCode}
- * must have an entry and every entry must have a code; {@link
- * #requireComplete(Map)} is called at start-up and throws if either set has a
- * member the other lacks. That is the mechanism behind "a reason not in the
- * table cannot be returned": not a rule somebody keeps, but a service that
- * does not come up.
+ * must have a remedy and at least one message; {@link #requireComplete(Map)}
+ * is called at start-up and throws if a code lacks either. That is the
+ * mechanism behind "a reason not in the table cannot be returned": not a rule
+ * somebody keeps, but a service that does not come up.
  *
- * <h2>No value the caller sent</h2>
+ * <h2>Only the platform's vocabulary (DEC-0043 R18, R19)</h2>
  *
- * No pattern carries a value the caller sent (DEC-0042): a refusal lands in a
- * log, and a value can be content. A pattern names the argument and the form
- * it takes; the values filled in are the service's own — addresses it
- * resolved, states, call and argument names, bounds and declared names.
- *
- * <h2>Placeholders</h2>
- *
- * A pattern carries {@code {name}} placeholders, filled by {@link
- * #message(RefusalCode, Map)}. A placeholder with no value left is a defect
- * and is refused loudly rather than rendered as literal braces into a caller's
- * message — a half-filled message is worse than none, because it reads as
- * finished.
+ * A message repeats neither the caller's input nor the tenant's vocabulary.
+ * Its placeholders take the name of a call ({@link VerbName}), the path or
+ * name of a declared argument ({@link ArgumentPath}, {@link ArgumentName}), a
+ * declared bound ({@link Bound}) and a declared {@link Form}, and lists of
+ * these; none of them can be built from a request. The address, the scope,
+ * the state, the conflict token and the instant of a deferral are not in any
+ * message: a refusal points at the member of {@code data} or the read that
+ * shows them.
  */
 public final class ReasonCatalogue {
 
@@ -50,18 +46,199 @@ public final class ReasonCatalogue {
     }
 
     /**
-     * One declared reason: the code, the shape of its message, and what the
-     * caller can do about it.
+     * One declared message: the reason it is raised under, and its pattern.
      *
-     * @param code    the caller-facing reason, stable across rewordings
-     * @param pattern the message shape, with {@code {name}} placeholders
-     * @param remedy  what the caller does next, in the contract's own words: an
-     *                instruction, worded as the act to take (DEC-0042). Not
-     *                sent on the wire — {@code data.next} carries the calls —
-     *                but declared, because a reason nobody could act on is one
-     *                that should not have been declared.
+     * <p>The placeholders a pattern may carry are {@code {call}}, {@code
+     * {calls}}, {@code {read}}, {@code {query}}, {@code {path}}, {@code
+     * {accepts}}, {@code {differs}}, {@code {max}} and {@code {form}}.
      */
-    public record Reason(RefusalCode code, String pattern, String remedy) {
+    public enum Message {
+
+        NOT_FOUND(RefusalCode.NOT_FOUND, ReasonCatalogue.NOT_FOUND_MESSAGE),
+
+        STATE(RefusalCode.STATE_DOES_NOT_ALLOW,
+            "{call} is not possible in the task's present state, which data.state shows. You "
+                + "can make: {calls}."),
+        STATE_NOTHING_OPEN(RefusalCode.STATE_DOES_NOT_ALLOW,
+            "{call} is not possible in the task's present state, which data.state shows, and "
+                + "no call is open to you on it now; data.waiting_for says what it waits for."),
+        STATE_CLOSED(RefusalCode.STATE_DOES_NOT_ALLOW,
+            "{call} is not possible on this task: it is closed and finished. Nothing further "
+                + "can be done with it."),
+
+        ROLE_COMMISSIONER(RefusalCode.ROLE_DOES_NOT_ALLOW,
+            "{call} is the commissioner's call, and you take part in this task in another "
+                + "part."),
+        ROLE_EXECUTOR(RefusalCode.ROLE_DOES_NOT_ALLOW,
+            "{call} is an executor's call, and you take part here in another part."),
+        ROLE_HOLDER(RefusalCode.ROLE_DOES_NOT_ALLOW,
+            "{call} is the holder's call, and you take part in this task in another part."),
+        ROLE_AUTHOR(RefusalCode.ROLE_DOES_NOT_ALLOW,
+            "{call} is the call of the identity that wrote the text it supplements."),
+        ROLE_OTHER_THAN_THE_DELIVERER(RefusalCode.ROLE_DOES_NOT_ALLOW,
+            "{call} is the commissioner's call, made by an identity other than the one that "
+                + "delivered the answer."),
+        ROLE_CAPACITY(RefusalCode.ROLE_DOES_NOT_ALLOW,
+            "{call} needs a caller holding the commissioning or the executing capacity, and "
+                + "exactly one of them."),
+
+        HOLDER_OTHER(RefusalCode.NOT_THE_HOLDER,
+            "{call} is the holder's call, and another executor holds this task."),
+        HOLDER_NOBODY(RefusalCode.NOT_THE_HOLDER,
+            "{call} is the holder's call, and nobody holds this task."),
+        HOLDER_LAPSED(RefusalCode.NOT_THE_HOLDER,
+            "{call} is the holder's call, and your lease on this task ended."),
+        TEXT_HOLDER_OTHER(RefusalCode.NOT_THE_HOLDER,
+            "{call} reads the text of a task its executor holds, and another executor holds "
+                + "this one."),
+        TEXT_HOLDER_NOBODY(RefusalCode.NOT_THE_HOLDER,
+            "{call} reads the text of a task its executor holds, and nobody holds this one."),
+        TEXT_HOLDER_LAPSED(RefusalCode.NOT_THE_HOLDER,
+            "{call} reads the text of a task its executor holds, and your lease on this one "
+                + "ended."),
+
+        RECEIPT_WRONG(RefusalCode.RECEIPT_WRONG,
+            "{call} needs the receipt your claim handed out for this task: the receipt given "
+                + "is a different one."),
+
+        CHILDREN_NOT_FINISHED(RefusalCode.CHILDREN_NOT_FINISHED,
+            "{call} would close a bracket root while tasks of its bracket are unfinished; "
+                + "data.children lists them. Repeat the call with data.confirmation to withdraw "
+                + "them and close the root."),
+        CHILDREN_CONFIRMATION_STALE(RefusalCode.CHILDREN_NOT_FINISHED,
+            "{call} carries a confirmation that no longer holds: the unfinished tasks of the "
+                + "bracket changed since it was handed out, and data.children lists them now. "
+                + "Repeat the call with the one in data.confirmation."),
+
+        DEFERRAL_PENDING(RefusalCode.DEFERRAL_PENDING,
+            "{call} is not possible yet: the task is deferred, and {read} shows until when, "
+                + "in fields.not_before."),
+
+        NOTHING_TO_TAKE(RefusalCode.NOTHING_TO_TAKE,
+            "Nothing that your patterns match can be taken up in this bracket kind right now: "
+                + "every such task is a draft, held, paused, delivered, closed or deferred."),
+
+        CLAIM_DURATION_INVALID(RefusalCode.CLAIM_DURATION_INVALID,
+            "duration is not valid for {call}: it is a positive ISO-8601 duration such as "
+                + "PT2H."),
+
+        PAGE_SIZE_REJECTED(RefusalCode.PAGE_SIZE_REJECTED,
+            "page_size is not valid for {call}: it is a whole number from 1 to {max}."),
+
+        CURSOR_MALFORMED(RefusalCode.CURSOR_MALFORMED,
+            "after is not a cursor {query} handed out: it is the next_cursor of the previous "
+                + "page."),
+
+        CURSOR_FOREIGN(RefusalCode.CURSOR_FOREIGN,
+            "{call} carries a cursor of another listing: it was handed out for other values of "
+                + "{differs}. A cursor continues only the listing that handed it out."),
+
+        SORT_UNDECLARED(RefusalCode.SORT_UNDECLARED,
+            "sort is not valid for {call}: it takes id or created_at."),
+
+        ARGUMENT_UNKNOWN(RefusalCode.ARGUMENT_UNKNOWN,
+            "{call} takes these arguments: {accepts}."),
+        ARGUMENT_UNKNOWN_UNDER_FIELDS(RefusalCode.ARGUMENT_UNKNOWN,
+            "{call} takes these arguments under fields: {accepts}."),
+        CALL_UNKNOWN(RefusalCode.ARGUMENT_UNKNOWN,
+            "This service takes these calls: {accepts}."),
+
+        ARGUMENT_MISSING(RefusalCode.ARGUMENT_MISSING, "{call} needs {path}."),
+        ARGUMENT_MISSING_OPTIONS(RefusalCode.ARGUMENT_MISSING,
+            "{call} needs fields.options, or fields.free_text set to true."),
+        ARGUMENT_MISSING_ANSWER(RefusalCode.ARGUMENT_MISSING,
+            "{call} needs fields.option or fields.text."),
+        ARGUMENT_MISSING_CHANGE(RefusalCode.ARGUMENT_MISSING,
+            "{call} needs at least one of fields.title, fields.apparatus, fields.text and "
+                + "fields.metadata."),
+
+        ARGUMENT_INVALID(RefusalCode.ARGUMENT_INVALID, "{path} is not valid for {call}: {form}."),
+        ARGUMENT_INVALID_IN_REQUEST(RefusalCode.ARGUMENT_INVALID,
+            "{path} is not valid for this request: {form}."),
+        VALUE_INVALID(RefusalCode.ARGUMENT_INVALID,
+            "A value given is not valid for {call}: {form}."),
+
+        CONFLICT_TOKEN_STALE(RefusalCode.CONFLICT_TOKEN_STALE,
+            "{call} carries a conflict token that is not the one the task holds: it was "
+                + "changed since you read it. Its current token is in data.conflict_token."),
+
+        SELECTOR_UNKNOWN(RefusalCode.SELECTOR_UNKNOWN,
+            "selector names a bracket kind this scope does not declare."),
+
+        SCOPE_KIND_UNSUPPORTED(RefusalCode.SCOPE_KIND_UNSUPPORTED,
+            "The scope named is of a kind this service carries no tasks in; it carries tasks "
+                + "in project and global scopes."),
+
+        SCOPE_READ_ONLY(RefusalCode.SCOPE_READ_ONLY,
+            "{call} writes, and you may read this scope without writing to it. Reading it is "
+                + "unaffected; the write right is granted with the membership."),
+
+        SCOPE_LOCKED(RefusalCode.SCOPE_LOCKED,
+            "This scope is locked, so it refuses every write whatever your role. Reading it is "
+                + "unaffected. The lock is lifted where it was set."),
+
+        IDEMPOTENCY_KEY_REUSED(RefusalCode.IDEMPOTENCY_KEY_REUSED,
+            "The idempotency key given was spent on a different call, or with different "
+                + "arguments, in this scope within the last 24 hours."),
+
+        ROUTE_CREATE(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "{call} is a call on a bracket kind: POST /api/<scope>/<selector>."),
+        ROUTE_QUERY(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "{call} is a call on a bracket kind: GET /api/<scope>/<selector>."),
+        ROUTE_ON_A_BRACKET_KIND(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "{call} is a call on a bracket kind: POST /api/<scope>/<selector>:{call}."),
+        ROUTE_READ(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>."),
+        ROUTE_READ_CALL(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>:{call}."),
+        ROUTE_UPDATE(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "{call} is a call on a task: PATCH /api/<scope>/<selector>/<number>.<sub>."),
+        ROUTE_DELETE(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "{call} is a call on a task: DELETE /api/<scope>/<selector>/<number>.<sub>."),
+        ROUTE_ON_A_TASK(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "{call} is a call on a task: POST /api/<scope>/<selector>/<number>.<sub>:{call}."),
+
+        UNEXPECTED_FAILURE(RefusalCode.UNEXPECTED_FAILURE,
+            "{call} failed unexpectedly. This is a defect, not a rule. Nothing was changed. "
+                + "Report the reference in data.reference."),
+        UNEXPECTED_FAILURE_OF_REQUEST(RefusalCode.UNEXPECTED_FAILURE,
+            "The request failed unexpectedly. This is a defect, not a rule. Nothing was "
+                + "changed. Report the reference in data.reference.");
+
+        private final RefusalCode code;
+        private final String pattern;
+
+        Message(RefusalCode code, String pattern) {
+            this.code = code;
+            this.pattern = pattern;
+        }
+
+        public RefusalCode code() {
+            return code;
+        }
+
+        public String pattern() {
+            return pattern;
+        }
+    }
+
+    /**
+     * One declared reason: the code, its messages, and what the caller can do
+     * about it.
+     *
+     * @param code     the caller-facing reason, stable across rewordings
+     * @param messages the messages raised under it
+     * @param remedy   what the caller does next: an instruction, worded as the
+     *                 act to take (DEC-0042). Not sent on the wire — {@code
+     *                 data.next} carries the calls — but declared, because a
+     *                 reason nobody could act on is one that should not have
+     *                 been declared.
+     */
+    public record Reason(RefusalCode code, List<Message> messages, String remedy) {
+
+        public Reason {
+            messages = List.copyOf(messages);
+        }
     }
 
     /**
@@ -79,180 +256,74 @@ public final class ReasonCatalogue {
      * answering one condition in two wordings are two answers a caller can
      * tell apart by reading them: it learns which hop answered, and from that
      * whether a service stands behind a scheme at all — the enumeration oracle
-     * ADR-0011 exists against. That this service's own three answers agree
-     * with each other is the smaller half of the clause, and it was the only
-     * half anything checked.
-     *
-     * <p>A constant rather than a pattern: it must be byte-identical across
-     * "does not exist", "not visible to you" and "cannot be routed", and a
-     * pattern with no placeholders is an invitation to add one.
-     *
-     * <p>What the text this replaced said at length, and what this one
-     * deliberately leaves unsaid: that the causes are different conditions.
-     * They answer alike because an answer that told them apart would let a
-     * caller map what it may not see. The message names the remedy instead,
-     * because the same remedy is true of all of them. That reasoning belongs
-     * here, where a reader changing the constant meets it; on the wire it is
-     * one more thing that could differ between two services saying the same
-     * thing.
-     *
-     * <p>The contract copy of this service ({@code contract/assistant-surface.md})
-     * carries the same text, so the comparison against it holds this constant.
+     * ADR-0011 exists against.
      */
     public static final String NOT_FOUND_MESSAGE =
         "nothing is addressed here. Check the address, and that you are a member of "
             + "the scope it names.";
 
-    /**
-     * The terminal variant of {@link RefusalCode#STATE_DOES_NOT_ALLOW}.
-     *
-     * <p>Declared beside the ordinary pattern rather than derived from it: a
-     * closed task has no way out, and "you can: nothing" is a sentence that
-     * trails off where the honest answer is that the task is over.
-     */
-    public static final String TERMINAL_STATE_PATTERN =
-        "{call} is not possible on {address}: it is {state} and finished. Nothing further "
-            + "can be done with it.";
-
-    /**
-     * The remedy of every refusal a caller can act on by reading its own
-     * {@code data}. Several reasons share it, and they share it because it is
-     * one instruction.
-     */
     private static final String MAKE_A_NEXT_CALL = "Make one of the calls in data.next.";
 
-    private static final Map<RefusalCode, Reason> DECLARED = declare();
+    private static final Map<RefusalCode, String> REMEDIES = remedies();
 
-    private static Map<RefusalCode, Reason> declare() {
-        Map<RefusalCode, Reason> declared = new LinkedHashMap<>();
+    private static final Map<RefusalCode, Reason> DECLARED = declare(REMEDIES);
 
-        put(declared, RefusalCode.NOT_FOUND,
-            NOT_FOUND_MESSAGE,
-            "Check the scope and the address.");
-
-        put(declared, RefusalCode.STATE_DOES_NOT_ALLOW,
-            "{call} is not possible on {address}: it is {state}, and {call} applies {applies}. "
-                + "You can: {calls}.",
-            MAKE_A_NEXT_CALL);
-
-        put(declared, RefusalCode.ROLE_DOES_NOT_ALLOW,
-            "{call} can only be made by {role}. You take part in {address} as "
-                + "{participation}.",
-            MAKE_A_NEXT_CALL);
-
-        put(declared, RefusalCode.NOT_THE_HOLDER,
-            "{call} is the holder's call, and you do not hold {address}: {why}.",
+    private static Map<RefusalCode, String> remedies() {
+        Map<RefusalCode, String> remedies = new EnumMap<>(RefusalCode.class);
+        remedies.put(RefusalCode.NOT_FOUND, "Check the scope and the address.");
+        remedies.put(RefusalCode.STATE_DOES_NOT_ALLOW, MAKE_A_NEXT_CALL);
+        remedies.put(RefusalCode.ROLE_DOES_NOT_ALLOW, MAKE_A_NEXT_CALL);
+        remedies.put(RefusalCode.NOT_THE_HOLDER,
             "Claim the task first, or wait until its holder gives it back.");
-
-        put(declared, RefusalCode.RECEIPT_WRONG,
-            "{call} needs the receipt your claim handed out for {address}: the receipt given "
-                + "is not the one it holds.",
-            "Pass the receipt from your latest claim.");
-
-        put(declared, RefusalCode.CHILDREN_NOT_FINISHED,
-            "{call} would close the bracket root {address} while {count} task(s) of the "
-                + "bracket are unfinished: {children}. {confirm}",
+        remedies.put(RefusalCode.RECEIPT_WRONG, "Pass the receipt from your latest claim.");
+        remedies.put(RefusalCode.CHILDREN_NOT_FINISHED,
             "Repeat the call with data.confirmation, or finish the tasks in data.children "
                 + "first.");
-
-        put(declared, RefusalCode.DEFERRAL_PENDING,
-            "{call} is not possible on {address} before {not_before}: the task was deferred "
-                + "until then.",
+        remedies.put(RefusalCode.DEFERRAL_PENDING,
             "Take the task up after that instant, or take up another task now.");
-
-        put(declared, RefusalCode.NOTHING_TO_TAKE,
-            "Nothing in {collection} that your patterns match can be taken up right now: "
-                + "every such task is a draft, held, paused, delivered, closed or deferred.",
-            "List the tasks with the query call.");
-
-        put(declared, RefusalCode.CLAIM_DURATION_INVALID,
-            "duration is not valid for {call}: it is a positive ISO-8601 duration such as "
-                + "PT2H.",
+        remedies.put(RefusalCode.NOTHING_TO_TAKE, "List the tasks with the query call.");
+        remedies.put(RefusalCode.CLAIM_DURATION_INVALID,
             "Send the duration as a positive ISO-8601 duration such as PT2H.");
-
-        put(declared, RefusalCode.PAGE_SIZE_REJECTED,
-            "page_size is not valid for {call}: it is a whole number from 1 to {max}.",
+        remedies.put(RefusalCode.PAGE_SIZE_REJECTED,
             "Send page_size as a whole number within the bounds the message names.");
-
-        put(declared, RefusalCode.CURSOR_MALFORMED,
-            "after is not a cursor {query} handed out: it is the next_cursor of the "
-                + "previous page.",
-            "Call the query again from the first page.");
-
-        put(declared, RefusalCode.CURSOR_FOREIGN,
-            "{call} carries a cursor of another listing: its {differs} is not the one this "
-                + "call asks for. A cursor continues only the listing that handed it out.",
+        remedies.put(RefusalCode.CURSOR_MALFORMED, "Call the query again from the first page.");
+        remedies.put(RefusalCode.CURSOR_FOREIGN,
             "Repeat the call with the arguments that handed the cursor out.");
-
-        put(declared, RefusalCode.SORT_UNDECLARED,
-            "sort is not valid for {call}: it is one of {declared}.",
-            "Send sort as one of the sorts the message names.");
-
-        put(declared, RefusalCode.ARGUMENT_UNKNOWN,
-            "{subject} has no {kind} named {name}. It has: {known}.",
-            "Use one of the names the message lists.");
-
-        put(declared, RefusalCode.ARGUMENT_MISSING,
-            "{call} needs {name}: {what}.",
-            "Repeat the call with the argument the message names.");
-
-        put(declared, RefusalCode.ARGUMENT_INVALID,
-            "{name} is not valid for {call}: {why}.",
-            "Send the argument in the form the message describes.");
-
-        put(declared, RefusalCode.CONFLICT_TOKEN_STALE,
-            "{call} on {address} carries a conflict token that is not the one it holds: it "
-                + "was changed since you read it. Its current token is {current}.",
+        remedies.put(RefusalCode.SORT_UNDECLARED, "Send sort as id or created_at.");
+        remedies.put(RefusalCode.ARGUMENT_UNKNOWN, "Use the names in data.accepts.");
+        remedies.put(RefusalCode.ARGUMENT_MISSING,
+            "Repeat the call with the argument in data.offenders.");
+        remedies.put(RefusalCode.ARGUMENT_INVALID,
+            "Send the argument in data.offenders in the form the message describes.");
+        remedies.put(RefusalCode.CONFLICT_TOKEN_STALE,
             "Read the task again and repeat the call with data.conflict_token.");
-
-        put(declared, RefusalCode.SELECTOR_UNKNOWN,
-            "selector is not a bracket kind declared in scope {scope}. Declared: "
-                + "{declared}.",
-            "Use one of the declared bracket kinds.");
-
-        put(declared, RefusalCode.SCOPE_KIND_UNSUPPORTED,
-            "{scope} is a {kind} scope, and this service does not carry tasks in one. Name a "
-                + "project or a global scope instead.",
-            "Name a project or a global scope.");
-
-        put(declared, RefusalCode.SCOPE_READ_ONLY,
-            "{call} writes, and you may read {scope} without writing to it. Reading it "
-                + "is unaffected; the write right is granted with the membership.",
+        remedies.put(RefusalCode.SELECTOR_UNKNOWN, "Name a bracket kind the scope declares.");
+        remedies.put(RefusalCode.SCOPE_KIND_UNSUPPORTED, "Name a project or a global scope.");
+        remedies.put(RefusalCode.SCOPE_READ_ONLY,
             "Ask whoever administers the membership of this scope for the write right.");
+        remedies.put(RefusalCode.SCOPE_LOCKED, "Wait for the lock to be lifted, or read instead.");
+        remedies.put(RefusalCode.IDEMPOTENCY_KEY_REUSED, "Choose a new key.");
+        remedies.put(RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
+            "Send the call to the route the message names.");
+        remedies.put(RefusalCode.UNEXPECTED_FAILURE, "Report the reference.");
+        return remedies;
+    }
 
-        put(declared, RefusalCode.SCOPE_LOCKED,
-            "{scope} is locked, so it refuses every write whatever your role. Reading "
-                + "it is unaffected. The lock is lifted where it was set.",
-            "Wait for the lock to be lifted, or read instead.");
-
-        put(declared, RefusalCode.IDEMPOTENCY_KEY_REUSED,
-            "The idempotency key given was spent on a different call, or with different "
-                + "arguments, in scope {scope} within the last 24 hours.",
-            "Choose a new key.");
-
-        put(declared, RefusalCode.CALL_NOT_AT_THIS_ADDRESS,
-            "{call} cannot be made on {address}: it applies to {applies}.",
-            "Address the call where it applies.");
-
-        put(declared, RefusalCode.UNEXPECTED_FAILURE,
-            "{call} on {address} failed unexpectedly. This is a defect, not a rule. "
-                + "Nothing was changed. Report reference {reference}.",
-            "Report the reference.");
-
+    private static Map<RefusalCode, Reason> declare(Map<RefusalCode, String> remedies) {
+        Map<RefusalCode, Reason> declared = new LinkedHashMap<>();
+        for (RefusalCode code : RefusalCode.values()) {
+            List<Message> messages = Arrays.stream(Message.values())
+                .filter(m -> m.code() == code)
+                .toList();
+            String remedy = remedies.get(code);
+            if (!messages.isEmpty() || remedy != null) {
+                declared.put(code, new Reason(code, messages, remedy));
+            }
+        }
         return java.util.Collections.unmodifiableMap(declared);
     }
 
-    private static void put(Map<RefusalCode, Reason> into, RefusalCode code, String pattern,
-                            String remedy) {
-        into.put(code, new Reason(code, pattern, remedy));
-    }
-
-    /**
-     * The declared reasons by code, for the start-up guard.
-     *
-     * <p>The map rather than the list, because the guard's question is "is
-     * every code covered" and a list would have to be indexed to answer it.
-     */
+    /** The declared reasons by code, for the start-up guard. */
     public static Map<RefusalCode, Reason> byCode() {
         return DECLARED;
     }
@@ -268,73 +339,57 @@ public final class ReasonCatalogue {
         if (reason == null) {
             throw new IllegalStateException(
                 code + " is not declared in the reason catalogue. A refusal with no "
-                    + "declared pattern cannot be worded, and wording one here would be "
+                    + "declared message cannot be worded, and wording one here would be "
                     + "the second place refusals are decided.");
         }
         return reason;
     }
 
     /**
-     * The message for a refusal, with its values filled in.
+     * The text of one message, with its placeholders filled.
      *
-     * <p>The values come from the place that raises the refusal, which is the
-     * only place that knows them; the shape comes from here, so one refusal is
-     * worded one way wherever it is raised.
-     *
-     * <p>An unfilled placeholder throws. A caller reading a message with a
-     * brace left in it learns nothing and cannot tell the gap from the
-     * service's ordinary prose — and the throw lands as {@code
-     * UNEXPECTED_FAILURE}, which is the honest name for it.
+     * <p>The values are typed: a call's name, an argument's path or name, a
+     * bound, a form, or a list of one of them. An unfilled placeholder throws:
+     * a half-filled message reads as finished, which is worse than none, and
+     * the throw lands as {@code UNEXPECTED_FAILURE}, the honest name for it.
      */
-    public static String message(RefusalCode code, Map<String, String> values) {
-        String rendered = fill(of(code).pattern(), values);
-        requireFilled(code, rendered);
-        return rendered;
-    }
-
-    /** The terminal-state variant, filled the same way. */
-    public static String terminalStateMessage(Map<String, String> values) {
-        String rendered = fill(TERMINAL_STATE_PATTERN, values);
-        requireFilled(RefusalCode.STATE_DOES_NOT_ALLOW, rendered);
-        return rendered;
-    }
-
-    private static String fill(String pattern, Map<String, String> values) {
-        String rendered = pattern;
-        for (Map.Entry<String, String> value : values.entrySet()) {
-            rendered = rendered.replace("{" + value.getKey() + "}",
-                String.valueOf(value.getValue()));
+    public static String message(Message message, Map<String, Object> values) {
+        String rendered = message.pattern();
+        for (Map.Entry<String, Object> value : values.entrySet()) {
+            rendered = rendered.replace("{" + value.getKey() + "}", rendered(value.getValue()));
         }
-        return rendered;
-    }
-
-    private static void requireFilled(RefusalCode code, String rendered) {
         if (rendered.contains("{") && rendered.contains("}")) {
             throw new IllegalStateException(
-                "the message for " + code + " still carries an unfilled placeholder: "
-                    + rendered + ". A half-filled message reads as finished, which is "
-                    + "worse than no message at all.");
+                "the message " + message + " still carries an unfilled placeholder. A "
+                    + "half-filled message reads as finished, which is worse than no message.");
         }
+        return rendered;
+    }
+
+    private static String rendered(Object value) {
+        return switch (value) {
+            case VerbName v -> v.toString();
+            case ArgumentPath p -> p.toString();
+            case ArgumentName n -> n.toString();
+            case Bound b -> b.toString();
+            case Form f -> f.text();
+            case List<?> list -> String.join(", ", list.stream().map(ReasonCatalogue::rendered)
+                .toList());
+            default -> throw new IllegalArgumentException(
+                "a message takes only the platform's vocabulary as a placeholder, and a "
+                    + value.getClass().getSimpleName() + " is none of it");
+        };
     }
 
     /**
-     * Refuses a catalogue that does not cover the codes, in either direction.
+     * Refuses a catalogue that does not cover the codes.
      *
-     * <p>Called from the start-up guard. Both directions matter and they fail
-     * differently: a code with no entry is a refusal that cannot be worded and
-     * would escape as an unexpected failure the first time it is raised; an
-     * entry with no code is a published promise that nothing can keep.
-     *
-     * <p>Public so that A8's red probe is a probe rather than a description.
-     * The rule "the service refuses to start with an undeclared reason" can
-     * only be OBSERVED if the check can be run against a catalogue that is
-     * missing one, and the real catalogue is a constant that cannot be made
-     * incomplete at runtime. Taking the map as an argument is what makes the
-     * guard's behaviour testable without a switch nobody would ever flip in
-     * production.
+     * <p>Called from the start-up guard. A code with no message cannot be
+     * worded and would escape as an unexpected failure the first time it is
+     * raised; a code with no remedy is a refusal nobody could act on.
      */
     public static void requireComplete(Map<RefusalCode, Reason> catalogue) {
-        List<String> undeclared = java.util.Arrays.stream(RefusalCode.values())
+        List<String> undeclared = Arrays.stream(RefusalCode.values())
             .filter(code -> !catalogue.containsKey(code))
             .map(Enum::name)
             .toList();
@@ -347,10 +402,10 @@ public final class ReasonCatalogue {
         }
 
         for (Reason reason : catalogue.values()) {
-            if (reason.pattern() == null || reason.pattern().isBlank()
+            if (reason.messages().isEmpty()
                 || reason.remedy() == null || reason.remedy().isBlank()) {
                 throw new IllegalStateException(
-                    reason.code() + " is declared without a pattern or without a remedy. "
+                    reason.code() + " is declared without a message or without a remedy. "
                         + "A refusal that cannot say what happened, or cannot say what to "
                         + "do about it, is not a declared refusal.");
             }

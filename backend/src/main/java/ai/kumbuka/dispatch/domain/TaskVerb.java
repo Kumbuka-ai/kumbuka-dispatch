@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import java.util.EnumSet;
@@ -104,7 +111,8 @@ public enum TaskVerb {
             Proof.RECEIPT),
         takes(TaskInput.Delivery.class, null),
         moves(DELIVERED, null, null, Holding.PAUSE, TextType.RETURN),
-        "Delivers the answer and its metadata for acceptance."),
+        "Delivers your answer and its metadata to the commissioner, who accepts it or sends it "
+            + "back."),
 
     REWORK("rework",
         when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
@@ -118,7 +126,7 @@ public enum TaskVerb {
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Nothing.class, TaskInput.NONE),
         moves(CLOSED, null, Outcome.ACCEPTED, Holding.DROP, null),
-        "Accepts the delivered answer and closes the task."),
+        "Accepts, as the commissioner, the answer the holder delivered, and closes the task."),
 
     REJECT("reject",
         when(EnumSet.of(OPEN), Condition.NONE, Relation.CANDIDATE, Lock.NONE,

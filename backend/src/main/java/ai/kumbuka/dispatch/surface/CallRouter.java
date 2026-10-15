@@ -77,13 +77,12 @@ public class CallRouter {
     private static final String REMARK = "remark";
     private static final String TEXT = "text";
     private static final String PART = "part";
-    private static final String NOT_VISIBLE = "not visible to you";
     private static final String PARENT = "parent";
     private static final String CURATED_IN = "curated_in";
     private static final String APPARATUS = "apparatus";
     private static final String PAGE_SIZE = CallArguments.PAGE_SIZE;
     private static final String AFTER = "after";
-    private static final String SORT = "sort";
+    private static final String SORT = CallArguments.SORT;
 
     /**
      * The first instant and the bound past the last a task stores, as the
@@ -149,23 +148,24 @@ public class CallRouter {
      */
     public Outcome call(Surface surface, Supplier<Actor> caller, String name,
                         Map<String, Object> arguments) {
-        ProcessVerb verb = ProcessVerb.byName(surface, name);
+        ProcessVerb verb = name == null ? null : ProcessVerb.byName(surface, name);
         if (verb == null) {
-            return new Refusal(Refused.callUnknown(String.valueOf(name), "call",
-                String.valueOf(name), ProcessVerb.names(surface)));
+            // The name that arrived is the caller's and stays with it (DEC-0043 R19).
+            return new Refusal(Refused.callUnknown(VerbName.all(surface)));
         }
+        VerbName call = VerbName.of(verb, surface);
         Map<String, Object> given = arguments == null ? Map.of() : arguments;
         Actor actor = null;
         try {
-            CallArguments in = new CallArguments(verb, name, given);
+            CallArguments in = new CallArguments(verb, surface, given);
             actor = caller.get();
             return invoke(surface, actor, in);
         } catch (Refused refused) {
             return new Refusal(refused);
         } catch (DispatchException refused) {
-            return new Refusal(dress(surface, actor, verb, name, given, refused));
+            return new Refusal(dress(surface, actor, verb, call, given, refused));
         } catch (RuntimeException failure) {
-            return new Refusal(UnexpectedFailures.refuse(name, whereIn(given), failure));
+            return new Refusal(UnexpectedFailures.refuse(call, whereIn(given), failure));
         }
     }
 
@@ -192,9 +192,10 @@ public class CallRouter {
             case QUERY -> query(surface, actor, in);
             case ANNOTATE -> answered(surface, actor, verb, verbs.annotate(actor,
                 item(in, ADDRESS), TextType.fromWireName(in.field(PART)), in.field(TEXT),
-                in.call(), IdempotencyKey.of(in.top(KEY))), false, null);
+                in.call(), in.fieldPath(PART), IdempotencyKey.of(in.top(KEY))), false, null);
             case RELATE -> answered(surface, actor, verb, verbs.relate(actor, item(in, ADDRESS),
-                item(in, CURATED_IN, in.field(CURATED_IN)), in.top(CONFLICT_TOKEN)),
+                item(in.fieldPath(CURATED_IN), in.field(CURATED_IN), in.call()),
+                in.top(CONFLICT_TOKEN)),
                 false, null);
             case UNRELATE -> answered(surface, actor, verb, verbs.unrelate(actor,
                 item(in, ADDRESS), in.top(CONFLICT_TOKEN)), false, null);
@@ -216,15 +217,13 @@ public class CallRouter {
         Integer parentNumber = null;
         String parent = in.top(PARENT);
         if (parent != null) {
-            VerbSurface.Item root = item(in, PARENT, parent);
+            ArgumentPath path = in.topPath(PARENT);
+            VerbSurface.Item root = item(path, parent, in.call());
             if (!root.scope().equals(scope) || !root.address().selector().equals(selector)) {
-                throw Refused.argumentInvalid(in.call(), PARENT,
-                    "it names another scope or bracket kind than the call does, and a child "
-                        + "is created in its root's bracket");
+                throw Refused.argumentInvalid(in.call(), path, Form.PARENT_ELSEWHERE);
             }
             if (root.address().sub() != 0) {
-                throw Refused.argumentInvalid(in.call(), PARENT,
-                    "a parent is a bracket root, the <number>.0 of its bracket");
+                throw Refused.argumentInvalid(in.call(), path, Form.PARENT_NOT_A_ROOT);
             }
             parentNumber = root.address().number();
         }
@@ -236,18 +235,16 @@ public class CallRouter {
 
     private Outcome claimNext(Surface surface, Actor actor, CallArguments in) {
         List<String> patterns = in.list(APPARATUS, Argument.Placement.TOP);
-        String malformed = ApparatusPatterns.firstMalformed(patterns);
-        if (malformed != null) {
-            throw Refused.argumentInvalid(in.call(), APPARATUS,
-                "a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*', and '*' is the "
-                    + "only wildcard; the underscore and the percent sign carry a meaning of "
-                    + "their own in the comparison and are excluded");
+        Argument apparatus = in.declared(APPARATUS, Argument.Placement.TOP);
+        int malformed = ApparatusPatterns.firstMalformedAt(patterns);
+        if (malformed >= 0) {
+            throw Refused.argumentInvalid(in.call(), position(apparatus, patterns, malformed),
+                Form.APPARATUS_PATTERN);
         }
-        String unbounded = ApparatusPatterns.firstUnbounded(patterns);
-        if (unbounded != null) {
-            throw Refused.argumentInvalid(in.call(), APPARATUS,
-                "a pattern of nothing but '*' matches every apparatus, which is the blind "
-                    + "draw the argument exists to refuse");
+        int unbounded = ApparatusPatterns.firstUnboundedAt(patterns);
+        if (unbounded >= 0) {
+            throw Refused.argumentInvalid(in.call(), position(apparatus, patterns, unbounded),
+                Form.APPARATUS_UNBOUNDED);
         }
         String scope = scope(in, in.top(SCOPE));
         String selector = selector(in, in.top(SELECTOR));
@@ -263,25 +260,20 @@ public class CallRouter {
         Map<String, String> raw = in.filters(FILTERS);
         Map<String, String> filters = new LinkedHashMap<>();
         for (Map.Entry<String, String> filter : raw.entrySet()) {
+            Argument argument = in.declared(filter.getKey(), Argument.Placement.TOP);
+            List<String> values = List.of(filter.getValue().split(",", -1)).stream()
+                .map(String::trim).toList();
             String value = filter.getKey().equals(TaskFilter.Field.ADDRESS.wireName())
-                ? shortAddresses(in, scope, selector, filter.getValue())
+                ? shortAddresses(in, argument, scope, selector, values)
                 : filter.getValue();
             if (filter.getKey().equals(TaskFilter.Field.APPARATUS.wireName())) {
-                String malformed = ApparatusPatterns.firstMalformed(
-                    List.of(value.split(",", -1)).stream().map(String::trim).toList());
-                if (malformed != null) {
-                    throw Refused.argumentInvalid(in.call(), filter.getKey(),
-                        "a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*'");
+                int malformed = ApparatusPatterns.firstMalformedAt(values);
+                if (malformed >= 0) {
+                    throw Refused.argumentInvalid(in.call(),
+                        position(argument, values, malformed), Form.APPARATUS_PATTERN);
                 }
             }
-            try {
-                TaskFilter.of(Map.of(filter.getKey(), value));
-            } catch (DispatchException refused) {
-                // The kernel names the values it refused; the caller is told
-                // the form the filter takes instead, and none of its values.
-                throw Refused.argumentInvalid(in.call(), filter.getKey(),
-                    filterForm(filter.getKey()));
-            }
+            refuseFilterValues(in, argument, value, values);
             filters.put(filter.getKey(), value);
         }
         PageRequest page = PageRequest.of(in.wholeNumber(PAGE_SIZE), in.top(SORT),
@@ -295,30 +287,66 @@ public class CallRouter {
         return new Listed(heads, listing.page().nextCursor().orElse(null));
     }
 
+    /**
+     * Refuses a filter whose values the kernel cannot take, naming the first
+     * value it refuses by its position where there are several, and the form
+     * the filter takes — none of its values (DEC-0043 R18, R19).
+     */
+    private static void refuseFilterValues(CallArguments in, Argument argument, String value,
+                                           List<String> values) {
+        try {
+            TaskFilter.of(Map.of(argument.name(), value));
+            return;
+        } catch (DispatchException refused) {
+            // The kernel names the values it refused; they stay with it.
+        }
+        int at = 0;
+        if (!argument.name().equals(TaskFilter.Field.ADDRESS.wireName())) {
+            for (int i = 0; i < values.size(); i++) {
+                try {
+                    TaskFilter.of(Map.of(argument.name(), values.get(i)));
+                } catch (DispatchException refused) {
+                    at = i;
+                    break;
+                }
+            }
+        }
+        throw Refused.argumentInvalid(in.call(), position(argument, values, at),
+            filterForm(argument.name()));
+    }
+
     /** The form one filter takes, as a refusal of its value says it. */
-    private static String filterForm(String field) {
+    private static Form filterForm(String field) {
         if (field.equals(TaskFilter.Field.STATE.wireName())) {
-            return "it is one or more of " + String.join(", ", java.util.Arrays.stream(
-                TaskState.values()).map(TaskState::wireName).toList()) + ", comma-separated";
+            return Form.STATE_FILTER;
         }
         if (field.equals(TaskFilter.Field.BRACKET.wireName())) {
-            return "it is one or more bracket numbers, comma-separated";
+            return Form.BRACKET_FILTER;
         }
         if (field.equals(TaskFilter.Field.ADDRESS.wireName())) {
-            return "it is one or more complete task addresses, comma-separated";
+            return Form.ADDRESS_FILTER;
         }
-        return "it is one or more values, comma-separated";
+        return Form.VALUE_FILTER;
+    }
+
+    /**
+     * The path a refusal of one of several values names: the argument with
+     * the value's position where it carries several, the argument alone
+     * where it carries one (DEC-0043 R19).
+     */
+    private static ArgumentPath position(Argument argument, List<String> values, int at) {
+        return values.size() > 1 ? ArgumentPath.of(argument, at) : ArgumentPath.of(argument);
     }
 
     /** An address filter: complete addresses in, the kernel's short form out. */
-    private static String shortAddresses(CallArguments in, String scope, String selector,
-                                         String value) {
+    private static String shortAddresses(CallArguments in, Argument argument, String scope,
+                                         String selector, List<String> values) {
         List<String> shortForms = new ArrayList<>();
-        for (String raw : value.split(",", -1)) {
-            VerbSurface.Item at = item(in, ADDRESS, raw.trim());
+        for (int i = 0; i < values.size(); i++) {
+            ArgumentPath path = position(argument, values, i);
+            VerbSurface.Item at = item(path, values.get(i), in.call());
             if (!at.scope().equals(scope) || !at.address().selector().equals(selector)) {
-                throw Refused.argumentInvalid(in.call(), ADDRESS,
-                    "a listing filters the tasks of its own scope and bracket kind");
+                throw Refused.argumentInvalid(in.call(), path, Form.ADDRESS_FILTER_ELSEWHERE);
             }
             shortForms.add(at.address().toString());
         }
@@ -365,26 +393,21 @@ public class CallRouter {
         try {
             duration = Duration.parse(raw);
         } catch (DateTimeParseException e) {
-            throw Refused.claimDurationInvalid(in.call());
+            throw Refused.claimDurationInvalid(in.call(), in.topPath(DURATION));
         }
         if (duration.compareTo(Duration.between(Instant.now(), LATEST)) >= 0) {
-            throw Refused.argumentInvalid(in.call(), DURATION,
-                "a lease ends before " + LATEST);
+            throw Refused.argumentInvalid(in.call(), in.topPath(DURATION), Form.LEASE_END);
         }
         return new TaskInput.Lease(duration);
     }
 
     private static Instant instant(CallArguments in, String name) {
-        String raw = in.field(name);
-        Instant at = parsedInstant(raw);
+        Instant at = parsedInstant(in.field(name));
         if (at == null) {
-            throw Refused.argumentInvalid(in.call(), name,
-                "an instant is written in ISO-8601 with its offset, such as "
-                    + "2026-10-07T09:00:00Z");
+            throw Refused.argumentInvalid(in.call(), in.fieldPath(name), Form.INSTANT);
         }
         if (at.isBefore(EARLIEST) || !at.isBefore(LATEST)) {
-            throw Refused.argumentInvalid(in.call(), name,
-                "an instant lies from " + EARLIEST + " up to " + LATEST);
+            throw Refused.argumentInvalid(in.call(), in.fieldPath(name), Form.INSTANT_RANGE);
         }
         return at;
     }
@@ -406,9 +429,8 @@ public class CallRouter {
         List<String> options = in.list("options", Argument.Placement.FIELDS);
         boolean freeText = in.flag("free_text");
         if (options.isEmpty() && !freeText) {
-            throw Refused.argumentMissing(in.call(), CallArguments.FIELDS + ".options",
-                "the answers the commissioner can choose from; a question with none admits "
-                    + "free text, so give options or set free_text to true");
+            throw Refused.argumentMissing(in.call(), Refused.Missing.OPTIONS,
+                List.of(in.fieldPath("options")));
         }
         return new TaskInput.Question(in.field("question"), options, freeText);
     }
@@ -417,12 +439,11 @@ public class CallRouter {
         String option = in.field("option");
         String text = in.field(TEXT);
         if (option == null && text == null) {
-            throw Refused.argumentMissing(in.call(), CallArguments.FIELDS + ".option",
-                "one of the question's options, or text where free text is admitted");
+            throw Refused.argumentMissing(in.call(), Refused.Missing.ANSWER,
+                List.of(in.fieldPath("option"), in.fieldPath(TEXT)));
         }
         if (option != null && text != null) {
-            throw Refused.argumentInvalid(in.call(), CallArguments.FIELDS + ".text",
-                "an answer names an option or carries text, not both");
+            throw Refused.argumentInvalid(in.call(), in.fieldPath(TEXT), Form.ANSWER_ONE_OF_TWO);
         }
         return new TaskInput.Reply(option, text);
     }
@@ -432,8 +453,8 @@ public class CallRouter {
             in.field(APPARATUS), in.field(TEXT), in.metadata().orElse(null));
         if (changes.title() == null && changes.apparatus() == null && changes.text() == null
                 && changes.metadata() == null) {
-            throw Refused.argumentMissing(in.call(), CallArguments.FIELDS,
-                "at least one of title, apparatus, text or metadata to change");
+            throw Refused.argumentMissing(in.call(), Refused.Missing.CHANGE,
+                List.of(ArgumentPath.FIELDS));
         }
         return changes;
     }
@@ -443,17 +464,16 @@ public class CallRouter {
     // ======================================================================
 
     private static VerbSurface.Item item(CallArguments in, String argument) {
-        return item(in, argument, in.top(argument));
+        return item(in.topPath(argument), in.top(argument), in.call());
     }
 
-    private static VerbSurface.Item item(CallArguments in, String argument, String raw) {
+    private static VerbSurface.Item item(ArgumentPath path, String raw, VerbName call) {
         try {
             AddressParser.Parts parts = AddressParser.uri(raw);
             return new VerbSurface.Item(parts.scope(),
                 AddressParser.item(parts.selector(), parts.id()));
         } catch (SurfaceException malformed) {
-            throw Refused.argumentInvalid(in.call(), argument,
-                "a task's address is written dispatch://<scope>/<selector>/<number>.<sub>");
+            throw Refused.argumentInvalid(call, path, Form.ADDRESS);
         }
     }
 
@@ -461,8 +481,7 @@ public class CallRouter {
         try {
             return AddressParser.scope(raw);
         } catch (SurfaceException malformed) {
-            throw Refused.argumentInvalid(in.call(), SCOPE,
-                "a scope's name is a DNS label: lower case, digits and inner hyphens");
+            throw Refused.argumentInvalid(in.call(), in.topPath(SCOPE), Form.SCOPE);
         }
     }
 
@@ -470,8 +489,7 @@ public class CallRouter {
         try {
             return AddressParser.selector(raw);
         } catch (SurfaceException malformed) {
-            throw Refused.argumentInvalid(in.call(), SELECTOR,
-                "a bracket kind's name is lower case, digits and inner hyphens");
+            throw Refused.argumentInvalid(in.call(), in.topPath(SELECTOR), Form.SELECTOR);
         }
     }
 
@@ -493,59 +511,54 @@ public class CallRouter {
 
     /**
      * A kernel refusal as the caller is told it. The kernel's message is
-     * discarded; what the caller reads is worded from the catalogue, with the
-     * state read again after the refused call rolled back.
+     * discarded, and so are the values it names; what the caller reads is a
+     * declared message, with the state read again after the refused call
+     * rolled back.
      */
-    private Refused dress(Surface surface, Actor actor, ProcessVerb verb, String name,
+    private Refused dress(Surface surface, Actor actor, ProcessVerb verb, VerbName call,
                           Map<String, Object> given, DispatchException e) {
         RefusalCode code = ReasonMapping.of(e.reason());
-        String scope = scopeIn(given);
         return switch (code) {
             case NOT_FOUND -> Refused.notFound();
-            case UNEXPECTED_FAILURE -> UnexpectedFailures.refuse(name, whereIn(given), e);
-            case SCOPE_KIND_UNSUPPORTED -> Refused.scopeKindUnsupported(name, scope,
-                e.offenders().isEmpty() ? "kind it does not serve" : e.offenders().get(0));
-            case SCOPE_READ_ONLY -> Refused.scopeReadOnly(name, scope);
-            case SCOPE_LOCKED -> Refused.scopeLocked(name, scope);
-            case SELECTOR_UNKNOWN -> Refused.selectorUnknown(name, scope,
-                declaredSelectors(actor, scope));
-            case IDEMPOTENCY_KEY_REUSED -> Refused.idempotencyKeyReused(name, scope);
-            case NOTHING_TO_TAKE -> Refused.nothingToTake(name,
-                AddressParser.completeCollection(scope, String.valueOf(given.get(SELECTOR))),
-                ProcessVerb.QUERY.on(surface));
-            case CLAIM_DURATION_INVALID -> Refused.claimDurationInvalid(name);
-            case PAGE_SIZE_REJECTED -> Refused.pageSizeRejected(name, PageRequest.MAX_PAGE_SIZE);
-            case CURSOR_MALFORMED -> Refused.cursorMalformed(name, ProcessVerb.QUERY.on(surface));
-            case CURSOR_FOREIGN -> Refused.cursorForeign(name, e.offenders());
-            case SORT_UNDECLARED -> Refused.sortUndeclared(name, SortKey.wireNames());
-            case ARGUMENT_MISSING -> missing(verb, name, e);
-            case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(name, "argument",
-                e.offenders().isEmpty() ? List.of("an argument") : e.offenders(),
-                e.offenders(), verb.topNames());
-            case ARGUMENT_INVALID -> invalid(actor, name, given, e);
-            default -> about(surface, actor, verb, name, given, e, code);
+            case UNEXPECTED_FAILURE -> UnexpectedFailures.refuse(call, whereIn(given), e);
+            case SCOPE_KIND_UNSUPPORTED -> Refused.scopeKindUnsupported(call);
+            case SCOPE_READ_ONLY -> Refused.scopeReadOnly(call);
+            case SCOPE_LOCKED -> Refused.scopeLocked(call);
+            case SELECTOR_UNKNOWN -> Refused.selectorUnknown(call);
+            case IDEMPOTENCY_KEY_REUSED -> Refused.idempotencyKeyReused(call);
+            case NOTHING_TO_TAKE -> Refused.nothingToTake(call,
+                VerbName.of(ProcessVerb.QUERY, surface));
+            case CLAIM_DURATION_INVALID -> Refused.claimDurationInvalid(call,
+                pathIn(verb, DURATION, Argument.Placement.TOP));
+            case PAGE_SIZE_REJECTED -> Refused.pageSizeRejected(call,
+                pathIn(verb, PAGE_SIZE, Argument.Placement.TOP));
+            case CURSOR_MALFORMED -> Refused.cursorMalformed(call,
+                VerbName.of(ProcessVerb.QUERY, surface), pathIn(verb, AFTER, Argument.Placement.TOP));
+            case CURSOR_FOREIGN -> Refused.cursorForeign(call, differing(verb, e.offenders()),
+                pathIn(verb, AFTER, Argument.Placement.TOP));
+            case SORT_UNDECLARED -> Refused.sortUndeclared(call,
+                pathIn(verb, SORT, Argument.Placement.TOP));
+            case ARGUMENT_MISSING -> missing(verb, call, e);
+            case ARGUMENT_UNKNOWN -> Refused.argumentUnknown(call, false,
+                ArgumentPath.of(verb.topArguments()));
+            case ARGUMENT_INVALID -> invalid(verb, call, given, e);
+            default -> about(surface, actor, verb, call, given, e, code);
         };
     }
 
     /** The refusals about a task the caller may see: they carry its situation. */
-    private Refused about(Surface surface, Actor actor, ProcessVerb verb, String name,
+    private Refused about(Surface surface, Actor actor, ProcessVerb verb, VerbName call,
                           Map<String, Object> given, DispatchException e, RefusalCode code) {
         String target = targetIn(verb, given);
         if (actor == null) {
             // A token with no usable capacity reads nothing, so there is no
             // state to name; the refusal is about who the caller is.
-            Refused.Situation unseen = new Refused.Situation(
-                target == null ? whereIn(given) : target, NOT_VISIBLE, List.of(), null);
-            return Refused.ofRole(name, unseen, "a caller holding the commissioning or the "
-                + "executing capacity, and exactly one of them", Participation.BYSTANDER);
+            return Refused.ofRole(call, Refused.Part.CAPACITY);
         }
         if (target == null && code == RefusalCode.ROLE_DOES_NOT_ALLOW) {
             // A call on a collection that is the other part's: a draw by a
             // commissioner. No task is named, so none has a state to name.
-            Refused.Situation collection = new Refused.Situation(whereIn(given), NOT_VISIBLE,
-                List.of(), null);
-            return Refused.ofRole(name, collection, role(verb, e),
-                actor.isConsole() ? Participation.COMMISSIONER : Participation.BYSTANDER);
+            return Refused.ofRole(call, part(verb, e));
         }
         VerbSurface.Result result = target == null ? null : readQuietly(actor, target);
         if (result == null) {
@@ -554,113 +567,112 @@ public class CallRouter {
         Refused.Situation at = situationOf(surface, actor, result);
         TaskView view = result.view();
         return switch (code) {
-            case STATE_DOES_NOT_ALLOW -> Refused.ofState(name, at,
-                view.state() == TaskState.CLOSED, applies(verb));
-            case ROLE_DOES_NOT_ALLOW -> Refused.ofRole(name, at, role(verb, e),
-                Participation.of(actor, view));
-            case NOT_THE_HOLDER -> Refused.notTheHolder(name, at, whyNotHeld(verb, view, e));
-            case RECEIPT_WRONG -> Refused.receiptWrong(name, at);
-            case CHILDREN_NOT_FINISHED -> Refused.childrenNotFinished(name, at,
+            case STATE_DOES_NOT_ALLOW -> Refused.ofState(call, at,
+                view.state() == TaskState.CLOSED);
+            case ROLE_DOES_NOT_ALLOW -> Refused.ofRole(call, at, part(verb, e));
+            case NOT_THE_HOLDER -> Refused.notTheHolder(call, at, unheld(view, e),
+                verb == ProcessVerb.READ_TEXT);
+            case RECEIPT_WRONG -> Refused.receiptWrong(call, at);
+            case CHILDREN_NOT_FINISHED -> Refused.childrenNotFinished(call, at,
                 children(surface, actor, result, e), e.confirmation().orElse(null),
                 e.reason() == DispatchException.Reason.CONFIRMATION_STALE);
-            case DEFERRAL_PENDING -> Refused.deferralPending(name, at,
-                String.valueOf(view.notBefore()));
-            case CONFLICT_TOKEN_STALE -> Refused.conflictTokenStale(name, at,
+            case DEFERRAL_PENDING -> Refused.deferralPending(call,
+                VerbName.of(ProcessVerb.READ, surface), at);
+            case CONFLICT_TOKEN_STALE -> Refused.conflictTokenStale(call, at,
                 view.conflictToken());
-            default -> UnexpectedFailures.refuse(name, at.address(), e);
+            default -> UnexpectedFailures.refuse(call, result.address(), e);
         };
     }
 
-    private static Refused missing(ProcessVerb verb, String name, DispatchException e) {
+    /**
+     * The declared path of an argument a kernel refusal concerns. The kernel
+     * refuses only what the declaration carries; where it names one this call
+     * does not declare, the two disagree, and that is a defect.
+     */
+    private static ArgumentPath pathIn(ProcessVerb verb, String name,
+                                       Argument.Placement placement) {
+        Argument argument = verb.argument(name, placement);
+        if (argument == null) {
+            throw new IllegalStateException(verb.call() + " declares no " + name
+                + ", and the kernel refused it");
+        }
+        return ArgumentPath.of(argument);
+    }
+
+    /**
+     * What differs between a cursor's listing and the call, as the arguments
+     * that carry it: the kernel says {@code filter} for the four filters, and
+     * the refusal names them.
+     */
+    private static List<ArgumentName> differing(ProcessVerb verb, List<String> differ) {
+        List<ArgumentName> names = new ArrayList<>();
+        for (String part : differ) {
+            List<String> carried = "filter".equals(part) ? FILTERS : List.of(part);
+            for (String name : carried) {
+                Argument argument = verb.argument(name, Argument.Placement.TOP);
+                if (argument != null) {
+                    names.add(ArgumentName.of(argument));
+                }
+            }
+        }
+        return names;
+    }
+
+    private static Refused missing(ProcessVerb verb, VerbName call, DispatchException e) {
         return switch (e.reason()) {
-            case RECEIPT_ABSENT -> Refused.argumentMissing(name, RECEIPT,
-                "the receipt your claim handed out for this task");
-            case CONFLICT_TOKEN_MISSING -> Refused.argumentMissing(name, CONFLICT_TOKEN,
-                "the conflict token handed out with your last read of this task");
-            case ADDENDUM_TEXT_MISSING -> Refused.argumentMissing(name,
-                CallArguments.FIELDS + "." + TEXT, "the addendum's text");
-            default -> Refused.argumentMissing(name, CallArguments.FIELDS,
-                "the values " + verb.on(Surface.MCP) + " writes");
+            case RECEIPT_ABSENT -> Refused.argumentMissing(call,
+                pathIn(verb, RECEIPT, Argument.Placement.TOP));
+            case CONFLICT_TOKEN_MISSING -> Refused.argumentMissing(call,
+                pathIn(verb, CONFLICT_TOKEN, Argument.Placement.TOP));
+            case ADDENDUM_TEXT_MISSING -> Refused.argumentMissing(call,
+                pathIn(verb, TEXT, Argument.Placement.FIELDS));
+            default -> Refused.argumentMissing(call, ArgumentPath.FIELDS);
         };
     }
 
-    private Refused invalid(Actor actor, String name,
-                            Map<String, Object> given, DispatchException e) {
+    private Refused invalid(ProcessVerb verb, VerbName call, Map<String, Object> given,
+                            DispatchException e) {
         return switch (e.reason()) {
-            case METADATA_REFUSED -> Refused.argumentInvalid(name,
-                CallArguments.FIELDS + ".metadata",
-                "metadata carries your own keys, each value a string or a list of strings of "
-                    + "at most 512 characters, and no URL carrying credentials");
-            case CURATION_TARGET_SELF -> Refused.argumentInvalid(name,
-                CallArguments.FIELDS + ".curated_in", "it names another task than this one");
-            case ADDENDUM_SUFFIX_EXHAUSTED -> Refused.argumentInvalid(name,
-                CallArguments.FIELDS + "." + PART,
-                "that text already carries addenda a to z, and a further letter would "
-                    + "reissue one that exists");
+            case METADATA_REFUSED -> Refused.argumentInvalid(call,
+                pathIn(verb, "metadata", Argument.Placement.FIELDS), Form.METADATA);
+            case CURATION_TARGET_SELF -> Refused.argumentInvalid(call,
+                pathIn(verb, CURATED_IN, Argument.Placement.FIELDS), Form.CURATION_TARGET);
+            case ADDENDUM_SUFFIX_EXHAUSTED -> Refused.argumentInvalid(call,
+                pathIn(verb, PART, Argument.Placement.FIELDS), Form.ADDENDA_EXHAUSTED);
             case ANSWER_NOT_AN_OPTION -> {
                 // The options are the question's text, so they are pointed
                 // at and not listed: a refusal carries no text of a task.
                 boolean option = fieldIn(given, "option") != null;
-                yield Refused.argumentInvalid(name, CallArguments.FIELDS
-                        + (option ? ".option" : ".text"),
-                    option
-                        ? "it is one of the question's options, which the read of the task "
-                            + "lists"
-                        : "the question admits no free text; name one of its options, which "
-                            + "the read of the task lists");
+                yield option
+                    ? Refused.argumentInvalid(call,
+                        pathIn(verb, "option", Argument.Placement.FIELDS), Form.ANSWER_OPTION)
+                    : Refused.argumentInvalid(call,
+                        pathIn(verb, TEXT, Argument.Placement.FIELDS), Form.ANSWER_FREE_TEXT);
             }
-            default -> Refused.valueInvalid(name, "it is a value this call takes");
+            default -> Refused.valueInvalid(call, Form.VALUE);
         };
     }
 
-    /** Where the call applies, as a refusal of its state names it. */
-    private static String applies(ProcessVerb verb) {
-        TaskVerb row = verb.transition();
-        if (row == null) {
-            return switch (verb) {
-                case UPDATE, DELETE -> "only to a draft";
-                case ANNOTATE -> "only once the task is sent";
-                case RELATE, UNRELATE -> "only to a closed task";
-                case CREATE -> "only under a bracket root that is not closed";
-                default -> "where the task can be read";
-            };
-        }
-        return switch (row.condition()) {
-            case QUESTION_PENDING -> "only on_hold for a question";
-            case PAUSED_BY_HOLDER -> "only on_hold for a dependency or something external";
-            default -> "only in " + String.join(" or ", row.states().stream()
-                .map(TaskState::wireName).sorted().toList());
-        };
-    }
-
-    /** Who makes the call, as a refusal of the caller's part names it. */
-    private static String role(ProcessVerb verb, DispatchException e) {
+    /** Whom the call belongs to, as a refusal of the caller's part names it. */
+    private static Refused.Part part(ProcessVerb verb, DispatchException e) {
         if (e.reason() == DispatchException.Reason.RATIFICATION_NOT_PERMITTED) {
-            return "the commissioner, and never by the identity that delivered the answer";
+            return Refused.Part.COMMISSIONER_OTHER_THAN_THE_DELIVERER;
         }
         if (verb.role() == null) {
-            return "the identity that wrote the text it supplements";
+            return Refused.Part.AUTHOR;
         }
         return switch (verb.role()) {
-            case COMMISSIONER -> "the commissioner";
-            case CANDIDATE -> "an executor";
-            case HOLDER -> "its holder";
-            case BYSTANDER -> "nobody";
+            case COMMISSIONER, BYSTANDER -> Refused.Part.COMMISSIONER;
+            case CANDIDATE -> Refused.Part.EXECUTOR;
+            case HOLDER -> Refused.Part.HOLDER;
         };
     }
 
-    private static String whyNotHeld(ProcessVerb verb, TaskView view, DispatchException e) {
-        String why;
+    private static Refused.Unheld unheld(TaskView view, DispatchException e) {
         if (e.reason() == DispatchException.Reason.LEASE_LAPSED) {
-            why = "your lease on it ended";
-        } else if (view.holder() == HolderState.OTHER) {
-            why = "another executor holds it";
-        } else {
-            why = "nobody holds it";
+            return Refused.Unheld.LAPSED;
         }
-        return verb == ProcessVerb.READ_TEXT
-            ? "an executor reads the text only of a task it holds, and " + why
-            : why;
+        return view.holder() == HolderState.OTHER ? Refused.Unheld.OTHER : Refused.Unheld.NOBODY;
     }
 
     /** Each unfinished child, complete, with its state and the calls open on it. */
@@ -681,7 +693,7 @@ public class CallRouter {
                 ? named.substring(space + 2, named.length() - 1)
                 : stateOf(read.view()));
             unfinished.put(Refused.NEXT, read == null ? List.of()
-                : NextList.of(surface, read.view(), actor, false));
+                : NextList.wire(NextList.of(surface, read.view(), actor, false)));
             children.add(unfinished);
         }
         return children;
@@ -690,7 +702,7 @@ public class CallRouter {
     private Refused.Situation situationOf(Surface surface, Actor actor,
                                           VerbSurface.Result result) {
         List<NextList.Step> next = NextList.of(surface, result.view(), actor, false);
-        return new Refused.Situation(result.address(), stateOf(result.view()), next,
+        return new Refused.Situation(stateOf(result.view()), next,
             NextList.waitingFor(result.view(), next, Instant.now()));
     }
 
@@ -708,9 +720,8 @@ public class CallRouter {
 
     /**
      * The task a refused call was about: its address, or a create's parent;
-     * null where the call named none, or none that reads as an address. A
-     * refusal names an address only once it reads as one, so a value that
-     * merely arrived where an address belongs is never echoed (DEC-0042).
+     * null where the call named none, or none that reads as an address. Read
+     * only to find the state the refusal carries, never to name it.
      */
     private static String targetIn(ProcessVerb verb, Map<String, Object> given) {
         Object target = given.get(verb == ProcessVerb.CREATE ? PARENT : ADDRESS);
@@ -741,49 +752,10 @@ public class CallRouter {
         }
     }
 
-    private List<String> declaredSelectors(Actor actor, String scope) {
-        if (actor == null || scope == null) {
-            return List.of();
-        }
-        try {
-            return verbs.declaredSelectors(actor, scope);
-        } catch (RuntimeException invisible) {
-            // A scope the caller may not see declares nothing it may know about.
-            return List.of();
-        }
-    }
-
     /**
-     * The scope as the caller named it: the argument, or the scope of the
-     * address; a phrase where neither reads as a scope's name.
+     * The address or the collection a call named, for the log line of an
+     * unexpected failure (DEC-0051 decides what that line may carry).
      */
-    private static String scopeIn(Map<String, Object> given) {
-        Object named = given.get(SCOPE);
-        if (named != null) {
-            return scopeOrPhrase(String.valueOf(named));
-        }
-        Object address = given.get(ADDRESS);
-        if (address == null) {
-            return "the scope named";
-        }
-        String raw = String.valueOf(address);
-        int start = raw.indexOf("://");
-        if (start < 0) {
-            return "the scope named";
-        }
-        int end = raw.indexOf('/', start + 3);
-        return scopeOrPhrase(end < 0 ? raw.substring(start + 3) : raw.substring(start + 3, end));
-    }
-
-    private static String scopeOrPhrase(String raw) {
-        try {
-            return AddressParser.scope(raw);
-        } catch (RuntimeException malformed) {
-            return "the scope named";
-        }
-    }
-
-    /** The address or the collection a call named, for a refusal that names where. */
     private static String whereIn(Map<String, Object> given) {
         Object address = given.get(ADDRESS);
         if (address != null) {

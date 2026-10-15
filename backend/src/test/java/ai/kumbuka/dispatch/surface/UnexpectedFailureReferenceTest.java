@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import org.junit.jupiter.api.AfterEach;
@@ -78,13 +85,14 @@ class UnexpectedFailureReferenceTest {
     void the_reference_the_caller_is_told_to_report_is_in_the_log() {
         RuntimeException cause = new IllegalStateException("a defect, not a rule");
 
-        Refused refused = UnexpectedFailures.refuse("dispatch_create",
-            "dispatch://kumbuka/sprint/1.0", cause);
+        Refused refused = UnexpectedFailures.refuse(
+            VerbName.of(ProcessVerb.CREATE, Surface.MCP), "dispatch://kumbuka/sprint/1.0", cause);
 
         String reference = String.valueOf(refused.data().get("reference"));
         assertThat(refused.getMessage())
-            .as("the caller is told to report a reference")
-            .contains(reference);
+            .as("the caller is told to report the reference in data.reference")
+            .contains("data.reference");
+        assertThat(reference).isNotBlank();
 
         assertThat(recorded)
             .as("and the same reference is in the service's log, with the failure")
@@ -101,8 +109,9 @@ class UnexpectedFailureReferenceTest {
     /** A failure with no cause is still recorded, and still carries its reference. */
     @Test
     void a_failure_with_no_cause_is_still_recorded() {
-        Refused refused = UnexpectedFailures.refuse("withdraw",
-            "dispatch://kumbuka/sprint/1.0", null);
+        Refused refused = UnexpectedFailures.refuse(
+            VerbName.of(ProcessVerb.WITHDRAW, Surface.REST), "dispatch://kumbuka/sprint/1.0",
+            null);
 
         String reference = String.valueOf(refused.data().get("reference"));
         assertThat(recorded)

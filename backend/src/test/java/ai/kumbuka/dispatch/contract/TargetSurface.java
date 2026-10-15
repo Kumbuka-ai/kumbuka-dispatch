@@ -161,7 +161,8 @@ public final class TargetSurface {
     /** The first entry of {@code next} after a claim. */
     public static final String FIRST_NEXT_CALL = "dispatch_read_text";
     public static final String FIRST_NEXT_DOES =
-        "Reads the commission. Do this first: the claim did not return it.";
+        "Reads the commission: the task's text, the work this claim takes on. Call it next, "
+            + "before you start the work.";
 
     private static List<String> concat(List<String> a, List<String> b) {
         List<String> all = new java.util.ArrayList<>(a);

@@ -102,9 +102,14 @@ class McpProjectionIT {
             Map<String, Object> refusal = Mcp.refusal(Mcp.call(earlier,
                 Map.of("address", open)));
             assertThat(refusal.get("reason")).as(earlier).isEqualTo("ARGUMENT_UNKNOWN");
-            assertThat(String.valueOf(refusal.get("message")))
-                .as("the refusal names the call it does not know, and the ones it does")
-                .contains(earlier).contains("dispatch_claim");
+            @SuppressWarnings("unchecked")
+            List<String> accepts = (List<String>) dataOf(refusal).get("accepts");
+            assertThat(accepts)
+                .as("the refusal names the calls it does know, and not the one that arrived "
+                    + "(DEC-0043 R19)")
+                .contains("dispatch_claim").doesNotContain(earlier);
+            assertThat(String.valueOf(refusal.get("message")).split("[ ,.:]"))
+                .as("nor does its message, word for word").doesNotContain(earlier);
             assertThat(Writes.snapshot()).as("%s wrote nothing", earlier).isEqualTo(before);
         }
     }
@@ -117,8 +122,9 @@ class McpProjectionIT {
             String before = Writes.snapshot();
             Map<String, Object> atTop = Mcp.refusal(Mcp.call(call.call(), top));
             assertThat(atTop.get("reason")).as(call.call()).isEqualTo("ARGUMENT_UNKNOWN");
-            assertThat(String.valueOf(atTop.get("message"))).as(call.call())
-                .contains("invented");
+            assertThat(String.valueOf(atTop.get("message")) + atTop.get("data")).as(call.call())
+                .doesNotContain("invented");
+            assertThat(dataOf(atTop)).as(call.call()).containsKey("accepts");
             assertThat(Writes.snapshot()).as("%s wrote nothing", call.call()).isEqualTo(before);
 
             Map<String, Object> nested = new LinkedHashMap<>(complete(call));
@@ -130,15 +136,17 @@ class McpProjectionIT {
             Map<String, Object> below = Mcp.refusal(Mcp.call(call.call(), nested));
             assertThat(below.get("reason")).as("%s.fields", call.call())
                 .isEqualTo("ARGUMENT_UNKNOWN");
+            assertThat(String.valueOf(below.get("message")) + below.get("data"))
+                .as("%s.fields", call.call()).doesNotContain("invented_field");
             assertThat(String.valueOf(below.get("message"))).as("%s.fields", call.call())
-                .contains(call.hasFields() ? "invented_field" : "fields");
+                .contains(call.hasFields() ? "under fields" : "takes these arguments");
             assertThat(Writes.snapshot()).as("%s.fields wrote nothing", call.call())
                 .isEqualTo(before);
         }
     }
 
     @Test
-    void every_undeclared_argument_of_a_level_is_named_in_one_refusal() {
+    void every_level_with_an_undeclared_argument_is_answered_with_what_it_accepts() {
         Map<String, Object> filters = new LinkedHashMap<>();
         filters.put("scope", SurfaceFixture.SCOPE);
         filters.put("selector", SurfaceFixture.SELECTOR);
@@ -147,9 +155,11 @@ class McpProjectionIT {
         Map<String, Object> atTop = Mcp.refusal(Mcp.call("dispatch_query", filters));
         assertThat(atTop.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(String.valueOf(atTop.get("message")))
-            .as("both filters, in the order the call carried them, and the declared ones")
-            .contains("named status, holder.")
-            .contains("state, apparatus, bracket, address");
+            .as("the declared arguments, and neither of the names that arrived")
+            .isEqualTo("dispatch_query takes these arguments: scope, selector, state, "
+                + "apparatus, bracket, address, page_size, after, sort, direction.");
+        assertThat(String.valueOf(atTop.get("data"))).doesNotContain("status")
+            .doesNotContain("holder");
 
         String before = Writes.snapshot();
         Map<String, Object> fields = new LinkedHashMap<>();
@@ -162,7 +172,10 @@ class McpProjectionIT {
             "fields", fields)));
         assertThat(below.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(String.valueOf(below.get("message")))
-            .contains("argument under fields named colour, weight.");
+            .isEqualTo("dispatch_create takes these arguments under fields: fields.title, "
+                + "fields.apparatus, fields.text, fields.metadata.");
+        assertThat(dataOf(below)).containsEntry("accepts", List.of("fields.title",
+            "fields.apparatus", "fields.text", "fields.metadata"));
         assertThat(Writes.snapshot()).as("the create wrote nothing").isEqualTo(before);
 
         Map<String, Object> both = new LinkedHashMap<>();
@@ -174,8 +187,8 @@ class McpProjectionIT {
         assertThat(topFirst.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
         assertThat(String.valueOf(topFirst.get("message")))
             .as("the top level is refused first, and alone")
-            .contains("argument named stray.")
-            .doesNotContain("colour");
+            .startsWith("dispatch_create takes these arguments: ")
+            .doesNotContain("stray").doesNotContain("colour");
         assertThat(Writes.snapshot()).as("nor did the one with both").isEqualTo(before);
     }
 
@@ -185,12 +198,14 @@ class McpProjectionIT {
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
             "holder", "self")));
         assertThat(refusal.get("reason")).isEqualTo("ARGUMENT_UNKNOWN");
-        assertThat(String.valueOf(refusal.get("message"))).contains("holder")
+        assertThat(String.valueOf(refusal.get("message"))).doesNotContain("holder")
             .as("and names the filters it has instead")
             .contains("state, apparatus, bracket, address");
-        assertThat(dataOf(refusal)).as("the argument by name, never its value")
-            .containsEntry("offenders", List.of("holder"))
+        assertThat(dataOf(refusal)).as("the declared arguments, never the name or its value")
+            .containsEntry("accepts", List.of("scope", "selector", "state", "apparatus",
+                "bracket", "address", "page_size", "after", "sort", "direction"))
             .containsEntry("attempted", "dispatch_query")
+            .doesNotContainKey("offenders")
             .doesNotContainValue("self");
 
         Map<String, Object> listed = Mcp.answer(Mcp.call("dispatch_query", Map.of(

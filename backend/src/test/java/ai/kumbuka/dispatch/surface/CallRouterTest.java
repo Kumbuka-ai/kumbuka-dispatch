@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.contract.TargetSurface;
@@ -60,7 +67,11 @@ class CallRouterTest {
                 "dispatch_accept_return", "dispatch_decline", "dispatch_close_bracket")) {
             Refused refused = refusal(router.call(Surface.MCP, () -> C, earlier, Map.of()));
             assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-            assertThat(refused.getMessage()).contains(earlier).contains("call");
+            assertThat(refused.getMessage() + refused.data())
+                .as("the name that arrived stays with the caller (DEC-0043 R19)")
+                .doesNotContain(earlier);
+            assertThat(refused.data()).containsEntry(Refused.ACCEPTS,
+                ProcessVerb.names(Surface.MCP));
         }
         for (String earlier : List.of("abandon", "block", "close", "consume", "takeup")) {
             Refused refused = refusal(router.call(Surface.REST, () -> C, earlier, Map.of()));
@@ -76,7 +87,9 @@ class CallRouterTest {
             top.put("invented", "x");
             Refused atTop = refusal(router.call(Surface.MCP, () -> C, call.call(), top));
             assertThat(atTop.code()).as(call.call()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-            assertThat(atTop.getMessage()).as(call.call()).contains("invented");
+            assertThat(atTop.getMessage() + atTop.data()).as(call.call())
+                .doesNotContain("invented");
+            assertThat(atTop.data()).as(call.call()).containsKey(Refused.ACCEPTS);
 
             Map<String, Object> nested = new LinkedHashMap<>(complete(call));
             Map<String, Object> fields = new LinkedHashMap<>(fieldsOf(nested));
@@ -84,8 +97,8 @@ class CallRouterTest {
             nested.put(CallArguments.FIELDS, fields);
             Refused below = refusal(router.call(Surface.MCP, () -> C, call.call(), nested));
             assertThat(below.code()).as(call.call()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-            assertThat(below.getMessage()).as(call.call())
-                .contains(call.hasFields() ? "invented_field" : CallArguments.FIELDS);
+            assertThat(below.getMessage() + below.data()).as(call.call())
+                .doesNotContain("invented_field");
         }
         verifyNoInteractions(verbs);
     }
@@ -146,7 +159,7 @@ class CallRouterTest {
                 Map.of("address", ADDRESS, "receipt", "r",
                     "fields", Map.of("not_before", notBefore))));
             assertThat(deferral.code()).as(notBefore).isEqualTo(RefusalCode.ARGUMENT_INVALID);
-            assertThat(deferral.getMessage()).startsWith("not_before is not valid for ")
+            assertThat(deferral.getMessage()).startsWith("fields.not_before is not valid for ")
                 .doesNotContain(notBefore);
         }
         verifyNoInteractions(verbs);
@@ -181,7 +194,7 @@ class CallRouterTest {
             "holder", "self");
         Refused refused = refusal(router.call(Surface.MCP, () -> C, "dispatch_query", query));
         assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
-        assertThat(refused.getMessage()).contains("holder");
+        assertThat(refused.getMessage() + refused.data()).doesNotContain("holder");
         verifyNoInteractions(verbs);
     }
 
@@ -243,8 +256,8 @@ class CallRouterTest {
 
         assertThat(refused.code()).isEqualTo(RefusalCode.CONFLICT_TOKEN_STALE);
         assertThat(refused.data()).containsEntry(Refused.CONFLICT_TOKEN, "the-current-token");
-        assertThat(refused.getMessage()).contains("the-current-token")
-            .doesNotContain("kernel words");
+        assertThat(refused.getMessage()).contains("data.conflict_token")
+            .doesNotContain("the-current-token").doesNotContain("kernel words");
         assertThat(refused.data()).containsEntry(Refused.STATE, "open");
     }
 
@@ -278,7 +291,7 @@ class CallRouterTest {
                 case Argument.OBJECT -> Map.of();
                 default -> argument.values().isEmpty()
                     ? valueFor(argument.name())
-                    : argument.values().get(0);
+                    : argument.valueNames().get(0);
             };
             (argument.isField() ? fields : arguments).put(argument.name(), value);
         }

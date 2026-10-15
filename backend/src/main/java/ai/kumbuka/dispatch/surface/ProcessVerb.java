@@ -59,8 +59,9 @@ public enum ProcessVerb {
             + "Your hold lasts 30 minutes unless you state a duration; extend it with "
             + "dispatch_renew.",
         List.of(address(), duration(), idempotencyKey(
-            "a key of your own: repeating the claim with it while you hold the task "
-                + "returns the same task and a new receipt, and takes nothing up again"))),
+            "a key of your own: repeating the claim with it while you hold the task returns "
+                + "the same task with a new receipt and leaves your hold as it is; left out or "
+                + "null, each claim stands on its own"))),
 
     CLAIM_NEXT("claim_next", TaskVerb.CLAIM_NEXT, Participation.CANDIDATE,
         "Takes up the next open task addressed to you, without naming one; use "
@@ -71,7 +72,7 @@ public enum ProcessVerb {
             + Shared.THE_TEXT_IS_NOT_IN_THE_ANSWER + "\n\n"
             + "If nothing matches, nothing is taken.",
         List.of(scope(), selector(),
-            Argument.topList(Shared.APPARATUS, true, ApparatusPatterns.CHARACTER_RULE,
+            Argument.topList(Shared.APPARATUS, ApparatusPatterns.CHARACTER_RULE,
                 "Which apparatus you draw for. Every task is addressed to an apparatus: the "
                     + "kind of executor it is meant for, such as \"code\" or \"review\". Give "
                     + "one or more patterns, matched as alternatives. \"*\" stands for any run "
@@ -80,7 +81,8 @@ public enum ProcessVerb {
                     + "their apparatus."),
             duration(),
             idempotencyKey("a key of your own: repeating the draw with it while you hold the "
-                + "task it drew returns that task and a new receipt, and draws nothing"))),
+                + "task it drew returns that task with a new receipt; left out or null, each "
+                + "draw stands on its own"))),
 
     RELEASE("release", TaskVerb.RELEASE, Participation.HOLDER,
         "Gives a task you hold back: it is open again for any executor. Moves the task from "
@@ -97,9 +99,9 @@ public enum ProcessVerb {
             + "overcome.\n\n"
             + "dispatch_read and dispatch_query show the instant.",
         List.of(address(), receipt(),
-            Argument.field("not_before", Argument.STRING, true,
-                "the instant before which nobody can take the task up, as ISO-8601 such as "
-                    + "2026-10-07T09:00:00Z"),
+            Argument.field("not_before", Argument.STRING,
+                "the instant from which an executor can take the task up again, as ISO-8601 "
+                    + "such as 2026-10-07T09:00:00Z"),
             remark(false))),
 
     RENEW("renew", TaskVerb.RENEW, Participation.HOLDER,
@@ -116,12 +118,14 @@ public enum ProcessVerb {
             + "with a fresh 30-minute hold; read the answer with dispatch_read_text, part "
             + "\"thread\".",
         List.of(address(), receipt(),
-            Argument.field("question", Argument.STRING, true, "what you cannot decide"),
-            Argument.field("options", Argument.ARRAY, false,
-                "the answers the commissioner can choose from"),
-            Argument.field("free_text", Argument.BOOLEAN, false,
-                "whether the commissioner may answer in free text; false if omitted, and "
-                    + "then options are needed"))),
+            Argument.field("question", Argument.STRING, "what you need the commissioner to "
+                + "decide"),
+            Argument.field("options", Argument.ARRAY, Argument.UNSET,
+                "the answers the commissioner can choose from; left out or null, the "
+                    + "question takes free text, and free_text is then true"),
+            Argument.field("free_text", Argument.BOOLEAN, "false",
+                "true where the commissioner may answer in free text; false when left out or "
+                    + "null, and then options are needed"))),
 
     ANSWER("answer", TaskVerb.ANSWER, Participation.COMMISSIONER,
         "Answers the question the holder asked: name one of its options, or give text where "
@@ -130,10 +134,12 @@ public enum ProcessVerb {
             + "the conflict token of your last read.\n\n"
             + "Read the question first with dispatch_read_text, part \"thread\".",
         List.of(address(), conflictToken(),
-            Argument.field("option", Argument.STRING, false,
-                "one of the question's options; give this or text"),
-            Argument.field("text", Argument.STRING, false,
-                "a free-text answer, where the question admits one; give this or option"))),
+            Argument.field("option", Argument.STRING, Argument.UNSET,
+                "one of the question's options; give this or text, and leave it out or null "
+                    + "when you give text"),
+            Argument.field("text", Argument.STRING, Argument.UNSET,
+                "a free-text answer, where the question admits one; give this or option, and "
+                    + "leave it out or null when you give option"))),
 
     HOLD("hold", TaskVerb.HOLD, Participation.HOLDER,
         "Pauses a task you hold while it waits on a dependency or on something external. "
@@ -142,8 +148,11 @@ public enum ProcessVerb {
             + "paused.\n\n"
             + "Continue with dispatch_resume.",
         List.of(address(), receipt(),
-            Argument.oneOf("reason", Argument.Placement.FIELDS, true,
-                List.of("dependency", "external"), "why the task waits"),
+            Argument.oneOf("reason", Argument.Placement.FIELDS, null, List.of(
+                    Argument.value("dependency", "the task waits on another piece of work"),
+                    Argument.value("external", "the task waits on something outside the "
+                        + "platform")),
+                "why the task waits"),
             remark(false))),
 
     RESUME("resume", TaskVerb.RESUME, Participation.HOLDER,
@@ -159,8 +168,8 @@ public enum ProcessVerb {
             + "You keep the task while the commissioner reviews it. It closes when accepted, "
             + "or comes back to you with a remark through dispatch_rework.",
         List.of(address(), receipt(),
-            Argument.field("text", Argument.STRING, true, "your answer"),
-            metadata("your own keys on the answer"))),
+            Argument.field("text", Argument.STRING, "your answer"),
+            metadata("your own keys on the answer", "the answer carries its text alone"))),
 
     REWORK("rework", TaskVerb.REWORK, Participation.COMMISSIONER,
         "Sends a delivered answer back to its holder with a remark saying what to change. "
@@ -214,14 +223,18 @@ public enum ProcessVerb {
             + "Nobody is offered the draft until you send it with dispatch_send. Change it "
             + "with dispatch_update, or discard it with dispatch_delete.",
         List.of(scope(), selector(),
-            Argument.top("parent", Argument.STRING, false,
-                "the complete address of a bracket root, to add a child to that bracket"),
-            idempotencyKey("a key of your own, so a retried create does not create twice"),
-            Argument.field("title", Argument.STRING, true, "the task's title"),
-            Argument.field(Shared.APPARATUS, Argument.STRING, true,
+            Argument.top("parent", Argument.STRING, Argument.UNSET,
+                "the complete address of a bracket root, to add a child to that bracket; left "
+                    + "out or null, the call opens a new bracket"),
+            idempotencyKey("a key of your own: a retried create with it creates once; left out "
+                + "or null, each call creates a task of its own"),
+            Argument.field("title", Argument.STRING, "the task's title"),
+            Argument.field(Shared.APPARATUS, Argument.STRING,
                 "the kind of executor the task is addressed to, such as \"code\""),
-            Argument.field("text", Argument.STRING, false, "the commission's text"),
-            metadata("your own keys on the task"))),
+            Argument.field("text", Argument.STRING, Argument.UNSET,
+                "the commission's text; left out or null, the draft starts with its title "
+                    + "alone, and dispatch_update adds the text"),
+            metadata("your own keys on the task", "the task starts with an empty set"))),
 
     UPDATE("update", null, Participation.COMMISSIONER,
         "Changes your draft: its title, apparatus, text or metadata; only what you give "
@@ -229,10 +242,14 @@ public enum ProcessVerb {
             + "The task stays a draft.\n\n"
             + "A sent task cannot be changed; add to its text with dispatch_annotate.",
         List.of(address(), conflictToken(),
-            Argument.field("title", Argument.STRING, false, "the new title"),
-            Argument.field(Shared.APPARATUS, Argument.STRING, false, "the new apparatus"),
-            Argument.field("text", Argument.STRING, false, "the new text of the commission"),
-            metadata("your own keys on the task, replacing the ones it has"))),
+            Argument.field("title", Argument.STRING, Argument.UNSET,
+                "the new title; left out or null, the title stays as it is"),
+            Argument.field(Shared.APPARATUS, Argument.STRING, Argument.UNSET,
+                "the new apparatus; left out or null, the apparatus stays as it is"),
+            Argument.field("text", Argument.STRING, Argument.UNSET,
+                "the new text of the commission; left out or null, the text stays as it is"),
+            metadata("your own keys on the task, replacing the ones it has",
+                "the metadata stays as it is"))),
 
     DELETE("delete", null, Participation.COMMISSIONER,
         "Deletes your draft outright; it leaves no trace. Call as the commissioner, with the "
@@ -257,8 +274,13 @@ public enum ProcessVerb {
             + "task it holds. For \"dispatch\" and \"return\" the answer says how many addenda "
             + "the text has.",
         List.of(address(),
-            Argument.oneOf("part", Argument.Placement.TOP, true,
-                List.of("dispatch", "return", "thread", "addenda"), "the part to read"))),
+            Argument.oneOf("part", Argument.Placement.TOP, null, List.of(
+                    Argument.value("dispatch", "the commission"),
+                    Argument.value("return", "the valid answer"),
+                    Argument.value("thread", "the questions, answers, remarks and earlier "
+                        + "answers, in order"),
+                    Argument.value("addenda", "the supplements added to the texts")),
+                "the part to read"))),
 
     QUERY("query", null, null,
         "Lists the tasks of one bracket kind in a scope, without their text: each with its "
@@ -269,23 +291,32 @@ public enum ProcessVerb {
             + "next_cursor is in the answer, more follow: pass it as after, with the same "
             + "other arguments, for the next page.",
         List.of(scope(), selector(),
-            Argument.top("state", Argument.STRING, false,
+            Argument.top("state", Argument.STRING, Argument.UNSET,
                 "states to list, comma-separated: draft, open, active, on_hold, delivered, "
-                    + "closed"),
-            Argument.top(Shared.APPARATUS, Argument.STRING, false,
-                "apparatus patterns, comma-separated; \"*\" stands for any run of characters"),
-            Argument.top("bracket", Argument.STRING, false, "bracket numbers, comma-separated"),
-            Argument.top("address", Argument.STRING, false,
-                "complete addresses of tasks of this bracket kind, comma-separated"),
-            Argument.top("page_size", Argument.INTEGER, false,
-                "how many tasks at most, from 1 to 200; 50 if omitted"),
-            Argument.top("after", Argument.STRING, false,
-                "the next_cursor of the previous page; the first page if omitted"),
-            Argument.top("sort", Argument.STRING, false,
-                "what the list is sorted by: id, the address, or created_at, then the "
-                    + "address; id if omitted"),
-            Argument.oneOf("direction", Argument.Placement.TOP, false, List.of("asc", "desc"),
-                "the direction of the sort; asc if omitted"))),
+                    + "closed; left out or null, every state"),
+            Argument.top(Shared.APPARATUS, Argument.STRING, Argument.UNSET,
+                "apparatus patterns, comma-separated; \"*\" stands for any run of characters; "
+                    + "left out or null, every apparatus"),
+            Argument.top("bracket", Argument.STRING, Argument.UNSET,
+                "bracket numbers, comma-separated; left out or null, every bracket"),
+            Argument.top("address", Argument.STRING, Argument.UNSET,
+                "complete addresses of tasks of this bracket kind, comma-separated; left out or "
+                    + "null, every task"),
+            Argument.top("page_size", Argument.INTEGER, String.valueOf(
+                    ai.kumbuka.dispatch.domain.PageRequest.DEFAULT_PAGE_SIZE),
+                "how many tasks a page holds at most, a whole number from 1 to 200; 50 when "
+                    + "left out or null"),
+            Argument.top("after", Argument.STRING, Argument.UNSET,
+                "the next_cursor of the previous page; left out or null, the first page"),
+            Argument.oneOf("sort", Argument.Placement.TOP, "id", List.of(
+                    Argument.value("id", "the address: the number, then the sub, each "
+                        + "numerically"),
+                    Argument.value("created_at", "the time of creation, then the address")),
+                "what the list is sorted by; id when left out or null"),
+            Argument.oneOf("direction", Argument.Placement.TOP, "asc", List.of(
+                    Argument.value("asc", "ascending: the smallest first"),
+                    Argument.value("desc", "descending: the largest first")),
+                "the direction of the sort; asc when left out or null"))),
 
     ANNOTATE("annotate", null, null,
         "Adds an addendum to a text of a sent task: a supplement with its own time and "
@@ -293,11 +324,15 @@ public enum ProcessVerb {
             + "identity that wrote that text; the task's state does not change.\n\n"
             + "Read addenda with dispatch_read_text, part \"addenda\".",
         List.of(address(),
-            idempotencyKey("a key of your own: repeating the addendum with it attaches nothing "
-                + "a second time and returns the task"),
-            Argument.field("text", Argument.STRING, true, "the addendum's text"),
-            Argument.oneOf("part", Argument.Placement.FIELDS, true,
-                List.of("dispatch", "return", "question", "answer", "remark"),
+            idempotencyKey("a key of your own: repeating the addendum with it returns the task "
+                + "and attaches the addendum once; left out or null, each call attaches one"),
+            Argument.field("text", Argument.STRING, "the addendum's text"),
+            Argument.oneOf("part", Argument.Placement.FIELDS, null, List.of(
+                    Argument.value("dispatch", "the commission"),
+                    Argument.value("return", "the answer"),
+                    Argument.value("question", "a question the holder asked"),
+                    Argument.value("answer", "an answer to a question"),
+                    Argument.value("remark", "a remark")),
                 "the text it supplements"))),
 
     RELATE("relate", null, Participation.COMMISSIONER,
@@ -306,7 +341,7 @@ public enum ProcessVerb {
             + "the conflict token of your last read. The task stays closed.\n\n"
             + "Remove the relation with dispatch_unrelate.",
         List.of(address(), conflictToken(),
-            Argument.field("curated_in", Argument.STRING, true,
+            Argument.field("curated_in", Argument.STRING,
                 "the complete address of the task this one was curated into"))),
 
     UNRELATE("unrelate", null, Participation.COMMISSIONER,
@@ -341,54 +376,59 @@ public enum ProcessVerb {
     // ======================================================================
 
     private static Argument scope() {
-        return Argument.top("scope", Argument.STRING, true, "the scope's name, a DNS label");
+        return Argument.top("scope", Argument.STRING, "the scope's name, a DNS label");
     }
 
     private static Argument selector() {
-        return Argument.top("selector", Argument.STRING, true,
+        return Argument.top("selector", Argument.STRING,
             "the declared bracket kind, such as \"sprint\"");
     }
 
     private static Argument address() {
-        return Argument.top("address", Argument.STRING, true,
+        return Argument.top("address", Argument.STRING,
             "the complete address of the task, dispatch://<scope>/<selector>/<number>.<sub>");
     }
 
     private static Argument conflictToken() {
-        return Argument.top("conflict_token", Argument.STRING, true,
+        return Argument.top("conflict_token", Argument.STRING,
             "the conflict token handed out with your last read of this task");
     }
 
     private static Argument receipt() {
-        return Argument.top("receipt", Argument.STRING, true,
+        return Argument.top("receipt", Argument.STRING,
             "the receipt your claim handed out for this task");
     }
 
     private static Argument duration() {
-        return Argument.top("duration", Argument.STRING, false,
-            "how long your hold lasts, as an ISO-8601 duration such as PT2H; 30 minutes if "
-                + "omitted");
+        return Argument.top("duration", Argument.STRING, "PT30M",
+            "how long your hold lasts, as an ISO-8601 duration such as PT2H; PT30M, thirty "
+                + "minutes, when left out or null");
     }
 
     private static Argument confirmation() {
-        return Argument.top("confirmation", Argument.STRING, false,
+        return Argument.top("confirmation", Argument.STRING, Argument.UNSET,
             "the confirmation a refusal handed out for closing a bracket root with unfinished "
-                + "children");
+                + "children; left out or null, the call closes a root once its children are "
+                + "finished");
     }
 
     private static Argument idempotencyKey(String description) {
-        return Argument.top("idempotency_key", Argument.STRING, false, description);
+        return Argument.top("idempotency_key", Argument.STRING, Argument.UNSET, description);
     }
 
     private static Argument remark(boolean required) {
-        return Argument.field("remark", Argument.STRING, required,
-            required ? "why, in a sentence the other side can act on"
-                : "a remark kept with the task");
+        return required
+            ? Argument.field("remark", Argument.STRING,
+                "why, in a sentence the other side can act on")
+            : Argument.field("remark", Argument.STRING, Argument.UNSET,
+                "a remark kept with the task; left out or null, the call records the step "
+                    + "alone");
     }
 
-    private static Argument metadata(String description) {
-        return Argument.field("metadata", Argument.OBJECT, false,
-            description + ": each value a string or a list of strings");
+    private static Argument metadata(String description, String whenLeftOut) {
+        return Argument.field("metadata", Argument.OBJECT, Argument.UNSET,
+            description + ": each value a string or a list of strings; left out or null, "
+                + whenLeftOut);
     }
 
     private final String verb;
