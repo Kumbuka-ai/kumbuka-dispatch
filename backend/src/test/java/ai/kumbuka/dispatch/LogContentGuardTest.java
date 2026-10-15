@@ -253,6 +253,25 @@ class LogContentGuardTest {
         }
     }
 
+    /**
+     * The red state for an exception handed to the logger (DEC-0051, C13.2).
+     *
+     * <p>A stack trace carries what the failing code held, and the guard read
+     * only what follows the format string, where an exception never stands:
+     * {@code LOG.errorf(cause, "...")} passed it on every build until this was
+     * added. The fixture now carries that shape and the guard must name it.
+     */
+    @Test
+    void the_guard_catches_an_exception_handed_to_the_logger() throws IOException {
+        Findings findings = scan(forbiddenFixtureRoot());
+
+        assertThat(findings.offenders())
+            .as("RED STATE, observed: a log call that hands the logger an exception before "
+                + "its format string must be reported, naming what it hands over")
+            .anySatisfy(offence -> assertThat(offence)
+                .startsWith("ForbiddenLogFixture.java: LOG call hands over 'failure'"));
+    }
+
     private static Findings scan(Path root) throws IOException {
         List<String> offenders = new ArrayList<>();
         int total = 0;
@@ -265,6 +284,15 @@ class LogContentGuardTest {
                 while (m.find()) {
                     total++;
                     String call = m.group(2);
+                    if (!call.strip().startsWith("\"")) {
+                        // The logger's overloads take a Throwable before the
+                        // format string; whatever stands there is an object
+                        // handed to the logger, never the platform's words.
+                        offenders.add(file.getFileName() + ": LOG call hands over '"
+                            + call.strip().split(",", 2)[0].strip()
+                            + "' (an object before the format string) — " + call.strip());
+                        continue;
+                    }
                     // The format string is quoted; only what follows it can be
                     // an argument, and only arguments can carry content.
                     String tail = call.substring(Math.max(call.lastIndexOf('"') + 1, 0));
