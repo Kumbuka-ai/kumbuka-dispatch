@@ -88,15 +88,13 @@ public record TaskFilter(
      * @param raw field name to its comma-separated values, as the caller wrote them
      */
     public static TaskFilter of(Map<String, String> raw) {
-        List<String> unknown = raw.keySet().stream()
-            .filter(name -> Field.byWireName(name) == null)
-            .toList();
-        if (!unknown.isEmpty()) {
+        boolean undeclared = raw.keySet().stream().anyMatch(name -> Field.byWireName(name) == null);
+        if (undeclared) {
+            // The names that arrived are the caller's and stay with it (DEC-0043 R19).
             throw new DispatchException(DispatchException.Reason.FILTER_FIELD_UNKNOWN,
-                "cannot filter on " + String.join(", ", unknown) + ". A listing of tasks "
-                    + "filters on " + String.join(", ", Field.wireNames()) + " and on "
-                    + "nothing else; an undeclared field is refused rather than ignored.",
-                unknown);
+                "a listing of tasks filters on " + String.join(", ", Field.wireNames())
+                    + " and on nothing else; an undeclared field is refused rather than "
+                    + "ignored.", List.of());
         }
         return new TaskFilter(
             states(values(raw, Field.STATE)),
@@ -123,78 +121,74 @@ public record TaskFilter(
         if (value == null) {
             return List.of();
         }
-        List<String> parts = new ArrayList<>();
-        for (String part : value.split(",", -1)) {
-            String trimmed = part.trim();
-            if (trimmed.isEmpty()) {
-                throw refused(field, "an empty value", List.of(field.wireName()));
-            }
-            parts.add(trimmed);
+        List<String> parts = java.util.Arrays.stream(value.split(",", -1)).map(String::trim)
+            .toList();
+        int empty = java.util.stream.IntStream.range(0, parts.size())
+            .filter(i -> parts.get(i).isEmpty()).findFirst().orElse(-1);
+        if (empty >= 0) {
+            throw refused(field, "an empty value", parts.size(), empty);
         }
         return parts;
     }
 
     private static Set<TaskState> states(List<String> values) {
         Set<TaskState> out = new LinkedHashSet<>();
-        List<String> unknown = new ArrayList<>();
-        for (String value : values) {
+        for (int i = 0; i < values.size(); i++) {
             try {
-                out.add(TaskState.fromWireName(value));
+                out.add(TaskState.fromWireName(values.get(i)));
             } catch (IllegalArgumentException e) {
-                unknown.add(value);
+                throw refused(Field.STATE, "a value that is no state", values.size(), i);
             }
-        }
-        if (!unknown.isEmpty()) {
-            throw refused(Field.STATE, "no such state: " + String.join(", ", unknown), unknown);
         }
         return out;
     }
 
     private static Set<Integer> brackets(List<String> values) {
         Set<Integer> out = new LinkedHashSet<>();
-        List<String> unusable = new ArrayList<>();
-        for (String value : values) {
-            try {
-                int number = Integer.parseInt(value);
-                if (number < 1) {
-                    unusable.add(value);
-                } else {
-                    out.add(number);
-                }
-            } catch (NumberFormatException e) {
-                unusable.add(value);
+        for (int i = 0; i < values.size(); i++) {
+            Integer number = bracketNumber(values.get(i));
+            if (number == null) {
+                throw refused(Field.BRACKET, "a value that is no bracket number", values.size(), i);
             }
-        }
-        if (!unusable.isEmpty()) {
-            throw refused(Field.BRACKET, "not a bracket number: " + String.join(", ", unusable),
-                unusable);
+            out.add(number);
         }
         return out;
+    }
+
+    /** A bracket number: a whole number from 1; null where the text names none. */
+    private static Integer bracketNumber(String value) {
+        try {
+            int number = Integer.parseInt(value);
+            return number < 1 ? null : number;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static Set<ExchangeAddress> addresses(List<String> values) {
         Set<ExchangeAddress> out = new LinkedHashSet<>();
-        List<String> unusable = new ArrayList<>();
-        for (String value : values) {
-            Matcher m = ADDRESS.matcher(value);
-            if (m.matches()) {
-                out.add(new ExchangeAddress(m.group(1), Integer.parseInt(m.group(2)),
-                    Integer.parseInt(m.group(3))));
-            } else {
-                unusable.add(value);
+        for (int i = 0; i < values.size(); i++) {
+            Matcher m = ADDRESS.matcher(values.get(i));
+            if (!m.matches()) {
+                throw refused(Field.ADDRESS, "a value that is no task address of the form "
+                    + "selector/number.sub", values.size(), i);
             }
-        }
-        if (!unusable.isEmpty()) {
-            throw refused(Field.ADDRESS, "not a task address of the form selector/number.sub: "
-                + String.join(", ", unusable), unusable);
+            out.add(new ExchangeAddress(m.group(1), Integer.parseInt(m.group(2)),
+                Integer.parseInt(m.group(3))));
         }
         return out;
     }
 
-    private static DispatchException refused(Field field, String what, List<String> offenders) {
+    /**
+     * A value the field cannot take, named by the filter and, where the filter
+     * carries several values, by the position of the first it cannot take —
+     * never by the value (DEC-0042, DEC-0043 R18, R19).
+     */
+    private static DispatchException refused(Field field, String what, int count, int at) {
+        String path = count > 1 ? field.wireName() + "[" + at + "]" : field.wireName();
         return new DispatchException(DispatchException.Reason.FILTER_VALUE_REFUSED,
-            "the filter on '" + field.wireName() + "' carries " + what + ". A value the field "
-                + "cannot take is refused rather than matched against nothing.",
-            offenders);
+            "the filter " + path + " carries " + what + ". A value the field cannot take is "
+                + "refused rather than matched against nothing.",
+            List.of(path));
     }
 }

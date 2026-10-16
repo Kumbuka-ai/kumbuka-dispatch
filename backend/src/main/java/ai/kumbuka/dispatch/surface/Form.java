@@ -18,47 +18,44 @@ package ai.kumbuka.dispatch.surface;
  */
 public enum Form {
 
-    FIELDS_OBJECT(ReasonCatalogue.Message.INVALID_FIELDS_OBJECT),
-    STRING(ReasonCatalogue.Message.INVALID_STRING),
-    ONE_OF(ReasonCatalogue.Message.INVALID_ONE_OF),
-    LIST_OF_STRINGS(ReasonCatalogue.Message.INVALID_LIST_OF_STRINGS),
-    OBJECT(ReasonCatalogue.Message.INVALID_OBJECT),
-    BOOLEAN(ReasonCatalogue.Message.INVALID_BOOLEAN),
-    WHOLE_NUMBER(ReasonCatalogue.Message.INVALID_WHOLE_NUMBER),
-    PARENT_ELSEWHERE(ReasonCatalogue.Message.INVALID_PARENT_ELSEWHERE),
-    PARENT_NOT_A_ROOT(ReasonCatalogue.Message.INVALID_PARENT_NOT_A_ROOT),
-    APPARATUS_PATTERN(ReasonCatalogue.Message.INVALID_APPARATUS_PATTERN),
-    APPARATUS_UNBOUNDED(ReasonCatalogue.Message.INVALID_APPARATUS_UNBOUNDED),
-    STATE_FILTER(ReasonCatalogue.Message.INVALID_STATE_FILTER),
-    BRACKET_FILTER(ReasonCatalogue.Message.INVALID_BRACKET_FILTER),
-    ADDRESS_FILTER(ReasonCatalogue.Message.INVALID_ADDRESS_FILTER),
-    ADDRESS_FILTER_ELSEWHERE(ReasonCatalogue.Message.INVALID_ADDRESS_FILTER_ELSEWHERE),
-    VALUE_FILTER(ReasonCatalogue.Message.INVALID_VALUE_FILTER),
-    LEASE_END(ReasonCatalogue.Message.INVALID_LEASE_END),
-    INSTANT(ReasonCatalogue.Message.INVALID_INSTANT),
-    INSTANT_RANGE(ReasonCatalogue.Message.INVALID_INSTANT_RANGE),
-    ANSWER_ONE_OF_TWO(ReasonCatalogue.Message.INVALID_ANSWER_ONE_OF_TWO),
-    ADDRESS(ReasonCatalogue.Message.INVALID_ADDRESS),
-    SCOPE(ReasonCatalogue.Message.INVALID_SCOPE),
-    SELECTOR(ReasonCatalogue.Message.INVALID_SELECTOR),
-    METADATA(ReasonCatalogue.Message.INVALID_METADATA),
-    CURATION_TARGET(ReasonCatalogue.Message.INVALID_CURATION_TARGET),
-    ADDENDUM_TARGET(ReasonCatalogue.Message.INVALID_ADDENDUM_TARGET),
-    ADDENDA_EXHAUSTED(ReasonCatalogue.Message.INVALID_ADDENDA_EXHAUSTED),
-    ANSWER_OPTION(ReasonCatalogue.Message.INVALID_ANSWER_OPTION),
-    ANSWER_FREE_TEXT(ReasonCatalogue.Message.INVALID_ANSWER_FREE_TEXT),
-    ONCE(ReasonCatalogue.Message.INVALID_ONCE),
-    BODY(ReasonCatalogue.Message.INVALID_BODY),
-    SURFACE_HEADER(ReasonCatalogue.Message.INVALID_SURFACE_HEADER);
+    FIELDS_OBJECT(RefusalCode.Message.INVALID_FIELDS_OBJECT),
+    STRING(RefusalCode.Message.INVALID_STRING),
+    ONE_OF(RefusalCode.Message.INVALID_ONE_OF),
+    LIST_OF_STRINGS(RefusalCode.Message.INVALID_LIST_OF_STRINGS),
+    OBJECT(RefusalCode.Message.INVALID_OBJECT),
+    BOOLEAN(RefusalCode.Message.INVALID_BOOLEAN),
+    WHOLE_NUMBER(RefusalCode.Message.INVALID_WHOLE_NUMBER),
+    PARENT_ELSEWHERE(RefusalCode.Message.INVALID_PARENT_ELSEWHERE),
+    PARENT_NOT_A_ROOT(RefusalCode.Message.INVALID_PARENT_NOT_A_ROOT),
+    APPARATUS_PATTERN(RefusalCode.Message.INVALID_APPARATUS_PATTERN),
+    APPARATUS_UNBOUNDED(RefusalCode.Message.INVALID_APPARATUS_UNBOUNDED),
+    STATE_FILTER(RefusalCode.Message.INVALID_STATE_FILTER),
+    BRACKET_FILTER(RefusalCode.Message.INVALID_BRACKET_FILTER),
+    ADDRESS_FILTER(RefusalCode.Message.INVALID_ADDRESS_FILTER),
+    ADDRESS_FILTER_ELSEWHERE(RefusalCode.Message.INVALID_ADDRESS_FILTER_ELSEWHERE),
+    VALUE_FILTER(RefusalCode.Message.INVALID_VALUE_FILTER),
+    LEASE_END(RefusalCode.Message.INVALID_LEASE_END),
+    INSTANT(RefusalCode.Message.INVALID_INSTANT),
+    INSTANT_RANGE(RefusalCode.Message.INVALID_INSTANT_RANGE),
+    ANSWER_ONE_OF_TWO(RefusalCode.Message.INVALID_ANSWER_ONE_OF_TWO),
+    ADDRESS(RefusalCode.Message.INVALID_ADDRESS),
+    SCOPE(RefusalCode.Message.INVALID_SCOPE),
+    SELECTOR(RefusalCode.Message.INVALID_SELECTOR),
+    METADATA(RefusalCode.Message.INVALID_METADATA),
+    CURATION_TARGET(RefusalCode.Message.INVALID_CURATION_TARGET),
+    ADDENDUM_TARGET(RefusalCode.Message.INVALID_ADDENDUM_TARGET),
+    ADDENDA_EXHAUSTED(RefusalCode.Message.INVALID_ADDENDA_EXHAUSTED),
+    ONCE(RefusalCode.Message.INVALID_ONCE),
+    BODY(RefusalCode.Message.INVALID_BODY);
 
-    private final ReasonCatalogue.Message message;
+    private final RefusalCode.Message message;
 
-    Form(ReasonCatalogue.Message message) {
+    Form(RefusalCode.Message message) {
         this.message = message;
     }
 
     /** The message that states this form. */
-    public ReasonCatalogue.Message message() {
+    public RefusalCode.Message message() {
         return message;
     }
 }

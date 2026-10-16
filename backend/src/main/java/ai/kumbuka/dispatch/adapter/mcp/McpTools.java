@@ -7,8 +7,10 @@
  */
 package ai.kumbuka.dispatch.adapter.mcp;
 
+import ai.kumbuka.dispatch.adapter.payload.CallPayload;
+import ai.kumbuka.dispatch.adapter.payload.SchemaPayload;
+import ai.kumbuka.dispatch.adapter.payload.ToolPayload;
 import ai.kumbuka.dispatch.surface.Argument;
-import ai.kumbuka.dispatch.surface.CallArguments;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Texts;
 
@@ -20,14 +22,14 @@ import java.util.Map;
 
 /**
  * The twenty-five tools of the assistant surface, generated from the
- * declaration.
+ * declaration (C4.2, ADR-0039).
  *
  * <p><strong>Generated, not written.</strong> Names, descriptions and schemas
  * are a projection of {@link ProcessVerb} into the shape {@code tools/list}
- * asks for. The tests that hold this list take their expected values from the
- * target and the concept document, written into the tests and the contract
- * copy by hand, so generating here removes a copy without making those tests
- * circular.
+ * asks for: a tool is named by its call's identity, {@code dispatch_<verb>}.
+ * The tests that hold this list take their expected values from the target
+ * and the concept document, written into the tests by hand, so generating here
+ * removes a copy without making those tests circular.
  *
  * <h2>Two levels, both closed</h2>
  *
@@ -38,62 +40,53 @@ import java.util.Map;
  */
 public final class McpTools {
 
-    /** The JSON Schema member every argument carries, by its schema name. */
-    private static final String KEY_DESCRIPTION = "description";
-    private static final String KEY_TYPE = "type";
     private static final String OBJECT = "object";
 
     private McpTools() {
     }
 
-    /** One declared tool: its name, what it does, and what it takes. */
-    public record Tool(String name, String description, Map<String, Object> inputSchema) {
-    }
-
     /** The twenty-five, in the order of the declaration. */
-    public static List<Tool> declared() {
+    public static List<ToolPayload> declared() {
         return Arrays.stream(ProcessVerb.values())
-            .map(verb -> new Tool(verb.call(), verb.description(), schemaOf(verb)))
+            .map(verb -> new ToolPayload(verb.call(), verb.description(), schemaOf(verb)))
             .toList();
     }
 
-    /** The input schema of one call: top-level arguments, plus {@code fields} where it writes. */
-    private static Map<String, Object> schemaOf(ProcessVerb verb) {
-        Map<String, Object> properties = new LinkedHashMap<>();
-        List<String> required = new ArrayList<>();
+    /** The tool names, in the order of the declaration: each the identity of its call. */
+    public static List<String> names() {
+        return Arrays.stream(ProcessVerb.values()).map(ProcessVerb::call).toList();
+    }
 
+    /** The input schema of one call: top-level arguments, plus {@code fields} where it writes. */
+    private static SchemaPayload schemaOf(ProcessVerb verb) {
+        Map<String, SchemaPayload> properties = new LinkedHashMap<>();
+        List<String> required = new ArrayList<>();
         for (Argument argument : verb.topArguments()) {
             properties.put(argument.name(), property(argument));
             if (argument.required()) {
                 required.add(argument.name());
             }
         }
-
         if (verb.hasFields()) {
-            properties.put(CallArguments.FIELDS, fieldsSchema(verb));
+            properties.put(CallPayload.FIELDS, fieldsSchema(verb));
             if (verb.fieldArguments().stream().anyMatch(Argument::required)) {
-                required.add(CallArguments.FIELDS);
+                required.add(CallPayload.FIELDS);
             }
         }
-
-        return closedObject(properties, required);
+        return closedObject(properties, required, null);
     }
 
     /** The inner object: everything the call writes into the task, closed in its own right. */
-    private static Map<String, Object> fieldsSchema(ProcessVerb verb) {
-        Map<String, Object> properties = new LinkedHashMap<>();
+    private static SchemaPayload fieldsSchema(ProcessVerb verb) {
+        Map<String, SchemaPayload> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
-
         for (Argument argument : verb.fieldArguments()) {
             properties.put(argument.name(), property(argument));
             if (argument.required()) {
                 required.add(argument.name());
             }
         }
-
-        Map<String, Object> schema = new LinkedHashMap<>(closedObject(properties, required));
-        schema.put(KEY_DESCRIPTION, Texts.arguments().fields());
-        return Map.copyOf(schema);
+        return closedObject(properties, required, Texts.arguments().fields());
     }
 
     /**
@@ -101,35 +94,22 @@ public final class McpTools {
      * values where it has one, and for a list the rule every element obeys —
      * the same rule the surface enforces, read from the declaration.
      */
-    private static Map<String, Object> property(Argument argument) {
-        Map<String, Object> property = new LinkedHashMap<>();
-        property.put(KEY_TYPE, argument.type());
-        if (Argument.ARRAY.equals(argument.type())) {
-            Map<String, Object> items = new LinkedHashMap<>();
-            items.put(KEY_TYPE, Argument.STRING);
-            if (argument.itemPattern() != null) {
-                items.put("pattern", argument.itemPattern());
-            }
-            property.put("items", Map.copyOf(items));
-            if (argument.required()) {
-                property.put("minItems", 1);
-            }
-        }
-        if (!argument.values().isEmpty()) {
-            property.put("enum", argument.valueNames());
-        }
-        property.put(KEY_DESCRIPTION, argument.description());
-        return Map.copyOf(property);
+    private static SchemaPayload property(Argument argument) {
+        boolean list = Argument.ARRAY.equals(argument.type());
+        SchemaPayload items = list
+            ? new SchemaPayload(Argument.STRING, null, null, null, null, null,
+                argument.itemPattern(), null, null)
+            : null;
+        return new SchemaPayload(argument.type(), null, null, null, items,
+            list && argument.required() ? 1 : null, null,
+            argument.values().isEmpty() ? null : argument.valueNames(),
+            argument.description());
     }
 
     /** A JSON Schema object with {@code additionalProperties} closed. */
-    private static Map<String, Object> closedObject(Map<String, Object> properties,
-                                                    List<String> required) {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put(KEY_TYPE, OBJECT);
-        schema.put("properties", Map.copyOf(properties));
-        schema.put("required", List.copyOf(required));
-        schema.put("additionalProperties", false);
-        return Map.copyOf(schema);
+    private static SchemaPayload closedObject(Map<String, SchemaPayload> properties,
+                                              List<String> required, String description) {
+        return new SchemaPayload(OBJECT, properties, List.copyOf(required), false, null, null,
+            null, null, description);
     }
 }

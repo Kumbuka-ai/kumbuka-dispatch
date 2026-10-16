@@ -37,9 +37,9 @@ import java.util.UUID;
 /**
  * The twenty-five calls, each bound to the kernel in one transaction.
  *
- * <p>Both surfaces reach the kernel through here and through nothing else:
- * {@link CallRouter} reads the call, checks its arguments against the
- * declaration and calls one method of this class. Each method resolves the
+ * <p>Both surfaces reach the kernel through here and through nothing else
+ * (C1.1): the adapter reads the call, checks its form against the declaration
+ * and calls one method of this class. Each method resolves the
  * scope the caller names — so a scope the caller may not see answers {@code
  * NOT_FOUND} however the rest of the call looks — and then makes exactly one
  * call of {@link TaskService}, which decides. Nothing here decides whether a
@@ -156,7 +156,8 @@ public class VerbSurface {
         boolean written = head.texts().stream()
             .anyMatch(x -> x.type() == part && x.addendumSuffix() == null);
         if (!written && head.state() != TaskState.DRAFT) {
-            throw Refused.argumentInvalid(call, partPath, Form.ADDENDUM_TARGET);
+            throw new SurfaceException(
+                Refusal.argumentInvalid(call, partPath, Form.ADDENDUM_TARGET));
         }
         return new Result(at.scope(),
             tasks.annotate(scopeId, at.address(), part, text, actor, key));

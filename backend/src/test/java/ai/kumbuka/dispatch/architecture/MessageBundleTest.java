@@ -41,6 +41,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * of its own -- and a line of the log. Prose is three words or more; a name, a path or
  * a key is one.
  *
+ * <p><strong>Every word of a literal counts, not a run of them.</strong> A
+ * number or a sign between words breaks no sentence: {@code "send 3 entries
+ * now"} is prose although no three words in it stand side by side. A count of
+ * the longest unbroken run of words would take it for a name; the guard is
+ * seen to tell the two apart on every build. A service that copies this guard
+ * keeps the count as it is written here.
+ *
  * <p>Each check is seen to find a planted violation on every build: a bundle
  * in the test tree whose message carries its text, a localized bundle in a
  * planted source, and a planted statement that returns a sentence.
@@ -119,6 +126,14 @@ class MessageBundleTest {
                 + "before \" + \"you go on.\";\n    }\n}"))
             .as("RED STATE, observed: a planted statement returning a sentence is found")
             .hasSize(1);
+        assertThat(proseIn("class Planted {\n    String hint() {\n        return \"send 3 "
+                + "entries now\";\n    }\n}"))
+            .as("and a sentence with a number between its words is prose too")
+            .hasSize(1);
+        assertThat(longestRun("send 3 entries now"))
+            .as("RED STATE, observed: counted as the longest run of words, the same sentence "
+                + "stays under the threshold and would pass for a name")
+            .isLessThan(PROSE_WORDS);
         assertThat(proseIn("class Planted {\n    void f() {\n        throw new "
                 + "IllegalStateException(\"a defect, not a rule\");\n    }\n}"))
             .as("and the message of a defect is no text for a caller")
@@ -126,6 +141,21 @@ class MessageBundleTest {
     }
 
     // -----------------------------------------------------------------------
+
+    /**
+     * The count this guard does not make: the longest run of words with
+     * nothing but spaces between them. Kept to show, on every build, what the
+     * count of every word catches that it would miss.
+     */
+    static int longestRun(String literal) {
+        int longest = 0;
+        int run = 0;
+        for (String token : literal.split("\\s+")) {
+            run = WORD.matcher(token).matches() ? run + 1 : 0;
+            longest = Math.max(longest, run);
+        }
+        return longest;
+    }
 
     /** Every interface of the main tree annotated as a message bundle. */
     static List<Class<?>> bundles() throws ClassNotFoundException {

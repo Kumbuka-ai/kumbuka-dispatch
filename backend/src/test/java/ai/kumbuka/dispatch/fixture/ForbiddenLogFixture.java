@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.fixture;
 
 import org.jboss.logging.Logger;
@@ -76,6 +83,16 @@ public class ForbiddenLogFixture {
     /** The actor through an accessor, the shape a record gives it. */
     public void logTheActorAccessor(Exchangeish e) {
         LOG.infof("changed by %s", e.actor());
+    }
+
+    /**
+     * An exception handed to the logger: the shape DEC-0051 forbids. A stack
+     * trace carries whatever the failing code held, a caller's value included,
+     * and the guard once missed it because the exception stands before the
+     * format string.
+     */
+    public void logAnException(RuntimeException failure) {
+        LOG.errorf(failure, "failed, reference %s", "a reference");
     }
 
     /** Stands in for the entity, so the fixture needs no domain import. */

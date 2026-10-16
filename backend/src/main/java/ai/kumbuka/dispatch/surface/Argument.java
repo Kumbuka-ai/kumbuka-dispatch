@@ -91,6 +91,9 @@ public record Argument(String name, String type, boolean required, Placement pla
      */
     public static final String UNSET = "";
 
+    /** The one nested object a call may carry, by the name DEC-0040 gives it. */
+    public static final String FIELDS = "fields";
+
     /** Where an argument sits in the call. */
     public enum Placement {
 

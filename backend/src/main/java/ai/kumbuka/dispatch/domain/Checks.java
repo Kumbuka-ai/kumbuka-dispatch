@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.domain.Decision.Check;
@@ -157,26 +164,22 @@ final class Checks {
     /** Check 7: what the payload carries is admissible for this task. */
     static Optional<Refused> payload(TaskVerb verb, TaskSituation s, TaskCall call) {
         TaskInput payload = verb.payloadOf(call);
-        try {
-            return switch (payload) {
-                case TaskInput.Delivery delivery -> metadata(delivery.metadata());
-                case TaskInput.Lease lease -> positive(lease);
-                case TaskInput.Reply reply -> option(s, reply);
-                case TaskInput.Nothing ignored -> Optional.empty();
-                case TaskInput.Remark ignored -> Optional.empty();
-                case TaskInput.RequiredRemark ignored -> Optional.empty();
-                case TaskInput.Deferral ignored -> Optional.empty();
-                case TaskInput.Question ignored -> Optional.empty();
-                case TaskInput.Pause ignored -> Optional.empty();
-            };
-        } catch (DispatchException refused) {
-            return refuse(Check.PAYLOAD, refused.reason(), refused.getMessage());
-        }
+        return switch (payload) {
+            case TaskInput.Delivery delivery -> metadata(delivery.metadata());
+            case TaskInput.Lease lease -> positive(lease);
+            case TaskInput.Reply reply -> option(s, reply);
+            case TaskInput.Nothing ignored -> Optional.empty();
+            case TaskInput.Remark ignored -> Optional.empty();
+            case TaskInput.RequiredRemark ignored -> Optional.empty();
+            case TaskInput.Deferral ignored -> Optional.empty();
+            case TaskInput.Question ignored -> Optional.empty();
+            case TaskInput.Pause ignored -> Optional.empty();
+        };
     }
 
     private static Optional<Refused> metadata(Map<String, Object> metadata) {
-        Metadata.validate(metadata);
-        return Optional.empty();
+        return Metadata.problem(metadata)
+            .flatMap(message -> refuse(Check.PAYLOAD, Reason.METADATA_REFUSED, message));
     }
 
     private static Optional<Refused> positive(TaskInput.Lease lease) {

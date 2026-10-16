@@ -2,13 +2,16 @@
 type: contract-copy
 title: "The dispatch service's verb surface: twenty-five calls, two sizes of answer, refusals that explain themselves"
 written: 2026-10-06
-amended: 2026-10-15
+amended: 2026-10-16
 sources:
   - "platform-specs aa42521, docs/architecture/targets/TAR-0004-the-dispatch-service-carries-commissioned-work-from-issue-to-acceptance.md, sections 3, 5, 6, 7"
   - "platform-specs aa42521, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3"
   - "the platform's pagination frame for every primary object, ratified by the operator 2026-10-11 (the substance of ADR-0049, not yet written): page_size, after, sort, direction, next_cursor, and the refusals PAGE_SIZE_REJECTED, CURSOR_MALFORMED, CURSOR_FOREIGN, SORT_UNDECLARED"
   - "platform-specs PR #9, docs/architecture/decisions/DEC-0043, rules R17 to R21, ratified 2026-10-15; DEC-0042 as ratified the same day (accepts in place of an unknown name)"
   - "platform-specs PR #9, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3.5: the first entry of next after a claim"
+  - "platform-specs 0f3978e, code-conventions/service-contract.md: CLAIM_ABSENT, TRANSITION_REFUSED, ROLE_INSUFFICIENT, SCOPE_READ_ONLY as a row of the table, HEADER_INVALID, rules C14.4 and C14.5, the members of data"
+  - "platform-specs ff0a4ba, code-conventions/service-contract.md, contract round 2: the names declaration and whoami reserved (C3.2), data.children as complete addresses, accepts as DEC-0042 now has it"
+  - "the operator's addendum of 2026-10-16 to this service: CHILDREN_UNFINISHED and OPTION_UNOFFERED, codes of this service"
 ---
 <!--
 Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
@@ -303,11 +306,16 @@ call's arguments names them in `data.offenders`: the paths of the arguments it c
 zero (`apparatus[2]`, `fields.options[1]`). A refusal of a name the call does not declare carries
 no `offenders`: it lists the arguments the level accepts under `data.accepts`, with their paths,
 and a call this service does not have is answered with the calls there are under `data.accepts`
-and no `attempted`. `CHILDREN_NOT_FINISHED` names the unfinished children of the bracket root
-under `data.children`, each with its address, its state and its `next`, beside
-`data.confirmation`. `CONFLICT_TOKEN_STALE` carries the current token in `data.conflict_token`,
-and `UNEXPECTED_FAILURE` its reference in `data.reference`. `NOT_FOUND` carries no `data` and the
-same bytes whatever its cause.
+and no `attempted`. `CHILDREN_UNFINISHED` names the unfinished children of the bracket root
+under `data.children`, each by its complete address, beside `data.confirmation`, the one handed
+out now. `OPTION_UNOFFERED` names the field of the answer under `data.offenders` and points at the
+read for the options. `CONFLICT_TOKEN_STALE` carries the task as it stands -- `data.address`,
+`data.fields`, `data.conflict_token` and `data.service` (DEC-0041) -- and `UNEXPECTED_FAILURE` its
+reference in `data.reference`. `VERB_NOT_CARRIED` lists the calls the address carries under
+`data.accepts`. `NOT_FOUND` carries no `data` and the same bytes whatever its cause. The codes and
+their statuses are the platform's table (service contract C8.7) where it names the condition; a
+call fenced by the conflict token that arrives without one is the kernel's to refuse, after the
+scope is resolved, as `CONFLICT_TOKEN_MISSING`.
 
 Neither the message nor a member of `data` repeats the caller's input or the tenant's vocabulary
 (DEC-0043 R18): no value the caller sent, no name a call does not declare, no scope, selector or
@@ -322,14 +330,12 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | Reason | Remedy |
 |---|---|
 | `NOT_FOUND` | Check the scope and the address. |
-| `STATE_DOES_NOT_ALLOW` | Make one of the calls in data.next. |
-| `ROLE_DOES_NOT_ALLOW` | Make one of the calls in data.next. |
-| `NOT_THE_HOLDER` | Claim the task first, or wait until its holder gives it back. |
+| `TRANSITION_REFUSED` | Make one of the calls in data.next. |
+| `ROLE_INSUFFICIENT` | Make one of the calls in data.next. |
 | `RECEIPT_WRONG` | Pass the receipt from your latest claim. |
-| `CHILDREN_NOT_FINISHED` | Repeat the call with data.confirmation, or finish the tasks in data.children first. |
+| `CHILDREN_UNFINISHED` | Repeat the call with data.confirmation, or finish the tasks in data.children first. |
+| `OPTION_UNOFFERED` | Answer with one of the options the read of the task lists, or with free text where the question admits it. |
 | `DEFERRAL_PENDING` | Take the task up after that instant, or take up another task now. |
-| `NOTHING_TO_TAKE` | List the tasks with the query call. |
-| `CLAIM_DURATION_INVALID` | Send the duration as a positive ISO-8601 duration such as PT2H. |
 | `PAGE_SIZE_REJECTED` | Send page_size as a whole number within the bounds the message names. |
 | `CURSOR_MALFORMED` | Call the query again from the first page. |
 | `CURSOR_FOREIGN` | Repeat the call with the arguments that handed the cursor out. |
@@ -337,49 +343,60 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `ARGUMENT_UNKNOWN` | Use the names in data.accepts. |
 | `ARGUMENT_MISSING` | Repeat the call with the argument in data.offenders. |
 | `ARGUMENT_INVALID` | Send the argument in data.offenders in the form the message describes. |
+| `HEADER_INVALID` | Send Kumbuka-Surface once with the value assistant, or leave it out. |
 | `CONFLICT_TOKEN_STALE` | Read the task again and repeat the call with data.conflict_token. |
-| `SELECTOR_UNKNOWN` | Name a bracket kind the scope declares. |
 | `SCOPE_KIND_UNSUPPORTED` | Name a project or a global scope. |
 | `SCOPE_READ_ONLY` | Ask whoever administers the membership of this scope for the write right. |
 | `SCOPE_LOCKED` | Wait for the lock to be lifted, or read instead. |
 | `IDEMPOTENCY_KEY_REUSED` | Choose a new key. |
-| `CALL_NOT_AT_THIS_ADDRESS` | Send the call to the route the message names. |
+| `PAYLOAD_MALFORMED` | Send the body as one JSON object. |
+| `ADDRESS_MALFORMED` | Write the address in the form the declaration names for it. |
+| `VERB_NOT_CARRIED` | Send one of the calls in data.accepts, on the route the message names. |
+| `CLAIM_ABSENT` | Claim the task where it is open, then repeat the call with the new receipt. |
+| `CLAIM_HELD` | Wait until its holder gives the task back, or take up another task. |
+| `DRAW_EMPTY` | List the tasks with the query call. |
+| `SELECTOR_UNDECLARED` | Name a bracket kind the scope declares. |
+| `SELECTOR_WITHDRAWN` | Name a bracket kind the scope still offers. |
+| `CONFLICT_TOKEN_MISSING` | Read the task, then repeat the call with its conflict token. |
 | `UNEXPECTED_FAILURE` | Report the reference. |
 
 | Message | Reason | Pattern |
 |---|---|---|
 | `notFound` | `NOT_FOUND` | `nothing is addressed here. Check the address, and that you are a member of the scope it names.` |
-| `stateDoesNotAllow` | `STATE_DOES_NOT_ALLOW` | `{call} is not possible in the task's present state, which data.state shows. You can make: {#each calls}{it}{#if it_hasNext}, {/if}{/each}.` |
-| `stateNothingOpen` | `STATE_DOES_NOT_ALLOW` | `{call} is not possible in the task's present state, which data.state shows, and no call is open to you on it now; data.waiting_for says what it waits for.` |
-| `stateClosed` | `STATE_DOES_NOT_ALLOW` | `{call} is not possible on this task: it is closed and finished. Nothing further can be done with it.` |
-| `roleCommissioner` | `ROLE_DOES_NOT_ALLOW` | `{call} is the commissioner's call, and you take part in this task in another part.` |
-| `roleExecutor` | `ROLE_DOES_NOT_ALLOW` | `{call} is an executor's call, and you take part here in another part.` |
-| `roleHolder` | `ROLE_DOES_NOT_ALLOW` | `{call} is the holder's call, and you take part in this task in another part.` |
-| `roleAuthor` | `ROLE_DOES_NOT_ALLOW` | `{call} is the call of the identity that wrote the text it supplements.` |
-| `roleOtherThanTheDeliverer` | `ROLE_DOES_NOT_ALLOW` | `{call} is the commissioner's call, made by an identity other than the one that delivered the answer.` |
-| `roleCapacity` | `ROLE_DOES_NOT_ALLOW` | `{call} needs a caller holding the commissioning or the executing capacity, and exactly one of them.` |
-| `holderOther` | `NOT_THE_HOLDER` | `{call} is the holder's call, and another executor holds this task.` |
-| `holderNobody` | `NOT_THE_HOLDER` | `{call} is the holder's call, and nobody holds this task.` |
-| `holderLapsed` | `NOT_THE_HOLDER` | `{call} is the holder's call, and your lease on this task ended.` |
-| `textHolderOther` | `NOT_THE_HOLDER` | `{call} reads the text of a task its executor holds, and another executor holds this one.` |
-| `textHolderNobody` | `NOT_THE_HOLDER` | `{call} reads the text of a task its executor holds, and nobody holds this one.` |
-| `textHolderLapsed` | `NOT_THE_HOLDER` | `{call} reads the text of a task its executor holds, and your lease on this one ended.` |
+| `stateDoesNotAllow` | `TRANSITION_REFUSED` | `{call} is not possible in the task's present state, which data.state shows. You can make: {#each calls}{it}{#if it_hasNext}, {/if}{/each}.` |
+| `stateNothingOpen` | `TRANSITION_REFUSED` | `{call} is not possible in the task's present state, which data.state shows, and no call is open to you on it now; data.waiting_for says what it waits for.` |
+| `stateClosed` | `TRANSITION_REFUSED` | `{call} is not possible on this task: it is closed and finished. Nothing further can be done with it.` |
+| `roleCommissioner` | `ROLE_INSUFFICIENT` | `{call} is the commissioner's call, and you take part in this task in another part.` |
+| `roleExecutor` | `ROLE_INSUFFICIENT` | `{call} is an executor's call, and you take part here in another part.` |
+| `roleHolder` | `ROLE_INSUFFICIENT` | `{call} is the holder's call, and you take part in this task in another part.` |
+| `roleAuthor` | `ROLE_INSUFFICIENT` | `{call} is the call of the identity that wrote the text it supplements.` |
+| `roleOtherThanTheDeliverer` | `ROLE_INSUFFICIENT` | `{call} is the commissioner's call, made by an identity other than the one that delivered the answer.` |
+| `roleCapacity` | `ROLE_INSUFFICIENT` | `{call} needs a caller holding the commissioning or the executing capacity, and exactly one of them.` |
+| `holderOther` | `CLAIM_HELD` | `{call} is the holder's call, and another executor holds this task.` |
+| `holderNobody` | `CLAIM_ABSENT` | `{call} is the holder's call, and nobody holds this task.` |
+| `holderLapsed` | `CLAIM_ABSENT` | `{call} is the holder's call, and your lease on this task ended.` |
+| `textHolderOther` | `CLAIM_HELD` | `{call} reads the text of a task its executor holds, and another executor holds this one.` |
+| `textHolderNobody` | `CLAIM_ABSENT` | `{call} reads the text of a task its executor holds, and nobody holds this one.` |
+| `textHolderLapsed` | `CLAIM_ABSENT` | `{call} reads the text of a task its executor holds, and your lease on this one ended.` |
 | `receiptWrong` | `RECEIPT_WRONG` | `{call} needs the receipt your claim handed out for this task: the receipt given is a different one.` |
-| `childrenNotFinished` | `CHILDREN_NOT_FINISHED` | `{call} would close a bracket root while tasks of its bracket are unfinished; data.children lists them. Repeat the call with data.confirmation to withdraw them and close the root.` |
-| `childrenConfirmationStale` | `CHILDREN_NOT_FINISHED` | `{call} carries a confirmation that no longer holds: the unfinished tasks of the bracket changed since it was handed out, and data.children lists them now. Repeat the call with the one in data.confirmation.` |
+| `childrenUnfinished` | `CHILDREN_UNFINISHED` | `{call} would close a bracket root while tasks of its bracket are unfinished; data.children lists them. Repeat the call with data.confirmation to withdraw them and close the root.` |
+| `childrenConfirmationStale` | `CHILDREN_UNFINISHED` | `{call} carries a confirmation that no longer holds: the unfinished tasks of the bracket changed since it was handed out, and data.children lists them now. Repeat the call with the one in data.confirmation.` |
+| `optionUnoffered` | `OPTION_UNOFFERED` | `{call} names an option the question does not offer; data.offenders names the field, and the read of the task lists the options.` |
+| `freeTextUnoffered` | `OPTION_UNOFFERED` | `{call} answers in free text, and the question admits none; data.offenders names the field, and the read of the task lists the options.` |
 | `deferralPending` | `DEFERRAL_PENDING` | `{call} is not possible yet: the task is deferred, and {read} shows until when, in fields.not_before.` |
-| `nothingToTake` | `NOTHING_TO_TAKE` | `Nothing that your patterns match can be taken up in this bracket kind right now: every such task is a draft, held, paused, delivered, closed or deferred.` |
-| `claimDurationInvalid` | `CLAIM_DURATION_INVALID` | `duration is not valid for {call}: it is a positive ISO-8601 duration such as PT2H.` |
+| `nothingToTake` | `DRAW_EMPTY` | `Nothing that your patterns match can be taken up in this bracket kind right now: every such task is a draft, held, paused, delivered, closed or deferred.` |
+| `claimDurationInvalid` | `ARGUMENT_INVALID` | `duration is not valid for {call}: it is a positive ISO-8601 duration such as PT2H.` |
 | `pageSizeRejected` | `PAGE_SIZE_REJECTED` | `page_size is not valid for {call}: it is a whole number from 1 to {max}.` |
 | `cursorMalformed` | `CURSOR_MALFORMED` | `after is not a cursor {query} handed out: it is the next_cursor of the previous page.` |
 | `cursorForeign` | `CURSOR_FOREIGN` | `{call} carries a cursor of another listing: it was handed out for other values of {#each differs}{it}{#if it_hasNext}, {/if}{/each}. A cursor continues only the listing that handed it out.` |
 | `sortUndeclared` | `SORT_UNDECLARED` | `sort is not valid for {call}: it takes id or created_at.` |
 | `argumentUnknown` | `ARGUMENT_UNKNOWN` | `{call} takes these arguments: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
 | `argumentUnknownUnderFields` | `ARGUMENT_UNKNOWN` | `{call} takes these arguments under fields: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
-| `callUnknown` | `ARGUMENT_UNKNOWN` | `This service takes these calls: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
+| `callUnknown` | `VERB_NOT_CARRIED` | `This service takes these calls: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
 | `argumentMissing` | `ARGUMENT_MISSING` | `{call} needs {path}.` |
 | `argumentMissingOptions` | `ARGUMENT_MISSING` | `{call} needs fields.options, or fields.free_text set to true.` |
 | `argumentMissingAnswer` | `ARGUMENT_MISSING` | `{call} needs fields.option or fields.text.` |
+| `conflictTokenMissing` | `CONFLICT_TOKEN_MISSING` | `{call} is fenced by the conflict token, and it arrived without one.` |
 | `argumentMissingChange` | `ARGUMENT_MISSING` | `{call} needs at least one of fields.title, fields.apparatus, fields.text and fields.metadata.` |
 | `invalidFieldsObject` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it carries the values this call writes, and is an object.` |
 | `invalidString` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is a string.` |
@@ -401,47 +418,48 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `invalidInstant` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: an instant is written in ISO-8601 with its offset, such as 2026-10-07T09:00:00Z.` |
 | `invalidInstantRange` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: an instant lies from 0001-01-01T00:00:00Z up to +294276-01-01T00:00:00Z.` |
 | `invalidAnswerOneOfTwo` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: an answer names an option or carries text, not both.` |
-| `invalidAddress` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a task's address is written dispatch://<scope>/<selector>/<number>.<sub>.` |
-| `invalidScope` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a scope's name is a DNS label: lower case, digits and inner hyphens.` |
-| `invalidSelector` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a bracket kind's name is lower case, digits and inner hyphens.` |
+| `invalidAddress` | `ADDRESS_MALFORMED` | `{path} is not valid for {call}: a task's address is written dispatch://<scope>/<selector>/<number>.<sub>.` |
+| `invalidScope` | `ADDRESS_MALFORMED` | `{path} is not valid for {call}: a scope's name is a DNS label: lower case, digits and inner hyphens.` |
+| `invalidSelector` | `ADDRESS_MALFORMED` | `{path} is not valid for {call}: a bracket kind's name is lower case, digits and inner hyphens.` |
 | `invalidMetadata` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: metadata carries your own keys, each value a string or a list of strings of at most 512 characters, and no URL carrying credentials.` |
 | `invalidCurationTarget` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names another task than this one.` |
 | `invalidAddendumTarget` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a part the task carries a text of; the read of the task lists them under fields.texts.` |
 | `invalidAddendaExhausted` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: that text already carries addenda a to z, and a further letter would reissue one that exists.` |
-| `invalidAnswerOption` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one of the question's options, which the read of the task lists.` |
-| `invalidAnswerFreeText` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: the question admits no free text; name one of its options, which the read of the task lists.` |
 | `invalidOnce` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it arrived twice: in the query or the body, and in the path or a header, and a call takes each argument once.` |
-| `invalidBody` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a body is a JSON object of the call's arguments.` |
-| `invalidSurfaceHeader` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it takes the one value assistant, once, or is left out.` |
-| `invalidInRequest` | `ARGUMENT_INVALID` | `{path} is not valid for this request: a task's address is written dispatch://<scope>/<selector>/<number>.<sub>.` |
+| `invalidBody` | `PAYLOAD_MALFORMED` | `{path} is not valid for {call}: a body is a JSON object of the call's arguments.` |
+| `headerInvalid` | `HEADER_INVALID` | `The header Kumbuka-Surface takes the one value assistant, once, or is left out.` |
+| `scopeReserved` | `ADDRESS_MALFORMED` | `The names declaration and whoami are the REST surface's own paths and are no scope; a scope is named otherwise.` |
+| `invalidInRequest` | `ADDRESS_MALFORMED` | `{path} is not valid for this request: a task's address is written dispatch://<scope>/<selector>/<number>.<sub>.` |
 | `valueInvalid` | `ARGUMENT_INVALID` | `A value given is not valid for {call}: it is a value this call takes.` |
 | `valueGivenTwice` | `ARGUMENT_INVALID` | `A value given is not valid for {call}: it arrived twice, in the query or the body and in the path or a header, and a call takes each argument once.` |
 | `conflictTokenStale` | `CONFLICT_TOKEN_STALE` | `{call} carries a conflict token that is not the one the task holds: it was changed since you read it. Its current token is in data.conflict_token.` |
-| `selectorUnknown` | `SELECTOR_UNKNOWN` | `selector names a bracket kind this scope does not declare.` |
+| `selectorUnknown` | `SELECTOR_UNDECLARED` | `selector names a bracket kind this scope does not declare.` |
+| `selectorWithdrawn` | `SELECTOR_WITHDRAWN` | `selector names a bracket kind this scope has withdrawn.` |
 | `scopeKindUnsupported` | `SCOPE_KIND_UNSUPPORTED` | `The scope named is of a kind this service carries no tasks in; it carries tasks in project and global scopes.` |
 | `scopeReadOnly` | `SCOPE_READ_ONLY` | `{call} writes, and you may read this scope without writing to it. Reading it is unaffected; the write right is granted with the membership.` |
 | `scopeLocked` | `SCOPE_LOCKED` | `This scope is locked, so it refuses every write whatever your role. Reading it is unaffected. The lock is lifted where it was set.` |
 | `idempotencyKeyReused` | `IDEMPOTENCY_KEY_REUSED` | `The idempotency key given was spent on a different call, or with different arguments, in this scope within the last 24 hours.` |
-| `routeCreate` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a bracket kind: POST /api/<scope>/<selector>.` |
-| `routeQuery` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a bracket kind: GET /api/<scope>/<selector>.` |
-| `routeOnABracketKind` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a bracket kind: POST /api/<scope>/<selector>:{call}.` |
-| `routeRead` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>.` |
-| `routeReadCall` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>:{call}.` |
-| `routeUpdate` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: PATCH /api/<scope>/<selector>/<number>.<sub>.` |
-| `routeDelete` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: DELETE /api/<scope>/<selector>/<number>.<sub>.` |
-| `routeOnATask` | `CALL_NOT_AT_THIS_ADDRESS` | `{call} is a call on a task: POST /api/<scope>/<selector>/<number>.<sub>:{call}.` |
+| `routeCreate` | `VERB_NOT_CARRIED` | `{call} is a call on a bracket kind: POST /api/<scope>/<selector>.` |
+| `routeQuery` | `VERB_NOT_CARRIED` | `{call} is a call on a bracket kind: GET /api/<scope>/<selector>.` |
+| `routeOnABracketKind` | `VERB_NOT_CARRIED` | `{call} is a call on a bracket kind: POST /api/<scope>/<selector>:{call}.` |
+| `routeRead` | `VERB_NOT_CARRIED` | `{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>.` |
+| `routeReadCall` | `VERB_NOT_CARRIED` | `{call} is a call on a task: GET /api/<scope>/<selector>/<number>.<sub>:{call}.` |
+| `routeUpdate` | `VERB_NOT_CARRIED` | `{call} is a call on a task: PATCH /api/<scope>/<selector>/<number>.<sub>.` |
+| `routeDelete` | `VERB_NOT_CARRIED` | `{call} is a call on a task: DELETE /api/<scope>/<selector>/<number>.<sub>.` |
+| `routeOnATask` | `VERB_NOT_CARRIED` | `{call} is a call on a task: POST /api/<scope>/<selector>/<number>.<sub>:{call}.` |
 | `unexpectedFailure` | `UNEXPECTED_FAILURE` | `{call} failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |
 | `unexpectedFailureOfRequest` | `UNEXPECTED_FAILURE` | `The request failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |
 
 ## 6. The declaration
 
-The service publishes its declaration on its REST surface at `GET /api/declaration`, for any
-authenticated caller, and the same declaration beside the assistant surface at `GET
-/mcp/declaration` (ADR-0039). Per call it states the identity `dispatch_<verb>` and the REST name,
-the effect class by the router's name (`ITEM_TRANSITION`, `COLLECTION_COMPOUND`, `CREATE`,
-`FIELD_WRITE`, `ITEM_DELETE`, `ITEM_READ`, `ITEM_READ_CALL`, `COLLECTION_READ`), the arguments with
-name, type, placement, requiredness, the default of an optional one (`null` where it sets
-nothing), the closed set of values with a description per value, the shape of the answer with its
+The service publishes its declaration on its REST surface at `GET /api/declaration` and nowhere
+else, for any caller with a valid token and no role (ADR-0039, service contract C5.1, C5.2). Per
+call it states the identity `dispatch_<verb>` and the REST name, the effect class by the router's
+name (`ITEM_TRANSITION`, `COLLECTION_COMPOUND`, `CREATE`, `FIELD_WRITE`, `ITEM_DELETE`,
+`ITEM_READ`, `ITEM_READ_CALL`, `COLLECTION_READ`), the role where the call is restricted, the
+arguments with name, type, placement (`TOP` or `FIELDS`), requiredness, the default of an optional
+one in its own JSON type (absent where it sets nothing), the closed set of values with a
+description per value, the shape of the answer with its
 members, the reasons a refusal of the call may name, its description and, for a transition, the
 sentence of its step in `next`. Per reason it states the templates of its messages and its remedy.
 The whole carries `version`, `sha256:` and the hex digest of the declaration's canonical text --

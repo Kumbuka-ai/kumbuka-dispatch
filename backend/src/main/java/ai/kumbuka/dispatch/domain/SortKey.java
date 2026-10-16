@@ -47,7 +47,7 @@ public enum SortKey {
      * The key a caller named, or {@link #ID} where it named none.
      *
      * @throws DispatchException {@code SORT_UNDECLARED} for a key not declared,
-     *                           naming it
+     *                           naming the argument {@code sort} and not the key
      */
     public static SortKey of(String wireName) {
         if (wireName == null) {
@@ -60,8 +60,7 @@ public enum SortKey {
         }
         throw new DispatchException(DispatchException.Reason.SORT_UNDECLARED,
             "a listing of tasks sorts by " + String.join(", ", wireNames())
-                + " and by nothing else; '" + wireName + "' is not declared.",
-            List.of(wireName));
+                + " and by nothing else.", List.of("sort"));
     }
 
     /** The direction of a sort. */
@@ -95,9 +94,8 @@ public enum SortKey {
                 }
             }
             throw new DispatchException(DispatchException.Reason.SORT_UNDECLARED,
-                "a listing of tasks sorts " + String.join(" or ", wireNames()) + "; '"
-                    + wireName + "' is not a direction.",
-                List.of(wireName));
+                "a listing of tasks sorts " + String.join(" or ", wireNames()) + ".",
+                List.of("direction"));
         }
     }
 }

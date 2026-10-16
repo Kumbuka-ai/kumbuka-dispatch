@@ -75,7 +75,7 @@ public interface RefusalMessages {
     String receiptWrong(VerbName call);
 
     @Message
-    String childrenNotFinished(VerbName call);
+    String childrenUnfinished(VerbName call);
 
     @Message
     String childrenConfirmationStale(VerbName call);
@@ -204,10 +204,10 @@ public interface RefusalMessages {
     String invalidAddendaExhausted(VerbName call, ArgumentPath path);
 
     @Message
-    String invalidAnswerOption(VerbName call, ArgumentPath path);
+    String optionUnoffered(VerbName call);
 
     @Message
-    String invalidAnswerFreeText(VerbName call, ArgumentPath path);
+    String freeTextUnoffered(VerbName call);
 
     @Message
     String invalidOnce(VerbName call, ArgumentPath path);
@@ -216,10 +216,13 @@ public interface RefusalMessages {
     String invalidBody(VerbName call, ArgumentPath path);
 
     @Message
-    String invalidSurfaceHeader(VerbName call, ArgumentPath path);
+    String headerInvalid();
 
     @Message
     String invalidInRequest(ArgumentPath path);
+
+    @Message
+    String scopeReserved();
 
     @Message
     String valueInvalid(VerbName call);
@@ -232,6 +235,12 @@ public interface RefusalMessages {
 
     @Message
     String selectorUnknown();
+
+    @Message
+    String selectorWithdrawn();
+
+    @Message
+    String conflictTokenMissing(VerbName call);
 
     @Message
     String scopeKindUnsupported();

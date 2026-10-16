@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.contract;
 
+import ai.kumbuka.dispatch.CounterProbe;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +31,7 @@ import java.util.Map;
  * (ratified by the operator 2026-10-11, the substance of ADR-0049), and they
  * stand here from that frame.
  */
+@CounterProbe
 public final class TargetSurface {
 
     private TargetSurface() {

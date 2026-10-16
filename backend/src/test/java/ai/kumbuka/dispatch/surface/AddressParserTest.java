@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
@@ -6,7 +13,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * What the address production admits, and what it refuses.
@@ -78,32 +84,28 @@ class AddressParserTest {
         "99999999999.0", // where parsing it into an int failed outright
     })
     void a_malformed_id_is_a_typed_form_refusal(String id) {
-        assertThatThrownBy(() -> AddressParser.item("sprint", id))
-            .isInstanceOf(SurfaceException.class)
-            .extracting(e -> ((SurfaceException) e).reason())
+        assertThat(AddressParser.itemOf("sprint", id))
             .as("a form violation is a typed rejection at stage 1, decidable without "
                 + "knowing any scope — which is why it may answer 400 and leak nothing")
-            .isEqualTo(SurfaceException.Reason.ADDRESS_MALFORMED);
+            .isEmpty();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"Probe-Scope", "probe_scope", "-probe", "probe-", "probe.scope"})
     void a_scope_that_is_not_a_dns_label_is_refused_and_never_folded(String scope) {
-        assertThatThrownBy(() -> AddressParser.scope(scope))
-            .isInstanceOf(SurfaceException.class)
+        assertThat(AddressParser.scopeOf(scope))
             .as("what does not change identity is tolerated; what changes it is rejected. "
                 + "Folding case would make two strings resolve to one scope, which is an "
                 + "identity statement and must not arise from leniency")
-            .hasMessageContaining("DNS label");
+            .isEmpty();
     }
 
     @Test
     void an_empty_part_is_broken_rather_than_shorter() {
-        assertThatThrownBy(() -> AddressParser.item("sprint", ""))
-            .isInstanceOf(SurfaceException.class)
+        assertThat(AddressParser.itemOf("sprint", ""))
             .as("truncation is recognised by which parts are OCCUPIED, so an empty "
                 + "occupied part is not a truncated address")
-            .hasMessageContaining("empty");
+            .isEmpty();
     }
 
     // =======================================================================
@@ -136,19 +138,16 @@ class AddressParserTest {
         "dispatch://probe-scope/sprint/164.1/x" // a fourth part this scheme does not have
     })
     void a_uri_that_is_not_a_complete_dispatch_address_is_refused(String uri) {
-        assertThatThrownBy(() -> AddressParser.uri(uri))
-            .isInstanceOf(SurfaceException.class)
-            .extracting(e -> ((SurfaceException) e).reason())
-            .isEqualTo(SurfaceException.Reason.ADDRESS_MALFORMED);
+        assertThat(AddressParser.partsOf(uri))
+            .isEmpty();
     }
 
     @Test
     void the_uri_form_applies_the_same_productions_as_the_path_form() {
-        assertThatThrownBy(() -> AddressParser.uri("dispatch://probe-scope/sprint/164"))
-            .isInstanceOf(SurfaceException.class)
+        assertThat(AddressParser.partsOf("dispatch://probe-scope/sprint/164"))
             .as("one grammar behind both entrances. Two would be two places for it to "
                 + "drift, and the drift would show up as one adapter admitting what the "
                 + "other refuses")
-            .hasMessageContaining("<number>.<sub>");
+            .isEmpty();
     }
 }

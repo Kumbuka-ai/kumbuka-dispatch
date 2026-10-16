@@ -38,9 +38,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * of another selector and another tenant.
  *
  * <p>The statement is the one Hibernate prepares for the page, recorded by
- * {@link RecordedStatements} and handed to {@code EXPLAIN ANALYZE} unchanged
- * with the values the page binds, so the plan belongs to the statement that
- * runs and not to one written to resemble it.
+ * {@link RecordedStatements} and handed to {@code EXPLAIN ANALYZE} unchanged,
+ * so the plan belongs to the statement that runs and not to one written to
+ * resemble it. The values it is explained with are not all the page's: the
+ * tenant, the scope, the selector and the page size are, but the keyset values
+ * of a continued page are constants written here, and the instants of creation
+ * are seeded at random. That is deliberate and enough, because the finding is
+ * about which index the planner walks and whether it sorts: that turns on the
+ * shape of the statement and on the indexes, and a keyset walk over this table
+ * plans alike wherever in the keyset it starts.
  *
  * <p>Red probes, each observed 2026-10-12 against the running database:
  * <ul>

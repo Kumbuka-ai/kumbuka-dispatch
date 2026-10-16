@@ -34,12 +34,15 @@ public record PageRequest(int pageSize, SortKey sort, SortKey.Direction directio
     /** The largest page a listing hands out. */
     public static final int MAX_PAGE_SIZE = 200;
 
+    /** The argument that names the page size, by its declared name. */
+    static final String PAGE_SIZE = "page_size";
+
     public PageRequest {
         Objects.requireNonNull(sort, "sort");
         Objects.requireNonNull(direction, "direction");
         Objects.requireNonNull(after, "after");
         if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
-            throw pageSizeRejected(String.valueOf(pageSize));
+            throw pageSizeRejected();
         }
     }
 
@@ -63,7 +66,7 @@ public record PageRequest(int pageSize, SortKey sort, SortKey.Direction directio
         int size = DEFAULT_PAGE_SIZE;
         if (pageSize != null) {
             if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
-                throw pageSizeRejected(String.valueOf(pageSize));
+                throw pageSizeRejected();
             }
             size = pageSize.intValue();
         }
@@ -71,9 +74,12 @@ public record PageRequest(int pageSize, SortKey sort, SortKey.Direction directio
             direction == null ? SortKey.Direction.ASC : direction, Optional.ofNullable(after));
     }
 
-    private static DispatchException pageSizeRejected(String value) {
+    /**
+     * The refusal names the argument and not the value asked for: a refusal
+     * repeats nothing the caller sent (DEC-0042, DEC-0043 R18).
+     */
+    private static DispatchException pageSizeRejected() {
         return new DispatchException(DispatchException.Reason.PAGE_SIZE_REJECTED,
-            "a page holds from 1 to " + MAX_PAGE_SIZE + " tasks; " + value + " was asked for.",
-            List.of(value));
+            "a page holds from 1 to " + MAX_PAGE_SIZE + " tasks.", List.of(PAGE_SIZE));
     }
 }

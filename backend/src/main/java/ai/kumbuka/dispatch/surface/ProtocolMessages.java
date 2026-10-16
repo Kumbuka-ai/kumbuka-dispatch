@@ -22,4 +22,7 @@ public interface ProtocolMessages {
 
     @Message
     String methodUnknown();
+
+    @Message
+    String toolUnknown();
 }

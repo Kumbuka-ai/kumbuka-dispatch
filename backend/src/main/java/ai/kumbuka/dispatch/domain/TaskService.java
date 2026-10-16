@@ -60,10 +60,7 @@ public class TaskService {
 
     private final Clock clock;
 
-    TaskService() {
-        this(Clock.systemUTC());
-    }
-
+    @Inject
     TaskService(Clock clock) {
         this.clock = clock;
     }

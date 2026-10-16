@@ -218,6 +218,8 @@ public enum ProcessVerb {
 
         static final String REMARK = "remark";
 
+        static final String RECEIPT = "receipt";
+
         private Shared() {
         }
     }
@@ -245,7 +247,7 @@ public enum ProcessVerb {
     }
 
     private static Argument receipt() {
-        return Argument.top("receipt", Argument.STRING, () -> Texts.arguments().receipt());
+        return Argument.top(Shared.RECEIPT, Argument.STRING, () -> Texts.arguments().receipt());
     }
 
     private static Argument duration() {
@@ -354,12 +356,21 @@ public enum ProcessVerb {
             .orElse(null);
     }
 
+    /** The declared argument of this name at one level; a defect where there is none. */
+    public Argument declared(String name, Argument.Placement placement) {
+        Argument argument = argument(name, placement);
+        if (argument == null) {
+            throw new IllegalStateException(call() + " declares no " + name);
+        }
+        return argument;
+    }
+
     /** Every declared top-level name, {@code fields} included where the call writes. */
     public List<String> topNames() {
         List<String> names = new java.util.ArrayList<>(
             topArguments().stream().map(Argument::name).toList());
         if (hasFields()) {
-            names.add("fields");
+            names.add(Argument.FIELDS);
         }
         return List.copyOf(names);
     }
@@ -435,32 +446,35 @@ public enum ProcessVerb {
      */
     public java.util.Set<RefusalCode> refusals() {
         java.util.Set<RefusalCode> codes = java.util.EnumSet.of(
-            RefusalCode.NOT_FOUND, RefusalCode.ARGUMENT_UNKNOWN, RefusalCode.ARGUMENT_MISSING,
-            RefusalCode.ARGUMENT_INVALID, RefusalCode.ROLE_DOES_NOT_ALLOW,
-            RefusalCode.SELECTOR_UNKNOWN, RefusalCode.SCOPE_KIND_UNSUPPORTED,
-            RefusalCode.CALL_NOT_AT_THIS_ADDRESS, RefusalCode.UNEXPECTED_FAILURE);
+            RefusalCode.NOT_FOUND, RefusalCode.PAYLOAD_MALFORMED, RefusalCode.ADDRESS_MALFORMED,
+            RefusalCode.ARGUMENT_UNKNOWN, RefusalCode.ARGUMENT_MISSING,
+            RefusalCode.ARGUMENT_INVALID, RefusalCode.HEADER_INVALID, RefusalCode.ROLE_INSUFFICIENT,
+            RefusalCode.SELECTOR_UNDECLARED, RefusalCode.SELECTOR_WITHDRAWN,
+            RefusalCode.SCOPE_KIND_UNSUPPORTED, RefusalCode.VERB_NOT_CARRIED,
+            RefusalCode.UNEXPECTED_FAILURE);
         if (!reads()) {
             codes.add(RefusalCode.SCOPE_READ_ONLY);
             codes.add(RefusalCode.SCOPE_LOCKED);
         }
         if (this != READ && this != READ_TEXT && this != QUERY && this != CLAIM_NEXT) {
-            codes.add(RefusalCode.STATE_DOES_NOT_ALLOW);
+            codes.add(RefusalCode.TRANSITION_REFUSED);
         }
-        if (argument("receipt", Argument.Placement.TOP) != null) {
-            codes.add(RefusalCode.NOT_THE_HOLDER);
+        if (argument(Shared.RECEIPT, Argument.Placement.TOP) != null || this == READ_TEXT) {
+            codes.add(RefusalCode.CLAIM_HELD);
+            codes.add(RefusalCode.CLAIM_ABSENT);
+        }
+        if (argument(Shared.RECEIPT, Argument.Placement.TOP) != null) {
             codes.add(RefusalCode.RECEIPT_WRONG);
         }
-        if (this == READ_TEXT) {
-            codes.add(RefusalCode.NOT_THE_HOLDER);
-        }
         if (argument("conflict_token", Argument.Placement.TOP) != null) {
+            codes.add(RefusalCode.CONFLICT_TOKEN_MISSING);
             codes.add(RefusalCode.CONFLICT_TOKEN_STALE);
         }
         if (argument("confirmation", Argument.Placement.TOP) != null) {
-            codes.add(RefusalCode.CHILDREN_NOT_FINISHED);
+            codes.add(RefusalCode.CHILDREN_UNFINISHED);
         }
-        if (argument("duration", Argument.Placement.TOP) != null) {
-            codes.add(RefusalCode.CLAIM_DURATION_INVALID);
+        if (argument("option", Argument.Placement.FIELDS) != null) {
+            codes.add(RefusalCode.OPTION_UNOFFERED);
         }
         if (argument("idempotency_key", Argument.Placement.TOP) != null) {
             codes.add(RefusalCode.IDEMPOTENCY_KEY_REUSED);
@@ -469,7 +483,7 @@ public enum ProcessVerb {
             codes.add(RefusalCode.DEFERRAL_PENDING);
         }
         if (this == CLAIM_NEXT) {
-            codes.add(RefusalCode.NOTHING_TO_TAKE);
+            codes.add(RefusalCode.DRAW_EMPTY);
         }
         if (this == QUERY) {
             codes.add(RefusalCode.PAGE_SIZE_REJECTED);

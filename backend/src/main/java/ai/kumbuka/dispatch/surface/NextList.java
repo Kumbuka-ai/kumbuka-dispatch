@@ -94,7 +94,7 @@ public final class NextList {
         if (!next.isEmpty()) {
             return null;
         }
-        NoticeTexts notices = Texts.notices();
+        Notices notices = Texts.notices();
         return switch (view.state()) {
             case DRAFT -> notices.waitingDraft();
             case OPEN -> view.notBefore() != null && view.notBefore().isAfter(now)
@@ -107,7 +107,7 @@ public final class NextList {
         };
     }
 
-    private static String onHold(TaskView view, NoticeTexts notices) {
+    private static String onHold(TaskView view, Notices notices) {
         if (view.holdReason() == HoldReason.QUESTION) {
             return notices.waitingQuestion();
         }
@@ -119,7 +119,7 @@ public final class NextList {
 
     /** What one transition does, as its step of {@code next} says it. */
     static String does(TaskVerb verb) {
-        NextTexts next = Texts.next();
+        NextStepTexts next = Texts.next();
         return switch (verb) {
             case SEND -> next.send();
             case CLAIM -> next.claim();

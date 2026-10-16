@@ -7,17 +7,21 @@
  */
 package ai.kumbuka.dispatch.adapter.rest;
 
-import ai.kumbuka.dispatch.adapter.payload.Answers;
+import ai.kumbuka.dispatch.adapter.payload.CallBinding;
+import ai.kumbuka.dispatch.adapter.payload.CallPayload;
+import ai.kumbuka.dispatch.adapter.payload.Payloads;
+import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.surface.AddressParser;
-import ai.kumbuka.dispatch.surface.CallRouter;
-import ai.kumbuka.dispatch.surface.CallerActor;
-import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ArgumentPath;
+import ai.kumbuka.dispatch.surface.CallerActor;
 import ai.kumbuka.dispatch.surface.Form;
-import ai.kumbuka.dispatch.surface.Refused;
-import ai.kumbuka.dispatch.surface.VerbName;
+import ai.kumbuka.dispatch.surface.ProcessVerb;
+import ai.kumbuka.dispatch.surface.Refusal;
 import ai.kumbuka.dispatch.surface.Surface;
+import ai.kumbuka.dispatch.surface.SurfaceException;
+import ai.kumbuka.dispatch.surface.VerbName;
+import ai.kumbuka.dispatch.surface.VerbSurface;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,20 +43,22 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
 import jakarta.ws.rs.core.UriInfo;
 
+import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * The REST surface: the twenty-five calls of the declaration on the routes of
- * {@link RestRoute}, and nothing else.
+ * {@link CustomMethod}, and nothing else.
  *
  * <p>A request becomes a call: its name from the route, its arguments from
  * the path (the scope and the bracket kind, or the complete address of one
  * task), the {@code If-Match} header (the conflict token), the query and the
  * body — the same map the assistant surface hands over, closed against the
- * same declaration by the same {@link CallRouter}. So a call refuses an
- * invented argument by name on both surfaces alike, whichever part of the
+ * same declaration by the same {@link CallPayload} and made by the same
+ * {@link CallBinding}: one call of the verb surface (C1.1). So a call refuses
+ * an invented argument by name on both surfaces alike, whichever part of the
  * request it came in.
  *
  * <p>A call names calls in the vocabulary of the surface its caller came
@@ -61,16 +67,19 @@ import java.util.Map;
  * that publishes these calls as tools reaches this service over REST and says
  * so, and the call is made under its tool name, so that {@code next}, {@code
  * waiting_for}, every message and the {@code data} of every refusal name the
- * tools that caller holds. Any other value is refused and the call is not
- * made. The header is not an argument of the call — it is in no declaration
- * and never reaches {@link CallRouter}'s argument map — and it grants nothing.
+ * tools that caller holds. Any other value, or the header twice, is refused
+ * as {@code HEADER_INVALID} by {@link SurfaceHeaderFilter} before the route
+ * is looked up, and the call is not made. The header is not an argument of the call — it is in no declaration
+ * and never reaches the call's arguments — and it grants nothing.
  * A {@code 405} names routes, which have one spelling, so it stays in the REST
  * form whatever the header says.
  *
  * <p>This class holds the HTTP expression of a call and nothing else: the
  * route, the status, {@code ETag} with the conflict token, {@code 201} with
  * {@code Location} for a created task, {@code 405} with {@code Allow} for a
- * call that is not at the address it was sent to.
+ * call that is not at the address it was sent to. It catches nothing: a
+ * refusal travels to {@link RefusalMapper}, which reads the call from {@link
+ * CallContext} (C8.2).
  */
 @Path("/api/{scope}")
 @Authenticated
@@ -92,9 +101,11 @@ public class TaskResource {
     /** The one value {@link #SURFACE} takes: the assistant surface. */
     static final String ASSISTANT = "assistant";
 
-    @Inject CallRouter router;
+    @Inject VerbSurface verbs;
     @Inject CallerActor caller;
+    @Inject CallContext context;
     @Inject ObjectMapper json;
+    @Inject Clock clock;
 
     // ======================================================================
     // The six bindings: one per method and depth
@@ -106,7 +117,7 @@ public class TaskResource {
                                    @PathParam("selector") String segment,
                                    @Context HttpHeaders http,
                                    @Context UriInfo uri, String body) {
-        return route("POST", new At(RestRoute.Depth.COLLECTION, scope, segment, null),
+        return route("POST", new At(CustomMethod.Depth.COLLECTION, scope, segment, null),
             new Headers(null, http.getRequestHeader(SURFACE)), uri, body);
     }
 
@@ -116,7 +127,7 @@ public class TaskResource {
                                   @PathParam("selector") String segment,
                                   @Context HttpHeaders http,
                                   @Context UriInfo uri) {
-        return route("GET", new At(RestRoute.Depth.COLLECTION, scope, segment, null),
+        return route("GET", new At(CustomMethod.Depth.COLLECTION, scope, segment, null),
             new Headers(null, http.getRequestHeader(SURFACE)), uri, null);
     }
 
@@ -128,7 +139,7 @@ public class TaskResource {
                             @HeaderParam(IF_MATCH) String ifMatch,
                             @Context HttpHeaders http,
                             @Context UriInfo uri) {
-        return route("GET", new At(RestRoute.Depth.ITEM, scope, selector, segment),
+        return route("GET", new At(CustomMethod.Depth.ITEM, scope, selector, segment),
             new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, null);
     }
 
@@ -140,7 +151,7 @@ public class TaskResource {
                               @HeaderParam(IF_MATCH) String ifMatch,
                               @Context HttpHeaders http,
                               @Context UriInfo uri, String body) {
-        return route("PATCH", new At(RestRoute.Depth.ITEM, scope, selector, segment),
+        return route("PATCH", new At(CustomMethod.Depth.ITEM, scope, selector, segment),
             new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, body);
     }
 
@@ -152,7 +163,7 @@ public class TaskResource {
                                @HeaderParam(IF_MATCH) String ifMatch,
                                @Context HttpHeaders http,
                                @Context UriInfo uri) {
-        return route("DELETE", new At(RestRoute.Depth.ITEM, scope, selector, segment),
+        return route("DELETE", new At(CustomMethod.Depth.ITEM, scope, selector, segment),
             new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, null);
     }
 
@@ -164,7 +175,7 @@ public class TaskResource {
                              @HeaderParam(IF_MATCH) String ifMatch,
                              @Context HttpHeaders http,
                              @Context UriInfo uri, String body) {
-        return route("POST", new At(RestRoute.Depth.ITEM, scope, selector, segment),
+        return route("POST", new At(CustomMethod.Depth.ITEM, scope, selector, segment),
             new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, body);
     }
 
@@ -173,7 +184,7 @@ public class TaskResource {
     // ======================================================================
 
     /** Where a request is addressed: the depth and the path segments as they arrived. */
-    private record At(RestRoute.Depth depth, String scope, String selectorSegment,
+    private record At(CustomMethod.Depth depth, String scope, String selectorSegment,
                       String idSegment) {
     }
 
@@ -187,28 +198,20 @@ public class TaskResource {
     }
 
     private Response route(String method, At where, Headers headers, UriInfo uri, String body) {
-        RestRoute.Depth depth = where.depth();
+        CustomMethod.Depth depth = where.depth();
         String scope = where.scope();
         String selectorSegment = where.selectorSegment();
         String idSegment = where.idSegment();
-        String[] at = RestRoute.split(depth == RestRoute.Depth.COLLECTION
+        String[] at = CustomMethod.split(depth == CustomMethod.Depth.COLLECTION
             ? selectorSegment : idSegment);
-        RestRoute route = RestRoute.find(method, depth, at[1]).orElse(null);
-        if (route == null) {
-            return notHere(depth, at[1]);
-        }
-        List<String> named = headers.surface();
-        if (!named.isEmpty() && !List.of(ASSISTANT).equals(named)) {
-            return refusal(Refused.argumentInvalid(VerbName.of(route.verb(), Surface.REST),
-                ArgumentPath.of(ArgumentPath.Transport.SURFACE_HEADER), Form.SURFACE_HEADER),
-                null);
-        }
-        Surface surface = named.isEmpty() ? Surface.REST : Surface.MCP;
-        String call = route.verb().on(surface);
+        CustomMethod route = CustomMethod.find(method, depth, at[1])
+            .orElseThrow(() -> notHere(depth, at[1]));
+        // SurfaceHeaderFilter refused every value but the one, before the route.
+        Surface surface = headers.surface().isEmpty() ? Surface.REST : Surface.MCP;
         VerbName refusing = VerbName.of(route.verb(), surface);
 
         Map<String, Object> arguments = new LinkedHashMap<>();
-        if (depth == RestRoute.Depth.COLLECTION) {
+        if (depth == CustomMethod.Depth.COLLECTION) {
             arguments.put("scope", scope);
             arguments.put("selector", at[0]);
         } else {
@@ -219,32 +222,32 @@ public class TaskResource {
         if (ifMatch != null && !ifMatch.isBlank()) {
             arguments.put("conflict_token", unquote(ifMatch.trim()));
         }
-        Refused collision = merge(refusing, route.verb(), arguments, query(uri));
-        if (collision == null) {
-            collision = mergeBody(refusing, route.verb(), arguments, body);
-        }
-        if (collision != null) {
-            return refusal(collision, null);
-        }
+        merge(refusing, route.verb(), arguments, query(uri));
+        mergeBody(refusing, route.verb(), arguments, body);
 
-        CallRouter.Outcome outcome = router.call(surface, caller::current, call, arguments);
-        return respond(route, outcome);
+        context.call(surface, route.verb(), arguments);
+        CallPayload in = new CallPayload(route.verb(), surface, arguments);
+        Actor actor = caller.current();
+        context.caller(actor);
+        return respond(route, CallBinding.make(verbs, surface, actor, in, clock));
     }
 
     /**
-     * A request at an address no route serves with that method and verb: 405
-     * with {@code Allow}. Where the verb is a call of this surface at another
-     * depth, the refusal says where it applies; otherwise it names the calls
-     * there are. Neither names a value the request carried: no path segment
-     * and no verb that the declaration does not hold (DEC-0043 R18, R19).
+     * A request at an address no route serves with that method and verb:
+     * {@code VERB_NOT_CARRIED} 405 with {@code Allow} and the verbs this
+     * address carries under {@code data.accepts} (C3.3). Where the verb is a
+     * call of this surface at another depth, the message says where it
+     * applies. Neither names a value the request carried: no path segment and
+     * no verb that the declaration does not hold (DEC-0043 R18, R19).
      */
-    private Response notHere(RestRoute.Depth depth, String verb) {
+    private static SurfaceException notHere(CustomMethod.Depth depth, String verb) {
         ProcessVerb declared = verb == null ? null : ProcessVerb.byName(Surface.REST, verb);
-        Refused refused = declared == null
-            ? Refused.callUnknown(VerbName.all(Surface.REST))
-            : Refused.callNotAtThisAddress(VerbName.of(declared, Surface.REST),
-                RestRoute.of(verb).map(RestRoute::refusalRoute).orElseThrow());
-        return refusal(refused, RestRoute.allow(depth));
+        List<VerbName> accepts = CustomMethod.accepts(depth);
+        Refusal refused = declared == null
+            ? Refusal.callUnknown(accepts)
+            : Refusal.callNotAtThisAddress(VerbName.of(declared, Surface.REST),
+                CustomMethod.of(verb).map(CustomMethod::refusalRoute).orElseThrow(), accepts);
+        return new SurfaceException(refused, CustomMethod.allow(depth));
     }
 
     private static Map<String, Object> query(UriInfo uri) {
@@ -259,8 +262,8 @@ public class TaskResource {
      * twice. What the path and the headers carry are declared arguments of the
      * call, so a name that arrives twice is always one the declaration holds.
      */
-    private static Refused merge(VerbName call, ProcessVerb verb, Map<String, Object> into,
-                                 Map<String, Object> from) {
+    private static void merge(VerbName call, ProcessVerb verb, Map<String, Object> into,
+                              Map<String, Object> from) {
         for (Map.Entry<String, Object> given : from.entrySet()) {
             if (given.getValue() == null) {
                 // JSON null is an argument not sent (DEC-0043 R17).
@@ -268,19 +271,19 @@ public class TaskResource {
             }
             if (into.containsKey(given.getKey())) {
                 Argument argument = verb.argument(given.getKey(), Argument.Placement.TOP);
-                return argument == null
-                    ? Refused.valueGivenTwice(call)
-                    : Refused.argumentInvalid(call, ArgumentPath.of(argument), Form.ONCE);
+                throw new SurfaceException(argument == null
+                    ? Refusal.valueGivenTwice(call)
+                    : Refusal.argumentInvalid(call, ArgumentPath.of(argument), Form.ONCE));
             }
             into.put(given.getKey(), given.getValue());
         }
-        return null;
     }
 
-    private Refused mergeBody(VerbName call, ProcessVerb verb, Map<String, Object> into,
-                              String body) {
+    /** Adds what the body carries; refuses a body that is no JSON object (C8.7). */
+    private void mergeBody(VerbName call, ProcessVerb verb, Map<String, Object> into,
+                           String body) {
         if (body == null || body.isBlank()) {
-            return null;
+            return;
         }
         Object parsed;
         try {
@@ -289,25 +292,22 @@ public class TaskResource {
             parsed = null;
         }
         if (!(parsed instanceof Map<?, ?> map)) {
-            return Refused.argumentInvalid(call, ArgumentPath.of(ArgumentPath.Transport.BODY),
-                Form.BODY);
+            throw new SurfaceException(Refusal.argumentInvalid(call,
+                ArgumentPath.of(ArgumentPath.Transport.BODY), Form.BODY));
         }
         Map<String, Object> carried = new LinkedHashMap<>();
         map.forEach((name, value) -> carried.put(String.valueOf(name), value));
-        return merge(call, verb, into, carried);
+        merge(call, verb, into, carried);
     }
 
     // ======================================================================
     // An outcome, in HTTP
     // ======================================================================
 
-    private static Response respond(RestRoute route, CallRouter.Outcome outcome) {
-        if (outcome instanceof CallRouter.Refusal refusal) {
-            return refusal(refusal.refused(), null);
-        }
-        Object body = Answers.of(outcome);
-        if (outcome instanceof CallRouter.Answered answered) {
-            Response.ResponseBuilder response = route == RestRoute.CREATE
+    private static Response respond(CustomMethod route, CallBinding.Outcome outcome) {
+        Object body = Payloads.of(outcome);
+        if (outcome instanceof CallBinding.Answered answered) {
+            Response.ResponseBuilder response = route == CustomMethod.CREATE
                 ? Response.created(location(answered)).entity(body)
                 : Response.ok(body);
             if (answered.view().conflictToken() != null) {
@@ -319,22 +319,11 @@ public class TaskResource {
     }
 
     /** Built from the address, never echoed from the request. */
-    private static java.net.URI location(CallRouter.Answered created) {
+    private static java.net.URI location(CallBinding.Answered created) {
         AddressParser.Parts at = AddressParser.uri(created.address());
         return UriBuilder.fromResource(TaskResource.class)
             .path("{selector}/{id}")
             .build(at.scope(), at.selector(), at.id());
-    }
-
-    private static Response refusal(Refused refused, String allow) {
-        Response.ResponseBuilder response = Response
-            .status(allow != null ? 405 : RefusalMapper.statusOf(refused.code()))
-            .type(MediaType.APPLICATION_JSON)
-            .entity(Answers.envelope(refused));
-        if (allow != null) {
-            response.header(HttpHeaders.ALLOW, allow);
-        }
-        return response.build();
     }
 
     /** Tolerates the quoted form an HTTP entity tag arrives in. */

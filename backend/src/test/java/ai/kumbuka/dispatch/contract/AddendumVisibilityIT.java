@@ -44,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * that changed it.
  *
  * <p>Red probe, observed: with the suffix left out of {@code
- * Answers.textHead}, both tests turn red on the head of {@code read}.
+ * TaskView.TextHead.fields}, both tests turn red on the head of {@code read}.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)

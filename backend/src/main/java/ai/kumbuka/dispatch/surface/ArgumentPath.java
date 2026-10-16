@@ -24,14 +24,12 @@ import java.util.Objects;
 public final class ArgumentPath {
 
     /** The {@code fields} object itself. */
-    public static final ArgumentPath FIELDS = new ArgumentPath(CallArguments.FIELDS);
+    public static final ArgumentPath FIELDS = new ArgumentPath(Argument.FIELDS);
 
     /** The parts of a REST request that carry no argument of the declaration. */
     public enum Transport {
         /** The body, which carries a JSON object of the call's arguments. */
-        BODY("body"),
-        /** The header naming the surface a caller came through. */
-        SURFACE_HEADER("Kumbuka-Surface");
+        BODY("body");
 
         private final String wireName;
 
@@ -53,7 +51,7 @@ public final class ArgumentPath {
     /** A declared argument at its place: under {@code fields} with its prefix. */
     public static ArgumentPath of(Argument argument) {
         return new ArgumentPath(argument.isField()
-            ? CallArguments.FIELDS + "." + argument.name()
+            ? Argument.FIELDS + "." + argument.name()
             : argument.name());
     }
 

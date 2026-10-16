@@ -122,8 +122,8 @@ class RestSurfaceIT {
         Response notJson = given().contentType(ContentType.JSON)
             .body("{\"fields\": {\"title\": ").post(SurfaceFixture.collection());
         assertThat(List.of(notJson.statusCode(), notJson.jsonPath().getString("reason")))
-            .as("a body that is no JSON is an invalid argument")
-            .isEqualTo(List.of(400, "ARGUMENT_INVALID"));
+            .as("a body that is no JSON object is a malformed payload (C8.7)")
+            .isEqualTo(List.of(400, "PAYLOAD_MALFORMED"));
 
         for (Response refused : List.of(inBody, inFields, inQuery, onAWrite)) {
             assertThat(refused.statusCode()).isEqualTo(400);
@@ -259,11 +259,12 @@ class RestSurfaceIT {
                 .post(SurfaceFixture.item(id) + ":" + earlier);
             assertThat(refused.statusCode()).as(earlier).isEqualTo(405);
             assertThat(refused.jsonPath().getString("reason")).as(earlier)
-                .isEqualTo("ARGUMENT_UNKNOWN");
+                .isEqualTo("VERB_NOT_CARRIED");
             assertThat(refused.asString()).as(earlier).doesNotContain(":" + earlier)
                 .doesNotContain("\"" + earlier + "\"");
             assertThat(refused.jsonPath().getList("data.accepts", String.class)).as(earlier)
-                .hasSize(25).contains("send", "accept");
+                .as("the verbs a task's address carries (C3.3)")
+                .hasSize(22).contains("send", "accept").doesNotContain("create", "query");
         }
         assertThat(Writes.snapshot()).isEqualTo(before);
     }

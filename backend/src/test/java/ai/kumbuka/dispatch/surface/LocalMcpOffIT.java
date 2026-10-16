@@ -78,8 +78,8 @@ class LocalMcpOffIT {
             .as("the resource is not a bean of this build").isFalse();
         assertThat(Arc.container().instance(DeclarationGuard.class).isAvailable())
             .as("nor is the start-up guard of the declaration").isFalse();
-        assertThat(Arc.container().instance(CallRouter.class).isAvailable())
-            .as("the router both surfaces share stays").isTrue();
+        assertThat(Arc.container().instance(VerbSurface.class).isAvailable())
+            .as("the verb surface both adapters call stays").isTrue();
     }
 
     @Test
@@ -113,7 +113,7 @@ class LocalMcpOffIT {
         Response refused = given().header("Kumbuka-Surface", "assistant")
             .contentType(ContentType.JSON).body(Map.of("duration", "PT1H"))
             .post(SurfaceFixture.item(id) + ":claim");
-        assertThat(refused.jsonPath().getString("reason")).isEqualTo("STATE_DOES_NOT_ALLOW");
+        assertThat(refused.jsonPath().getString("reason")).isEqualTo("TRANSITION_REFUSED");
         assertThat(refused.jsonPath().getString("message")).contains("dispatch_claim");
         assertThat(refused.jsonPath().getList("data.next.call", String.class))
             .isNotEmpty().allMatch(call -> call.startsWith(ProcessVerb.PREFIX));

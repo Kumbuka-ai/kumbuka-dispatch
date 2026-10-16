@@ -32,33 +32,33 @@ public final class Texts {
     }
 
     /** The remedy of every refusal reason. */
-    public static RemedyTexts remedies() {
-        return MessageBundles.get(RemedyTexts.class);
+    public static RefusalRemedies remedies() {
+        return MessageBundles.get(RefusalRemedies.class);
     }
 
     /** What each step of next does. */
-    public static NextTexts next() {
-        return MessageBundles.get(NextTexts.class);
+    public static NextStepTexts next() {
+        return MessageBundles.get(NextStepTexts.class);
     }
 
     /** What a task waits for. */
-    public static NoticeTexts notices() {
-        return MessageBundles.get(NoticeTexts.class);
+    public static Notices notices() {
+        return MessageBundles.get(Notices.class);
     }
 
     /** The description of every call. */
-    public static ToolTexts tools() {
-        return MessageBundles.get(ToolTexts.class);
+    public static ToolDescriptions tools() {
+        return MessageBundles.get(ToolDescriptions.class);
     }
 
     /** The description of every argument. */
-    public static ArgumentTexts arguments() {
-        return MessageBundles.get(ArgumentTexts.class);
+    public static ArgumentDescriptions arguments() {
+        return MessageBundles.get(ArgumentDescriptions.class);
     }
 
     /** The description of every value of a closed set. */
-    public static ValueTexts values() {
-        return MessageBundles.get(ValueTexts.class);
+    public static ValueDescriptions values() {
+        return MessageBundles.get(ValueDescriptions.class);
     }
 
     /** The errors of the protocol this service words itself. */
