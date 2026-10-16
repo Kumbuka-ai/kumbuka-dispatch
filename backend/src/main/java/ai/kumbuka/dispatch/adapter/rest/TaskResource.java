@@ -278,13 +278,15 @@ public class TaskResource {
      * no verb that the declaration does not hold (DEC-0043 R18, R19).
      */
     private static SurfaceException notHere(CustomMethod.Depth depth, @Nullable String verb) {
-        Optional<ProcessVerb> declared = verb == null ? Optional.empty()
-            : ProcessVerb.byName(Surface.REST, verb);
         List<VerbName> accepts = CustomMethod.accepts(depth);
-        Refusal refused = declared.isEmpty() || verb == null
+        Refusal refused = verb == null
             ? Refusal.callUnknown(accepts)
-            : Refusal.callNotAtThisAddress(VerbName.of(declared.get(), Surface.REST),
-                CustomMethod.of(verb).map(CustomMethod::refusalRoute).orElseThrow(), accepts);
+            : ProcessVerb.byName(Surface.REST, verb)
+                .map(declared -> Refusal.callNotAtThisAddress(
+                    VerbName.of(declared, Surface.REST),
+                    CustomMethod.of(verb).map(CustomMethod::refusalRoute).orElseThrow(),
+                    accepts))
+                .orElseGet(() -> Refusal.callUnknown(accepts));
         return new SurfaceException(refused, CustomMethod.allow(depth));
     }
 

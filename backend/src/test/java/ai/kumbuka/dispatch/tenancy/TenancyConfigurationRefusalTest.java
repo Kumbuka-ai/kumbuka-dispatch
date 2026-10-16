@@ -65,14 +65,6 @@ class TenancyConfigurationRefusalTest {
     // =======================================================================
 
     /**
-     * The file a deployment ships, with nothing behind it, does not start this
-     * service.
-     *
-     * <p>No environment source and no system-property source are added, which
-     * is the whole construction: whatever this machine happens to export, the
-     * configuration under test is the file.
-     */
-    /**
      * The refusal stands in a log line of its own: the log format carries no
      * exception (C13.1, C13.2), so the reason a start is refused reaches an
      * operator's crash loop only through that line.
@@ -95,6 +87,14 @@ class TenancyConfigurationRefusalTest {
             });
     }
 
+    /**
+     * The file a deployment ships, with nothing behind it, does not start this
+     * service.
+     *
+     * <p>No environment source and no system-property source are added, which
+     * is the whole construction: whatever this machine happens to export, the
+     * configuration under test is the file.
+     */
     @Test
     void the_shipped_configuration_alone_does_not_start_the_service() {
         assertThatThrownBy(() -> TenancyConfigurationGuard.requireConfigured(shipped()))
