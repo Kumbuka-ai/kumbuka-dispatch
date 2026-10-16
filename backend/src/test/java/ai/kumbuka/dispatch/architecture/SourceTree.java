@@ -114,9 +114,14 @@ final class SourceTree {
      * teaches its readers to stop writing documentation.
      */
     static String code(Path file) {
-        String source = text(file);
-        source = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL).matcher(source).replaceAll(" ");
-        return source.replaceAll("//[^\\n]*", " ");
+        return code(text(file));
+    }
+
+    /** The same for a source given as text: a guard's planted class goes through here. */
+    static String code(String source) {
+        String stripped = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL).matcher(source)
+            .replaceAll(" ");
+        return stripped.replaceAll("//[^\\n]*", " ");
     }
 
     /** The service's own imports a file declares, as package-qualified names. */
