@@ -471,7 +471,10 @@ public enum ProcessVerb {
             codes.add(RefusalCode.CONFLICT_TOKEN_STALE);
         }
         if (argument("confirmation", Argument.Placement.TOP) != null) {
-            codes.add(RefusalCode.CHILDREN_NOT_FINISHED);
+            codes.add(RefusalCode.CHILDREN_UNFINISHED);
+        }
+        if (argument("option", Argument.Placement.FIELDS) != null) {
+            codes.add(RefusalCode.OPTION_UNOFFERED);
         }
         if (argument("idempotency_key", Argument.Placement.TOP) != null) {
             codes.add(RefusalCode.IDEMPOTENCY_KEY_REUSED);

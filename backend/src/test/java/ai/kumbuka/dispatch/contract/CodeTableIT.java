@@ -42,7 +42,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * are each raised with no member outside their row: {@code CLAIM_ABSENT} and
  * {@code TRANSITION_REFUSED} 409, {@code ROLE_INSUFFICIENT} 403 decided after
  * the address is resolved, {@code SCOPE_READ_ONLY} 403 and {@code
- * HEADER_INVALID} 400 with no {@code data}. The statuses and members are
+ * HEADER_INVALID} 400 with no {@code data}. This service's own codes on a
+ * bracket, a question and a deferral are raised the same way: {@code
+ * CHILDREN_UNFINISHED} with the complete addresses of the children and the
+ * confirmation handed out now, {@code OPTION_UNOFFERED} with {@code
+ * fields.option}, and {@code DEFERRAL_PENDING} with the task's situation, each
+ * 409. The statuses and members are
  * written here from the table, not read from the catalogue.
  *
  * <p>On MCP an unknown tool is no refused call but a fault of the protocol
@@ -281,6 +286,80 @@ class CodeTableIT {
         assertThat(overMcp).doesNotContainKey("data");
     }
 
+    @Test
+    void a_root_with_unfinished_children_is_children_unfinished_409() {
+        String root = SurfaceFixture.address(SurfaceFixture.open("a root", "code"));
+        String child = String.valueOf(Mcp.answer(Mcp.call("dispatch_create", Map.of(
+            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR, "parent", root,
+            "fields", Map.of("title", "a child", "apparatus", "code")))).get("address"));
+
+        Response overMcp = Mcp.call("dispatch_withdraw", Map.of("address", root,
+            "conflict_token", token(root)));
+        mcpRow(overMcp, "CHILDREN_UNFINISHED", CHILDREN_UNFINISHED_ROW,
+            "attempted", "children", "confirmation");
+        Map<String, Object> data = data(Mcp.refusal(overMcp));
+        assertThat(data.get("children")).as("complete addresses, each of them")
+            .isEqualTo(List.of(child));
+        String handedOut = String.valueOf(data.get("confirmation"));
+
+        Response stale = Mcp.call("dispatch_withdraw", Map.of("address", root,
+            "conflict_token", token(root), "confirmation", "zz-sent-confirmation"));
+        mcpRow(stale, "CHILDREN_UNFINISHED", CHILDREN_UNFINISHED_ROW,
+            "attempted", "children", "confirmation");
+        assertThat(data(Mcp.refusal(stale)).get("confirmation"))
+            .as("the confirmation is the one handed out now, never the one sent")
+            .isEqualTo(handedOut).isNotEqualTo("zz-sent-confirmation");
+
+        restRow(given().header("If-Match", "\"" + token(root) + "\"")
+                .post(SurfaceFixture.item(root.substring(root.lastIndexOf('/') + 1))
+                    + ":withdraw"),
+            "CHILDREN_UNFINISHED", 409, CHILDREN_UNFINISHED_ROW,
+            "attempted", "children", "confirmation");
+    }
+
+    @Test
+    void an_answer_the_question_does_not_offer_is_option_unoffered_409() {
+        String id = SurfaceFixture.open("asked", "code");
+        String address = SurfaceFixture.address(id);
+        SurfaceFixture.asExecutor(identity);
+        String receipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
+            Map.of("address", address))).get("receipt"));
+        Mcp.answer(Mcp.call("dispatch_ask", Map.of("address", address, "receipt", receipt,
+            "fields", Map.of("question", "which?", "options", List.of("left", "right")))));
+        SurfaceFixture.asConsole(identity);
+
+        Response overMcp = Mcp.call("dispatch_answer", Map.of("address", address,
+            "conflict_token", token(address), "fields", Map.of("option", "middle")));
+        mcpRow(overMcp, "OPTION_UNOFFERED", OPTION_UNOFFERED_ROW, "attempted", "offenders");
+        assertThat(data(Mcp.refusal(overMcp)).get("offenders"))
+            .isEqualTo(List.of("fields.option"));
+        Response overRest = given().contentType(ContentType.JSON)
+            .header("If-Match", "\"" + token(address) + "\"")
+            .body(Map.of("fields", Map.of("option", "middle")))
+            .post(SurfaceFixture.item(id) + ":answer");
+        restRow(overRest, "OPTION_UNOFFERED", 409, OPTION_UNOFFERED_ROW,
+            "attempted", "offenders");
+    }
+
+    @Test
+    void a_claim_before_the_deferral_passed_is_deferral_pending_409() {
+        String id = SurfaceFixture.open("deferred", "code");
+        String address = SurfaceFixture.address(id);
+        SurfaceFixture.asExecutor(identity);
+        String receipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
+            Map.of("address", address))).get("receipt"));
+        Mcp.answer(Mcp.call("dispatch_defer", Map.of("address", address, "receipt", receipt,
+            "fields", Map.of("not_before", java.time.Instant.now().plusSeconds(7200)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString()))));
+
+        SurfaceFixture.asOtherExecutor(identity);
+        mcpRow(Mcp.call("dispatch_claim", Map.of("address", address)), "DEFERRAL_PENDING",
+            DEFERRAL_PENDING_ROW, "attempted", "state");
+        restRow(given().contentType(ContentType.JSON).body(Map.of("duration", "PT1H"))
+                .post(SurfaceFixture.item(id) + ":claim"),
+            "DEFERRAL_PENDING", 409, DEFERRAL_PENDING_ROW, "attempted", "state");
+    }
+
     // -----------------------------------------------------------------------
 
     /** The members of data the rows the contract change replaced name, as the table has them. */
@@ -288,6 +367,22 @@ class CodeTableIT {
     private static final List<String> TRANSITION_REFUSED_ROW =
         List.of("attempted", "state", "next", "waiting_for");
     private static final List<String> ROLE_INSUFFICIENT_ROW = List.of("attempted", "next");
+    private static final List<String> CHILDREN_UNFINISHED_ROW =
+        List.of("attempted", "children", "confirmation");
+    private static final List<String> OPTION_UNOFFERED_ROW = List.of("attempted", "offenders");
+    private static final List<String> DEFERRAL_PENDING_ROW =
+        List.of("attempted", "state", "next", "waiting_for");
+
+    /** The task's current conflict token, as its read hands it out. */
+    private static String token(String address) {
+        return String.valueOf(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", address)))
+            .get("conflict_token"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> data(Map<String, Object> refusal) {
+        return (Map<String, Object>) refusal.get("data");
+    }
 
     /**
      * A refusal over REST under a row that names its members: its code, its

@@ -171,7 +171,7 @@ class AnswerShapeConformanceIT {
         }
         if (data.get("children") instanceof List<?> children) {
             for (Object child : children) {
-                found.add(String.valueOf(((Map<String, Object>) child).get("address")));
+                found.add(String.valueOf(child));
             }
         }
         return found;

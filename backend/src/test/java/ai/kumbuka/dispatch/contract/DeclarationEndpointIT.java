@@ -7,6 +7,7 @@
  */
 package ai.kumbuka.dispatch.contract;
 
+import ai.kumbuka.dispatch.CounterProbe;
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.security.runtime.QuarkusPrincipal;
 import io.quarkus.security.runtime.QuarkusSecurityIdentity;
@@ -49,6 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * this red on that call alone, and so does a refusal code dropped from the
  * set of {@code dispatch_query}.
  */
+@CounterProbe
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class DeclarationEndpointIT {

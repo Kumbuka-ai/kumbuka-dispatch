@@ -257,22 +257,18 @@ class EveryRefusalIT {
 
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_withdraw", Map.of(
             "address", root, "conflict_token", token(root))));
-        assertThat(refusal.get("reason")).isEqualTo("CHILDREN_NOT_FINISHED");
+        assertThat(refusal.get("reason")).isEqualTo("CHILDREN_UNFINISHED");
         Map<String, Object> data = data(refusal);
-        assertThat(String.valueOf(data.get("children"))).contains(childAddress, "draft");
+        assertThat(data.get("children")).as("each unfinished child by its complete address")
+            .asList().containsExactlyInAnyOrder(childAddress, sentChild);
+        assertThat(data).as("the refusal carries the call, the children and the confirmation, "
+                + "and nothing of the root's situation")
+            .containsOnlyKeys("attempted", "children", "confirmation");
         assertThat(data).as("the children concern no argument, so no offenders are named "
                 + "(DEC-0042: every member of data means one thing on every service)")
             .doesNotContainKey("offenders");
         assertThat(refusal).as("the children stand under data and not beside it")
             .doesNotContainKey("children");
-        @SuppressWarnings("unchecked")
-        Map<Object, List<String>> nextOf = ((List<Map<String, Object>>) data.get("children"))
-            .stream().collect(java.util.stream.Collectors.toMap(o -> o.get("address"),
-                Mcp::nextCalls));
-        assertThat(nextOf.get(childAddress)).as("each unfinished child carries its own next")
-            .contains("dispatch_send");
-        assertThat(nextOf.get(sentChild)).doesNotContain("dispatch_send")
-            .contains("dispatch_withdraw");
         String confirmation = String.valueOf(data.get("confirmation"));
 
         Map<String, Object> closed = Mcp.answer(Mcp.call("dispatch_withdraw", Map.of(

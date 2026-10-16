@@ -50,6 +50,10 @@ public final class AddressParser {
     /** The scheme of this service's addresses. */
     public static final String SCHEME = "dispatch";
 
+    /** The names a scope cannot take: those of the REST surface's literal paths (C3.2). */
+    public static final java.util.Set<String> RESERVED_SCOPES =
+        java.util.Set.of("declaration", "whoami");
+
     private static final Pattern SCOPE = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
 
     private static final Pattern SELECTOR = Pattern.compile("[a-z0-9]([a-z0-9-]*[a-z0-9])?");
@@ -67,9 +71,10 @@ public final class AddressParser {
     // Reading, without refusing: the caller decides what a refusal names
     // ======================================================================
 
-    /** The scope, where the text is a DNS label; empty otherwise. */
+    /** The scope, where the text is a DNS label and no reserved name; empty otherwise. */
     public static Optional<String> scopeOf(String raw) {
-        return present(raw) && SCOPE.matcher(raw).matches() ? Optional.of(raw) : Optional.empty();
+        return present(raw) && SCOPE.matcher(raw).matches() && !RESERVED_SCOPES.contains(raw)
+            ? Optional.of(raw) : Optional.empty();
     }
 
     /** The bracket kind, where the text has a declared name's shape; empty otherwise. */

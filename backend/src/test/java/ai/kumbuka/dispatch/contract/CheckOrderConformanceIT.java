@@ -97,6 +97,31 @@ class CheckOrderConformanceIT {
             .isEqualTo(Mcp.refusal(visible));
     }
 
+    @Test
+    void a_scope_named_like_a_literal_path_is_refused_before_the_route() {
+        for (String reserved : List.of("declaration", "whoami")) {
+            String collection = "/api/" + reserved + "/" + SurfaceFixture.SELECTOR;
+            Map<String, Response> refused = new LinkedHashMap<>();
+            refused.put("create", given().contentType(ContentType.JSON)
+                .body(Map.of("fields", Map.of("title", "t", "apparatus", "code")))
+                .post(collection));
+            refused.put("read", given().get(collection + "/1.0"));
+            refused.put("a verb not carried", given().post(collection + "/1.0:invented"));
+            refused.put("a method not carried", given().put(collection + "/1.0"));
+            refused.forEach((what, answer) -> {
+                assertThat(answer.statusCode()).as("%s under %s: %s", what, reserved,
+                    answer.asString()).isEqualTo(400);
+                assertThat(answer.jsonPath().getString("reason")).as("%s under %s", what, reserved)
+                    .isEqualTo("ADDRESS_MALFORMED");
+                assertThat(answer.jsonPath().getMap("$")).as("%s under %s: no data", what,
+                    reserved).doesNotContainKey("data");
+            });
+            assertThat(Mcp.reason(Mcp.call("dispatch_read", Map.of("address",
+                    "dispatch://" + reserved + "/" + SurfaceFixture.SELECTOR + "/1.0"))))
+                .as("and the address grammar refuses it on MCP").isEqualTo("ADDRESS_MALFORMED");
+        }
+    }
+
     /** Each call on both surfaces: NOT_FOUND, and on REST 404. */
     private static void assertNotFound(Map<String, Map<String, Object>> calls) {
         calls.forEach((tool, arguments) -> {

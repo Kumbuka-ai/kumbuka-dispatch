@@ -109,7 +109,14 @@ public enum RefusalCode {
     DRAW_EMPTY(409),
 
     /** The call would close a bracket root with unfinished children. */
-    CHILDREN_NOT_FINISHED(409),
+    CHILDREN_UNFINISHED(409),
+
+    /**
+     * The answer names an option the question does not offer, or free text
+     * the question does not admit. Decided against the question the task
+     * holds, so after the address is resolved.
+     */
+    OPTION_UNOFFERED(409),
 
     /** A claim on a task deferred until an instant that has not come. */
     DEFERRAL_PENDING(409),
@@ -165,7 +172,8 @@ public enum RefusalCode {
             case CLAIM_REQUIRED -> CLAIM_HELD;
             case LEASE_LAPSED -> CLAIM_ABSENT;
             case RECEIPT_MISMATCH -> RECEIPT_WRONG;
-            case CONFIRMATION_REQUIRED, CONFIRMATION_STALE -> CHILDREN_NOT_FINISHED;
+            case CONFIRMATION_REQUIRED, CONFIRMATION_STALE -> CHILDREN_UNFINISHED;
+            case ANSWER_NOT_AN_OPTION -> OPTION_UNOFFERED;
             case DEFERRAL_PENDING -> DEFERRAL_PENDING;
             case NOTHING_TO_CLAIM -> DRAW_EMPTY;
             case PAGE_SIZE_REJECTED -> PAGE_SIZE_REJECTED;
@@ -178,7 +186,7 @@ public enum RefusalCode {
             case SCOPE_READ_ONLY -> SCOPE_READ_ONLY;
             case SCOPE_LOCKED -> SCOPE_LOCKED;
             case CLAIM_DURATION_NOT_POSITIVE, ADDENDUM_SUFFIX_EXHAUSTED, METADATA_REFUSED,
-                 FILTER_VALUE_REFUSED, CURATION_TARGET_SELF, ANSWER_NOT_AN_OPTION ->
+                 FILTER_VALUE_REFUSED, CURATION_TARGET_SELF ->
                 ARGUMENT_INVALID;
             case IDEMPOTENCY_KEY_REUSED -> IDEMPOTENCY_KEY_REUSED;
             case FILTER_FIELD_UNKNOWN -> ARGUMENT_UNKNOWN;
@@ -212,7 +220,8 @@ public enum RefusalCode {
             case CLAIM_HELD -> remedies.claimHeld();
             case RECEIPT_WRONG -> remedies.receiptWrong();
             case DRAW_EMPTY -> remedies.drawEmpty();
-            case CHILDREN_NOT_FINISHED -> remedies.childrenNotFinished();
+            case CHILDREN_UNFINISHED -> remedies.childrenUnfinished();
+            case OPTION_UNOFFERED -> remedies.optionUnoffered();
             case DEFERRAL_PENDING -> remedies.deferralPending();
             case IDEMPOTENCY_KEY_REUSED -> remedies.idempotencyKeyReused();
             case SCOPE_LOCKED -> remedies.scopeLocked();
@@ -276,8 +285,10 @@ public enum RefusalCode {
         HOLDER_LAPSED(RefusalCode.CLAIM_ABSENT, "holderLapsed"),
         TEXT_HOLDER_LAPSED(RefusalCode.CLAIM_ABSENT, "textHolderLapsed"),
         RECEIPT_WRONG(RefusalCode.RECEIPT_WRONG, "receiptWrong"),
-        CHILDREN_NOT_FINISHED(RefusalCode.CHILDREN_NOT_FINISHED, "childrenNotFinished"),
-        CHILDREN_CONFIRMATION_STALE(RefusalCode.CHILDREN_NOT_FINISHED, "childrenConfirmationStale"),
+        CHILDREN_UNFINISHED(RefusalCode.CHILDREN_UNFINISHED, "childrenUnfinished"),
+        CHILDREN_CONFIRMATION_STALE(RefusalCode.CHILDREN_UNFINISHED, "childrenConfirmationStale"),
+        OPTION_UNOFFERED(RefusalCode.OPTION_UNOFFERED, "optionUnoffered"),
+        FREE_TEXT_UNOFFERED(RefusalCode.OPTION_UNOFFERED, "freeTextUnoffered"),
         DEFERRAL_PENDING(RefusalCode.DEFERRAL_PENDING, "deferralPending"),
         NOTHING_TO_TAKE(RefusalCode.DRAW_EMPTY, "nothingToTake"),
         CLAIM_DURATION_INVALID(RefusalCode.ARGUMENT_INVALID, "claimDurationInvalid"),
@@ -320,12 +331,11 @@ public enum RefusalCode {
         INVALID_CURATION_TARGET(RefusalCode.ARGUMENT_INVALID, "invalidCurationTarget"),
         INVALID_ADDENDUM_TARGET(RefusalCode.ARGUMENT_INVALID, "invalidAddendumTarget"),
         INVALID_ADDENDA_EXHAUSTED(RefusalCode.ARGUMENT_INVALID, "invalidAddendaExhausted"),
-        INVALID_ANSWER_OPTION(RefusalCode.ARGUMENT_INVALID, "invalidAnswerOption"),
-        INVALID_ANSWER_FREE_TEXT(RefusalCode.ARGUMENT_INVALID, "invalidAnswerFreeText"),
         INVALID_ONCE(RefusalCode.ARGUMENT_INVALID, "invalidOnce"),
         INVALID_BODY(RefusalCode.PAYLOAD_MALFORMED, "invalidBody"),
         HEADER_INVALID(RefusalCode.HEADER_INVALID, "headerInvalid"),
         INVALID_IN_REQUEST(RefusalCode.ADDRESS_MALFORMED, "invalidInRequest"),
+        SCOPE_RESERVED(RefusalCode.ADDRESS_MALFORMED, "scopeReserved"),
         VALUE_INVALID(RefusalCode.ARGUMENT_INVALID, "valueInvalid"),
         VALUE_GIVEN_TWICE(RefusalCode.ARGUMENT_INVALID, "valueGivenTwice"),
         CONFLICT_TOKEN_STALE(RefusalCode.CONFLICT_TOKEN_STALE, "conflictTokenStale"),

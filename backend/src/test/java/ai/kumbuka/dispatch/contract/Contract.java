@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.contract;
 
+import ai.kumbuka.dispatch.CounterProbe;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -30,6 +32,7 @@ import java.util.Map;
  * table. Where the document's shape changes, it throws rather than silently
  * finding nothing.
  */
+@CounterProbe
 public final class Contract {
 
     private static final String RESOURCE = "/contract/assistant-surface.md";

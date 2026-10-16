@@ -112,6 +112,11 @@ public final class DomainRefusals {
                 ArgumentPath.of(verb.topArguments()));
             case ARGUMENT_INVALID -> invalid(verb, call, given, e);
             case CONFLICT_TOKEN_MISSING -> Refusal.conflictTokenMissing(call);
+            case OPTION_UNOFFERED -> fieldIn(given, OPTION) != null
+                ? Refusal.optionUnoffered(call, pathIn(verb, OPTION, Argument.Placement.FIELDS),
+                    false)
+                : Refusal.optionUnoffered(call, pathIn(verb, TEXT, Argument.Placement.FIELDS),
+                    true);
             default -> about(new Context(surface, actor, verb, call, given, read, clock), e, code);
         };
     }
@@ -155,8 +160,8 @@ public final class DomainRefusals {
             case CLAIM_HELD, CLAIM_ABSENT -> Refusal.notTheHolder(call, at, unheld(view, e),
                 verb == ProcessVerb.READ_TEXT);
             case RECEIPT_WRONG -> Refusal.receiptWrong(call, at);
-            case CHILDREN_NOT_FINISHED -> Refusal.childrenNotFinished(call, at,
-                children(surface, actor, result.get(), e, read), e.confirmation().orElse(null),
+            case CHILDREN_UNFINISHED -> Refusal.childrenUnfinished(call,
+                children(result.get(), e), e.confirmation().orElse(null),
                 e.reason() == DispatchException.Reason.CONFIRMATION_STALE);
             case DEFERRAL_PENDING -> Refusal.deferralPending(call,
                 VerbName.of(ProcessVerb.READ, surface), at);
@@ -218,16 +223,6 @@ public final class DomainRefusals {
             case CLAIM_DURATION_NOT_POSITIVE -> Refusal.claimDurationInvalid(call,
                 pathIn(verb, "duration", Argument.Placement.TOP));
             case FILTER_VALUE_REFUSED -> filterValue(verb, call, e);
-            case ANSWER_NOT_AN_OPTION -> {
-                // The options are the question's text, so they are pointed
-                // at and not listed: a refusal carries no text of a task.
-                boolean option = fieldIn(given, OPTION) != null;
-                yield option
-                    ? Refusal.argumentInvalid(call,
-                        pathIn(verb, OPTION, Argument.Placement.FIELDS), Form.ANSWER_OPTION)
-                    : Refusal.argumentInvalid(call,
-                        pathIn(verb, TEXT, Argument.Placement.FIELDS), Form.ANSWER_FREE_TEXT);
-            }
             default -> Refusal.valueInvalid(call);
         };
     }
@@ -287,23 +282,19 @@ public final class DomainRefusals {
         return view.holder() == HolderState.OTHER ? Refusal.Unheld.OTHER : Refusal.Unheld.NOBODY;
     }
 
-    /** Each unfinished child, complete, with its state and the calls open on it. */
-    private static List<Refusal.Child> children(Surface surface, Actor actor,
-                                                VerbSurface.Result root, DispatchException e,
-                                                Reader read) {
-        List<Refusal.Child> children = new ArrayList<>();
+    /**
+     * The complete address of each unfinished child. The kernel names each by
+     * its short form, with its state after it; the state is not carried.
+     */
+    private static List<String> children(VerbSurface.Result root, DispatchException e) {
+        List<String> children = new ArrayList<>();
         for (String named : e.offenders()) {
             int space = named.indexOf(' ');
             String shortForm = space < 0 ? named : named.substring(0, space);
             int slash = shortForm.indexOf('/');
-            String complete = new VerbSurface.Item(root.scope(),
+            children.add(new VerbSurface.Item(root.scope(),
                 AddressParser.item(shortForm.substring(0, slash), shortForm.substring(slash + 1)))
-                .complete();
-            Optional<VerbSurface.Result> child = read.apply(complete);
-            children.add(new Refusal.Child(complete,
-                child.map(r -> stateOf(r.view()))
-                    .orElse(named.substring(space + 2, named.length() - 1)),
-                child.map(r -> NextList.of(surface, r.view(), actor, false)).orElse(List.of())));
+                .complete());
         }
         return children;
     }

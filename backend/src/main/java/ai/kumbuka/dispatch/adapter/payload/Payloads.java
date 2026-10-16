@@ -75,12 +75,9 @@ public final class Payloads {
         }
         Map<String, Object> fields = data.current() == null ? null : data.current().fields(true);
         List<NextStepPayload> next = data.next() == null ? null : next(data.next());
-        List<ChildPayload> children = data.children() == null ? null : data.children().stream()
-            .map(child -> new ChildPayload(child.address(), child.state(), next(child.next())))
-            .toList();
         return new RefusalPayload(refusal.code().name(), refusal.message(),
             new RefusalDataPayload(data.attempted(), data.address(), data.state(), fields, next,
-                data.waitingFor(), data.offenders(), data.accepts(), children,
+                data.waitingFor(), data.offenders(), data.accepts(), data.children(),
                 data.confirmation(), data.conflictToken(), data.service(), data.reference()));
     }
 

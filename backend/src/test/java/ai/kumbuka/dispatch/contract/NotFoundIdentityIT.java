@@ -19,6 +19,8 @@ import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -37,9 +39,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  * the envelope carries no {@code data}: a difference of one byte would tell a
  * caller which of the three it hit.
  *
+ * <p>The rule on the envelope is {@link #notFoundOffences}: {@code data} is
+ * absent, not merely free of the caller's values. An empty {@code data}, or
+ * one that carries only {@code attempted}, tells nothing of the cause and
+ * still breaks the envelope C8.4 fixes, and it is how a service answers that
+ * checks only for values.
+ *
  * <p>RED STATE, observed 2026-10-16 with a violation planted for the run: an
  * unresolved scope answered {@code NOT_FOUND} with a {@code data} member, and
- * all three cases turned red.
+ * all three cases turned red. The rule's own red state runs on every build in
+ * {@link #the_check_reports_a_not_found_that_carries_data}.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -86,10 +95,8 @@ class NotFoundIdentityIT {
 
         for (Response answer : answers) {
             assertThat(answer.statusCode()).isEqualTo(404);
-            assertThat(answer.jsonPath().getMap("$"))
-                .as("NOT_FOUND carries no data")
-                .containsOnlyKeys("reason", "message")
-                .containsEntry("reason", "NOT_FOUND");
+            assertThat(notFoundOffences(answer.jsonPath().getMap("$")))
+                .as("NOT_FOUND carries no data (C8.4)").isEmpty();
         }
         assertThat(answers.stream().map(Response::asString).distinct().toList())
             .as("one answer, byte for byte, for all three causes")
@@ -103,8 +110,8 @@ class NotFoundIdentityIT {
             .toList();
 
         for (Response answer : answers) {
-            assertThat(Mcp.refusal(answer)).containsOnlyKeys("reason", "message")
-                .containsEntry("reason", "NOT_FOUND");
+            assertThat(notFoundOffences(Mcp.refusal(answer)))
+                .as("NOT_FOUND carries no data (C8.4)").isEmpty();
         }
         assertThat(answers.stream().map(Response::asString).distinct().toList())
             .as("one answer, byte for byte, for all three causes")
@@ -113,12 +120,52 @@ class NotFoundIdentityIT {
 
     @Test
     void a_write_to_any_of_the_three_answers_the_same_bytes_as_a_read() {
-        List<String> answers = causes().stream()
+        List<Response> writes = causes().stream()
             .map(address -> Mcp.call("dispatch_withdraw", Map.of("address", address,
-                "conflict_token", "t")).jsonPath().getString("result.structuredContent"))
-            .distinct()
+                "conflict_token", "t")))
             .toList();
-        assertThat(answers).hasSize(1);
+        for (Response write : writes) {
+            assertThat(notFoundOffences(Mcp.refusal(write)))
+                .as("a write's NOT_FOUND carries no data either (C8.4)").isEmpty();
+        }
+        assertThat(writes.stream()
+                .map(write -> write.jsonPath().getString("result.structuredContent"))
+                .distinct().toList())
+            .hasSize(1);
+    }
+
+    /** The red state of the rule, observed on every build. */
+    @Test
+    void the_check_reports_a_not_found_that_carries_data() {
+        Map<String, Object> planted = new LinkedHashMap<>();
+        planted.put("reason", "NOT_FOUND");
+        planted.put("message", "Nothing is here.");
+        planted.put("data", Map.of("attempted", "dispatch_read"));
+        assertThat(notFoundOffences(planted))
+            .as("RED STATE, observed: a NOT_FOUND with data.attempted, which carries no value "
+                + "of the caller, must be reported for the member itself")
+            .containsExactly("NOT_FOUND carries data");
+        assertThat(notFoundOffences(Map.of("reason", "NOT_FOUND", "message", "m",
+                "data", Map.of())))
+            .as("and so must an empty data").containsExactly("NOT_FOUND carries data");
+    }
+
+    /**
+     * What is wrong with an envelope that should be {@code NOT_FOUND}: another
+     * reason, a {@code data} member of any content, or a member beside the two.
+     */
+    static List<String> notFoundOffences(Map<String, Object> envelope) {
+        List<String> offences = new ArrayList<>();
+        if (!"NOT_FOUND".equals(envelope.get("reason"))) {
+            offences.add("the reason is " + envelope.get("reason"));
+        }
+        if (envelope.containsKey("data")) {
+            offences.add("NOT_FOUND carries data");
+        }
+        envelope.keySet().stream()
+            .filter(key -> !List.of("reason", "message", "data").contains(key))
+            .forEach(key -> offences.add("NOT_FOUND carries " + key));
+        return offences;
     }
 
     /** The REST path of a complete address. */

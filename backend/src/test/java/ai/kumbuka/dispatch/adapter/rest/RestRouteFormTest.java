@@ -7,6 +7,7 @@
  */
 package ai.kumbuka.dispatch.adapter.rest;
 
+import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.RefusalCode;
 import ai.kumbuka.dispatch.surface.Surface;
@@ -39,7 +40,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Two clauses of the service contract stand beside it. C3.2: the REST
  * surface has two literal paths, {@code /api/declaration} and {@code
  * /api/whoami}, and every other path is a template under {@code
- * /api/{scope}}. C3.3: a verb the service does not carry at an address
+ * /api/{scope}}; the names of the two literal paths are reserved, so a scope
+ * named {@code declaration} or {@code whoami} is out of the address grammar and
+ * refused before the route is looked up. C3.3: a verb the service does not carry at an address
  * answers {@code VERB_NOT_CARRIED} 405, and {@code data.accepts} lists the
  * verbs that address carries.
  */
@@ -90,6 +93,36 @@ class RestRouteFormTest {
             .as("RED STATE, observed: a third literal path and a path outside /api must "
                 + "each be reported")
             .containsExactly("/api/status", "/admin/{scope}");
+    }
+
+    @Test
+    void the_names_of_the_literal_paths_are_no_scope() {
+        assertThat(reservedOffences(LITERAL))
+            .as("C3.2: a scope named like a literal path would answer under a path the "
+                + "surface keeps for itself; the grammar refuses the name")
+            .isEmpty();
+        assertThat(AddressParser.RESERVED_SCOPES).as("and reserves no other name")
+            .containsExactlyInAnyOrderElementsOf(LITERAL.stream()
+                .map(path -> path.substring("/api/".length())).toList());
+        assertThat(AddressParser.scopeOf("declarations")).as("a longer name is a scope")
+            .isPresent();
+        assertThat(AddressParser.partsOf("dispatch://whoami/sprint/1.0"))
+            .as("and a complete address under a reserved name is no address").isEmpty();
+    }
+
+    @Test
+    void the_check_reports_a_literal_path_whose_name_is_still_a_scope() {
+        assertThat(reservedOffences(Set.of("/api/status")))
+            .as("RED STATE, observed: a literal path whose name the grammar takes as a scope "
+                + "must be reported")
+            .containsExactly("status");
+    }
+
+    /** The names of literal paths the address grammar still takes as a scope. */
+    static List<String> reservedOffences(Set<String> literals) {
+        return literals.stream().map(path -> path.substring("/api/".length()))
+            .filter(name -> AddressParser.scopeOf(name).isPresent())
+            .sorted().toList();
     }
 
     @Test

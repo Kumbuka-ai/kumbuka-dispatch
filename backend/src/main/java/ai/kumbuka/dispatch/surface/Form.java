@@ -45,8 +45,6 @@ public enum Form {
     CURATION_TARGET(RefusalCode.Message.INVALID_CURATION_TARGET),
     ADDENDUM_TARGET(RefusalCode.Message.INVALID_ADDENDUM_TARGET),
     ADDENDA_EXHAUSTED(RefusalCode.Message.INVALID_ADDENDA_EXHAUSTED),
-    ANSWER_OPTION(RefusalCode.Message.INVALID_ANSWER_OPTION),
-    ANSWER_FREE_TEXT(RefusalCode.Message.INVALID_ANSWER_FREE_TEXT),
     ONCE(RefusalCode.Message.INVALID_ONCE),
     BODY(RefusalCode.Message.INVALID_BODY);
 

@@ -75,7 +75,10 @@ public interface RefusalRemedies {
     String drawEmpty();
 
     @Message
-    String childrenNotFinished();
+    String childrenUnfinished();
+
+    @Message
+    String optionUnoffered();
 
     @Message
     String deferralPending();

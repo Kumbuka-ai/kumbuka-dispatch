@@ -9,7 +9,8 @@ sources:
   - "the platform's pagination frame for every primary object, ratified by the operator 2026-10-11 (the substance of ADR-0049, not yet written): page_size, after, sort, direction, next_cursor, and the refusals PAGE_SIZE_REJECTED, CURSOR_MALFORMED, CURSOR_FOREIGN, SORT_UNDECLARED"
   - "platform-specs PR #9, docs/architecture/decisions/DEC-0043, rules R17 to R21, ratified 2026-10-15; DEC-0042 as ratified the same day (accepts in place of an unknown name)"
   - "platform-specs PR #9, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3.5: the first entry of next after a claim"
-  - "the change to code-conventions/service-contract.md the operator decided 2026-10-16, not yet on platform-specs main: CLAIM_ABSENT, TRANSITION_REFUSED, ROLE_INSUFFICIENT, SCOPE_READ_ONLY as a row of the table, HEADER_INVALID, rules C14.4 and C14.5"
+  - "platform-specs 0f3978e, code-conventions/service-contract.md: CLAIM_ABSENT, TRANSITION_REFUSED, ROLE_INSUFFICIENT, SCOPE_READ_ONLY as a row of the table, HEADER_INVALID, rules C14.4 and C14.5, the members of data"
+  - "the second change to code-conventions/service-contract.md the operator ratified 2026-10-16, not yet on platform-specs main: CHILDREN_UNFINISHED and OPTION_UNOFFERED, data.children as complete addresses, the names declaration and whoami reserved"
 ---
 <!--
 Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
@@ -304,9 +305,10 @@ call's arguments names them in `data.offenders`: the paths of the arguments it c
 zero (`apparatus[2]`, `fields.options[1]`). A refusal of a name the call does not declare carries
 no `offenders`: it lists the arguments the level accepts under `data.accepts`, with their paths,
 and a call this service does not have is answered with the calls there are under `data.accepts`
-and no `attempted`. `CHILDREN_NOT_FINISHED` names the unfinished children of the bracket root
-under `data.children`, each with its address, its state and its `next`, beside
-`data.confirmation`. `CONFLICT_TOKEN_STALE` carries the task as it stands -- `data.address`,
+and no `attempted`. `CHILDREN_UNFINISHED` names the unfinished children of the bracket root
+under `data.children`, each by its complete address, beside `data.confirmation`, the one handed
+out now. `OPTION_UNOFFERED` names the field of the answer under `data.offenders` and points at the
+read for the options. `CONFLICT_TOKEN_STALE` carries the task as it stands -- `data.address`,
 `data.fields`, `data.conflict_token` and `data.service` (DEC-0041) -- and `UNEXPECTED_FAILURE` its
 reference in `data.reference`. `VERB_NOT_CARRIED` lists the calls the address carries under
 `data.accepts`. `NOT_FOUND` carries no `data` and the same bytes whatever its cause. The codes and
@@ -330,7 +332,8 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `TRANSITION_REFUSED` | Make one of the calls in data.next. |
 | `ROLE_INSUFFICIENT` | Make one of the calls in data.next. |
 | `RECEIPT_WRONG` | Pass the receipt from your latest claim. |
-| `CHILDREN_NOT_FINISHED` | Repeat the call with data.confirmation, or finish the tasks in data.children first. |
+| `CHILDREN_UNFINISHED` | Repeat the call with data.confirmation, or finish the tasks in data.children first. |
+| `OPTION_UNOFFERED` | Answer with one of the options the read of the task lists, or with free text where the question admits it. |
 | `DEFERRAL_PENDING` | Take the task up after that instant, or take up another task now. |
 | `PAGE_SIZE_REJECTED` | Send page_size as a whole number within the bounds the message names. |
 | `CURSOR_MALFORMED` | Call the query again from the first page. |
@@ -375,8 +378,10 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `textHolderNobody` | `CLAIM_ABSENT` | `{call} reads the text of a task its executor holds, and nobody holds this one.` |
 | `textHolderLapsed` | `CLAIM_ABSENT` | `{call} reads the text of a task its executor holds, and your lease on this one ended.` |
 | `receiptWrong` | `RECEIPT_WRONG` | `{call} needs the receipt your claim handed out for this task: the receipt given is a different one.` |
-| `childrenNotFinished` | `CHILDREN_NOT_FINISHED` | `{call} would close a bracket root while tasks of its bracket are unfinished; data.children lists them. Repeat the call with data.confirmation to withdraw them and close the root.` |
-| `childrenConfirmationStale` | `CHILDREN_NOT_FINISHED` | `{call} carries a confirmation that no longer holds: the unfinished tasks of the bracket changed since it was handed out, and data.children lists them now. Repeat the call with the one in data.confirmation.` |
+| `childrenUnfinished` | `CHILDREN_UNFINISHED` | `{call} would close a bracket root while tasks of its bracket are unfinished; data.children lists them. Repeat the call with data.confirmation to withdraw them and close the root.` |
+| `childrenConfirmationStale` | `CHILDREN_UNFINISHED` | `{call} carries a confirmation that no longer holds: the unfinished tasks of the bracket changed since it was handed out, and data.children lists them now. Repeat the call with the one in data.confirmation.` |
+| `optionUnoffered` | `OPTION_UNOFFERED` | `{call} names an option the question does not offer; data.offenders names the field, and the read of the task lists the options.` |
+| `freeTextUnoffered` | `OPTION_UNOFFERED` | `{call} answers in free text, and the question admits none; data.offenders names the field, and the read of the task lists the options.` |
 | `deferralPending` | `DEFERRAL_PENDING` | `{call} is not possible yet: the task is deferred, and {read} shows until when, in fields.not_before.` |
 | `nothingToTake` | `DRAW_EMPTY` | `Nothing that your patterns match can be taken up in this bracket kind right now: every such task is a draft, held, paused, delivered, closed or deferred.` |
 | `claimDurationInvalid` | `ARGUMENT_INVALID` | `duration is not valid for {call}: it is a positive ISO-8601 duration such as PT2H.` |
@@ -419,11 +424,10 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `invalidCurationTarget` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names another task than this one.` |
 | `invalidAddendumTarget` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a part the task carries a text of; the read of the task lists them under fields.texts.` |
 | `invalidAddendaExhausted` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: that text already carries addenda a to z, and a further letter would reissue one that exists.` |
-| `invalidAnswerOption` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one of the question's options, which the read of the task lists.` |
-| `invalidAnswerFreeText` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: the question admits no free text; name one of its options, which the read of the task lists.` |
 | `invalidOnce` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it arrived twice: in the query or the body, and in the path or a header, and a call takes each argument once.` |
 | `invalidBody` | `PAYLOAD_MALFORMED` | `{path} is not valid for {call}: a body is a JSON object of the call's arguments.` |
 | `headerInvalid` | `HEADER_INVALID` | `The header Kumbuka-Surface takes the one value assistant, once, or is left out.` |
+| `scopeReserved` | `ADDRESS_MALFORMED` | `The names declaration and whoami are the REST surface's own paths and are no scope; a scope is named otherwise.` |
 | `invalidInRequest` | `ADDRESS_MALFORMED` | `{path} is not valid for this request: a task's address is written dispatch://<scope>/<selector>/<number>.<sub>.` |
 | `valueInvalid` | `ARGUMENT_INVALID` | `A value given is not valid for {call}: it is a value this call takes.` |
 | `valueGivenTwice` | `ARGUMENT_INVALID` | `A value given is not valid for {call}: it arrived twice, in the query or the body and in the path or a header, and a call takes each argument once.` |

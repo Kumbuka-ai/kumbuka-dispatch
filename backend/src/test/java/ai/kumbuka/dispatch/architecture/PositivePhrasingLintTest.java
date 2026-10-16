@@ -39,6 +39,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>The lint is seen to refuse a planted remedy that says what to avoid on
  * every build.
+ *
+ * <p><strong>The patterns are the binding form for every service that copies
+ * this lint.</strong> The phrase is matched as {@code \binstead\s+of\b}, so a
+ * line break or a second space between its words does not hide it, and the
+ * contraction as {@code n't\b}, so it is found at the end of any word, "don't"
+ * and "isn't" alike. A copy keeps both as they are written in {@link
+ * #REFUSED} and adds no list of exceptions.
  */
 class PositivePhrasingLintTest {
 

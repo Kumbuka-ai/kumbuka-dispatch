@@ -160,8 +160,18 @@ class RefusalEchoesNoValueIT {
         Mcp.answer(Mcp.call("dispatch_create", Map.of("scope", SurfaceFixture.SCOPE,
             "selector", SurfaceFixture.SELECTOR, "parent", root,
             "fields", Map.of("title", "a child", "apparatus", "code"))));
-        mcp(RefusalCode.CHILDREN_NOT_FINISHED, "dispatch_withdraw", Map.of("address", root,
+        mcp(RefusalCode.CHILDREN_UNFINISHED, "dispatch_withdraw", Map.of("address", root,
             "conflict_token", token(root), "confirmation", MARKER));
+
+        String asked = SurfaceFixture.address(SurfaceFixture.open("asked", "code"));
+        SurfaceFixture.asExecutor(identity);
+        String askedReceipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
+            Map.of("address", asked))).get("receipt"));
+        Mcp.answer(Mcp.call("dispatch_ask", Map.of("address", asked, "receipt", askedReceipt,
+            "fields", Map.of("question", "which?", "options", List.of("left", "right")))));
+        SurfaceFixture.asConsole(identity);
+        mcp(RefusalCode.OPTION_UNOFFERED, "dispatch_answer", Map.of("address", asked,
+            "conflict_token", token(asked), "fields", Map.of("option", MARKER)));
 
         SurfaceFixture.asMutedConsole(identity);
         mcp(RefusalCode.SCOPE_READ_ONLY, "dispatch_create", with(collection,

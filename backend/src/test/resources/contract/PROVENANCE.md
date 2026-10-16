@@ -39,7 +39,7 @@ a call's arguments names them in `data.offenders`, by name and never by value.
 
 Rewritten from DEC-0042 as sharpened on 2026-10-13 (platform-specs PR #9,
 commit `57951ef`): every member of `data` means one thing on every service, so
-`CHILDREN_NOT_FINISHED`, which concerns no argument, names the unfinished
+`CHILDREN_UNFINISHED`, which concerns no argument, names the unfinished
 children under `data.children` and no longer under `data.offenders`; neither
 a message nor a member of `data` returns a value the caller sent, so the
 patterns that carried `{value}`, `{key}` or `{selector}` name the argument and
@@ -133,3 +133,17 @@ carries no `data`. A `Kumbuka-Surface` header with another value than `assistant
 `HEADER_INVALID` 400 with no `data`, decided after authentication and before anything else; the
 MCP adapter does not read the header (C14.4, C14.5). The messages are unchanged but for the one
 of the header, which names no call because none is known when it is decided.
+
+## The amendment of 2026-10-16, third: the second contract change and the guards of the copy
+
+Codes and table are those of platform-specs `0f3978e`, whose wording the copy in
+`contract/shared-code-table.md` now holds verbatim. The second contract change ratified the same
+day is not on `main` yet, and the change as it was handed to this service is the source: a root
+with unfinished children is `CHILDREN_UNFINISHED` 409 with `attempted`, `children` and the
+confirmation handed out now, and `data.children` names each child by its complete address, as the
+list of members has it; an answer the question does not offer, an option or free text, is
+`OPTION_UNOFFERED` 409 with the field in `offenders`, decided against the question the task holds;
+`DEFERRAL_PENDING` stays 409 with the task's situation. The names `declaration` and `whoami` are
+the REST surface's literal paths and no scope: `ADDRESS_MALFORMED` 400 with no `data`, refused
+before the route. The texts of the two new codes and of the reserved name were written with this
+surface.

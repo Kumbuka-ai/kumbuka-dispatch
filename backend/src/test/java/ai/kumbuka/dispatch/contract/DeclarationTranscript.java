@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.contract;
 
+import ai.kumbuka.dispatch.CounterProbe;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +37,7 @@ import java.util.Set;
  * the refusals of its page; {@code claim_next} meets no state, since it
  * draws only open tasks.
  */
+@CounterProbe
 public final class DeclarationTranscript {
 
     private DeclarationTranscript() {
@@ -101,7 +104,8 @@ public final class DeclarationTranscript {
             "question:string:FIELDS:required", "options:array:FIELDS:optional",
             "free_text:boolean:FIELDS:optional=false");
         put(calls, "answer", "ITEM_TRANSITION", "TASK_LEAN",
-            reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token,
+            reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING",
+                "OPTION_UNOFFERED"), address, token,
             "option:string:FIELDS:optional", "text:string:FIELDS:optional");
         put(calls, "hold", "ITEM_TRANSITION", "TASK_LEAN",
             holder("TRANSITION_REFUSED"), address, receipt,
@@ -117,15 +121,15 @@ public final class DeclarationTranscript {
             remarkRequired);
         put(calls, "accept", "ITEM_TRANSITION", "TASK_LEAN",
             reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING",
-                "CHILDREN_NOT_FINISHED"), address, token, confirmation);
+                "CHILDREN_UNFINISHED"), address, token, confirmation);
         put(calls, "reject", "ITEM_TRANSITION", "TASK_LEAN",
             reasons(WRITE, "TRANSITION_REFUSED"), address, remarkRequired);
         put(calls, "fail", "ITEM_TRANSITION", "TASK_LEAN",
-            holder("TRANSITION_REFUSED", "CHILDREN_NOT_FINISHED"), address, receipt,
+            holder("TRANSITION_REFUSED", "CHILDREN_UNFINISHED"), address, receipt,
             confirmation, remarkRequired);
         put(calls, "withdraw", "ITEM_TRANSITION", "TASK_LEAN",
             reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING",
-                "CHILDREN_NOT_FINISHED"), address, token, confirmation, remark);
+                "CHILDREN_UNFINISHED"), address, token, confirmation, remark);
         put(calls, "create", "CREATE", "TASK_LEAN_CREATED",
             reasons(WRITE, "TRANSITION_REFUSED", "IDEMPOTENCY_KEY_REUSED"), scope, selector,
             "parent:string:TOP:optional", key, "title:string:FIELDS:required",

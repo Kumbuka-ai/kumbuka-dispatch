@@ -25,7 +25,7 @@ public record RefusalDataPayload(
     @JsonProperty("waiting_for") String waitingFor,
     @JsonProperty("offenders") List<String> offenders,
     @JsonProperty("accepts") List<String> accepts,
-    @JsonProperty("children") List<ChildPayload> children,
+    @JsonProperty("children") List<String> children,
     @JsonProperty("confirmation") String confirmation,
     @JsonProperty("conflict_token") String conflictToken,
     @JsonProperty("service") String service,

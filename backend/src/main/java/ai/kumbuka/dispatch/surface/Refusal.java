@@ -53,7 +53,7 @@ public record Refusal(RefusalCode code, String message, Data data) {
      */
     public record Data(String attempted, String state, List<NextList.Step> next,
                        String waitingFor, List<String> offenders, List<String> accepts,
-                       List<Child> children, String confirmation, String conflictToken,
+                       List<String> children, String confirmation, String conflictToken,
                        String reference, String address, TaskView current, String service) {
 
         static Data attempted(VerbName call) {
@@ -88,7 +88,7 @@ public record Refusal(RefusalCode code, String message, Data data) {
                 confirmation, conflictToken, reference, address, current, service);
         }
 
-        Data children(List<Child> unfinished, String handedOut) {
+        Data children(List<String> unfinished, String handedOut) {
             return new Data(attempted, state, next, waitingFor, offenders, accepts,
                 List.copyOf(unfinished), handedOut, conflictToken, reference, address, current,
                 service);
@@ -108,10 +108,6 @@ public record Refusal(RefusalCode code, String message, Data data) {
         private static List<String> wire(List<?> names) {
             return names.stream().map(Object::toString).toList();
         }
-    }
-
-    /** An unfinished child of a bracket root: complete address, state, the calls open on it. */
-    public record Child(String address, String state, List<NextList.Step> next) {
     }
 
     /**
@@ -294,21 +290,38 @@ public record Refusal(RefusalCode code, String message, Data data) {
     }
 
     /**
-     * The call would close a bracket root with unfinished children.
+     * The call would close a bracket root with unfinished children. Carries
+     * the call, the children and the confirmation, and nothing of the root's
+     * situation: the children are what the caller acts on.
      *
-     * @param children     each unfinished child: complete address, state, and
-     *                     the calls open to the caller on it
-     * @param confirmation what the call is repeated with to close them all
+     * @param children     the complete address of each unfinished child
+     * @param confirmation the confirmation handed out now, which the call is
+     *                     repeated with to close them all; never one sent
      * @param stale        whether the call carried a confirmation that no
      *                     longer holds
      */
-    public static Refusal childrenNotFinished(VerbName call, Situation at, List<Child> children,
-                                              String confirmation, boolean stale) {
-        Data data = Data.attempted(call).situation(at).children(children, confirmation);
+    public static Refusal childrenUnfinished(VerbName call, List<String> children,
+                                             String confirmation, boolean stale) {
+        Data data = Data.attempted(call).children(children, confirmation);
         return stale
             ? of(Message.CHILDREN_CONFIRMATION_STALE,
                 Texts.refusals().childrenConfirmationStale(call), data)
-            : of(Message.CHILDREN_NOT_FINISHED, Texts.refusals().childrenNotFinished(call), data);
+            : of(Message.CHILDREN_UNFINISHED, Texts.refusals().childrenUnfinished(call), data);
+    }
+
+    /**
+     * The answer names an option the question does not offer, or free text it
+     * does not admit. The options are the question's text, so they are pointed
+     * at by the read and not listed.
+     *
+     * @param field    the declared path of the field that carries the answer
+     * @param freeText whether the answer came as free text
+     */
+    public static Refusal optionUnoffered(VerbName call, ArgumentPath field, boolean freeText) {
+        Data data = Data.attempted(call).offenders(List.of(field));
+        return freeText
+            ? of(Message.FREE_TEXT_UNOFFERED, Texts.refusals().freeTextUnoffered(call), data)
+            : of(Message.OPTION_UNOFFERED, Texts.refusals().optionUnoffered(call), data);
     }
 
     /**
@@ -526,6 +539,15 @@ public record Refusal(RefusalCode code, String message, Data data) {
         return of(Message.HEADER_INVALID, Texts.refusals().headerInvalid(), null);
     }
 
+    /**
+     * A path names a reserved scope: one of the names of the REST surface's
+     * literal paths. Decided before the route is known, so it names no call,
+     * and carries no data.
+     */
+    public static Refusal scopeReserved() {
+        return of(Message.SCOPE_RESERVED, Texts.refusals().scopeReserved(), null);
+    }
+
     /** The scope is locked and refuses every write. */
     public static Refusal scopeLocked(VerbName call) {
         return of(Message.SCOPE_LOCKED, Texts.refusals().scopeLocked(), Data.attempted(call));
@@ -584,8 +606,6 @@ public record Refusal(RefusalCode code, String message, Data data) {
             case CURATION_TARGET -> refusals.invalidCurationTarget(call, at);
             case ADDENDUM_TARGET -> refusals.invalidAddendumTarget(call, at);
             case ADDENDA_EXHAUSTED -> refusals.invalidAddendaExhausted(call, at);
-            case ANSWER_OPTION -> refusals.invalidAnswerOption(call, at);
-            case ANSWER_FREE_TEXT -> refusals.invalidAnswerFreeText(call, at);
             case ONCE -> refusals.invalidOnce(call, at);
             case BODY -> refusals.invalidBody(call, at);
         };

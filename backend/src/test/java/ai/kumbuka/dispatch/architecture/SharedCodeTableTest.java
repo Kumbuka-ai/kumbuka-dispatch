@@ -40,7 +40,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>a code of the table this service does not carry is listed in
  *       {@link #NOT_CARRIED}, with the reason it has no occasion for it;</li>
  *   <li>every code this service carries is in the table or is declared in
- *       {@link #SERVICE_CODES} with its status;</li>
+ *       {@link #SERVICE_CODES} with its status, and every code declared there
+ *       is carried;</li>
  *   <li>every member a refusal's {@code data} can carry on the wire is in the
  *       list of members, and so is every member a row of the code table
  *       names.</li>
@@ -65,7 +66,8 @@ class SharedCodeTableTest {
     static final Map<String, Integer> SERVICE_CODES = Map.of(
         "SCOPE_LOCKED", 409,
         "SCOPE_KIND_UNSUPPORTED", 422,
-        "CHILDREN_NOT_FINISHED", 409,
+        "CHILDREN_UNFINISHED", 409,
+        "OPTION_UNOFFERED", 409,
         "DEFERRAL_PENDING", 409,
         "IDEMPOTENCY_KEY_REUSED", 409);
 
@@ -73,8 +75,9 @@ class SharedCodeTableTest {
         "^\\|[^|]*\\|\\s*`([A-Z_]+)`\\s*\\|\\s*(\\d{3})\\s*\\|([^|\\n]*)\\|",
         Pattern.MULTILINE);
 
+    /** A row of the list of members: its first cell, which names one member or several. */
     private static final Pattern MEMBER = Pattern.compile(
-        "^\\|\\s*`([a-z_]+)`\\s*\\|", Pattern.MULTILINE);
+        "^\\|\\s*(`[a-z_]+`(?:\\s*,\\s*`[a-z_]+`)*)\\s*\\|", Pattern.MULTILINE);
 
     private static final Pattern NAMED = Pattern.compile("`([a-z_]+)`");
 
@@ -111,6 +114,7 @@ class SharedCodeTableTest {
         planted.remove("CLAIM_ABSENT");
         planted.put("LEASE_LAPSED", 409);
         planted.put("ROLE_INSUFFICIENT", 409);
+        planted.remove("OPTION_UNOFFERED");
 
         assertThat(offences(table(), planted))
             .as("RED STATE, observed: a status that differs from the table, a code the "
@@ -122,7 +126,8 @@ class SharedCodeTableTest {
                 "DRAW_EMPTY is in the table and not carried, and NOT_CARRIED does not say why",
                 "CLAIM_ABSENT is in the table and not carried, and NOT_CARRIED does not say why",
                 "NOTHING_TO_TAKE is neither in the table nor declared as a code of the service",
-                "LEASE_LAPSED is neither in the table nor declared as a code of the service");
+                "LEASE_LAPSED is neither in the table nor declared as a code of the service",
+                "OPTION_UNOFFERED is declared as a code of the service and not carried");
     }
 
     /** The red state of the members, observed on every build. */
@@ -168,6 +173,9 @@ class SharedCodeTableTest {
                     + "service");
             }
         });
+        SERVICE_CODES.keySet().stream().filter(code -> !carried.containsKey(code)).sorted()
+            .forEach(code -> offences.add(code + " is declared as a code of the service and "
+                + "not carried"));
         return offences;
     }
 
@@ -216,7 +224,10 @@ class SharedCodeTableTest {
         List<String> members = new ArrayList<>();
         Matcher m = MEMBER.matcher(text.substring(at));
         while (m.find()) {
-            members.add(m.group(1));
+            Matcher named = NAMED.matcher(m.group(1));
+            while (named.find()) {
+                members.add(named.group(1));
+            }
         }
         assertThat(members).as("the list's rows must have been read").hasSizeGreaterThan(10);
         return members;
