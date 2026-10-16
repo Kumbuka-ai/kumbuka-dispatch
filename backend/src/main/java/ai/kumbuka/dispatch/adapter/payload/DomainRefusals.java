@@ -110,7 +110,7 @@ public final class DomainRefusals {
             case ARGUMENT_MISSING -> missing(verb, call, e);
             case ARGUMENT_UNKNOWN -> Refusal.argumentUnknown(call, false,
                 ArgumentPath.of(verb.topArguments()));
-            case ARGUMENT_INVALID -> invalid(verb, call, given, e);
+            case ARGUMENT_INVALID -> invalid(verb, call, e);
             case CONFLICT_TOKEN_MISSING -> Refusal.conflictTokenMissing(call);
             case OPTION_UNOFFERED -> fieldIn(given, OPTION) != null
                 ? Refusal.optionUnoffered(call, pathIn(verb, OPTION, Argument.Placement.FIELDS),
@@ -211,8 +211,7 @@ public final class DomainRefusals {
         };
     }
 
-    private static Refusal invalid(ProcessVerb verb, VerbName call, Map<String, Object> given,
-                                   DispatchException e) {
+    private static Refusal invalid(ProcessVerb verb, VerbName call, DispatchException e) {
         return switch (e.reason()) {
             case METADATA_REFUSED -> Refusal.argumentInvalid(call,
                 pathIn(verb, "metadata", Argument.Placement.FIELDS), Form.METADATA);
