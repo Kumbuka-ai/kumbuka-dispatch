@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,9 +31,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * service, a service adds a code only by declaring it, and a refusal carries
  * no member of {@code data} outside the contract's list (C8.7).
  *
- * <p>Both tables are read from a verbatim copy in the test tree,
- * {@code contract/shared-code-table.md}, so the expectation does not come from
- * the catalogue it checks. Four statements:
+ * <p>Both tables and the rule on {@code attempted} are read from a verbatim
+ * copy in the test tree, {@code contract/shared-code-table.md}, so the
+ * expectation does not come from the catalogue it checks. The column {@code
+ * data} of a row names the members beyond {@code attempted}; the rule above
+ * the table says which refusals carry no {@code attempted}, because they fall
+ * before the route stands. Five statements:
  *
  * <ol>
  *   <li>every code of the table this service carries has the table's
@@ -44,7 +48,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       is carried;</li>
  *   <li>every member a refusal's {@code data} can carry on the wire is in the
  *       list of members, and so is every member a row of the code table
- *       names.</li>
+ *       names;</li>
+ *   <li>the codes this service decides before the route stands, {@link
+ *       #BEFORE_THE_ROUTE}, are the ones the rule names as carrying no {@code
+ *       attempted}. That every other refusal carries it is held on the wire,
+ *       by {@code CodeTableIT}.</li>
  * </ol>
  *
  * <p>The two constants, {@link #carried()} and {@link #members()} are the
@@ -74,6 +82,23 @@ class SharedCodeTableTest {
         "DEFERRAL_PENDING", 409,
         "IDEMPOTENCY_KEY_REUSED", 409);
 
+    /**
+     * The codes this service answers, in some or all of their cases, before
+     * the route stands, and so without {@code attempted}: the surface header,
+     * a path below a reserved name ({@code ADDRESS_MALFORMED} there and only
+     * there), and {@code NOT_FOUND}, which carries nothing.
+     */
+    static final Set<String> BEFORE_THE_ROUTE =
+        Set.of("HEADER_INVALID", "ADDRESS_MALFORMED", "NOT_FOUND");
+
+    /** The rule on {@code attempted}: the paragraph of the copy that opens with it. */
+    private static final Pattern ATTEMPTED_RULE = Pattern.compile(
+        "\\*\\*`attempted` is not listed per row\\.\\*\\*(.*?)\\n\\n", Pattern.DOTALL);
+
+    /** A sentence of the rule that says a refusal carries none, or nothing. */
+    private static final Pattern WITHOUT = Pattern.compile(
+        "`([A-Z_]+)`[^.]*\\b(?:none|nothing)\\b[^.]*\\.");
+
     private static final Pattern ROW = Pattern.compile(
         "^\\|[^|]*\\|\\s*`([A-Z_]+)`\\s*\\|\\s*(\\d{3})\\s*\\|([^|\\n]*)\\|",
         Pattern.MULTILINE);
@@ -101,6 +126,33 @@ class SharedCodeTableTest {
             .as("each member of data means one thing on every service, and a refusal carries "
                 + "no other (C8.7). Name what the caller acts on with a member of the list")
             .isEmpty();
+    }
+
+    @Test
+    void the_refusals_before_the_route_are_those_the_rule_names() throws IOException {
+        assertThat(withoutAttempted(copy()))
+            .as("a refusal that falls once the route stands carries attempted, and the rule "
+                + "names the ones that fall before it (C8.7). Align BEFORE_THE_ROUTE with the "
+                + "copy, or the service's check order with the rule")
+            .containsExactlyInAnyOrderElementsOf(BEFORE_THE_ROUTE);
+    }
+
+    /** The red state of the rule, observed on every build. */
+    @Test
+    void the_check_reads_the_codes_the_rule_says_carry_no_attempted() {
+        String planted = """
+            **`attempted` is not listed per row.** Every refusal that falls once the route \
+            stands carries `attempted`. `HEADER_INVALID` carries none. `ROLE_INSUFFICIENT` \
+            carries `next`. `NOT_FOUND` carries nothing (C8.4).
+
+            | Condition | Code |
+            """;
+        assertThat(withoutAttempted(planted))
+            .as("RED STATE, observed: a rule that names HEADER_INVALID and NOT_FOUND without "
+                + "attempted reads as those two, and not as the code that carries next, so a "
+                + "service that decides a third code before the route is reported")
+            .containsExactly("HEADER_INVALID", "NOT_FOUND")
+            .doesNotContainSequence(List.copyOf(BEFORE_THE_ROUTE));
     }
 
     /** The red state, observed on every build. */
@@ -204,13 +256,31 @@ class SharedCodeTableTest {
         return rows;
     }
 
-    /** The copy of the code table: code to the members of data its row names. */
+    /** The codes the rule on {@code attempted} names as carrying none of it, in its order. */
+    static List<String> withoutAttempted(String copy) {
+        Matcher rule = ATTEMPTED_RULE.matcher(copy);
+        assertThat(rule.find()).as("the copy must hold the rule on attempted").isTrue();
+        List<String> codes = new ArrayList<>();
+        Matcher without = WITHOUT.matcher(rule.group(1).replaceAll("\\s+", " "));
+        while (without.find()) {
+            codes.add(without.group(1));
+        }
+        return codes;
+    }
+
+    /**
+     * The copy of the code table: code to the members of data its row names
+     * beyond {@code attempted}. A row's cell may explain a member after a
+     * colon or in parentheses, naming values of it there; those are no
+     * members and are not read.
+     */
     static Map<String, List<String>> rowMembers() throws IOException {
         Map<String, List<String>> rows = new LinkedHashMap<>();
         Matcher m = ROW.matcher(codeTable());
         while (m.find()) {
             List<String> named = new ArrayList<>();
-            Matcher member = NAMED.matcher(m.group(3));
+            String cell = m.group(3).replaceAll("\\([^)]*\\)", " ").replaceAll(":.*$", " ");
+            Matcher member = NAMED.matcher(cell);
             while (member.find()) {
                 named.add(member.group(1));
             }

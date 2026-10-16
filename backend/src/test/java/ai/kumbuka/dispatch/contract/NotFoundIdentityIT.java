@@ -103,6 +103,22 @@ class NotFoundIdentityIT {
             .hasSize(1);
     }
 
+    /**
+     * A route no resource carries is the framework's 404, and it answers the
+     * same bytes as an absent and an invisible task (C8.3, C8.4).
+     *
+     * <p>RED STATE, observed against the catch-all that handed the framework's
+     * 404 back: its body was not the envelope.
+     */
+    @Test
+    void the_framework_s_not_found_answers_the_same_bytes_as_the_three_causes() {
+        Response framework = given().get("/api/nothing");
+        Response absent = given().get(path(causes().get(0)));
+        assertThat(framework.statusCode()).isEqualTo(404);
+        assertThat(framework.asString()).as("one answer, byte for byte")
+            .isEqualTo(absent.asString());
+    }
+
     @Test
     void over_mcp_absent_invisible_and_unroutable_answer_the_same_bytes() {
         List<Response> answers = causes().stream()
