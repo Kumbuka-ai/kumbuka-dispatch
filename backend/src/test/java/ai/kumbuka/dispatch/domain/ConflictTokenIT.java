@@ -126,6 +126,7 @@ class ConflictTokenIT {
         assertThat(changed.conflictToken())
             .as("a draft's text is part of what its token fences; a writer holding the earlier "
                 + "token must be refused, so the token moves")
+            .isNotEqualTo(created.conflictToken())
             .isEqualTo(token(T.plus(1, ChronoUnit.MICROS)));
         assertThat(read(created).conflictToken()).isEqualTo(changed.conflictToken());
     }
