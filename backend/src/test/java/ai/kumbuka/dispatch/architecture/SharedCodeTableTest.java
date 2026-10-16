@@ -67,6 +67,9 @@ class SharedCodeTableTest {
         "SCOPE_LOCKED", 409,
         "SCOPE_KIND_UNSUPPORTED", 422,
         "CHILDREN_UNFINISHED", 409,
+        "CHILDREN_PRESENT", 409,
+        "ROOT_UNSENT", 409,
+        "ROOT_CLOSED", 409,
         "OPTION_UNOFFERED", 409,
         "DEFERRAL_PENDING", 409,
         "IDEMPOTENCY_KEY_REUSED", 409);
