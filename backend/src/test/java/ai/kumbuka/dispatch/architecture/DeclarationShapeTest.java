@@ -27,7 +27,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>The schema is {@code contract/declaration-shape.schema.json}, written
  * from the contract and from nothing this service produces. It closes every
  * level the contract enumerates, so a member the contract does not name is
- * reported as much as one it requires and that is missing. The
+ * reported as much as one it requires and that is missing, with one documented
+ * exception: an argument may carry {@code description} and {@code
+ * value_descriptions}, which C5.4 does not name and the bundles of C12.2
+ * publish through the declaration; the schema's {@code $comment} says so. The
  * {@code shape_version} is pinned to the one value C5.5 names for every
  * service, so the expectation stands here and not in the code that writes the
  * declaration. One rule is beyond
