@@ -29,9 +29,7 @@ public final class ArgumentPath {
     /** The parts of a REST request that carry no argument of the declaration. */
     public enum Transport {
         /** The body, which carries a JSON object of the call's arguments. */
-        BODY("body"),
-        /** The header naming the surface a caller came through. */
-        SURFACE_HEADER("Kumbuka-Surface");
+        BODY("body");
 
         private final String wireName;
 

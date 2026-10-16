@@ -140,7 +140,7 @@ class EveryRefusalIT {
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_send", Map.of(
             "address", address, "conflict_token", token(address))));
 
-        assertThat(refusal.get("reason")).isEqualTo("STATE_DOES_NOT_ALLOW");
+        assertThat(refusal.get("reason")).isEqualTo("TRANSITION_REFUSED");
         assertThat(String.valueOf(refusal.get("message")))
             .as("the call, where its state stands, and the calls there are -- and neither the "
                 + "address the caller named nor the state, which data.state carries")
@@ -164,7 +164,7 @@ class EveryRefusalIT {
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_resume",
             Map.of("address", address, "receipt", receipt)));
 
-        assertThat(refusal.get("reason")).isEqualTo("STATE_DOES_NOT_ALLOW");
+        assertThat(refusal.get("reason")).isEqualTo("TRANSITION_REFUSED");
         assertThat(String.valueOf(refusal.get("message")))
             .startsWith("dispatch_resume is not possible in the task's present state");
         assertThat(data(refusal).get("state"))
@@ -192,7 +192,7 @@ class EveryRefusalIT {
         SurfaceFixture.asExecutor(identity);
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_withdraw", Map.of(
             "address", address, "conflict_token", "any")));
-        assertThat(refusal.get("reason")).isEqualTo("ROLE_DOES_NOT_ALLOW");
+        assertThat(refusal.get("reason")).isEqualTo("ROLE_INSUFFICIENT");
         assertThat(String.valueOf(refusal.get("message")))
             .isEqualTo("dispatch_withdraw is the commissioner's call, and you take part in "
                 + "this task in another part.");
@@ -204,7 +204,7 @@ class EveryRefusalIT {
         Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_claim_next", Map.of(
             "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
             "apparatus", List.of("code"))));
-        assertThat(refusal.get("reason")).isEqualTo("ROLE_DOES_NOT_ALLOW");
+        assertThat(refusal.get("reason")).isEqualTo("ROLE_INSUFFICIENT");
         assertThat(String.valueOf(refusal.get("message"))).contains("an executor");
     }
 
@@ -228,7 +228,7 @@ class EveryRefusalIT {
         lapse(address);
         Map<String, Object> lapsed = Mcp.refusal(Mcp.call("dispatch_renew", Map.of(
             "address", address, "receipt", receipt)));
-        assertThat(lapsed.get("reason")).isEqualTo("LEASE_LAPSED");
+        assertThat(lapsed.get("reason")).isEqualTo("CLAIM_ABSENT");
         assertThat(String.valueOf(lapsed.get("message"))).contains("your lease on this task ended");
     }
 

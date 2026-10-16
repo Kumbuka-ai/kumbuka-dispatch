@@ -71,6 +71,12 @@ public record Refusal(RefusalCode code, String message, Data data) {
                 confirmation, conflictToken, reference, address, current, service);
         }
 
+        /** The state and the calls open, without what the task waits for. */
+        Data held(Situation at) {
+            return new Data(attempted, at.state(), at.next(), null, offenders, accepts,
+                children, confirmation, conflictToken, reference, address, current, service);
+        }
+
         Data situation(Situation at) {
             return new Data(attempted, at.state(), at.next(), at.waitingFor(), offenders,
                 accepts, children, confirmation, conflictToken, reference, address, current,
@@ -150,10 +156,10 @@ public record Refusal(RefusalCode code, String message, Data data) {
     }
 
     /**
-     * Why a holder's call finds the caller without the task. Each is its own
-     * code: another holds it ({@code CLAIM_HELD}), nobody does (the state does
-     * not allow the call), or the caller's own lease ended ({@code
-     * LEASE_LAPSED}).
+     * Why a holder's call finds the caller without the task: another holds it
+     * ({@code CLAIM_HELD}), or the caller holds no claim on it, because nobody
+     * does or the caller's own lease ended ({@code CLAIM_ABSENT}). The two
+     * causes of an absent claim share the code and keep their messages.
      */
     public enum Unheld {
         OTHER(Message.HOLDER_OTHER, Message.TEXT_HOLDER_OTHER),
@@ -257,9 +263,12 @@ public record Refusal(RefusalCode code, String message, Data data) {
             at.next().stream().map(NextList.Step::name).toList()), data);
     }
 
-    /** The call belongs to another part. */
+    /**
+     * The call belongs to another part. Carries the calls open to the caller
+     * and no state: the refusal is about who calls, not where the task stands.
+     */
     public static Refusal ofRole(VerbName call, Situation at, Part part) {
-        return of(part.message(), part.text(call), Data.attempted(call).situation(at));
+        return of(part.message(), part.text(call), Data.attempted(call).next(at.next()));
     }
 
     /** The call belongs to another part, and no task is there to name a state of. */
@@ -275,7 +284,7 @@ public record Refusal(RefusalCode code, String message, Data data) {
      */
     public static Refusal notTheHolder(VerbName call, Situation at, Unheld why, boolean reading) {
         return of(reading ? why.text : why.call, why.text(call, reading),
-            Data.attempted(call).situation(at));
+            Data.attempted(call).held(at));
     }
 
     /** A receipt arrived and is not the one the task holds. */
@@ -504,10 +513,17 @@ public record Refusal(RefusalCode code, String message, Data data) {
             Data.attempted(call));
     }
 
-    /** The caller may read this scope and not write to it. */
+    /** The caller may read this scope and not write to it. Carries no data (C8.7). */
     public static Refusal scopeReadOnly(VerbName call) {
-        return of(Message.SCOPE_READ_ONLY, Texts.refusals().scopeReadOnly(call),
-            Data.attempted(call));
+        return of(Message.SCOPE_READ_ONLY, Texts.refusals().scopeReadOnly(call), null);
+    }
+
+    /**
+     * {@code Kumbuka-Surface} arrived with a value it cannot take, or twice.
+     * Decided before the call is known, so it names none, and carries no data.
+     */
+    public static Refusal headerInvalid() {
+        return of(Message.HEADER_INVALID, Texts.refusals().headerInvalid(), null);
     }
 
     /** The scope is locked and refuses every write. */
@@ -572,7 +588,6 @@ public record Refusal(RefusalCode code, String message, Data data) {
             case ANSWER_FREE_TEXT -> refusals.invalidAnswerFreeText(call, at);
             case ONCE -> refusals.invalidOnce(call, at);
             case BODY -> refusals.invalidBody(call, at);
-            case SURFACE_HEADER -> refusals.invalidSurfaceHeader(call, at);
         };
     }
 }

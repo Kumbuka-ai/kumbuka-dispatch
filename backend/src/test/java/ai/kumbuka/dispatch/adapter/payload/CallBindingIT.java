@@ -324,9 +324,10 @@ class CallBindingIT {
 
     /**
      * The holder's call by a caller who holds nothing is told by who holds the
-     * task: another executor ({@code CLAIM_HELD}), nobody (the state does not
-     * allow it, and the task waits), or the caller's own lease ended ({@code
-     * LEASE_LAPSED}); each 409 (C8.6, C8.7).
+     * task: another executor ({@code CLAIM_HELD}), or nobody, because nobody
+     * does or the caller's own lease ended ({@code CLAIM_ABSENT}); each 409
+     * and each with the attempted call, the state and the calls open, and
+     * nothing the task waits for (C8.6, C8.7).
      */
     @Test
     void a_holder_s_call_by_a_caller_who_holds_nothing_is_told_by_who_holds_the_task() {
@@ -334,9 +335,9 @@ class CallBindingIT {
                 {HolderState.OTHER, DispatchException.Reason.CLAIM_REQUIRED,
                     RefusalCode.CLAIM_HELD},
                 {HolderState.NOBODY, DispatchException.Reason.CLAIM_REQUIRED,
-                    RefusalCode.STATE_DOES_NOT_ALLOW},
+                    RefusalCode.CLAIM_ABSENT},
                 {HolderState.NOBODY, DispatchException.Reason.LEASE_LAPSED,
-                    RefusalCode.LEASE_LAPSED}}) {
+                    RefusalCode.CLAIM_ABSENT}}) {
             TaskView task = view(TaskState.ACTIVE, (HolderState) row[0], List.of());
             when(verbs.act(any(), eq(TaskVerb.RELEASE), any())).thenThrow(
                 new DispatchException((DispatchException.Reason) row[1], "kernel words"));
@@ -350,6 +351,7 @@ class CallBindingIT {
             assertThat(refused.data().attempted()).isEqualTo("dispatch_release");
             assertThat(refused.data().state()).isEqualTo("active");
             assertThat(refused.data().next()).isNotNull();
+            assertThat(refused.data().waitingFor()).isNull();
         }
     }
 

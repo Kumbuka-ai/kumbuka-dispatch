@@ -53,6 +53,12 @@ public enum RefusalCode {
     /** An argument arrived with a value outside its declared form. */
     ARGUMENT_INVALID(400),
 
+    /**
+     * {@code Kumbuka-Surface} arrived with a value other than {@code assistant},
+     * or twice. Decided after authentication and before anything else (C14.4).
+     */
+    HEADER_INVALID(400),
+
     /** A page size outside 1 to 200, or no whole number (ADR-0049). */
     PAGE_SIZE_REJECTED(400),
 
@@ -66,10 +72,10 @@ public enum RefusalCode {
     SORT_UNDECLARED(400),
 
     /**
-     * The call belongs to another part. This service's own code: the
-     * capacities of a dispatch are what a node gives a role a meaning for.
+     * The call belongs to another part. Decided after the address is
+     * resolved: an object the caller cannot see is {@link #NOT_FOUND}.
      */
-    ROLE_DOES_NOT_ALLOW(403),
+    ROLE_INSUFFICIENT(403),
 
     /** The caller may read this scope and may not write to it. */
     SCOPE_READ_ONLY(403),
@@ -83,16 +89,20 @@ public enum RefusalCode {
     /** A verb this service does not carry, or does not carry at this address. */
     VERB_NOT_CARRIED(405),
 
-    /** The task's state, or the condition on its hold, does not permit the call. */
-    STATE_DOES_NOT_ALLOW(409),
+    /** The task's state does not permit the call. */
+    TRANSITION_REFUSED(409),
 
-    /** The call is the holder's, and the caller's own lease on the task ended. */
-    LEASE_LAPSED(409),
+    /**
+     * The call is the holder's, and the caller holds no claim on the task:
+     * nobody holds it, or the caller's own lease on it ended, whatever
+     * receipt the call carried.
+     */
+    CLAIM_ABSENT(409),
 
     /** The call is the holder's, and another executor holds the task. */
     CLAIM_HELD(409),
 
-    /** A receipt arrived and is not the one this task holds. */
+    /** A receipt arrived, the caller's hold stands, and it is not that hold's receipt. */
     RECEIPT_WRONG(409),
 
     /** The draw found nothing it could take. About a set, never an address. */
@@ -144,16 +154,16 @@ public enum RefusalCode {
      *
      * <p>{@code CLAIM_REQUIRED} is told as {@link #CLAIM_HELD}: a holder's call
      * by a caller who holds nothing. Where nobody holds the task the edge
-     * answers {@link #STATE_DOES_NOT_ALLOW} instead, because it reads the
-     * task's situation and the kernel's reason does not say which it was.
+     * answers {@link #CLAIM_ABSENT} instead, because it reads the task's
+     * situation and the kernel's reason does not say which it was.
      */
     public static RefusalCode of(DispatchException.Reason reason) {
         return switch (reason) {
             case NOT_FOUND, SCOPE_UNRESOLVED -> NOT_FOUND;
-            case TRANSITION_NOT_PERMITTED -> STATE_DOES_NOT_ALLOW;
-            case RATIFICATION_NOT_PERMITTED, ACTOR_UNKNOWN -> ROLE_DOES_NOT_ALLOW;
+            case TRANSITION_NOT_PERMITTED -> TRANSITION_REFUSED;
+            case RATIFICATION_NOT_PERMITTED, ACTOR_UNKNOWN -> ROLE_INSUFFICIENT;
             case CLAIM_REQUIRED -> CLAIM_HELD;
-            case LEASE_LAPSED -> LEASE_LAPSED;
+            case LEASE_LAPSED -> CLAIM_ABSENT;
             case RECEIPT_MISMATCH -> RECEIPT_WRONG;
             case CONFIRMATION_REQUIRED, CONFIRMATION_STALE -> CHILDREN_NOT_FINISHED;
             case DEFERRAL_PENDING -> DEFERRAL_PENDING;
@@ -188,16 +198,17 @@ public enum RefusalCode {
             case ARGUMENT_UNKNOWN -> remedies.argumentUnknown();
             case ARGUMENT_MISSING -> remedies.argumentMissing();
             case ARGUMENT_INVALID -> remedies.argumentInvalid();
+            case HEADER_INVALID -> remedies.headerInvalid();
             case PAGE_SIZE_REJECTED -> remedies.pageSizeRejected();
             case CURSOR_MALFORMED -> remedies.cursorMalformed();
             case CURSOR_FOREIGN -> remedies.cursorForeign();
             case SORT_UNDECLARED -> remedies.sortUndeclared();
-            case ROLE_DOES_NOT_ALLOW -> remedies.roleDoesNotAllow();
+            case ROLE_INSUFFICIENT -> remedies.roleInsufficient();
             case SCOPE_READ_ONLY -> remedies.scopeReadOnly();
             case NOT_FOUND -> remedies.notFound();
             case VERB_NOT_CARRIED -> remedies.verbNotCarried();
-            case STATE_DOES_NOT_ALLOW -> remedies.stateDoesNotAllow();
-            case LEASE_LAPSED -> remedies.leaseLapsed();
+            case TRANSITION_REFUSED -> remedies.transitionRefused();
+            case CLAIM_ABSENT -> remedies.claimAbsent();
             case CLAIM_HELD -> remedies.claimHeld();
             case RECEIPT_WRONG -> remedies.receiptWrong();
             case DRAW_EMPTY -> remedies.drawEmpty();
@@ -249,21 +260,21 @@ public enum RefusalCode {
     public enum Message {
 
         NOT_FOUND(RefusalCode.NOT_FOUND, "notFound"),
-        STATE_DOES_NOT_ALLOW(RefusalCode.STATE_DOES_NOT_ALLOW, "stateDoesNotAllow"),
-        STATE_NOTHING_OPEN(RefusalCode.STATE_DOES_NOT_ALLOW, "stateNothingOpen"),
-        STATE_CLOSED(RefusalCode.STATE_DOES_NOT_ALLOW, "stateClosed"),
-        HOLDER_NOBODY(RefusalCode.STATE_DOES_NOT_ALLOW, "holderNobody"),
-        TEXT_HOLDER_NOBODY(RefusalCode.STATE_DOES_NOT_ALLOW, "textHolderNobody"),
-        ROLE_COMMISSIONER(RefusalCode.ROLE_DOES_NOT_ALLOW, "roleCommissioner"),
-        ROLE_EXECUTOR(RefusalCode.ROLE_DOES_NOT_ALLOW, "roleExecutor"),
-        ROLE_HOLDER(RefusalCode.ROLE_DOES_NOT_ALLOW, "roleHolder"),
-        ROLE_AUTHOR(RefusalCode.ROLE_DOES_NOT_ALLOW, "roleAuthor"),
-        ROLE_OTHER_THAN_THE_DELIVERER(RefusalCode.ROLE_DOES_NOT_ALLOW, "roleOtherThanTheDeliverer"),
-        ROLE_CAPACITY(RefusalCode.ROLE_DOES_NOT_ALLOW, "roleCapacity"),
+        STATE_DOES_NOT_ALLOW(RefusalCode.TRANSITION_REFUSED, "stateDoesNotAllow"),
+        STATE_NOTHING_OPEN(RefusalCode.TRANSITION_REFUSED, "stateNothingOpen"),
+        STATE_CLOSED(RefusalCode.TRANSITION_REFUSED, "stateClosed"),
+        HOLDER_NOBODY(RefusalCode.CLAIM_ABSENT, "holderNobody"),
+        TEXT_HOLDER_NOBODY(RefusalCode.CLAIM_ABSENT, "textHolderNobody"),
+        ROLE_COMMISSIONER(RefusalCode.ROLE_INSUFFICIENT, "roleCommissioner"),
+        ROLE_EXECUTOR(RefusalCode.ROLE_INSUFFICIENT, "roleExecutor"),
+        ROLE_HOLDER(RefusalCode.ROLE_INSUFFICIENT, "roleHolder"),
+        ROLE_AUTHOR(RefusalCode.ROLE_INSUFFICIENT, "roleAuthor"),
+        ROLE_OTHER_THAN_THE_DELIVERER(RefusalCode.ROLE_INSUFFICIENT, "roleOtherThanTheDeliverer"),
+        ROLE_CAPACITY(RefusalCode.ROLE_INSUFFICIENT, "roleCapacity"),
         HOLDER_OTHER(RefusalCode.CLAIM_HELD, "holderOther"),
         TEXT_HOLDER_OTHER(RefusalCode.CLAIM_HELD, "textHolderOther"),
-        HOLDER_LAPSED(RefusalCode.LEASE_LAPSED, "holderLapsed"),
-        TEXT_HOLDER_LAPSED(RefusalCode.LEASE_LAPSED, "textHolderLapsed"),
+        HOLDER_LAPSED(RefusalCode.CLAIM_ABSENT, "holderLapsed"),
+        TEXT_HOLDER_LAPSED(RefusalCode.CLAIM_ABSENT, "textHolderLapsed"),
         RECEIPT_WRONG(RefusalCode.RECEIPT_WRONG, "receiptWrong"),
         CHILDREN_NOT_FINISHED(RefusalCode.CHILDREN_NOT_FINISHED, "childrenNotFinished"),
         CHILDREN_CONFIRMATION_STALE(RefusalCode.CHILDREN_NOT_FINISHED, "childrenConfirmationStale"),
@@ -313,7 +324,7 @@ public enum RefusalCode {
         INVALID_ANSWER_FREE_TEXT(RefusalCode.ARGUMENT_INVALID, "invalidAnswerFreeText"),
         INVALID_ONCE(RefusalCode.ARGUMENT_INVALID, "invalidOnce"),
         INVALID_BODY(RefusalCode.PAYLOAD_MALFORMED, "invalidBody"),
-        INVALID_SURFACE_HEADER(RefusalCode.ARGUMENT_INVALID, "invalidSurfaceHeader"),
+        HEADER_INVALID(RefusalCode.HEADER_INVALID, "headerInvalid"),
         INVALID_IN_REQUEST(RefusalCode.ADDRESS_MALFORMED, "invalidInRequest"),
         VALUE_INVALID(RefusalCode.ARGUMENT_INVALID, "valueInvalid"),
         VALUE_GIVEN_TWICE(RefusalCode.ARGUMENT_INVALID, "valueGivenTwice"),

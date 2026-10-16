@@ -136,7 +136,7 @@ public final class DomainRefusals {
             // state to name; the refusal is about who the caller is.
             return Refusal.ofRole(call, Refusal.Part.CAPACITY);
         }
-        if (target == null && code == RefusalCode.ROLE_DOES_NOT_ALLOW) {
+        if (target == null && code == RefusalCode.ROLE_INSUFFICIENT) {
             // A call on a collection that is the other part's: a draw by a
             // commissioner. No task is named, so none has a state to name.
             return Refusal.ofRole(call, part(verb, e));
@@ -149,10 +149,10 @@ public final class DomainRefusals {
         Refusal.Situation at = situationOf(surface, actor, result.get(), clock);
         TaskView view = result.get().view();
         return switch (code) {
-            case STATE_DOES_NOT_ALLOW -> Refusal.ofState(call, at,
+            case TRANSITION_REFUSED -> Refusal.ofState(call, at,
                 view.state() == TaskState.CLOSED);
-            case ROLE_DOES_NOT_ALLOW -> Refusal.ofRole(call, at, part(verb, e));
-            case CLAIM_HELD, LEASE_LAPSED -> Refusal.notTheHolder(call, at, unheld(view, e),
+            case ROLE_INSUFFICIENT -> Refusal.ofRole(call, at, part(verb, e));
+            case CLAIM_HELD, CLAIM_ABSENT -> Refusal.notTheHolder(call, at, unheld(view, e),
                 verb == ProcessVerb.READ_TEXT);
             case RECEIPT_WRONG -> Refusal.receiptWrong(call, at);
             case CHILDREN_NOT_FINISHED -> Refusal.childrenNotFinished(call, at,

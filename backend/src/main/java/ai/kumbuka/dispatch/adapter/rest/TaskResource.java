@@ -67,8 +67,9 @@ import java.util.Map;
  * that publishes these calls as tools reaches this service over REST and says
  * so, and the call is made under its tool name, so that {@code next}, {@code
  * waiting_for}, every message and the {@code data} of every refusal name the
- * tools that caller holds. Any other value is refused and the call is not
- * made. The header is not an argument of the call — it is in no declaration
+ * tools that caller holds. Any other value, or the header twice, is refused
+ * as {@code HEADER_INVALID} by {@link SurfaceHeaderFilter} before the route
+ * is looked up, and the call is not made. The header is not an argument of the call — it is in no declaration
  * and never reaches the call's arguments — and it grants nothing.
  * A {@code 405} names routes, which have one spelling, so it stays in the REST
  * form whatever the header says.
@@ -205,13 +206,8 @@ public class TaskResource {
             ? selectorSegment : idSegment);
         CustomMethod route = CustomMethod.find(method, depth, at[1])
             .orElseThrow(() -> notHere(depth, at[1]));
-        List<String> named = headers.surface();
-        if (!named.isEmpty() && !List.of(ASSISTANT).equals(named)) {
-            throw new SurfaceException(Refusal.argumentInvalid(
-                VerbName.of(route.verb(), Surface.REST),
-                ArgumentPath.of(ArgumentPath.Transport.SURFACE_HEADER), Form.SURFACE_HEADER));
-        }
-        Surface surface = named.isEmpty() ? Surface.REST : Surface.MCP;
+        // SurfaceHeaderFilter refused every value but the one, before the route.
+        Surface surface = headers.surface().isEmpty() ? Surface.REST : Surface.MCP;
         VerbName refusing = VerbName.of(route.verb(), surface);
 
         Map<String, Object> arguments = new LinkedHashMap<>();

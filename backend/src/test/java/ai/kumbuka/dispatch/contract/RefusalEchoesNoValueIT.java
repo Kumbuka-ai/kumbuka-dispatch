@@ -139,9 +139,17 @@ class RefusalEchoesNoValueIT {
             notAnObject.asString());
         refusedCalls.add(new String[] {"dispatch_create", "PAYLOAD_MALFORMED"});
 
+        Response wrongSurface = given().header("Kumbuka-Surface", MARKER)
+            .contentType(ContentType.JSON)
+            .body(Map.of("fields", Map.of("title", MARKER, "apparatus", "code")))
+            .post(SurfaceFixture.collection());
+        recordRaised(RefusalCode.HEADER_INVALID, wrongSurface.jsonPath().getString("reason"),
+            wrongSurface.asString());
+        refusedCalls.add(new String[] {"dispatch_create", "HEADER_INVALID"});
+
         // -- about a task the caller may see ------------------------------
         String open = SurfaceFixture.address(SurfaceFixture.open("open", "code"));
-        mcp(RefusalCode.STATE_DOES_NOT_ALLOW, "dispatch_send", Map.of("address", open,
+        mcp(RefusalCode.TRANSITION_REFUSED, "dispatch_send", Map.of("address", open,
             "conflict_token", token(open)));
         mcp(RefusalCode.CONFLICT_TOKEN_STALE, "dispatch_withdraw", Map.of("address", open,
             "conflict_token", MARKER));
@@ -160,7 +168,7 @@ class RefusalEchoesNoValueIT {
             "fields", Map.of("title", MARKER, "apparatus", "code")));
 
         SurfaceFixture.asExecutor(identity);
-        mcp(RefusalCode.ROLE_DOES_NOT_ALLOW, "dispatch_withdraw", Map.of("address", open,
+        mcp(RefusalCode.ROLE_INSUFFICIENT, "dispatch_withdraw", Map.of("address", open,
             "conflict_token", MARKER));
         mcp(RefusalCode.DRAW_EMPTY, "dispatch_claim_next", with(collection,
             "apparatus", List.of(MARKER)));
@@ -194,7 +202,7 @@ class RefusalEchoesNoValueIT {
         String briefReceipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
             Map.of("address", brief))).get("receipt"));
         lapse(brief);
-        mcp(RefusalCode.LEASE_LAPSED, "dispatch_deliver", Map.of("address", brief,
+        mcp(RefusalCode.CLAIM_ABSENT, "dispatch_deliver", Map.of("address", brief,
             "receipt", briefReceipt, "fields", Map.of("text", MARKER)));
 
         // -- the verdict --------------------------------------------------

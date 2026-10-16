@@ -119,3 +119,17 @@ after the scope resolves. `CONFLICT_TOKEN_STALE` carries the task as it stands (
 declaration is served at `/api/declaration` alone, with placements `TOP` and `FIELDS`, defaults
 in their own JSON type, and a role only on a restricted call (C5.1, C5.4). The texts are
 unchanged but for the messages and remedies of the codes that are new.
+
+## The amendment of 2026-10-16, second: the contract change of that day
+
+The operator changed rows of table C8.7 on 2026-10-16; until the change is on platform-specs
+`main`, the change as it was handed to this service is the source. A holder's call by a caller
+who holds no claim, because nobody holds the task or the caller's own lease ended, whatever
+receipt it carried, is `CLAIM_ABSENT` 409 with `attempted`, `state` and `next`; `LEASE_LAPSED`
+is no longer declared, and `RECEIPT_WRONG` stays for a hold that stands. The state's refusal is
+`TRANSITION_REFUSED` 409, the call of another part `ROLE_INSUFFICIENT` 403 with `attempted` and
+`next`, decided after the address resolves, and `SCOPE_READ_ONLY` 403 is a row of the table and
+carries no `data`. A `Kumbuka-Surface` header with another value than `assistant`, or twice, is
+`HEADER_INVALID` 400 with no `data`, decided after authentication and before anything else; the
+MCP adapter does not read the header (C14.4, C14.5). The messages are unchanged but for the one
+of the header, which names no call because none is known when it is decided.

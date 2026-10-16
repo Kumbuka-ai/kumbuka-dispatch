@@ -216,7 +216,7 @@ public interface RefusalMessages {
     String invalidBody(VerbName call, ArgumentPath path);
 
     @Message
-    String invalidSurfaceHeader(VerbName call, ArgumentPath path);
+    String headerInvalid();
 
     @Message
     String invalidInRequest(ArgumentPath path);

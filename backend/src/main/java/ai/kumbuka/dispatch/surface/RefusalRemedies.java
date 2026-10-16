@@ -33,6 +33,9 @@ public interface RefusalRemedies {
     String argumentInvalid();
 
     @Message
+    String headerInvalid();
+
+    @Message
     String pageSizeRejected();
 
     @Message
@@ -45,7 +48,7 @@ public interface RefusalRemedies {
     String sortUndeclared();
 
     @Message
-    String roleDoesNotAllow();
+    String roleInsufficient();
 
     @Message
     String scopeReadOnly();
@@ -57,10 +60,10 @@ public interface RefusalRemedies {
     String verbNotCarried();
 
     @Message
-    String stateDoesNotAllow();
+    String transitionRefused();
 
     @Message
-    String leaseLapsed();
+    String claimAbsent();
 
     @Message
     String claimHeld();

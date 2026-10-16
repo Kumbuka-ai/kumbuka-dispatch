@@ -48,8 +48,7 @@ public enum Form {
     ANSWER_OPTION(RefusalCode.Message.INVALID_ANSWER_OPTION),
     ANSWER_FREE_TEXT(RefusalCode.Message.INVALID_ANSWER_FREE_TEXT),
     ONCE(RefusalCode.Message.INVALID_ONCE),
-    BODY(RefusalCode.Message.INVALID_BODY),
-    SURFACE_HEADER(RefusalCode.Message.INVALID_SURFACE_HEADER);
+    BODY(RefusalCode.Message.INVALID_BODY);
 
     private final RefusalCode.Message message;
 

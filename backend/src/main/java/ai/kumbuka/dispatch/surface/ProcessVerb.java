@@ -448,7 +448,7 @@ public enum ProcessVerb {
         java.util.Set<RefusalCode> codes = java.util.EnumSet.of(
             RefusalCode.NOT_FOUND, RefusalCode.PAYLOAD_MALFORMED, RefusalCode.ADDRESS_MALFORMED,
             RefusalCode.ARGUMENT_UNKNOWN, RefusalCode.ARGUMENT_MISSING,
-            RefusalCode.ARGUMENT_INVALID, RefusalCode.ROLE_DOES_NOT_ALLOW,
+            RefusalCode.ARGUMENT_INVALID, RefusalCode.HEADER_INVALID, RefusalCode.ROLE_INSUFFICIENT,
             RefusalCode.SELECTOR_UNDECLARED, RefusalCode.SELECTOR_WITHDRAWN,
             RefusalCode.SCOPE_KIND_UNSUPPORTED, RefusalCode.VERB_NOT_CARRIED,
             RefusalCode.UNEXPECTED_FAILURE);
@@ -457,12 +457,11 @@ public enum ProcessVerb {
             codes.add(RefusalCode.SCOPE_LOCKED);
         }
         if (this != READ && this != READ_TEXT && this != QUERY && this != CLAIM_NEXT) {
-            codes.add(RefusalCode.STATE_DOES_NOT_ALLOW);
+            codes.add(RefusalCode.TRANSITION_REFUSED);
         }
         if (argument(Shared.RECEIPT, Argument.Placement.TOP) != null || this == READ_TEXT) {
             codes.add(RefusalCode.CLAIM_HELD);
-            codes.add(RefusalCode.LEASE_LAPSED);
-            codes.add(RefusalCode.STATE_DOES_NOT_ALLOW);
+            codes.add(RefusalCode.CLAIM_ABSENT);
         }
         if (argument(Shared.RECEIPT, Argument.Placement.TOP) != null) {
             codes.add(RefusalCode.RECEIPT_WRONG);

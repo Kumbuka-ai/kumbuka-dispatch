@@ -79,7 +79,7 @@ class ProcessSurfaceIT {
         SurfaceFixture.asExecutor(identity);
         Response notHeld = Mcp.call("dispatch_read_text", Map.of("address", address,
             "part", "dispatch"));
-        assertThat(Mcp.reason(notHeld)).isEqualTo("STATE_DOES_NOT_ALLOW");
+        assertThat(Mcp.reason(notHeld)).isEqualTo("CLAIM_ABSENT");
         answers.add(notHeld);
 
         // It claims, reads the commission, asks.

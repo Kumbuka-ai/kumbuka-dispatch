@@ -36,12 +36,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * kind {@code SELECTOR_UNDECLARED} 422, an empty draw {@code DRAW_EMPTY} 409,
  * a verb not carried at an address {@code VERB_NOT_CARRIED} 405 with {@code
  * Allow} and {@code data.accepts}, a wrong receipt {@code RECEIPT_WRONG} 409,
- * a holder's call by a caller who holds nothing {@code CLAIM_HELD}, the state's
- * refusal or {@code LEASE_LAPSED}, each 409, and a lease that is no positive
- * duration {@code ARGUMENT_INVALID} 400. The codes of the service's own beside
- * the table keep their statuses: the call of another part and a scope read
- * only are 403. The statuses and members are written here from the table, not
- * read from the catalogue.
+ * a holder's call by a caller who holds nothing {@code CLAIM_HELD} or {@code
+ * CLAIM_ABSENT}, each 409, and a lease that is no positive duration {@code
+ * ARGUMENT_INVALID} 400. The rows the contract change of 2026-10-16 replaced
+ * are each raised with no member outside their row: {@code CLAIM_ABSENT} and
+ * {@code TRANSITION_REFUSED} 409, {@code ROLE_INSUFFICIENT} 403 decided after
+ * the address is resolved, {@code SCOPE_READ_ONLY} 403 and {@code
+ * HEADER_INVALID} 400 with no {@code data}. The statuses and members are
+ * written here from the table, not read from the catalogue.
  *
  * <p>On MCP an unknown tool is no refused call but a fault of the protocol
  * (C4.3): the row of {@code VERB_NOT_CARRIED} is the REST surface's, and its
@@ -141,10 +143,10 @@ class CodeTableIT {
         String address = SurfaceFixture.address(id);
 
         SurfaceFixture.asExecutor(identity);
-        rest(given().get(SurfaceFixture.item(id) + ":read_text?part=dispatch"),
-            "STATE_DOES_NOT_ALLOW", 409, "attempted", "state", "next");
-        mcp(Mcp.call("dispatch_read_text", Map.of("address", address, "part", "dispatch")),
-            "STATE_DOES_NOT_ALLOW", "attempted", "state", "next");
+        restRow(given().get(SurfaceFixture.item(id) + ":read_text?part=dispatch"),
+            "CLAIM_ABSENT", 409, CLAIM_ABSENT_ROW, "attempted", "state", "next");
+        mcpRow(Mcp.call("dispatch_read_text", Map.of("address", address, "part", "dispatch")),
+            "CLAIM_ABSENT", CLAIM_ABSENT_ROW, "attempted", "state", "next");
 
         String receipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
             Map.of("address", address))).get("receipt"));
@@ -157,11 +159,24 @@ class CodeTableIT {
 
         SurfaceFixture.asExecutor(identity);
         lapse(address);
-        rest(given().contentType(ContentType.JSON).body(Map.of("receipt", receipt))
+        restRow(given().contentType(ContentType.JSON).body(Map.of("receipt", receipt))
                 .post(SurfaceFixture.item(id) + ":renew"),
-            "LEASE_LAPSED", 409, "attempted", "state", "next");
-        mcp(Mcp.call("dispatch_renew", Map.of("address", address, "receipt", receipt)),
-            "LEASE_LAPSED", "attempted", "state", "next");
+            "CLAIM_ABSENT", 409, CLAIM_ABSENT_ROW, "attempted", "state", "next");
+        mcpRow(Mcp.call("dispatch_renew", Map.of("address", address, "receipt", "any")),
+            "CLAIM_ABSENT", CLAIM_ABSENT_ROW, "attempted", "state", "next");
+    }
+
+    @Test
+    void a_transition_the_state_refuses_is_transition_refused_409() {
+        String id = SurfaceFixture.open("sent once", "code");
+        String address = SurfaceFixture.address(id);
+        String token = given().get(SurfaceFixture.item(id)).jsonPath()
+            .getString("conflict_token");
+        restRow(given().header("If-Match", "\"" + token + "\"")
+                .post(SurfaceFixture.item(id) + ":send"),
+            "TRANSITION_REFUSED", 409, TRANSITION_REFUSED_ROW, "attempted", "state", "next");
+        mcpRow(Mcp.call("dispatch_send", Map.of("address", address, "conflict_token", token)),
+            "TRANSITION_REFUSED", TRANSITION_REFUSED_ROW, "attempted", "state", "next");
     }
 
     @Test
@@ -180,19 +195,35 @@ class CodeTableIT {
     }
 
     @Test
-    void the_call_of_another_part_and_a_scope_read_only_stay_403() {
+    void the_call_of_another_part_and_a_scope_read_only_are_403() {
         String id = SurfaceFixture.open("parted", "code");
         SurfaceFixture.asExecutor(identity);
-        rest(given().contentType(ContentType.JSON).header("If-Match", "\"t\"")
+        restRow(given().contentType(ContentType.JSON).header("If-Match", "\"t\"")
                 .post(SurfaceFixture.item(id) + ":withdraw"),
-            "ROLE_DOES_NOT_ALLOW", 403, "attempted");
-        mcp(Mcp.call("dispatch_withdraw", Map.of("address", SurfaceFixture.address(id),
-            "conflict_token", "t")), "ROLE_DOES_NOT_ALLOW", "attempted");
+            "ROLE_INSUFFICIENT", 403, ROLE_INSUFFICIENT_ROW, "attempted", "next");
+        mcpRow(Mcp.call("dispatch_withdraw", Map.of("address", SurfaceFixture.address(id),
+                "conflict_token", "t")),
+            "ROLE_INSUFFICIENT", ROLE_INSUFFICIENT_ROW, "attempted", "next");
+
+        // Decided after the address is resolved: no object, no part to name.
+        rest(given().contentType(ContentType.JSON).header("If-Match", "\"t\"")
+            .post(SurfaceFixture.item("999999.0") + ":withdraw"), "NOT_FOUND", 404);
+        mcp(Mcp.call("dispatch_withdraw", Map.of("address", SurfaceFixture.address("999999.0"),
+            "conflict_token", "t")), "NOT_FOUND");
 
         SurfaceFixture.asMutedConsole(identity);
-        rest(given().contentType(ContentType.JSON)
-                .body(Map.of("fields", Map.of("title", "t", "apparatus", "code")))
-                .post(SurfaceFixture.collection()), "SCOPE_READ_ONLY", 403, "attempted");
+        Map<String, Object> draft = Map.of("title", "t", "apparatus", "code");
+        restRow(given().contentType(ContentType.JSON).body(Map.of("fields", draft))
+                .post(SurfaceFixture.collection()), "SCOPE_READ_ONLY", 403, List.of());
+        mcpRow(Mcp.call("dispatch_create", Map.of("scope", SurfaceFixture.SCOPE,
+                "selector", SurfaceFixture.SELECTOR, "fields", draft)),
+            "SCOPE_READ_ONLY", List.of());
+    }
+
+    @Test
+    void a_surface_header_it_cannot_take_is_header_invalid_400() {
+        restRow(given().header("Kumbuka-Surface", "mcp").get(SurfaceFixture.collection()),
+            "HEADER_INVALID", 400, List.of());
     }
 
     // =======================================================================
@@ -251,6 +282,40 @@ class CodeTableIT {
     }
 
     // -----------------------------------------------------------------------
+
+    /** The members of data the rows the contract change replaced name, as the table has them. */
+    private static final List<String> CLAIM_ABSENT_ROW = List.of("attempted", "state", "next");
+    private static final List<String> TRANSITION_REFUSED_ROW =
+        List.of("attempted", "state", "next", "waiting_for");
+    private static final List<String> ROLE_INSUFFICIENT_ROW = List.of("attempted", "next");
+
+    /**
+     * A refusal over REST under a row that names its members: its code, its
+     * status, no member outside the row, and the members given as required.
+     * An empty row is a refusal with no data.
+     */
+    private static void restRow(Response answer, String code, int status, List<String> row,
+                                String... required) {
+        rest(answer, code, status, required);
+        row(answer.jsonPath().getMap("$"), code + " on REST", row);
+    }
+
+    /** The same over MCP. */
+    private static void mcpRow(Response answer, String code, List<String> row,
+                               String... required) {
+        mcp(answer, code, required);
+        row(Mcp.refusal(answer), code + " on MCP", row);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void row(Map<String, Object> refusal, String what, List<String> row) {
+        if (row.isEmpty()) {
+            assertThat(refusal).as("%s carries no data", what).doesNotContainKey("data");
+            return;
+        }
+        assertThat(((Map<String, Object>) refusal.get("data")).keySet())
+            .as("%s carries no member outside its row", what).isSubsetOf(row);
+    }
 
     /** A refusal over REST: its code, its status, and the members of data the row names. */
     private static Response rest(Response answer, String code, int status, String... data) {
