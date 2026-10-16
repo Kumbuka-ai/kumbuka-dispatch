@@ -9,7 +9,7 @@ repository root for the full licence text.
 # Shared refusal codes
 
 A copy of the two tables of rule C8.7 of the platform service contract
-(`code-conventions/service-contract.md`, platform-specs commit `0f3978e`), taken
+(`code-conventions/service-contract.md`, platform-specs commit `ff0a4ba`), taken
 verbatim: the codes, and the members of `data`. `SharedCodeTableTest` reads
 both; the copy is held here so that the expectation does not come from the
 service it checks. When the contract tables change, this copy is replaced by
@@ -55,7 +55,7 @@ A refusal carries no member outside this list.
 | Member | Meaning |
 |---|---|
 | `offenders` | declared names of the arguments the refusal concerns, a field written as its path (`fields.option`, `filter.status`), an element with its index (`apparatus[2]`, DEC-0043 R19); never a value |
-| `accepts` | what the call or the address accepts: the arguments a call declares (DEC-0042), the verbs carried at an address (C3.3), the tool names (C4.3); see Open point 5 |
+| `accepts` | what the call or the address accepts: the arguments a call declares, the verbs carried at an address (C3.3), the tool names (C4.3) (DEC-0042) |
 | `attempted` | the call as the caller's surface names it (C6.2) |
 | `state` | the object's state as the caller's own `read` would answer it (DEC-0043 R10) |
 | `next` | the calls open to the caller, as in an answer (C6.1) |

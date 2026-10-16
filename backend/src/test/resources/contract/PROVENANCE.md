@@ -136,9 +136,9 @@ of the header, which names no call because none is known when it is decided.
 
 ## The amendment of 2026-10-16, third: the second contract change and the guards of the copy
 
-Codes and table are those of platform-specs `0f3978e`, whose wording the copy in
-`contract/shared-code-table.md` now holds verbatim. The second contract change ratified the same
-day is not on `main` yet, and the change as it was handed to this service is the source: a root
+Codes and table are those of platform-specs `ff0a4ba` (contract round 2), whose wording the
+copy in `contract/shared-code-table.md` holds verbatim. The two codes below are not rows of the
+table; they are this service's own, from the operator's addendum of the same day: a root
 with unfinished children is `CHILDREN_UNFINISHED` 409 with `attempted`, `children` and the
 confirmation handed out now, and `data.children` names each child by its complete address, as the
 list of members has it; an answer the question does not offer, an option or free text, is

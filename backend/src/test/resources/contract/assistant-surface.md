@@ -10,7 +10,8 @@ sources:
   - "platform-specs PR #9, docs/architecture/decisions/DEC-0043, rules R17 to R21, ratified 2026-10-15; DEC-0042 as ratified the same day (accepts in place of an unknown name)"
   - "platform-specs PR #9, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3.5: the first entry of next after a claim"
   - "platform-specs 0f3978e, code-conventions/service-contract.md: CLAIM_ABSENT, TRANSITION_REFUSED, ROLE_INSUFFICIENT, SCOPE_READ_ONLY as a row of the table, HEADER_INVALID, rules C14.4 and C14.5, the members of data"
-  - "the second change to code-conventions/service-contract.md the operator ratified 2026-10-16, not yet on platform-specs main: CHILDREN_UNFINISHED and OPTION_UNOFFERED, data.children as complete addresses, the names declaration and whoami reserved"
+  - "platform-specs ff0a4ba, code-conventions/service-contract.md, contract round 2: the names declaration and whoami reserved (C3.2), data.children as complete addresses, accepts as DEC-0042 now has it"
+  - "the operator's addendum of 2026-10-16 to this service: CHILDREN_UNFINISHED and OPTION_UNOFFERED, codes of this service"
 ---
 <!--
 Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
