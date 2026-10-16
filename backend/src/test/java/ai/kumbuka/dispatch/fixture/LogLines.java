@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.fixture;
 
+import org.jboss.logmanager.ExtLogRecord;
+
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Handler;
@@ -48,5 +50,10 @@ public final class LogLines {
             logger.removeHandler(capture);
         }
         return List.copyOf(records);
+    }
+
+    /** A record's text as the line prints it: its format with the arguments filled in. */
+    public static String text(LogRecord line) {
+        return line instanceof ExtLogRecord ext ? ext.getFormattedMessage() : line.getMessage();
     }
 }

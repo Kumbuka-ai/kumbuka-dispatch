@@ -4,6 +4,7 @@ import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import org.eclipse.microprofile.config.Config;
+import org.jboss.logging.Logger;
 import org.eclipse.microprofile.config.ConfigProvider;
 
 import java.util.Optional;
@@ -48,6 +49,8 @@ import java.util.UUID;
  */
 @ApplicationScoped
 public class TenancyConfigurationGuard {
+
+    private static final Logger LOG = Logger.getLogger(TenancyConfigurationGuard.class);
 
     /** The tenancy axis for this deployment. Environment: {@code DISPATCH_TENANT_ID}. */
     public static final String TENANT_KEY = "dispatch.tenant-id";
@@ -101,7 +104,7 @@ public class TenancyConfigurationGuard {
         Optional<String> raw = read(config, key);
 
         if (raw.isEmpty() || raw.get().isBlank()) {
-            throw new IllegalStateException(
+            throw refused(
                 ("%s is not set, and it has no default. It is %s. Set the environment "
                     + "variable %s to the uuid of %s and start again.")
                     .formatted(key, what, environmentVariable, key.equals(TENANT_KEY)
@@ -111,7 +114,7 @@ public class TenancyConfigurationGuard {
         try {
             UUID.fromString(raw.get().trim());
         } catch (IllegalArgumentException e) {
-            throw new IllegalStateException(
+            throw refused(
                 ("%s is set to a value that is not a uuid. It is %s, and it is read as a "
                     + "uuid by this service and written as one by V5. Set %s to a uuid.")
                     .formatted(key, what, environmentVariable));
@@ -133,5 +136,16 @@ public class TenancyConfigurationGuard {
         } catch (RuntimeException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Logs a refusal as one line, then answers the exception that stops the
+     * start. The log format carries no exception (C13.1, C13.2), so the reason
+     * reaches the log only through this line; WARN, as a configuration anomaly
+     * is (C13.3).
+     */
+    private static IllegalStateException refused(String why) {
+        LOG.warnf("start refused: %s", why);
+        return new IllegalStateException(why);
     }
 }

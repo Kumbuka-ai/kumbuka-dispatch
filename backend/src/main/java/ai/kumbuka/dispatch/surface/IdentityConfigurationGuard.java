@@ -13,6 +13,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.interceptor.Interceptor;
 import org.eclipse.microprofile.config.Config;
+import org.jboss.logging.Logger;
 import org.eclipse.microprofile.config.ConfigProvider;
 
 import java.util.Optional;
@@ -57,6 +58,8 @@ import java.util.Optional;
 @ApplicationScoped
 public class IdentityConfigurationGuard {
 
+    private static final Logger LOG = Logger.getLogger(IdentityConfigurationGuard.class);
+
     /** The claim the acting identity must come from. */
     public static final String EXPECTED_PRINCIPAL_CLAIM = "sub";
 
@@ -90,7 +93,7 @@ public class IdentityConfigurationGuard {
         String claim = config.getOptionalValue(PRINCIPAL_CLAIM_KEY, String.class)
             .orElse("");
         if (!EXPECTED_PRINCIPAL_CLAIM.equals(claim)) {
-            throw new IllegalStateException(
+            throw refused(
                 "'" + PRINCIPAL_CLAIM_KEY + "' is '" + claim + "' and must be '"
                     + EXPECTED_PRINCIPAL_CLAIM + "'. The principal is the subject of "
                     + "every actor of this service, and what a holder is recognised by; "
@@ -100,12 +103,23 @@ public class IdentityConfigurationGuard {
 
         Optional<String> audience = config.getOptionalValue(AUDIENCE_KEY, String.class);
         if (audience.isEmpty() || audience.get().isBlank()) {
-            throw new IllegalStateException(
+            throw refused(
                 "'" + AUDIENCE_KEY + "' is not set, so no audience would be validated and "
                     + "a token minted for any other resource would be accepted here. "
                     + "ADR-0034 gives the platform one audience and has every recipient "
                     + "validate it against the identifier its own installation "
                     + "configures. Set DISPATCH_OIDC_AUDIENCE.");
         }
+    }
+
+    /**
+     * Logs a refusal as one line, then answers the exception that stops the
+     * start. The log format carries no exception (C13.1, C13.2), so the reason
+     * reaches the log only through this line; WARN, as a configuration anomaly
+     * is (C13.3).
+     */
+    private static IllegalStateException refused(String why) {
+        LOG.warnf("start refused: %s", why);
+        return new IllegalStateException(why);
     }
 }

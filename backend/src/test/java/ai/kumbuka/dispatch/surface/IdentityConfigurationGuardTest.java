@@ -89,7 +89,7 @@ class IdentityConfigurationGuardTest {
             .satisfies(line -> {
                 assertThat(line.getLevel().intValue()).as("WARN, a configuration anomaly")
                     .isEqualTo(Level.WARNING.intValue());
-                assertThat(line.getMessage()).contains(IdentityConfigurationGuard.AUDIENCE_KEY)
+                assertThat(LogLines.text(line)).contains(IdentityConfigurationGuard.AUDIENCE_KEY)
                     .contains("DISPATCH_OIDC_AUDIENCE");
                 assertThat(line.getThrown()).as("the line carries no exception").isNull();
             });

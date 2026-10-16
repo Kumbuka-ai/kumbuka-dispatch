@@ -89,7 +89,7 @@ class TenancyConfigurationRefusalTest {
             .satisfies(line -> {
                 assertThat(line.getLevel().intValue()).as("WARN, a configuration anomaly")
                     .isEqualTo(Level.WARNING.intValue());
-                assertThat(line.getMessage()).contains(TenancyConfigurationGuard.TENANT_KEY)
+                assertThat(LogLines.text(line)).contains(TenancyConfigurationGuard.TENANT_KEY)
                     .contains("DISPATCH_TENANT_ID");
                 assertThat(line.getThrown()).as("the line carries no exception").isNull();
             });

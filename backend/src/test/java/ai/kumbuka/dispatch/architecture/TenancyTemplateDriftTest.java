@@ -56,7 +56,7 @@ class TenancyTemplateDriftTest {
         TEMPLATE.put("TenantMigrationCallback",
             "79e038ac4ce8afca7d1ddc720ba0d9b1de4b0a157f7b8e6b8c9ef07f97f44774");
         TEMPLATE.put("TenancyConfigurationGuard",
-            "640be782731a79da13207e0ee38020fc0e6bdde0ca778663ade21fbf74c0f357");
+            "ff70427db705c64022f3bcfee9f4f044ed8947678d15908302d8dca5ba5ad50b");
         TEMPLATE.put("TenantRequestFilter",
             "dbbf93be5716f163e6324ebfdafb5f436d2b37dc0772cf68bfd9a49741c941bb");
     }
