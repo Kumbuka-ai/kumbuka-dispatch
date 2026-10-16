@@ -33,8 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * holder, its lease end and its conflict token. The lapse becomes a write only
  * when a call that takes the task up decides on it.
  *
- * <p>RED STATE, observed with a read planted to write the lapse back: the row
- * no longer held its holder after the read, and its token had moved.
+ * <p>RED STATE, observed with a read planted to write the lapse back: after the
+ * read the row held neither its holder nor its lease end nor its receipt.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)

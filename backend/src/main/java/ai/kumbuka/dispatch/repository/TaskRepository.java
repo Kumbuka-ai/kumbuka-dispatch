@@ -11,7 +11,6 @@ import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.domain.PageCursor;
 import ai.kumbuka.dispatch.domain.PageRequest;
 import ai.kumbuka.dispatch.domain.Selector;
-import ai.kumbuka.dispatch.domain.SortKey;
 import ai.kumbuka.dispatch.domain.SpentTaskKey;
 import ai.kumbuka.dispatch.domain.Task;
 import ai.kumbuka.dispatch.domain.TaskFilter;
@@ -209,8 +208,8 @@ public class TaskRepository {
      * EffectiveStateFilterIT} holds the two to the same answer for every row
      * shape, so the copy cannot drift from the kernel unseen.
      *
-     * <p>The keyset is a row-value comparison on the sort's columns, the
-     * address always last, so the order is total within a selector.
+     * <p>The keyset, the order and the row past the page are {@link
+     * KeysetClause}'s.
      *
      * <p><strong>The selector stands here by its id, not by its name.</strong>
      * Each order has an index whose key is the tenant, the scope, the selector
@@ -224,8 +223,7 @@ public class TaskRepository {
     @Transactional
     public List<Task> page(UUID scopeId, Selector selector, TaskFilter filter, PageRequest page,
                            Optional<PageCursor.Position> after, Instant now) {
-        boolean desc = page.direction() == SortKey.Direction.DESC;
-        boolean byCreation = page.sort() == SortKey.CREATED_AT;
+        KeysetClause keyset = KeysetClause.of(page);
         StringBuilder jpql = new StringBuilder("""
             SELECT t FROM Task t
             WHERE t.scopeId = :scope AND t.selector.id = :sel
@@ -243,20 +241,14 @@ public class TaskRepository {
         StatePredicate states = StatePredicate.of(filter.states());
         jpql.append(states.jpql());
         if (after.isPresent()) {
-            String op = desc ? "<" : ">";
-            jpql.append(byCreation
-                ? "  AND (t.createdAt, t.number, t.sub) " + op + " (:kc, :kn, :ks)\n"
-                : "  AND (t.number, t.sub) " + op + " (:kn, :ks)\n");
+            jpql.append(keyset.after());
         }
-        String dir = desc ? " DESC" : " ASC";
-        jpql.append("ORDER BY ")
-            .append(byCreation ? "t.createdAt" + dir + ", " : "")
-            .append("t.number").append(dir).append(", t.sub").append(dir);
+        jpql.append(keyset.orderBy());
 
         var query = em.createQuery(jpql.toString(), Task.class)
             .setParameter(P_SCOPE, scopeId)
             .setParameter(P_SELECTOR, selector.id)
-            .setMaxResults(page.pageSize() + 1);
+            .setMaxResults(KeysetClause.rowsRead(page));
         bindApparatus(query, filter.apparatusPatterns());
         if (!filter.brackets().isEmpty()) {
             query.setParameter("numbers", filter.brackets());
@@ -266,13 +258,7 @@ public class TaskRepository {
             query.setParameter(P_ADDRESS_SUB + i, addresses.get(i).sub());
         }
         states.bind(query, now);
-        after.ifPresent(position -> {
-            query.setParameter("kn", position.number());
-            query.setParameter("ks", position.sub());
-            if (byCreation) {
-                query.setParameter("kc", position.createdAt());
-            }
-        });
+        after.ifPresent(position -> keyset.bind(query, position));
         return query.getResultList();
     }
 
@@ -608,21 +594,38 @@ public class TaskRepository {
      * the second reads the key only once the first has committed, and so reads
      * the first's entry as a repeat does.
      *
+     * <p>The lock is taken over the three parts, each written with its length
+     * in front ({@link #keyLockOf}), so two triples that differ in any part
+     * never name one lock: joined by a separator instead, a caller {@code x}
+     * under the key {@code y␟z} and a caller {@code x␟y} under the key
+     * {@code z} named the same text, because a key and a subject may carry
+     * the separator themselves.
+     *
      * <p>Not a locking read: it answers no row, so {@link #underLock} has
-     * nothing to refresh. Two different keys that hash alike wait on each
-     * other and decide nothing for each other.
+     * nothing to refresh. Two different keys whose texts hash alike wait on
+     * each other and decide nothing for each other.
      */
     @Transactional
     public void lockKeyUse(UUID scopeId, String callerSubject, String key) {
         em.createNativeQuery("""
                 SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(
-                    CAST(:scope AS text) || chr(31) || CAST(:caller AS text) || chr(31)
-                        || CAST(:key AS text), 0))) AS held
+                    CAST(:lock AS text), 0))) AS held
                 """)
-            .setParameter(P_SCOPE, scopeId.toString())
-            .setParameter("caller", callerSubject)
-            .setParameter("key", key)
+            .setParameter("lock", keyLockOf(scopeId, callerSubject, key))
             .getSingleResult();
+    }
+
+    /**
+     * The text the lock of one caller's key in a scope is taken over: each
+     * part as its length, a colon and the part. Two different triples never
+     * write the same text, whatever characters a part carries.
+     */
+    static String keyLockOf(UUID scopeId, String callerSubject, String key) {
+        StringBuilder text = new StringBuilder();
+        for (String part : new String[] {scopeId.toString(), callerSubject, key}) {
+            text.append(part.length()).append(':').append(part);
+        }
+        return text.toString();
     }
 
     /**

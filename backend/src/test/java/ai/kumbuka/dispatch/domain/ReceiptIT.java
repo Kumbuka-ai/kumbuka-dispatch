@@ -34,8 +34,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * every row the claim could have written, as the administrator sees them.
  *
  * <p>RED STATE, observed with the stored form planted as the receipt itself:
- * the digest case failed on the stored value, and the receipt was found in
- * the task's row.
+ * the case on the stored form failed on the stored value, which was the
+ * receipt.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
