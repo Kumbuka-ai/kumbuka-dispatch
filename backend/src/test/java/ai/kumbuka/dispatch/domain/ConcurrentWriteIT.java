@@ -52,7 +52,10 @@ import static org.assertj.core.api.Assertions.catchThrowable;
  *
  * <p>RED STATE, observed with the update reading the task without the lock
  * (a read, then a compare, then a write): the second writer wrote as well,
- * and the first case failed on the refusal it expected.
+ * and the first case failed on the refusal it expected. Against the tree with
+ * the database trigger both cases were green: the lock serialised the two
+ * writers there too, and the token the trigger wrote differed from the one
+ * presented.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)

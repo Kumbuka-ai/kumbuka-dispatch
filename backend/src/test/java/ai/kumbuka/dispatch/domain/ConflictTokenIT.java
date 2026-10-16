@@ -35,9 +35,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * tokens are written here from that instant, not read from the service.
  *
  * <p>RED STATE, observed against the tree with the database trigger: the
- * token was the database's transaction time, not the clock's, so the first
- * and the third case failed on the first token; the text-only update of the
- * fourth left the token where it was, because the task row was not written.
+ * token was the database's transaction time, not the clock's, so the cases on
+ * two writes in one microsecond and on a clock set back failed on the first
+ * token; the update of the text alone left the token where it was, because
+ * the task row was not written. The write that changes nothing kept its token
+ * there too, as it must.
  */
 @QuarkusTest
 @TestProfile(SettableClock.Profile.class)
