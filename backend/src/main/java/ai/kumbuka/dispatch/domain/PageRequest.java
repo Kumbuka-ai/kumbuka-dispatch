@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.domain;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -55,14 +57,14 @@ public record PageRequest(int pageSize, SortKey sort, SortKey.Direction directio
     /**
      * A page as a caller wrote it, refusing what it cannot take.
      *
-     * @param pageSize a whole number, or null for {@link #DEFAULT_PAGE_SIZE}; a
+     * @param pageSize a whole number; absent for {@link #DEFAULT_PAGE_SIZE}. A
      *                 value past what a long holds arrives as the long's bound
-     * @param sort     a declared key's wire name, or null for {@link SortKey#ID}
-     * @param after    the cursor, or null for the first page
+     * @param sort     a declared key's wire name; absent for {@link SortKey#ID}
+     * @param after    the cursor; absent for the first page
      * @throws DispatchException {@code PAGE_SIZE_REJECTED}, {@code SORT_UNDECLARED}
      */
-    public static PageRequest of(Long pageSize, String sort, SortKey.Direction direction,
-                                 String after) {
+    public static PageRequest of(@Nullable Long pageSize, @Nullable String sort,
+                                 SortKey.@Nullable Direction direction, @Nullable String after) {
         int size = DEFAULT_PAGE_SIZE;
         if (pageSize != null) {
             if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {

@@ -12,6 +12,8 @@ sources:
   - "platform-specs 0f3978e, code-conventions/service-contract.md: CLAIM_ABSENT, TRANSITION_REFUSED, ROLE_INSUFFICIENT, SCOPE_READ_ONLY as a row of the table, HEADER_INVALID, rules C14.4 and C14.5, the members of data"
   - "platform-specs ff0a4ba, code-conventions/service-contract.md, contract round 2: the names declaration and whoami reserved (C3.2), data.children as complete addresses, accepts as DEC-0042 now has it"
   - "the operator's addendum of 2026-10-16 to this service: CHILDREN_UNFINISHED and OPTION_UNOFFERED, codes of this service"
+  - "platform-specs ff0a4ba, TAR-0004 sections 2 and 3 and concept section 2.5: the bracket rule (ROOT_UNSENT, ROOT_CLOSED, CHILDREN_PRESENT) and no addendum to the commission of a delivered task"
+  - "platform-specs 37f4d6e, code-conventions/service-contract.md, contract round 3: attempted as a rule, the framework's 404 and 405 in the envelope (C3.3, C8.3), no transport location in offenders"
 ---
 <!--
 Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
@@ -308,11 +310,20 @@ no `offenders`: it lists the arguments the level accepts under `data.accepts`, w
 and a call this service does not have is answered with the calls there are under `data.accepts`
 and no `attempted`. `CHILDREN_UNFINISHED` names the unfinished children of the bracket root
 under `data.children`, each by its complete address, beside `data.confirmation`, the one handed
-out now. `OPTION_UNOFFERED` names the field of the answer under `data.offenders` and points at the
+out now. A child is created only under a root that was sent and is not closed: `ROOT_UNSENT` and
+`ROOT_CLOSED` carry `attempted` and nothing more. A draft root under which any task stands is not
+deleted: `CHILDREN_PRESENT` names each task under it by its complete address in `data.children`,
+and nothing is deleted. A delivered task takes no addendum to its commission:
+`TRANSITION_REFUSED`, whose `next` names the rework that takes its place. `OPTION_UNOFFERED` names the field of the answer under `data.offenders` and points at the
 read for the options. `CONFLICT_TOKEN_STALE` carries the task as it stands -- `data.address`,
 `data.fields`, `data.conflict_token` and `data.service` (DEC-0041) -- and `UNEXPECTED_FAILURE` its
 reference in `data.reference`. `VERB_NOT_CARRIED` lists the calls the address carries under
-`data.accepts`. `NOT_FOUND` carries no `data` and the same bytes whatever its cause. The codes and
+`data.accepts`; a method a route does not take is answered the same way, with the route's methods
+in `Allow` and no `attempted`, and a route the service does not have is `NOT_FOUND`. A body that
+does not parse is `PAYLOAD_MALFORMED` with `attempted` alone: it has one possible offender and
+names none. Every refusal that falls once the route stands carries `attempted`;
+`HEADER_INVALID` and a path below a reserved name fall before it and carry no `data`.
+`NOT_FOUND` carries no `data` and the same bytes whatever its cause. The codes and
 their statuses are the platform's table (service contract C8.7) where it names the condition; a
 call fenced by the conflict token that arrives without one is the kernel's to refuse, after the
 scope is resolved, as `CONFLICT_TOKEN_MISSING`.
@@ -336,6 +347,9 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `CHILDREN_UNFINISHED` | Repeat the call with data.confirmation, or finish the tasks in data.children first. |
 | `OPTION_UNOFFERED` | Answer with one of the options the read of the task lists, or with free text where the question admits it. |
 | `DEFERRAL_PENDING` | Take the task up after that instant, or take up another task now. |
+| `ROOT_UNSENT` | Send the root first, then create the child under it. |
+| `ROOT_CLOSED` | Create the task as a root of a bracket of its own, or under a root that is open. |
+| `CHILDREN_PRESENT` | Send the root and close it as a bracket root; data.children lists the tasks under it. |
 | `PAGE_SIZE_REJECTED` | Send page_size as a whole number within the bounds the message names. |
 | `CURSOR_MALFORMED` | Call the query again from the first page. |
 | `CURSOR_FOREIGN` | Repeat the call with the arguments that handed the cursor out. |
@@ -380,6 +394,9 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `textHolderLapsed` | `CLAIM_ABSENT` | `{call} reads the text of a task its executor holds, and your lease on this one ended.` |
 | `receiptWrong` | `RECEIPT_WRONG` | `{call} needs the receipt your claim handed out for this task: the receipt given is a different one.` |
 | `childrenUnfinished` | `CHILDREN_UNFINISHED` | `{call} would close a bracket root while tasks of its bracket are unfinished; data.children lists them. Repeat the call with data.confirmation to withdraw them and close the root.` |
+| `rootUnsent` | `ROOT_UNSENT` | `{call} names a bracket root that is still a draft, and a child is created only under a root that was sent.` |
+| `rootClosed` | `ROOT_CLOSED` | `{call} names a bracket root that is closed, and a closed root takes no further child.` |
+| `childrenPresent` | `CHILDREN_PRESENT` | `{call} would delete a bracket root while tasks stand under it; data.children lists them, and nothing was deleted.` |
 | `childrenConfirmationStale` | `CHILDREN_UNFINISHED` | `{call} carries a confirmation that no longer holds: the unfinished tasks of the bracket changed since it was handed out, and data.children lists them now. Repeat the call with the one in data.confirmation.` |
 | `optionUnoffered` | `OPTION_UNOFFERED` | `{call} names an option the question does not offer; data.offenders names the field, and the read of the task lists the options.` |
 | `freeTextUnoffered` | `OPTION_UNOFFERED` | `{call} answers in free text, and the question admits none; data.offenders names the field, and the read of the task lists the options.` |
@@ -393,6 +410,7 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `argumentUnknown` | `ARGUMENT_UNKNOWN` | `{call} takes these arguments: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
 | `argumentUnknownUnderFields` | `ARGUMENT_UNKNOWN` | `{call} takes these arguments under fields: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
 | `callUnknown` | `VERB_NOT_CARRIED` | `This service takes these calls: {#each accepts}{it}{#if it_hasNext}, {/if}{/each}.` |
+| `methodNotCarried` | `VERB_NOT_CARRIED` | `This route takes other methods: the Allow header names them, and data.accepts the calls at this address.` |
 | `argumentMissing` | `ARGUMENT_MISSING` | `{call} needs {path}.` |
 | `argumentMissingOptions` | `ARGUMENT_MISSING` | `{call} needs fields.options, or fields.free_text set to true.` |
 | `argumentMissingAnswer` | `ARGUMENT_MISSING` | `{call} needs fields.option or fields.text.` |
@@ -426,7 +444,7 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `invalidAddendumTarget` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a part the task carries a text of; the read of the task lists them under fields.texts.` |
 | `invalidAddendaExhausted` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: that text already carries addenda a to z, and a further letter would reissue one that exists.` |
 | `invalidOnce` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it arrived twice: in the query or the body, and in the path or a header, and a call takes each argument once.` |
-| `invalidBody` | `PAYLOAD_MALFORMED` | `{path} is not valid for {call}: a body is a JSON object of the call's arguments.` |
+| `invalidBody` | `PAYLOAD_MALFORMED` | `{call} carries a body that is no JSON object: a body is a JSON object of the call's arguments.` |
 | `headerInvalid` | `HEADER_INVALID` | `The header Kumbuka-Surface takes the one value assistant, once, or is left out.` |
 | `scopeReserved` | `ADDRESS_MALFORMED` | `The names declaration and whoami are the REST surface's own paths and are no scope; a scope is named otherwise.` |
 | `invalidInRequest` | `ADDRESS_MALFORMED` | `{path} is not valid for this request: a task's address is written dispatch://<scope>/<selector>/<number>.<sub>.` |

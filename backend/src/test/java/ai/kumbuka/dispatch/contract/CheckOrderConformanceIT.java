@@ -122,6 +122,100 @@ class CheckOrderConformanceIT {
         }
     }
 
+    /**
+     * The form of a body is checked before any scope is resolved (C1.2, C1.3):
+     * an argument the call does not declare, on a scope the caller cannot see,
+     * is {@code ARGUMENT_UNKNOWN} 400 with {@code data.accepts}, not {@code
+     * NOT_FOUND}. The refusal says nothing about the scope; it is the same
+     * whether the scope is there or not.
+     *
+     * <p>RED STATE, observed with the scope resolved before the form check: the
+     * REST surface answered {@code NOT_FOUND} 404.
+     */
+    @Test
+    void a_form_fault_on_an_invisible_scope_is_decided_before_the_scope() {
+        Map<String, Object> fields = Map.of("title", "t", "apparatus", "code");
+        Response overRest = given().contentType(ContentType.JSON)
+            .body(Map.of("bogus", "x", "fields", fields))
+            .post("/api/" + INVISIBLE + "/" + SurfaceFixture.SELECTOR);
+        assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(400);
+        assertThat(overRest.jsonPath().getString("reason")).isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(overRest.jsonPath().getList("data.accepts", String.class)).isNotEmpty();
+
+        Response overMcp = Mcp.call("dispatch_create", Map.of("scope", INVISIBLE,
+            "selector", SurfaceFixture.SELECTOR, "bogus", "x", "fields", fields));
+        assertThat(Mcp.reason(overMcp)).isEqualTo("ARGUMENT_UNKNOWN");
+        assertThat(Mcp.refusal(overMcp)).containsKey("data");
+
+        Response visible = given().contentType(ContentType.JSON)
+            .body(Map.of("bogus", "x", "fields", fields))
+            .post("/api/" + SurfaceFixture.SCOPE + "/" + SurfaceFixture.SELECTOR);
+        assertThat(overRest.asString()).as("the same refusal whether the scope is there or not")
+            .isEqualTo(visible.asString());
+    }
+
+    /**
+     * A literal path with a trailing slash is a path below a reserved name:
+     * {@code ADDRESS_MALFORMED} 400 with no {@code data} and the message of a
+     * reserved name, while the two literal paths answer as they do. The four
+     * answers are held here, so that a path normalisation of the framework
+     * cannot change one of them unseen (C3.2).
+     *
+     * <p>RED STATE, observed with the path split without its limit, which drops
+     * the empty segment: {@code /api/declaration/} was not refused and answered
+     * 200 with the declaration.
+     */
+    @Test
+    void a_literal_path_with_a_trailing_slash_is_below_the_reserved_name() {
+        for (String literal : List.of("declaration", "whoami")) {
+            Response bare = given().get("/api/" + literal);
+            assertThat(bare.statusCode()).as("/api/%s: %s", literal, bare.asString())
+                .isEqualTo(200);
+
+            Response slashed = given().get("/api/" + literal + "/");
+            assertThat(slashed.statusCode()).as("/api/%s/: %s", literal, slashed.asString())
+                .isEqualTo(400);
+            assertThat(slashed.jsonPath().getString("reason")).isEqualTo("ADDRESS_MALFORMED");
+            assertThat(slashed.jsonPath().getMap("$")).as("no data").doesNotContainKey("data");
+            assertThat(slashed.jsonPath().getString("message"))
+                .as("the message of a reserved name")
+                .isEqualTo(given().get("/api/" + literal + "/sprint").jsonPath()
+                    .getString("message"));
+        }
+    }
+
+    /**
+     * A route the service does not carry answers in the envelope (C3.3, C8.3):
+     * the framework's 404 as {@code NOT_FOUND} without {@code data}, its 405 as
+     * {@code VERB_NOT_CARRIED} with {@code Allow} and {@code data.accepts}. The
+     * security layer's 401 is handed back as it is: the authentication
+     * exception of DEC-0042.
+     *
+     * <p>RED STATE, observed against the catch-all that handed every exception
+     * of the framework back: the 404 and the 405 came without the envelope.
+     */
+    @Test
+    void a_route_the_framework_does_not_carry_answers_in_the_envelope() {
+        Response nothing = given().get("/api/nothing");
+        assertThat(nothing.statusCode()).as(nothing.asString()).isEqualTo(404);
+        assertThat(nothing.jsonPath().getString("reason")).isEqualTo("NOT_FOUND");
+        assertThat(nothing.jsonPath().getMap("$")).as("no data").doesNotContainKey("data");
+
+        Response put = given().contentType(ContentType.JSON).body(Map.of())
+            .put("/api/" + SurfaceFixture.SCOPE + "/" + SurfaceFixture.SELECTOR + "/200");
+        assertThat(put.statusCode()).as(put.asString()).isEqualTo(405);
+        assertThat(put.jsonPath().getString("reason")).isEqualTo("VERB_NOT_CARRIED");
+        assertThat(put.header("Allow")).as("the methods the route carries").isNotBlank();
+        assertThat(put.jsonPath().getList("data.accepts", String.class))
+            .as("the verbs carried at the address").isNotEmpty();
+
+        identity.setTestIdentity(null);
+        Response unauthenticated = given().get(SurfaceFixture.collection());
+        assertThat(unauthenticated.statusCode()).isEqualTo(401);
+        assertThat(unauthenticated.asString()).as("the challenge, not the envelope")
+            .doesNotContain("\"reason\"");
+    }
+
     /** Each call on both surfaces: NOT_FOUND, and on REST 404. */
     private static void assertNotFound(Map<String, Map<String, Object>> calls) {
         calls.forEach((tool, arguments) -> {

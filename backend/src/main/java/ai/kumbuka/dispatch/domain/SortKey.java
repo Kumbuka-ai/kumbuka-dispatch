@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.domain;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.Arrays;
 import java.util.List;
 
@@ -49,7 +51,7 @@ public enum SortKey {
      * @throws DispatchException {@code SORT_UNDECLARED} for a key not declared,
      *                           naming the argument {@code sort} and not the key
      */
-    public static SortKey of(String wireName) {
+    public static SortKey of(@Nullable String wireName) {
         if (wireName == null) {
             return ID;
         }
@@ -84,7 +86,7 @@ public enum SortKey {
         }
 
         /** The direction a caller named, or {@link #ASC} where it named none. */
-        public static Direction of(String wireName) {
+        public static Direction of(@Nullable String wireName) {
             if (wireName == null) {
                 return ASC;
             }

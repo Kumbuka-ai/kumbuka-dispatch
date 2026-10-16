@@ -12,6 +12,7 @@ import ai.kumbuka.dispatch.domain.IdempotencyKey;
 import ai.kumbuka.dispatch.domain.PageRequest;
 import ai.kumbuka.dispatch.domain.TaskFilter;
 import ai.kumbuka.dispatch.domain.TaskTextView;
+import ai.kumbuka.dispatch.domain.TaskVerb;
 import ai.kumbuka.dispatch.domain.TaskView;
 import ai.kumbuka.dispatch.domain.TextPart;
 import ai.kumbuka.dispatch.domain.TextType;
@@ -19,6 +20,7 @@ import ai.kumbuka.dispatch.surface.NextList;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.VerbSurface;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
 import java.util.List;
@@ -51,15 +53,21 @@ public final class CallBinding {
      *
      * @param head    whether the answer is the full head ({@code read}, {@code
      *                query}) or the lean one (every writing call)
-     * @param receipt the receipt of a claim, or null
+     * @param waitingFor what the task waits for; absent where a call is open to the caller
+     * @param receipt the receipt of a claim; absent on the answer to every other call
      */
     public record Answered(String address, TaskView view, boolean head,
-                           List<NextList.Step> next, String waitingFor, String receipt)
+                           List<NextList.Step> next, @Nullable String waitingFor,
+                           @Nullable String receipt)
         implements Outcome {
     }
 
-    /** One page of full heads, and the cursor of the next page; null on the last. */
-    public record Listed(List<Answered> heads, String nextCursor) implements Outcome {
+    /**
+     * One page of full heads, and the cursor of the next page.
+     *
+     * @param nextCursor the cursor of the next page; absent on the last
+     */
+    public record Listed(List<Answered> heads, @Nullable String nextCursor) implements Outcome {
     }
 
     /** One part of a task's text. */
@@ -87,13 +95,13 @@ public final class CallBinding {
             case CREATE -> {
                 String scope = in.scope();
                 String selector = in.selector();
-                Integer parent = in.parentNumber(scope, selector);
+                @Nullable Integer parent = in.parentNumber(scope, selector).orElse(null);
                 yield answered(surface, actor, verb, verbs.create(actor, scope, selector, parent,
-                    in.draft(), IdempotencyKey.of(in.idempotencyKey())), false, null, clock);
+                    in.draft(), IdempotencyKey.of(in.idempotencyKey().orElse(null))), false, null, clock);
             }
             case UPDATE -> answered(surface, actor, verb, verbs.update(actor, in.address(),
-                in.changes(), in.conflictToken()), false, null, clock);
-            case DELETE -> new Deleted(verbs.delete(actor, in.address(), in.conflictToken()));
+                in.changes(), in.conflictToken().orElse(null)), false, null, clock);
+            case DELETE -> new Deleted(verbs.delete(actor, in.address(), in.conflictToken().orElse(null)));
             case READ -> answered(surface, actor, verb, verbs.read(actor, in.address()), true,
                 null, clock);
             case READ_TEXT -> {
@@ -104,17 +112,17 @@ public final class CallBinding {
             case QUERY -> query(verbs, surface, actor, in, clock);
             case ANNOTATE -> answered(surface, actor, verb, verbs.annotate(actor, in.address(),
                 TextType.fromWireName(in.addendumPart()), in.text(), in.call(),
-                in.addendumPartPath(), IdempotencyKey.of(in.idempotencyKey())), false, null,
+                in.addendumPartPath(), IdempotencyKey.of(in.idempotencyKey().orElse(null))), false, null,
                 clock);
             case RELATE -> answered(surface, actor, verb, verbs.relate(actor, in.address(),
-                in.curatedIn(), in.conflictToken()), false, null, clock);
+                in.curatedIn(), in.conflictToken().orElse(null)), false, null, clock);
             case UNRELATE -> answered(surface, actor, verb, verbs.unrelate(actor, in.address(),
-                in.conflictToken()), false, null, clock);
+                in.conflictToken().orElse(null)), false, null, clock);
             case CLAIM -> {
                 VerbSurface.Item at = in.address();
                 VerbSurface.Claimed claimed = verbs.claim(at,
-                    in.transition(actor, verb.transition(), clock),
-                    IdempotencyKey.of(in.idempotencyKey()));
+                    in.transition(actor, verb.transition().orElseThrow(), clock),
+                    IdempotencyKey.of(in.idempotencyKey().orElse(null)));
                 yield answered(surface, actor, verb, claimed.result(), false, claimed.receipt(),
                     clock);
             }
@@ -123,15 +131,16 @@ public final class CallBinding {
                 String scope = in.scope();
                 String selector = in.selector();
                 VerbSurface.Claimed claimed = verbs.claimNext(scope, selector, patterns,
-                    in.transition(actor, verb.transition(), clock),
-                    IdempotencyKey.of(in.idempotencyKey()));
+                    in.transition(actor, verb.transition().orElseThrow(), clock),
+                    IdempotencyKey.of(in.idempotencyKey().orElse(null)));
                 yield answered(surface, actor, verb, claimed.result(), false, claimed.receipt(),
                     clock);
             }
             default -> {
                 VerbSurface.Item at = in.address();
-                yield answered(surface, actor, verb, verbs.act(at, verb.transition(),
-                    in.transition(actor, verb.transition(), clock)), false, null, clock);
+                TaskVerb transition = verb.transition().orElseThrow();
+                yield answered(surface, actor, verb, verbs.act(at, transition,
+                    in.transition(actor, transition, clock)), false, null, clock);
             }
         };
     }
@@ -151,11 +160,12 @@ public final class CallBinding {
     }
 
     private static Answered answered(Surface surface, Actor actor, ProcessVerb call,
-                                     VerbSurface.Result result, boolean head, String receipt,
+                                     VerbSurface.Result result, boolean head,
+                                     @Nullable String receipt,
                                      Clock clock) {
         boolean afterClaim = call == ProcessVerb.CLAIM || call == ProcessVerb.CLAIM_NEXT;
         List<NextList.Step> next = NextList.of(surface, result.view(), actor, afterClaim);
         return new Answered(result.address(), result.view(), head, next,
-            NextList.waitingFor(result.view(), next, clock.instant()), receipt);
+            NextList.waitingFor(result.view(), next, clock.instant()).orElse(null), receipt);
     }
 }

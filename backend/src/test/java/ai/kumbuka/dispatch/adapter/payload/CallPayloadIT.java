@@ -95,7 +95,7 @@ class CallPayloadIT {
     void a_whole_number_is_taken_whatever_its_shape(Object given, long read) {
         assertThat(CallPayload.wholeOf(given))
             .as("read as a whole number before the page's bounds are applied")
-            .isEqualTo(read);
+            .contains(read);
     }
 
     @ParameterizedTest
@@ -269,9 +269,9 @@ class CallPayloadIT {
 
         CallPayload read = new CallPayload(ProcessVerb.QUERY, Surface.MCP, arguments);
 
-        assertThat(read.wholeNumber("page_size")).isNull();
-        assertThat(read.top("sort")).isNull();
-        assertThat(read.top("after")).isNull();
+        assertThat(read.wholeNumber("page_size")).isEmpty();
+        assertThat(read.top("sort")).isEmpty();
+        assertThat(read.top("after")).isEmpty();
     }
 
     @Test
@@ -292,7 +292,7 @@ class CallPayloadIT {
 
         CallPayload read = new CallPayload(ProcessVerb.QUERY, Surface.MCP, arguments);
 
-        assertThat(read.wholeNumber("page_size")).isEqualTo(10L);
+        assertThat(read.wholeNumber("page_size")).contains(10L);
     }
 
     @Test
@@ -312,11 +312,11 @@ class CallPayloadIT {
         fields.put("undeclared", null);
         create.put("fields", fields);
         CallPayload read = new CallPayload(ProcessVerb.CREATE, Surface.MCP, create);
-        assertThat(read.field("text")).isNull();
+        assertThat(read.field("text")).isEmpty();
     }
 
     private static ArgumentPath path(String name) {
-        return ArgumentPath.of(ProcessVerb.QUERY.argument(name, Argument.Placement.TOP));
+        return ArgumentPath.of(ProcessVerb.QUERY.declared(name, Argument.Placement.TOP));
     }
 
     private static CallPayload query(Object pageSize) {

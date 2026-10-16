@@ -1,4 +1,13 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
+
+import org.jspecify.annotations.Nullable;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -42,8 +51,12 @@ public sealed interface TaskInput {
         }
     }
 
-    /** {@code release}, {@code withdraw}: a remark the caller may give, or null. */
-    record Remark(String text) implements TaskInput {
+    /**
+     * {@code release}, {@code withdraw}: a remark the caller may give.
+     *
+     * @param text the remark; absent where the caller gave none
+     */
+    record Remark(@Nullable String text) implements TaskInput {
     }
 
     /** {@code reject}, {@code fail}, {@code rework}: the remark is mandatory. */
@@ -54,8 +67,12 @@ public sealed interface TaskInput {
         }
     }
 
-    /** {@code defer}: the instant before which nobody draws the task, and a remark or null. */
-    record Deferral(Instant notBefore, String remark) implements TaskInput {
+    /**
+     * {@code defer}: the instant before which nobody draws the task, and a remark.
+     *
+     * @param remark the remark; absent where the caller gave none
+     */
+    record Deferral(Instant notBefore, @Nullable String remark) implements TaskInput {
 
         public Deferral {
             Objects.requireNonNull(notBefore, "notBefore");
@@ -80,8 +97,13 @@ public sealed interface TaskInput {
         }
     }
 
-    /** {@code answer}: one option of the question, or free text; exactly one of the two. */
-    record Reply(String option, String text) implements TaskInput {
+    /**
+     * {@code answer}: one option of the question, or free text; exactly one of the two.
+     *
+     * @param option the option chosen; absent where the answer is free text
+     * @param text   the free text; absent where the answer is an option
+     */
+    record Reply(@Nullable String option, @Nullable String text) implements TaskInput {
 
         public Reply {
             if ((option == null) == (text == null)) {
@@ -92,12 +114,17 @@ public sealed interface TaskInput {
 
         /** What the answer row records. */
         String recorded() {
-            return option != null ? option : text;
+            return Objects.requireNonNull(option != null ? option : text,
+                "an answer carries an option or text");
         }
     }
 
-    /** {@code hold}: why the holder pauses -- a dependency or something external. */
-    record Pause(HoldReason reason, String remark) implements TaskInput {
+    /**
+     * {@code hold}: why the holder pauses -- a dependency or something external.
+     *
+     * @param remark the remark; absent where the caller gave none
+     */
+    record Pause(HoldReason reason, @Nullable String remark) implements TaskInput {
 
         public Pause {
             Objects.requireNonNull(reason, "reason");
@@ -109,15 +136,19 @@ public sealed interface TaskInput {
         }
     }
 
-    /** {@code deliver}: the answer text and the return metadata, in one act. */
-    record Delivery(String text, Map<String, Object> metadata) implements TaskInput {
+    /**
+     * {@code deliver}: the answer text and the return metadata, in one act.
+     *
+     * @param metadata the return metadata; absent where the holder delivered none
+     */
+    record Delivery(String text, @Nullable Map<String, Object> metadata) implements TaskInput {
 
         public Delivery {
             requireText(text, "answer text");
         }
     }
 
-    private static void requireText(String text, String what) {
+    private static void requireText(@Nullable String text, String what) {
         if (text == null || text.isBlank()) {
             throw new IllegalArgumentException("the " + what + " is mandatory");
         }

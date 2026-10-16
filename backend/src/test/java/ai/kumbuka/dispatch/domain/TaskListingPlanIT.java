@@ -216,8 +216,8 @@ class TaskListingPlanIT {
     /** Tasks numbered 1 to {@link #TASKS}, created at scattered instants over twelve days. */
     private static void seed(UUID tenant, String selector) {
         PlatformFixture.run("INSERT INTO dispatch.task (tenant_id, scope_id, selector_id, "
-            + "number, sub, title, apparatus, created_at) "
-            + "SELECT tenant_id, scope_id, id, g, 0, 'probe', 'code', "
+            + "number, sub, title, apparatus, updated_at, created_at) "
+            + "SELECT tenant_id, scope_id, id, g, 0, 'probe', 'code', now(), "
             + "timestamptz '2026-01-01' + (random() * 1000000)::int * interval '1 second' "
             + "FROM dispatch.selector, generate_series(1, " + TASKS + ") g "
             + "WHERE tenant_id = '" + tenant + "' AND scope_id = '" + SCOPE + "' "

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.tenancy.StringUuidConverter;
@@ -11,6 +18,7 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.TenantId;
 import org.hibernate.generator.EventType;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -48,9 +56,9 @@ public class TaskText {
     @Column(name = "text_type", nullable = false, updatable = false)
     private String textType;
 
-    /** Empty on a base text; a letter on an addendum. */
+    /** Absent on a base text; a letter on an addendum. */
     @Column(name = "addendum_suffix", updatable = false)
-    public String addendumSuffix;
+    public @Nullable String addendumSuffix;
 
     @Column(name = "text", nullable = false)
     public String text;
@@ -59,8 +67,9 @@ public class TaskText {
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     public Instant createdAt;
 
+    /** Absent on a text copied from a stock row that named nobody. */
     @Column(name = "created_by", updatable = false)
-    public String createdBy;
+    public @Nullable String createdBy;
 
     public TextType type() {
         return TextType.fromWireName(textType);

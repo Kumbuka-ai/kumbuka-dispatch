@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.surface;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
@@ -36,24 +37,24 @@ public final class ApparatusPatterns {
     private ApparatusPatterns() {
     }
 
-    /** The first pattern that is not well formed, or null. */
-    public static String firstMalformed(List<String> patterns) {
+    /** The first pattern that is not well formed; empty where every one is. */
+    public static Optional<String> firstMalformed(List<String> patterns) {
         for (String pattern : patterns) {
             if (pattern == null || !WELL_FORMED.matcher(pattern).matches()) {
-                return String.valueOf(pattern);
+                return Optional.of(String.valueOf(pattern));
             }
         }
-        return null;
+        return Optional.empty();
     }
 
-    /** The first pattern that matches every apparatus there is, or null. */
-    public static String firstUnbounded(List<String> patterns) {
+    /** The first pattern that matches every apparatus there is; empty where none does. */
+    public static Optional<String> firstUnbounded(List<String> patterns) {
         for (String pattern : patterns) {
             if (ONLY_WILDCARDS.matcher(pattern).matches()) {
-                return pattern;
+                return Optional.of(pattern);
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     /**

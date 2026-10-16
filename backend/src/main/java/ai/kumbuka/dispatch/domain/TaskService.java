@@ -13,6 +13,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -67,9 +68,15 @@ public class TaskService {
 
     /**
      * What a draft carries: on {@link #create} title and apparatus are
-     * mandatory; on {@link #update} a null leaves the stored value.
+     * mandatory; on {@link #update} an absent one leaves the stored value.
+     *
+     * @param title     the title; absent on an update that leaves it
+     * @param apparatus the apparatus; absent on an update that leaves it
+     * @param text      the dispatch text; absent where none is written
+     * @param metadata  the dispatch metadata; absent where none is written
      */
-    public record Draft(String title, String apparatus, String text, Map<String, Object> metadata) {
+    public record Draft(@Nullable String title, @Nullable String apparatus,
+                        @Nullable String text, @Nullable Map<String, Object> metadata) {
 
         boolean isEmpty() {
             return title == null && apparatus == null && text == null && metadata == null;
@@ -90,11 +97,12 @@ public class TaskService {
      * commission} handles it today.
      */
     @Transactional
-    public TaskView create(UUID scopeId, String selector, Integer parentNumber, Draft draft,
+    public TaskView create(UUID scopeId, String selector, @Nullable Integer parentNumber,
+                           Draft draft,
                            Actor caller, IdempotencyKey key) {
         requireCommissioner(caller, "create");
-        Objects.requireNonNull(draft.title(), "title");
-        Objects.requireNonNull(draft.apparatus(), "apparatus");
+        String title = Objects.requireNonNull(draft.title(), "title");
+        String apparatus = Objects.requireNonNull(draft.apparatus(), "apparatus");
         Metadata.validate(draft.metadata());
 
         String digest = IdempotencyService.digestOf(Arrays.asList(selector,
@@ -119,13 +127,14 @@ public class TaskService {
             Integer highest = tasks.highestSub(scopeId, declared.id, parentNumber);
             task.sub = highest == null ? 1 : highest + 1;
         }
-        task.title = draft.title();
-        task.apparatus = draft.apparatus();
+        task.title = title;
+        task.apparatus = apparatus;
         task.dispatchMetadata = draft.metadata();
         task.begin(now(), caller.subject());
         tasks.insert(task);
-        if (draft.text() != null) {
-            insertText(task, TextType.DISPATCH, null, draft.text(), caller);
+        String text = draft.text();
+        if (text != null) {
+            insertText(task, TextType.DISPATCH, null, text, caller);
         }
         remember(scopeId, caller, key, CREATE, digest, task);
 
@@ -136,7 +145,7 @@ public class TaskService {
     /** Changes a draft's title, apparatus, text or metadata. Refused once sent. */
     @Transactional
     public TaskView update(UUID scopeId, ExchangeAddress address, Draft changes,
-                           String conflictToken, Actor caller) {
+                           @Nullable String conflictToken, Actor caller) {
         Task task = lockOrRefuse(scopeId, address);
         TaskSituation s = situation(task);
         requireDraft(s, "update");
@@ -149,19 +158,26 @@ public class TaskService {
         }
         Metadata.validate(changes.metadata());
 
-        if (changes.title() != null) {
-            task.title = changes.title();
+        // The text first: it reads the task's texts, and a read flushes what
+        // the task already carries. The task is written once, below.
+        Instant now = now();
+        String text = changes.text();
+        boolean textChanged = text != null && writeDispatchText(task, text, caller);
+        task.touch(caller.subject(), now);
+        String title = changes.title();
+        if (title != null) {
+            task.title = title;
         }
-        if (changes.apparatus() != null) {
-            task.apparatus = changes.apparatus();
+        String apparatus = changes.apparatus();
+        if (apparatus != null) {
+            task.apparatus = apparatus;
         }
         if (changes.metadata() != null) {
             task.dispatchMetadata = changes.metadata();
         }
-        if (changes.text() != null) {
-            writeDispatchText(task, changes.text(), caller);
+        if (textChanged) {
+            task.changedBeside(now);
         }
-        task.touch(caller.subject());
         tasks.flush();
         LOG.infof("update %s", task.address());
         return view(task, caller);
@@ -173,13 +189,23 @@ public class TaskService {
      * @return the address the draft had, which is the whole answer
      */
     @Transactional
-    public ExchangeAddress delete(UUID scopeId, ExchangeAddress address, String conflictToken,
+    public ExchangeAddress delete(UUID scopeId, ExchangeAddress address,
+                                  @Nullable String conflictToken,
                                   Actor caller) {
         Task task = lockOrRefuse(scopeId, address);
         TaskSituation s = situation(task);
         requireDraft(s, "delete");
         requireCommissioner(caller, "delete");
         requireToken(s, conflictToken);
+        if (task.isBracketRoot()) {
+            List<Task> under = tasks.lockChildren(scopeId, task.selector.id, task.number);
+            if (!under.isEmpty()) {
+                throw new DispatchException(DispatchException.Reason.CHILDREN_PRESENT,
+                    address + " is a draft root with tasks under it; it is deleted only alone, "
+                        + "and nothing is deleted along.",
+                    under.stream().map(child -> child.address().toString()).toList());
+            }
+        }
         tasks.delete(task);
         LOG.infof("delete %s", address);
         return address;
@@ -243,11 +269,11 @@ public class TaskService {
         Map<Long, List<TaskView.TextHead>> texts = tasks.textHeads(
             shown.stream().map(t -> t.id).toList());
         Map<Long, String> curated = tasks.completeAddresses(shown.stream()
-            .map(Task::curatedInId).filter(Objects::nonNull).distinct().toList());
+            .flatMap(t -> t.curatedInId().stream()).distinct().toList());
         List<TaskView> heads = shown.stream()
             .map(t -> TaskView.of(t, TaskSituation.of(t, now, List.of()), caller,
                 texts.getOrDefault(t.id, List.of()),
-                t.curatedInId() == null ? null : curated.get(t.curatedInId())))
+                t.curatedInId().map(curated::get).orElse(null)))
             .toList();
         Optional<String> next = more
             ? Optional.of(new PageCursor(binding,
@@ -285,6 +311,11 @@ public class TaskService {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
                 address + " is a draft and is edited, not annotated.");
         }
+        if (s.state() == TaskState.DELIVERED && part == TextType.DISPATCH) {
+            throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
+                address + " is delivered: its commission takes no addendum now, and rework "
+                    + "sends the answer back with a remark (TAR-0004 section 3).");
+        }
         TaskText supplemented = TaskTexts.youngestBase(tasks.texts(task.id), part)
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
                 address + " has no " + part.wireName() + " text to supplement."));
@@ -301,7 +332,7 @@ public class TaskService {
     /** Records the object a closed task was curated into: any task of the tenant. */
     @Transactional
     public TaskView relate(UUID scopeId, ExchangeAddress address, UUID targetScopeId,
-                           ExchangeAddress target, String conflictToken, Actor caller) {
+                           ExchangeAddress target, @Nullable String conflictToken, Actor caller) {
         Task task = requireClosedForRelation(scopeId, address, conflictToken, caller);
         Task into = tasks.find(targetScopeId, target).orElseThrow(() -> new DispatchException(
             DispatchException.Reason.NOT_FOUND, "no task at " + target));
@@ -310,7 +341,7 @@ public class TaskService {
                 "a task cannot be curated into itself");
         }
         task.curateIn(into.id);
-        task.touch(caller.subject());
+        task.touch(caller.subject(), now());
         tasks.flush();
         LOG.infof("relate %s", address);
         return view(task, caller);
@@ -318,11 +349,12 @@ public class TaskService {
 
     /** Removes the relation {@code curated_in} from a closed task. */
     @Transactional
-    public TaskView unrelate(UUID scopeId, ExchangeAddress address, String conflictToken,
+    public TaskView unrelate(UUID scopeId, ExchangeAddress address,
+                             @Nullable String conflictToken,
                              Actor caller) {
         Task task = requireClosedForRelation(scopeId, address, conflictToken, caller);
         task.curateIn(null);
-        task.touch(caller.subject());
+        task.touch(caller.subject(), now());
         tasks.flush();
         LOG.infof("unrelate %s", address);
         return view(task, caller);
@@ -359,7 +391,8 @@ public class TaskService {
             : List.of();
         TaskSituation s = TaskSituation.of(task, now, children);
         if (Decision.of(verb, s, call) instanceof Decision.AlreadyThere) {
-            LOG.debugf("%s on %s: already %s", verb.wireName(), address, verb.outcome().wireName());
+            LOG.debugf("%s on %s: already %s", verb.wireName(), address,
+                Objects.requireNonNull(verb.outcome(), "a verb already there closes").wireName());
             return view(task, call.caller());
         }
         TaskInput payload = decide(verb, s, call);
@@ -478,7 +511,7 @@ public class TaskService {
         }
         String receipt = Receipt.mint();
         task.reissue(receipt);
-        task.touch(caller.subject());
+        task.touch(caller.subject(), now());
         tasks.flush();
         LOG.infof("%s %s repeated: receipt reissued", verb.wireName(), task.address());
         return new TaskClaim(view(task, caller), receipt);
@@ -503,7 +536,7 @@ public class TaskService {
         task.enter(TaskState.ACTIVE, null, null, now, by);
         String receipt = Receipt.mint();
         task.award(by, receipt, now.plus(lease.duration()));
-        task.touch(by);
+        task.touch(by, now);
         tasks.flush();
 
         LOG.infof("%s %s -> %s", verb.wireName(), task.address(), TaskState.ACTIVE.wireName());
@@ -550,15 +583,16 @@ public class TaskService {
                 // The other payloads set no attribute of the task.
             }
         }
-        task.touch(by);
+        task.touch(by, now);
     }
 
     /** Inserts the text row the verb names, where the payload carries its text. */
     private void writeText(Task task, TaskVerb verb, TaskInput payload, Actor caller) {
-        if (verb.text() == null) {
+        TextType type = verb.text();
+        if (type == null) {
             return;
         }
-        String text = switch (payload) {
+        @Nullable String text = switch (payload) {
             case TaskInput.Remark remark -> remark.text();
             case TaskInput.RequiredRemark remark -> remark.text();
             case TaskInput.Deferral deferral -> deferral.remark();
@@ -570,7 +604,7 @@ public class TaskService {
             case TaskInput.Lease ignored -> null;
         };
         if (text != null && !text.isBlank()) {
-            insertText(task, verb.text(), null, text, caller);
+            insertText(task, type, null, text, caller);
         }
     }
 
@@ -580,7 +614,7 @@ public class TaskService {
             if (TaskSituation.of(child, now, List.of()).state() != TaskState.CLOSED) {
                 child.enter(TaskState.CLOSED, null, Outcome.WITHDRAWN, now, by);
                 child.dropHolder();
-                child.touch(by);
+                child.touch(by, now);
                 LOG.infof("withdraw %s -> %s", child.address(), TaskState.CLOSED.wireName());
             }
         }
@@ -594,7 +628,7 @@ public class TaskService {
     private TaskView view(Task task, Actor caller) {
         TaskSituation s = situation(task);
         return TaskView.of(task, s, caller, tasks.textHeads(List.of(task.id))
-            .getOrDefault(task.id, List.of()), curatedIn(task));
+            .getOrDefault(task.id, List.of()), curatedIn(task).orElse(null));
     }
 
     /**
@@ -612,13 +646,13 @@ public class TaskService {
      * The complete address of the curation target, where the caller may see
      * its scope; the target's scope answers for the bound subject.
      */
-    private String curatedIn(Task task) {
-        Long target = task.curatedInId();
-        return target == null ? null : tasks.completeAddresses(List.of(target)).get(target);
+    private Optional<String> curatedIn(Task task) {
+        return task.curatedInId()
+            .map(target -> tasks.completeAddresses(List.of(target)).get(target));
     }
 
     private Task requireClosedForRelation(UUID scopeId, ExchangeAddress address,
-                                          String conflictToken, Actor caller) {
+                                          @Nullable String conflictToken, Actor caller) {
         Task task = lockOrRefuse(scopeId, address);
         TaskSituation s = situation(task);
         if (s.state() != TaskState.CLOSED) {
@@ -647,14 +681,16 @@ public class TaskService {
         }
     }
 
-    private static void requireToken(TaskSituation s, String presented) {
+    private static void requireToken(TaskSituation s, @Nullable String presented) {
         Checks.conflictToken(s, presented).ifPresent(refused -> {
             throw refused.asException();
         });
     }
 
     /**
-     * Locks the bracket root and refuses a closed one.
+     * Locks the bracket root and refuses one that is a draft or closed: a
+     * child is created only under a root that was sent and is not closed
+     * (TAR-0004 section 2).
      *
      * <p>Locked, so the check and the insert of the child stand in one order
      * with the closing of the root: a root that is being closed is read once
@@ -666,8 +702,13 @@ public class TaskService {
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
                 "no bracket " + selector.name + "/" + number + "; a bracket opens with its "
                     + "root."));
-        if (TaskSituation.of(root, now(), List.of()).state() == TaskState.CLOSED) {
-            throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
+        TaskState state = TaskSituation.of(root, now(), List.of()).state();
+        if (state == TaskState.DRAFT) {
+            throw new DispatchException(DispatchException.Reason.ROOT_UNSENT,
+                root.address() + " is a draft, and a bracket opens when its root is sent.");
+        }
+        if (state == TaskState.CLOSED) {
+            throw new DispatchException(DispatchException.Reason.ROOT_CLOSED,
                 root.address() + " is closed, and a closed root has only closed children.");
         }
     }
@@ -702,16 +743,26 @@ public class TaskService {
         return String.valueOf(next);
     }
 
-    private void writeDispatchText(Task task, String text, Actor caller) {
+    /**
+     * Writes a draft's dispatch text.
+     *
+     * @return whether the text changed: a text written as it stands is no change
+     */
+    private boolean writeDispatchText(Task task, String text, Actor caller) {
         Optional<TaskText> base = TaskTexts.youngestBase(tasks.texts(task.id), TextType.DISPATCH);
-        if (base.isPresent()) {
-            base.get().text = text;
-        } else {
+        if (base.isEmpty()) {
             insertText(task, TextType.DISPATCH, null, text, caller);
+            return true;
         }
+        if (base.get().text.equals(text)) {
+            return false;
+        }
+        base.get().text = text;
+        return true;
     }
 
-    private void insertText(Task task, TextType type, String suffix, String text, Actor caller) {
+    private void insertText(Task task, TextType type, @Nullable String suffix, String text,
+                            Actor caller) {
         TaskText row = new TaskText();
         row.scopeId = task.scopeId;
         row.taskId = task.id;

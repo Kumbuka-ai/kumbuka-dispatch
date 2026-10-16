@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.domain;
 
+import org.jspecify.annotations.Nullable;
+
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +80,7 @@ public final class Metadata {
      * doctrine that is worse than a blanket ban, because the value would look
      * accepted and then read back as something the caller did not send.
      */
-    public static void validate(Map<String, Object> metadata) {
+    public static void validate(@Nullable Map<String, Object> metadata) {
         problem(metadata).ifPresent(message -> {
             throw new DispatchException(DispatchException.Reason.METADATA_REFUSED, message);
         });
@@ -89,22 +91,22 @@ public final class Metadata {
      * where it can be one. The same check as {@link #validate}, for a caller
      * that decides rather than refuses.
      */
-    public static Optional<String> problem(Map<String, Object> metadata) {
+    public static Optional<String> problem(@Nullable Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
             return Optional.empty();
         }
         for (Map.Entry<String, Object> entry : metadata.entrySet()) {
-            String found = valueProblem(entry.getKey(), entry.getValue());
-            if (found != null) {
-                return Optional.of(found);
+            Optional<String> found = valueProblem(entry.getKey(), entry.getValue());
+            if (found.isPresent()) {
+                return found;
             }
         }
         return Optional.empty();
     }
 
-    private static String valueProblem(String key, Object value) {
+    private static Optional<String> valueProblem(String key, @Nullable Object value) {
         if (value == null) {
-            return null;
+            return Optional.empty();
         }
         if (value instanceof String s) {
             return elementProblem(key, s);
@@ -112,46 +114,46 @@ public final class Metadata {
         if (value instanceof List<?> list) {
             return listProblem(key, list);
         }
-        return LABEL + key + "' is a " + value.getClass().getSimpleName()
+        return Optional.of(LABEL + key + "' is a " + value.getClass().getSimpleName()
             + ". A value is a String or a list of Strings; metadata carry an address "
-            + "or an identifier, and a nested object, number or boolean is neither.";
+            + "or an identifier, and a nested object, number or boolean is neither.");
     }
 
-    private static String listProblem(String key, List<?> list) {
+    private static Optional<String> listProblem(String key, List<?> list) {
         int index = 0;
         for (Object element : list) {
             if (element == null) {
-                return LABEL + key + "'[" + index + "] is null. A list of identifiers "
-                    + "does not carry gaps; a missing entry is one fewer entry.";
+                return Optional.of(LABEL + key + "'[" + index + "] is null. A list of "
+                    + "identifiers does not carry gaps; a missing entry is one fewer entry.");
             }
             if (!(element instanceof String s)) {
-                return LABEL + key + "'[" + index + "] is a "
+                return Optional.of(LABEL + key + "'[" + index + "] is a "
                     + element.getClass().getSimpleName()
                     + ". A list value carries Strings; a list of lists or of numbers "
                     + "would be a second level of structure, and metadata are one "
-                    + "level deep.";
+                    + "level deep.");
             }
-            String found = elementProblem(key + "[" + index + "]", s);
-            if (found != null) {
+            Optional<String> found = elementProblem(key + "[" + index + "]", s);
+            if (found.isPresent()) {
                 return found;
             }
             index++;
         }
-        return null;
+        return Optional.empty();
     }
 
-    private static String elementProblem(String label, String value) {
+    private static Optional<String> elementProblem(String label, String value) {
         if (value.length() > MAX_VALUE_LENGTH) {
-            return LABEL + label + "' is " + value.length() + " characters. Metadata "
-                + "carry an address or an identifier; anything this long is prose, "
-                + "and prose belongs in the body where the freeze protects it.";
+            return Optional.of(LABEL + label + "' is " + value.length() + " characters. "
+                + "Metadata carry an address or an identifier; anything this long is prose, "
+                + "and prose belongs in the body where the freeze protects it.");
         }
         if (carriesCredentials(value)) {
-            return LABEL + label + "' is a URL carrying credentials. This service "
-                + "holds pointers and never follows them, so a credential stored "
-                + "here can only ever be read by somebody — never used.";
+            return Optional.of(LABEL + label + "' is a URL carrying credentials. This "
+                + "service holds pointers and never follows them, so a credential stored "
+                + "here can only ever be read by somebody — never used.");
         }
-        return null;
+        return Optional.empty();
     }
 
     /** Userinfo in a URL: the {@code user:password@host} form. */

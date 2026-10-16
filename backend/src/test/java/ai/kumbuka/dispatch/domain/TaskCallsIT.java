@@ -79,6 +79,9 @@ class TaskCallsIT {
     void create_begins_in_draft_numbers_the_bracket_and_numbers_children_within_it() {
         TaskView root = create(null, "the root");
         TaskView second = create(null, "another root");
+        // A bracket opens when its root is sent (TAR-0004 section 2).
+        tasks.act(SCOPE, root.address(), TaskVerb.SEND,
+            TaskCall.by(C).withConflictToken(root.conflictToken()));
         TaskView child = create(root.address().number(), "a child");
 
         assertThat(root.state()).isEqualTo(TaskState.DRAFT);

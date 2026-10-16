@@ -111,6 +111,9 @@ class TaskPagingIT {
     @Test
     void the_address_order_is_numeric_across_every_page_boundary() {
         TaskView root = root("the bracket");
+        // A bracket opens when its root is sent (TAR-0004 section 2).
+        tasks.act(SCOPE, root.address(), TaskVerb.SEND,
+            TaskCall.by(C).withConflictToken(root.conflictToken()));
         List<String> expected = new ArrayList<>(List.of(root.address().toString()));
         for (int i = 1; i <= 12; i++) {
             expected.add(child(root, "child " + i).address().toString());

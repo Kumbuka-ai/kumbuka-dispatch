@@ -81,6 +81,15 @@ public interface RefusalMessages {
     String childrenConfirmationStale(VerbName call);
 
     @Message
+    String rootUnsent(VerbName call);
+
+    @Message
+    String rootClosed(VerbName call);
+
+    @Message
+    String childrenPresent(VerbName call);
+
+    @Message
     String deferralPending(VerbName call, VerbName read);
 
     @Message
@@ -109,6 +118,9 @@ public interface RefusalMessages {
 
     @Message
     String callUnknown(List<VerbName> accepts);
+
+    @Message
+    String methodNotCarried();
 
     @Message
     String argumentMissing(VerbName call, ArgumentPath path);
@@ -213,7 +225,7 @@ public interface RefusalMessages {
     String invalidOnce(VerbName call, ArgumentPath path);
 
     @Message
-    String invalidBody(VerbName call, ArgumentPath path);
+    String invalidBody(VerbName call);
 
     @Message
     String headerInvalid();

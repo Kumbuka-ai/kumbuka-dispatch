@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import org.junit.jupiter.api.Test;
@@ -17,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * below are the properties of a comparison and not of a hash — the hash is
  * incidental, the canonical form is the part that has to be right.
  *
- * <p>The unit half of the pair. {@code IdempotentCallsIT} exercises the same
+ * <p>The unit half of the pair. {@code IdempotencyIT} exercises the same
  * rule against a running service and a real ledger; this one exercises the
  * cases a service-level probe would have to construct twenty calls to reach.
  */

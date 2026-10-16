@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import io.restassured.http.ContentType;
@@ -18,12 +25,23 @@ public final class Mcp {
 
     /** One {@code tools/call}, as the current test identity. */
     public static Response call(String tool, Map<String, Object> arguments) {
+        return given().contentType(ContentType.JSON).body(toolCall(tool, arguments)).post("/mcp");
+    }
+
+    /** One {@code tools/call} with one header beside the call, as the current test identity. */
+    public static Response callWithHeader(String tool, Map<String, Object> arguments,
+                                          String header, String value) {
+        return given().contentType(ContentType.JSON).header(header, value)
+            .body(toolCall(tool, arguments)).post("/mcp");
+    }
+
+    private static Map<String, Object> toolCall(String tool, Map<String, Object> arguments) {
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("jsonrpc", "2.0");
         envelope.put("id", 1);
         envelope.put("method", "tools/call");
         envelope.put("params", Map.of("name", tool, "arguments", arguments));
-        return given().contentType(ContentType.JSON).body(envelope).post("/mcp");
+        return envelope;
     }
 
     /** Any other JSON-RPC method. */

@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.domain;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.List;
 
 /**
@@ -235,6 +237,24 @@ public class DispatchException extends RuntimeException {
         /** The set of unfinished children changed since the confirmation was handed out. */
         CONFIRMATION_STALE,
 
+        /**
+         * A child was to be created under a bracket root that is still a
+         * draft (TAR-0004 section 2): a bracket opens when its root is sent.
+         */
+        ROOT_UNSENT,
+
+        /**
+         * A child was to be created under a bracket root that is closed
+         * (TAR-0004 section 2): a closed root has only closed children.
+         */
+        ROOT_CLOSED,
+
+        /**
+         * A draft bracket root was to be deleted while tasks stand under it
+         * (TAR-0004 section 3). Names each of them; nothing is deleted along.
+         */
+        CHILDREN_PRESENT,
+
         /** An answer named none of the question's options, and free text was not admitted. */
         ANSWER_NOT_AN_OPTION,
 
@@ -254,7 +274,8 @@ public class DispatchException extends RuntimeException {
 
     private final transient Reason reason;
     private final transient List<String> offenders;
-    private final transient String confirmation;
+    /** The confirmation this refusal hands out; absent on every refusal but one. */
+    private final transient @Nullable String confirmation;
 
     public DispatchException(Reason reason, String message) {
         this(reason, message, List.of());
@@ -272,7 +293,7 @@ public class DispatchException extends RuntimeException {
      * be withdrawn.
      */
     public DispatchException(Reason reason, String message, List<String> offenders,
-                             String confirmation) {
+                             @Nullable String confirmation) {
         super(message);
         this.reason = reason;
         this.offenders = List.copyOf(offenders);

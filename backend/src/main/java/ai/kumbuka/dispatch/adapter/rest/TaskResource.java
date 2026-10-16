@@ -42,11 +42,15 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
 import jakarta.ws.rs.core.UriInfo;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * The REST surface: the twenty-five calls of the declaration on the routes of
@@ -54,12 +58,19 @@ import java.util.Map;
  *
  * <p>A request becomes a call: its name from the route, its arguments from
  * the path (the scope and the bracket kind, or the complete address of one
- * task), the {@code If-Match} header (the conflict token), the query and the
- * body — the same map the assistant surface hands over, closed against the
- * same declaration by the same {@link CallPayload} and made by the same
- * {@link CallBinding}: one call of the verb surface (C1.1). So a call refuses
- * an invented argument by name on both surfaces alike, whichever part of the
+ * task), the {@code If-Match} header (the conflict token), the {@code
+ * Idempotency-Key} header (the idempotency key), the query and the body — the
+ * same map the assistant surface hands over, closed against the same
+ * declaration by the same {@link CallPayload} and made by the same {@link
+ * CallBinding}: one call of the verb surface (C1.1). So a call refuses an
+ * invented argument by name on both surfaces alike, whichever part of the
  * request it came in.
+ *
+ * <p>The idempotency key travels in its header on this surface and nowhere
+ * else (C10.4): a request that carries {@code idempotency_key} in its query
+ * or its body is refused as {@code ARGUMENT_UNKNOWN}, with what the call
+ * accepts there. The header on a call that takes no key is a header this call
+ * does not read, as {@code If-Match} on a call without a token is.
  *
  * <p>A call names calls in the vocabulary of the surface its caller came
  * through. Without the {@code Kumbuka-Surface} header that is this one. With
@@ -89,6 +100,12 @@ public class TaskResource {
 
     private static final String IF_MATCH = "If-Match";
 
+    /** The header that carries the idempotency key on this surface (C10.4). */
+    static final String IDEMPOTENCY_KEY = "Idempotency-Key";
+
+    /** The argument the key is on the assistant surface, and in the declaration. */
+    private static final String KEY_ARGUMENT = "idempotency_key";
+
     /**
      * Names the surface the caller came through, where that is not this one.
      * A router that publishes these calls as assistant tools and reaches this
@@ -116,9 +133,9 @@ public class TaskResource {
     public Response collectionPost(@PathParam("scope") String scope,
                                    @PathParam("selector") String segment,
                                    @Context HttpHeaders http,
-                                   @Context UriInfo uri, String body) {
+                                   @Context UriInfo uri, @Nullable String body) {
         return route("POST", new At(CustomMethod.Depth.COLLECTION, scope, segment, null),
-            new Headers(null, http.getRequestHeader(SURFACE)), uri, body);
+            new Headers(null, http), uri, body);
     }
 
     @GET
@@ -128,7 +145,7 @@ public class TaskResource {
                                   @Context HttpHeaders http,
                                   @Context UriInfo uri) {
         return route("GET", new At(CustomMethod.Depth.COLLECTION, scope, segment, null),
-            new Headers(null, http.getRequestHeader(SURFACE)), uri, null);
+            new Headers(null, http), uri, null);
     }
 
     @GET
@@ -140,7 +157,7 @@ public class TaskResource {
                             @Context HttpHeaders http,
                             @Context UriInfo uri) {
         return route("GET", new At(CustomMethod.Depth.ITEM, scope, selector, segment),
-            new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, null);
+            new Headers(ifMatch, http), uri, null);
     }
 
     @PATCH
@@ -150,9 +167,9 @@ public class TaskResource {
                               @PathParam("id") String segment,
                               @HeaderParam(IF_MATCH) String ifMatch,
                               @Context HttpHeaders http,
-                              @Context UriInfo uri, String body) {
+                              @Context UriInfo uri, @Nullable String body) {
         return route("PATCH", new At(CustomMethod.Depth.ITEM, scope, selector, segment),
-            new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, body);
+            new Headers(ifMatch, http), uri, body);
     }
 
     @DELETE
@@ -164,7 +181,7 @@ public class TaskResource {
                                @Context HttpHeaders http,
                                @Context UriInfo uri) {
         return route("DELETE", new At(CustomMethod.Depth.ITEM, scope, selector, segment),
-            new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, null);
+            new Headers(ifMatch, http), uri, null);
     }
 
     @POST
@@ -174,36 +191,53 @@ public class TaskResource {
                              @PathParam("id") String segment,
                              @HeaderParam(IF_MATCH) String ifMatch,
                              @Context HttpHeaders http,
-                             @Context UriInfo uri, String body) {
+                             @Context UriInfo uri, @Nullable String body) {
         return route("POST", new At(CustomMethod.Depth.ITEM, scope, selector, segment),
-            new Headers(ifMatch, http.getRequestHeader(SURFACE)), uri, body);
+            new Headers(ifMatch, http), uri, body);
     }
 
     // ======================================================================
     // A request, as a call
     // ======================================================================
 
-    /** Where a request is addressed: the depth and the path segments as they arrived. */
+    /**
+     * Where a request is addressed: the depth and the path segments as they arrived.
+     *
+     * @param idSegment the segment of a task; absent on a collection
+     */
     private record At(CustomMethod.Depth depth, String scope, String selectorSegment,
-                      String idSegment) {
+                      @Nullable String idSegment) {
     }
 
     /**
-     * The headers a call reads, as they arrived. The conflict token may be
-     * absent; the surface is kept as every value it arrived with, an empty
-     * list when there is none, because an empty value or a second one is a
-     * value it cannot take, not an absence.
+     * The headers a call reads, as they arrived. The surface is kept as every
+     * value it arrived with, an empty list when there is none, because an
+     * empty value or a second one is a value it cannot take, not an absence.
+     *
+     * @param ifMatch the conflict token's header; absent where the request
+     *                carried none or its route reads none
      */
-    private record Headers(String ifMatch, List<String> surface) {
+    private record Headers(@Nullable String ifMatch, List<String> surface, List<String> key) {
+
+        Headers(@Nullable String ifMatch, HttpHeaders http) {
+            this(ifMatch, orNone(http.getRequestHeader(SURFACE)),
+                orNone(http.getRequestHeader(IDEMPOTENCY_KEY)));
+        }
+
+        private static List<String> orNone(@Nullable List<String> values) {
+            return values == null ? List.of() : values;
+        }
     }
 
-    private Response route(String method, At where, Headers headers, UriInfo uri, String body) {
+    private Response route(String method, At where, Headers headers, UriInfo uri,
+                           @Nullable String body) {
         CustomMethod.Depth depth = where.depth();
         String scope = where.scope();
         String selectorSegment = where.selectorSegment();
         String idSegment = where.idSegment();
         String[] at = CustomMethod.split(depth == CustomMethod.Depth.COLLECTION
-            ? selectorSegment : idSegment);
+            ? selectorSegment
+            : Objects.requireNonNull(idSegment));
         CustomMethod route = CustomMethod.find(method, depth, at[1])
             .orElseThrow(() -> notHere(depth, at[1]));
         // SurfaceHeaderFilter refused every value but the one, before the route.
@@ -222,8 +256,11 @@ public class TaskResource {
         if (ifMatch != null && !ifMatch.isBlank()) {
             arguments.put("conflict_token", unquote(ifMatch.trim()));
         }
-        merge(refusing, route.verb(), arguments, query(uri));
+        merge(refusing, route.verb(), arguments,
+            withoutTheKey(refusing, route.verb(), query(uri)));
         mergeBody(refusing, route.verb(), arguments, body);
+        key(refusing, route.verb(), headers.key())
+            .ifPresent(key -> arguments.put(KEY_ARGUMENT, key));
 
         context.call(surface, route.verb(), arguments);
         CallPayload in = new CallPayload(route.verb(), surface, arguments);
@@ -240,13 +277,16 @@ public class TaskResource {
      * applies. Neither names a value the request carried: no path segment and
      * no verb that the declaration does not hold (DEC-0043 R18, R19).
      */
-    private static SurfaceException notHere(CustomMethod.Depth depth, String verb) {
-        ProcessVerb declared = verb == null ? null : ProcessVerb.byName(Surface.REST, verb);
+    private static SurfaceException notHere(CustomMethod.Depth depth, @Nullable String verb) {
         List<VerbName> accepts = CustomMethod.accepts(depth);
-        Refusal refused = declared == null
+        Refusal refused = verb == null
             ? Refusal.callUnknown(accepts)
-            : Refusal.callNotAtThisAddress(VerbName.of(declared, Surface.REST),
-                CustomMethod.of(verb).map(CustomMethod::refusalRoute).orElseThrow(), accepts);
+            : ProcessVerb.byName(Surface.REST, verb)
+                .map(declared -> Refusal.callNotAtThisAddress(
+                    VerbName.of(declared, Surface.REST),
+                    CustomMethod.of(verb).map(CustomMethod::refusalRoute).orElseThrow(),
+                    accepts))
+                .orElseGet(() -> Refusal.callUnknown(accepts));
         return new SurfaceException(refused, CustomMethod.allow(depth));
     }
 
@@ -270,10 +310,10 @@ public class TaskResource {
                 continue;
             }
             if (into.containsKey(given.getKey())) {
-                Argument argument = verb.argument(given.getKey(), Argument.Placement.TOP);
-                throw new SurfaceException(argument == null
-                    ? Refusal.valueGivenTwice(call)
-                    : Refusal.argumentInvalid(call, ArgumentPath.of(argument), Form.ONCE));
+                throw new SurfaceException(verb.argument(given.getKey(), Argument.Placement.TOP)
+                    .map(argument -> Refusal.argumentInvalid(call, ArgumentPath.of(argument),
+                        Form.ONCE))
+                    .orElseGet(() -> Refusal.valueGivenTwice(call)));
             }
             into.put(given.getKey(), given.getValue());
         }
@@ -281,7 +321,7 @@ public class TaskResource {
 
     /** Adds what the body carries; refuses a body that is no JSON object (C8.7). */
     private void mergeBody(VerbName call, ProcessVerb verb, Map<String, Object> into,
-                           String body) {
+                           @Nullable String body) {
         if (body == null || body.isBlank()) {
             return;
         }
@@ -292,12 +332,49 @@ public class TaskResource {
             parsed = null;
         }
         if (!(parsed instanceof Map<?, ?> map)) {
-            throw new SurfaceException(Refusal.argumentInvalid(call,
-                ArgumentPath.of(ArgumentPath.Transport.BODY), Form.BODY));
+            throw new SurfaceException(Refusal.payloadMalformed(call));
         }
         Map<String, Object> carried = new LinkedHashMap<>();
         map.forEach((name, value) -> carried.put(String.valueOf(name), value));
-        merge(call, verb, into, carried);
+        merge(call, verb, into, withoutTheKey(call, verb, carried));
+    }
+
+    /**
+     * Refuses the idempotency key where this surface does not carry it: in the
+     * query or the body. The refusal lists what the call accepts there, which
+     * the key is not, and names nothing the request carried (DEC-0043 R19). A
+     * key sent as JSON {@code null} is a key not sent (DEC-0043 R17).
+     */
+    private static Map<String, Object> withoutTheKey(VerbName call, ProcessVerb verb,
+                                                     Map<String, Object> part) {
+        if (part.get(KEY_ARGUMENT) != null) {
+            List<ArgumentPath> accepts = new ArrayList<>(ArgumentPath.of(verb.topArguments()
+                .stream().filter(a -> !KEY_ARGUMENT.equals(a.name())).toList()));
+            if (verb.hasFields()) {
+                accepts.add(ArgumentPath.FIELDS);
+            }
+            throw new SurfaceException(Refusal.argumentUnknown(call, false, accepts));
+        }
+        return part;
+    }
+
+    /**
+     * The idempotency key the header carries, for a call that takes one. Sent
+     * twice it is a value the call cannot take; a blank one is no key.
+     */
+    private static Optional<String> key(VerbName call, ProcessVerb verb,
+                                                  List<String> header) {
+        Optional<Argument> declared = verb.argument(KEY_ARGUMENT, Argument.Placement.TOP);
+        if (declared.isEmpty() || header.isEmpty()) {
+            return Optional.empty();
+        }
+        Argument argument = declared.get();
+        if (header.size() > 1) {
+            throw new SurfaceException(Refusal.argumentInvalid(call, ArgumentPath.of(argument),
+                Form.ONCE));
+        }
+        String key = header.get(0).trim();
+        return key.isEmpty() ? Optional.empty() : Optional.of(key);
     }
 
     // ======================================================================

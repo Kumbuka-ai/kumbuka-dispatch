@@ -7,6 +7,7 @@
  */
 package ai.kumbuka.dispatch.contract;
 
+import ai.kumbuka.dispatch.platform.PlatformFixture;
 import ai.kumbuka.dispatch.surface.Mcp;
 import ai.kumbuka.dispatch.surface.RefusalCode;
 import ai.kumbuka.dispatch.surface.SurfaceFixture;
@@ -162,6 +163,18 @@ class RefusalEchoesNoValueIT {
             "fields", Map.of("title", "a child", "apparatus", "code"))));
         mcp(RefusalCode.CHILDREN_UNFINISHED, "dispatch_withdraw", Map.of("address", root,
             "conflict_token", token(root), "confirmation", MARKER));
+
+        mcp(RefusalCode.ROOT_CLOSED, "dispatch_create", Map.of("scope", SurfaceFixture.SCOPE,
+            "selector", SurfaceFixture.SELECTOR, "parent", closedRoot(),
+            "fields", Map.of("title", MARKER, "apparatus", "code")));
+        String unsent = SurfaceFixture.address(SurfaceFixture.idOf(SurfaceFixture.create(Map.of(
+            "title", "an unsent root", "apparatus", "code"))));
+        mcp(RefusalCode.ROOT_UNSENT, "dispatch_create", Map.of("scope", SurfaceFixture.SCOPE,
+            "selector", SurfaceFixture.SELECTOR, "parent", unsent,
+            "fields", Map.of("title", MARKER, "apparatus", "code", "text", MARKER)));
+        plantChild(unsent);
+        mcp(RefusalCode.CHILDREN_PRESENT, "dispatch_delete", Map.of("address", unsent,
+            "conflict_token", token(unsent)));
 
         String asked = SurfaceFixture.address(SurfaceFixture.open("asked", "code"));
         SurfaceFixture.asExecutor(identity);
@@ -466,6 +479,24 @@ class RefusalEchoesNoValueIT {
         Map<String, Object> more = new LinkedHashMap<>(arguments);
         more.put(name, value);
         return more;
+    }
+
+    /** A bracket root that is closed, made through the calls. */
+    private static String closedRoot() {
+        String root = SurfaceFixture.address(SurfaceFixture.open("a closed root", "code"));
+        Mcp.answer(Mcp.call("dispatch_withdraw", Map.of("address", root,
+            "conflict_token", token(root))));
+        return root;
+    }
+
+    /** A child under a root, written as the administrator: the bracket no call makes any more. */
+    private static void plantChild(String root) {
+        String identity = Mcp.field(Mcp.answer(Mcp.call("dispatch_read",
+            Map.of("address", root))), "identity").substring("dispatch://".length());
+        PlatformFixture.run("INSERT INTO dispatch.task (tenant_id, scope_id, selector_id, number, "
+            + "sub, title, apparatus, updated_at) SELECT tenant_id, scope_id, selector_id, number, "
+            + "1, 'a planted child', 'code', now() FROM dispatch.task WHERE uuid = '" + identity
+            + "'");
     }
 
     /** Ends the lease of a task as the clock would. */

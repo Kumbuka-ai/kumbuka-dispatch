@@ -17,30 +17,15 @@ import java.util.Objects;
  *
  * <p>A placeholder type of DEC-0043 R18, and what {@code data.offenders} and
  * {@code data.accepts} carry. Built only from a declared {@link Argument}, the
- * declared container {@code fields}, or a declared {@link Transport} part of a
- * REST request. A position is a number, so naming which of several values was
- * wrong never needs the value.
+ * declared container {@code fields}. Never a transport location of a request:
+ * a body that does not parse has one possible offender and names none (C8.7).
+ * A position is a number, so naming which of several values was wrong never
+ * needs the value.
  */
 public final class ArgumentPath {
 
     /** The {@code fields} object itself. */
     public static final ArgumentPath FIELDS = new ArgumentPath(Argument.FIELDS);
-
-    /** The parts of a REST request that carry no argument of the declaration. */
-    public enum Transport {
-        /** The body, which carries a JSON object of the call's arguments. */
-        BODY("body");
-
-        private final String wireName;
-
-        Transport(String wireName) {
-            this.wireName = wireName;
-        }
-
-        public String wireName() {
-            return wireName;
-        }
-    }
 
     private final String path;
 
@@ -61,11 +46,6 @@ public final class ArgumentPath {
             throw new IllegalArgumentException("a position counts from zero");
         }
         return new ArgumentPath(of(argument).path + "[" + position + "]");
-    }
-
-    /** A declared part of a REST request. */
-    public static ArgumentPath of(Transport part) {
-        return new ArgumentPath(part.wireName());
     }
 
     /** The paths of a list of declared arguments, in their order. */

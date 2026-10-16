@@ -41,8 +41,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ARGUMENT_INVALID} 400. The rows the contract change of 2026-10-16 replaced
  * are each raised with no member outside their row: {@code CLAIM_ABSENT} and
  * {@code TRANSITION_REFUSED} 409, {@code ROLE_INSUFFICIENT} 403 decided after
- * the address is resolved, {@code SCOPE_READ_ONLY} 403 and {@code
- * HEADER_INVALID} 400 with no {@code data}. This service's own codes on a
+ * the address is resolved, {@code SCOPE_READ_ONLY} 403 with {@code attempted}
+ * alone, and {@code HEADER_INVALID} 400 with no {@code data}. This service's own codes on a
  * bracket, a question and a deferral are raised the same way: {@code
  * CHILDREN_UNFINISHED} with the complete addresses of the children and the
  * confirmation handed out now, {@code OPTION_UNOFFERED} with {@code
@@ -54,9 +54,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * (C4.3): the row of {@code VERB_NOT_CARRIED} is the REST surface's, and its
  * MCP counterpart is held in {@code McpProtocolIT}.
  *
+ * <p>A row names the members of {@code data} beyond {@code attempted}
+ * (contract round 3): every refusal here falls once the route stands and
+ * carries {@code attempted}, and no member outside its row. {@code
+ * HEADER_INVALID} falls before the route and carries no {@code data}; {@code
+ * NOT_FOUND} carries none either.
+ *
  * <p>RED STATE, observed 2026-10-16 against the tree of the guards' commit, with
  * this class copied in: nine of its eleven cases, each on the code or the
- * status the table changed.
+ * status the table changed. RED STATE, observed against the tree before
+ * contract round 3: {@code PAYLOAD_MALFORMED} carried {@code offenders}, and
+ * {@code SCOPE_READ_ONLY} carried no {@code attempted}.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -107,13 +115,13 @@ class CodeTableIT {
     @Test
     void a_draw_that_finds_nothing_is_draw_empty_409() {
         SurfaceFixture.asExecutor(identity);
-        rest(given().contentType(ContentType.JSON)
+        restRow(given().contentType(ContentType.JSON)
                 .body(Map.of("apparatus", List.of("nothing-draws-this")))
                 .post(SurfaceFixture.collection() + ":claim_next"),
-            "DRAW_EMPTY", 409, "attempted", "next");
-        mcp(Mcp.call("dispatch_claim_next", Map.of("scope", SurfaceFixture.SCOPE,
+            "DRAW_EMPTY", 409, DRAW_EMPTY_ROW, "attempted", "next");
+        mcpRow(Mcp.call("dispatch_claim_next", Map.of("scope", SurfaceFixture.SCOPE,
                 "selector", SurfaceFixture.SELECTOR, "apparatus", List.of("nothing-draws-this"))),
-            "DRAW_EMPTY", "attempted", "next");
+            "DRAW_EMPTY", DRAW_EMPTY_ROW, "attempted", "next");
     }
 
     @Test
@@ -136,10 +144,11 @@ class CodeTableIT {
         String address = SurfaceFixture.address(id);
         SurfaceFixture.asExecutor(identity);
         Mcp.answer(Mcp.call("dispatch_claim", Map.of("address", address)));
-        rest(given().contentType(ContentType.JSON).body(Map.of("receipt", "not-the-holder-s"))
-                .post(SurfaceFixture.item(id) + ":renew"), "RECEIPT_WRONG", 409, "attempted");
-        mcp(Mcp.call("dispatch_renew", Map.of("address", address, "receipt", "not-the-holder-s")),
-            "RECEIPT_WRONG", "attempted");
+        restRow(given().contentType(ContentType.JSON).body(Map.of("receipt", "not-the-holder-s"))
+                .post(SurfaceFixture.item(id) + ":renew"), "RECEIPT_WRONG", 409, RECEIPT_WRONG_ROW,
+            "attempted", "state", "next");
+        mcpRow(Mcp.call("dispatch_renew", Map.of("address", address, "receipt", "not-the-holder-s")),
+            "RECEIPT_WRONG", RECEIPT_WRONG_ROW, "attempted", "state", "next");
     }
 
     @Test
@@ -225,10 +234,53 @@ class CodeTableIT {
             "SCOPE_READ_ONLY", List.of());
     }
 
+    /**
+     * A token that carries no capacity of the service is refused for who the
+     * caller is, before any address is resolved (the 403 class of C8.7): {@code
+     * ROLE_INSUFFICIENT} 403 with {@code attempted} and nothing beyond it, no
+     * state and no {@code next}, on a task the scope shows. Decided before the
+     * address, it answers the same bytes on a scope the caller cannot see, and
+     * so says nothing about that scope.
+     *
+     * <p>RED STATE, observed with the branch for a caller without a capacity
+     * taken out of the edge: the edge read the task for a caller it had not
+     * made and failed with a null pointer, a 500 outside the envelope.
+     */
+    @Test
+    void a_token_without_a_capacity_is_role_insufficient_without_a_situation() {
+        String id = SurfaceFixture.open("seen without a capacity", "code");
+        String address = SurfaceFixture.address(id);
+        String token = token(address);
+        SurfaceFixture.asCapacitylessToken(identity);
+
+        restRow(given().contentType(ContentType.JSON).header("If-Match", "\"" + token + "\"")
+                .post(SurfaceFixture.item(id) + ":withdraw"),
+            "ROLE_INSUFFICIENT", 403, List.of(), "attempted");
+        mcpRow(Mcp.call("dispatch_withdraw", Map.of("address", address, "conflict_token", token)),
+            "ROLE_INSUFFICIENT", List.of(), "attempted");
+
+        String hidden = "dispatch://" + NotFoundIdentityIT.INVISIBLE_SCOPE + "/"
+            + SurfaceFixture.SELECTOR + "/1.0";
+        NotFoundIdentityIT.stageInvisibleScope();
+        Response onTheVisible = given().contentType(ContentType.JSON)
+            .header("If-Match", "\"t\"").post(SurfaceFixture.item(id) + ":withdraw");
+        Response onTheHidden = given().contentType(ContentType.JSON)
+            .header("If-Match", "\"t\"").post(NotFoundIdentityIT.path(hidden) + ":withdraw");
+        assertThat(onTheHidden.statusCode()).isEqualTo(403);
+        assertThat(onTheHidden.asString()).as("the same bytes: nothing about the scope")
+            .isEqualTo(onTheVisible.asString());
+        assertThat(Mcp.call("dispatch_withdraw", Map.of("address", hidden,
+                "conflict_token", "t")).asString())
+            .isEqualTo(Mcp.call("dispatch_withdraw", Map.of("address", address,
+                "conflict_token", "t")).asString());
+    }
+
     @Test
     void a_surface_header_it_cannot_take_is_header_invalid_400() {
-        restRow(given().header("Kumbuka-Surface", "mcp").get(SurfaceFixture.collection()),
-            "HEADER_INVALID", 400, List.of());
+        Response refused = rest(given().header("Kumbuka-Surface", "mcp")
+            .get(SurfaceFixture.collection()), "HEADER_INVALID", 400);
+        assertThat(refused.jsonPath().getMap("$")).as("decided before the route: no data")
+            .doesNotContainKey("data");
     }
 
     // =======================================================================
@@ -237,8 +289,9 @@ class CodeTableIT {
 
     @Test
     void the_other_rows_answer_their_code_status_and_members() {
-        rest(given().contentType(ContentType.JSON).body("[1]").post(SurfaceFixture.collection()),
-            "PAYLOAD_MALFORMED", 400);
+        restRow(given().contentType(ContentType.JSON).body("[1]")
+                .post(SurfaceFixture.collection()), "PAYLOAD_MALFORMED", 400, List.of(),
+            "attempted");
         rest(given().get("/api/" + SurfaceFixture.SCOPE + "/sprint/1"), "ADDRESS_MALFORMED", 400);
         mcp(Mcp.call("dispatch_read", Map.of("address", "sprint/1.0")), "ADDRESS_MALFORMED",
             "offenders");
@@ -362,16 +415,20 @@ class CodeTableIT {
 
     // -----------------------------------------------------------------------
 
-    /** The members of data the rows the contract change replaced name, as the table has them. */
-    private static final List<String> CLAIM_ABSENT_ROW = List.of("attempted", "state", "next");
+    /**
+     * The members of data a row names beyond {@code attempted}, as the table
+     * of contract round 3 has them, and as this service declares its own.
+     */
+    private static final List<String> CLAIM_ABSENT_ROW = List.of("state", "next");
+    private static final List<String> RECEIPT_WRONG_ROW = List.of("state", "next");
+    private static final List<String> DRAW_EMPTY_ROW = List.of("next");
     private static final List<String> TRANSITION_REFUSED_ROW =
-        List.of("attempted", "state", "next", "waiting_for");
-    private static final List<String> ROLE_INSUFFICIENT_ROW = List.of("attempted", "next");
-    private static final List<String> CHILDREN_UNFINISHED_ROW =
-        List.of("attempted", "children", "confirmation");
-    private static final List<String> OPTION_UNOFFERED_ROW = List.of("attempted", "offenders");
+        List.of("state", "next", "waiting_for");
+    private static final List<String> ROLE_INSUFFICIENT_ROW = List.of("next");
+    private static final List<String> CHILDREN_UNFINISHED_ROW = List.of("children", "confirmation");
+    private static final List<String> OPTION_UNOFFERED_ROW = List.of("offenders");
     private static final List<String> DEFERRAL_PENDING_ROW =
-        List.of("attempted", "state", "next", "waiting_for");
+        List.of("state", "next", "waiting_for");
 
     /** The task's current conflict token, as its read hands it out. */
     private static String token(String address) {
@@ -385,9 +442,9 @@ class CodeTableIT {
     }
 
     /**
-     * A refusal over REST under a row that names its members: its code, its
-     * status, no member outside the row, and the members given as required.
-     * An empty row is a refusal with no data.
+     * A refusal over REST under a row that names its members beyond {@code
+     * attempted}: its code, its status, {@code attempted}, no member outside
+     * the row, and the members given as required.
      */
     private static void restRow(Response answer, String code, int status, List<String> row,
                                 String... required) {
@@ -403,13 +460,14 @@ class CodeTableIT {
     }
 
     @SuppressWarnings("unchecked")
-    private static void row(Map<String, Object> refusal, String what, List<String> row) {
-        if (row.isEmpty()) {
-            assertThat(refusal).as("%s carries no data", what).doesNotContainKey("data");
-            return;
-        }
-        assertThat(((Map<String, Object>) refusal.get("data")).keySet())
-            .as("%s carries no member outside its row", what).isSubsetOf(row);
+    private static void row(Map<String, Object> refusal, String what, List<String> beyond) {
+        Map<String, Object> data = (Map<String, Object>) refusal.get("data");
+        assertThat(data).as("%s falls once the route stands and carries attempted", what)
+            .isNotNull().containsKey("attempted");
+        List<String> row = new java.util.ArrayList<>(beyond);
+        row.add("attempted");
+        assertThat(data.keySet()).as("%s carries no member outside its row", what)
+            .isSubsetOf(row);
     }
 
     /** A refusal over REST: its code, its status, and the members of data the row names. */

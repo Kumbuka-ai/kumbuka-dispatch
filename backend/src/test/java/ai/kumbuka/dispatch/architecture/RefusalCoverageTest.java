@@ -83,7 +83,9 @@ class RefusalCoverageTest {
                 + "a code the marked test raises in a test that does not name it, must each "
                 + "be reported")
             .containsExactlyInAnyOrder(
-                "PLANTED_NEVER_THROWN is declared and no test raises it with a marked value",
+                "PLANTED_NEVER_THROWN is declared, the marked test names it as "
+                    + "RefusalCode.PLANTED_NEVER_THROWN in no recorder call, and no other test "
+                    + "is registered for it",
                 "SCOPE_LOCKED is raised by the marked test and registered elsewhere too",
                 "SCOPE_LOCKED is registered as raised by surface/UnexpectedFailureIT.java, "
                     + "which does not name it");
@@ -94,7 +96,8 @@ class RefusalCoverageTest {
         List<String> offences = new ArrayList<>();
         for (String code : declared) {
             if (!raised.contains(code) && !register.containsKey(code)) {
-                offences.add(code + " is declared and no test raises it with a marked value");
+                offences.add(code + " is declared, the marked test names it as RefusalCode."
+                    + code + " in no recorder call, and no other test is registered for it");
             }
         }
         register.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {

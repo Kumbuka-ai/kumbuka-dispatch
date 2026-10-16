@@ -9,13 +9,16 @@ package ai.kumbuka.dispatch.adapter.payload;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A JSON-RPC 2.0 response that carries an error. The id stands even where it
  * is null: the protocol answers an envelope it could not read with a null id.
+ *
+ * @param id absent where the request carried none; written as null, as JSON-RPC asks
  */
 public record RpcErrorPayload(
     @JsonProperty("jsonrpc") String jsonrpc,
-    @JsonInclude(JsonInclude.Include.ALWAYS) @JsonProperty("id") Object id,
+    @JsonInclude(JsonInclude.Include.ALWAYS) @JsonProperty("id") @Nullable Object id,
     @JsonProperty("error") RpcErrorBodyPayload error) {
 }

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -142,6 +149,37 @@ class TaskKeyOverlapIT {
         assertThat(TaskStage.texts(open.identity()))
             .containsExactly("dispatch=the commission", "dispatch[a]=one more thing");
         assertThat(overlap.waited()).as("the second waited on the first").isTrue();
+    }
+
+    /**
+     * Two keys whose parts differ only in where a unit separator falls do not
+     * wait on each other: the key lock is taken over the parts, not over the
+     * parts joined by a character a key may itself carry.
+     *
+     * <p>RED STATE, observed against the lock over the parts joined by {@code
+     * chr(31)}: caller {@code x} under key {@code y␟z} and caller {@code x␟y}
+     * under key {@code z} took one lock, and the second waited on the first.
+     */
+    @Test
+    void keys_that_join_alike_across_a_unit_separator_take_two_locks() throws Exception {
+        TaskStage.Staged one = stage.open(SELECTOR);
+        TaskStage.Staged two = stage.open(SELECTOR);
+        Actor plain = new Actor("x", Actor.Kind.EXECUTOR);
+        Actor separated = new Actor("x\u001Fy", Actor.Kind.EXECUTOR);
+        Callable<TaskClaim> first = () -> tasks.claim(SCOPE, one.address(), TaskCall.by(plain),
+            IdempotencyKey.of("y\u001Fz"));
+        Callable<TaskClaim> second = () -> tasks.claim(SCOPE, two.address(),
+            TaskCall.by(separated), IdempotencyKey.of("z"));
+
+        Overlap overlap = overlap(first, second);
+
+        assertThat(overlap.waited())
+            .as("two claims on two tasks share no lock but the key's: two keys, two locks, "
+                + "and the second did not wait")
+            .isFalse();
+        assertThat(((TaskClaim) overlap.second()).task().address()).isEqualTo(two.address());
+        assertThat(TaskStage.row(one.identity()).holder()).isEqualTo("x");
+        assertThat(TaskStage.row(two.identity()).holder()).isEqualTo("x\u001Fy");
     }
 
     // -----------------------------------------------------------------------

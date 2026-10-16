@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
@@ -15,8 +16,10 @@ import java.util.List;
  * One page of a listing, and exactly that (C9.2): the tasks, and the cursor
  * of the next page, absent on the last, which is the only sign that it is the
  * last.
+ *
+ * @param nextCursor absent on the last page
  */
 public record PagePayload(
     @JsonProperty("objects") List<TaskPayload> objects,
-    @JsonProperty("next_cursor") String nextCursor) {
+    @JsonProperty("next_cursor") @Nullable String nextCursor) {
 }

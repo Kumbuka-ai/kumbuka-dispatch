@@ -13,6 +13,7 @@ import ai.kumbuka.dispatch.adapter.payload.ToolPayload;
 import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Texts;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -108,7 +109,8 @@ public final class McpTools {
 
     /** A JSON Schema object with {@code additionalProperties} closed. */
     private static SchemaPayload closedObject(Map<String, SchemaPayload> properties,
-                                              List<String> required, String description) {
+                                              List<String> required,
+                                              @Nullable String description) {
         return new SchemaPayload(OBJECT, properties, List.copyOf(required), false, null, null,
             null, null, description);
     }

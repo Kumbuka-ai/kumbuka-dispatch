@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.tenancy;
 
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -305,8 +312,9 @@ class TaskStockCopyIT {
             c.setAutoCommit(false);
             exec(c, "SELECT set_config('app.tenant_id', '" + TENANT_A + "', true)");
             long id = scalarLong(c, "INSERT INTO dispatch.task (tenant_id, scope_id, selector_id, "
-                + "number, sub, title, apparatus) SELECT tenant_id, scope_id, id, 900, 0, 'new', "
-                + "'code' FROM dispatch.selector WHERE name = 'sprint' RETURNING id");
+                + "number, sub, title, apparatus, updated_at) SELECT tenant_id, scope_id, id, 900, "
+                + "0, 'new', 'code', now() FROM dispatch.selector WHERE name = 'sprint' "
+                + "RETURNING id");
             c.rollback();
             assertThat(id)
                 .as("the identity counter stands above the highest copied id")

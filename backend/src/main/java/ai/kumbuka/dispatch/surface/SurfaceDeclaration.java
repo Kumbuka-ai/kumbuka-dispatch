@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * The declaration of this service's assistant surface, in one machine-readable
@@ -121,13 +122,13 @@ public final class SurfaceDeclaration {
             call.put("rest_name", verb.verb());
             call.put("effect_class", verb.effectClass().name());
             call.put("transition", verb.isTransition());
-            if (verb.role() != null) {
+            if (verb.role().isPresent()) {
                 // Only a restricted call carries a role (C5.4).
                 call.put("role", verb.roleName());
             }
             call.put(DESCRIPTION, verb.description());
             if (verb.isTransition()) {
-                call.put("next_step", NextList.does(verb.transition()));
+                call.put("next_step", NextList.does(verb.transition().orElseThrow()));
             }
             call.put("arguments", argumentsAsMaps(verb));
             Map<String, Object> answer = new LinkedHashMap<>();
@@ -154,8 +155,9 @@ public final class SurfaceDeclaration {
                 declared.put("default", typed(argument));
             }
             declared.put(DESCRIPTION, argument.description());
-            if (argument.itemPattern() != null) {
-                declared.put("item_pattern", argument.itemPattern());
+            String itemPattern = argument.itemPattern();
+            if (itemPattern != null) {
+                declared.put("item_pattern", itemPattern);
             }
             if (!argument.values().isEmpty()) {
                 declared.put("values", argument.valueNames());
@@ -173,12 +175,16 @@ public final class SurfaceDeclaration {
         return List.copyOf(arguments);
     }
 
-    /** A fallback as a value of the argument's own type: a number, a flag or text. */
+    /**
+     * A fallback as a value of the argument's own type: a number, a flag or
+     * text. Read only for an optional argument, which declares one.
+     */
     private static Object typed(Argument argument) {
+        String fallback = Objects.requireNonNull(argument.fallback());
         return switch (argument.type()) {
-            case Argument.INTEGER -> Long.parseLong(argument.fallback());
-            case Argument.BOOLEAN -> Boolean.parseBoolean(argument.fallback());
-            default -> argument.fallback();
+            case Argument.INTEGER -> Long.parseLong(fallback);
+            case Argument.BOOLEAN -> Boolean.parseBoolean(fallback);
+            default -> fallback;
         };
     }
 

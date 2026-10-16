@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.domain;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -189,13 +191,25 @@ public enum TaskVerb {
                 Proof proof) {
     }
 
-    /** Check 7 of a row: the payload shape, and what stands in for an absent one. */
-    record Takes(Class<? extends TaskInput> shape, TaskInput fallback) {
+    /**
+     * Check 7 of a row: the payload shape, and what stands in for an absent one.
+     *
+     * @param fallback the payload of a call that carries none; absent where the
+     *                 row requires its payload
+     */
+    record Takes(Class<? extends TaskInput> shape, @Nullable TaskInput fallback) {
     }
 
-    /** The effect of a row: target state, attributes set, holding, text row. */
-    record Moves(TaskState target, HoldReason holdReason, Outcome outcome, Holding holding,
-                 TextType text) {
+    /**
+     * The effect of a row: target state, attributes set, holding, text row.
+     *
+     * @param holdReason the hold reason the row sets; absent where the payload or
+     *                   nothing sets it
+     * @param outcome    the outcome the row closes with; absent where it does not close
+     * @param text       the text row the verb inserts; absent where it inserts none
+     */
+    record Moves(TaskState target, @Nullable HoldReason holdReason, @Nullable Outcome outcome,
+                 Holding holding, @Nullable TextType text) {
     }
 
     private static When when(Set<TaskState> states, Condition condition, Relation relation,
@@ -203,12 +217,13 @@ public enum TaskVerb {
         return new When(Set.copyOf(states), condition, relation, lock, proof);
     }
 
-    private static Takes takes(Class<? extends TaskInput> shape, TaskInput fallback) {
+    private static Takes takes(Class<? extends TaskInput> shape, @Nullable TaskInput fallback) {
         return new Takes(shape, fallback);
     }
 
-    private static Moves moves(TaskState target, HoldReason holdReason, Outcome outcome,
-                               Holding holding, TextType text) {
+    private static Moves moves(TaskState target, @Nullable HoldReason holdReason,
+                               @Nullable Outcome outcome, Holding holding,
+                               @Nullable TextType text) {
         return new Moves(target, holdReason, outcome, holding, text);
     }
 
@@ -255,12 +270,12 @@ public enum TaskVerb {
     }
 
     /** The hold reason the row sets itself, or null where the payload or nothing sets it. */
-    public HoldReason holdReason() {
+    public @Nullable HoldReason holdReason() {
         return moves.holdReason();
     }
 
     /** The outcome the row closes with, or null where it does not close. */
-    public Outcome outcome() {
+    public @Nullable Outcome outcome() {
         return moves.outcome();
     }
 
@@ -269,7 +284,7 @@ public enum TaskVerb {
     }
 
     /** The text row the verb inserts, or null. */
-    public TextType text() {
+    public @Nullable TextType text() {
         return moves.text();
     }
 
@@ -287,8 +302,9 @@ public enum TaskVerb {
      */
     TaskInput payloadOf(TaskCall call) {
         TaskInput given = call.payload();
-        if (given instanceof TaskInput.Nothing && takes.fallback() != null) {
-            return takes.fallback();
+        TaskInput fallback = takes.fallback();
+        if (given instanceof TaskInput.Nothing && fallback != null) {
+            return fallback;
         }
         if (!takes.shape().isInstance(given)) {
             throw new IllegalArgumentException(wireName + " takes a " + takes.shape().getSimpleName()

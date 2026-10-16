@@ -1,11 +1,11 @@
 {
-  "$comment": "The shape of a service declaration, rules C5.3 and C5.4 of the platform service contract (platform-specs code-conventions/service-contract.md, commit df81898). Held in the test tree so the expectation does not come from the declaration it checks. Read by DeclarationShapeTest. 'description' per argument and 'value_descriptions' are admitted beyond C5.4: the bundles ArgumentDescriptions and ValueDescriptions of C12.2 publish them through the declaration.",
+  "$comment": "The shape of a service declaration, rules C5.3 and C5.4 of the platform service contract (platform-specs code-conventions/service-contract.md, commit 37f4d6e, round 3; C5.3 and C5.4 unchanged since df81898). Held in the test tree so the expectation does not come from the declaration it checks. Read by DeclarationShapeTest. 'description' per argument and 'value_descriptions' are admitted beyond C5.4: the bundles ArgumentDescriptions and ValueDescriptions of C12.2 publish them through the declaration.",
   "type": "object",
   "required": ["version", "shape_version", "service", "scheme", "address_form", "effect_classes", "calls", "reasons"],
   "additionalProperties": false,
   "properties": {
     "version": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "shape_version": {"type": "string"},
+    "shape_version": {"type": "string", "const": "3"},
     "service": {"type": "string", "pattern": "^[a-z]+$"},
     "scheme": {"type": "string", "pattern": "^[a-z]+$"},
     "address_form": {"type": "string"},

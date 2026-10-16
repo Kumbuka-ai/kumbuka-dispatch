@@ -7,6 +7,10 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import org.jspecify.annotations.Nullable;
+
+import java.util.Optional;
+
 /**
  * A refusal the surface decides: grammar and transport (C8.1).
  *
@@ -25,7 +29,8 @@ public class SurfaceException extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
     private final transient Refusal refusal;
-    private final String allow;
+    /** The methods of the address for a 405; absent on every other refusal. */
+    private final @Nullable String allow;
 
     public SurfaceException(Refusal refusal) {
         this(refusal, null);
@@ -35,7 +40,7 @@ public class SurfaceException extends RuntimeException {
      * A refusal of a method or a verb at an address, with the methods the
      * address answers to, for the {@code Allow} header of a 405.
      */
-    public SurfaceException(Refusal refusal, String allow) {
+    public SurfaceException(Refusal refusal, @Nullable String allow) {
         super(refusal.code().name(), null, false, false);
         this.refusal = refusal;
         this.allow = allow;
@@ -45,8 +50,8 @@ public class SurfaceException extends RuntimeException {
         return refusal;
     }
 
-    /** The methods the address answers to, or null where the refusal is not a 405. */
-    public String allow() {
-        return allow;
+    /** The methods the address answers to; empty where the refusal is not a 405. */
+    public Optional<String> allow() {
+        return Optional.ofNullable(allow);
     }
 }

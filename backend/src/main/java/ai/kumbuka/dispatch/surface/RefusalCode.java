@@ -111,6 +111,15 @@ public enum RefusalCode {
     /** The call would close a bracket root with unfinished children. */
     CHILDREN_UNFINISHED(409),
 
+    /** A child is created only under a root that was sent; this one is a draft. */
+    ROOT_UNSENT(409),
+
+    /** A child is created only under a root that is not closed; this one is. */
+    ROOT_CLOSED(409),
+
+    /** A draft root is deleted only while no task stands under it. */
+    CHILDREN_PRESENT(409),
+
     /**
      * The answer names an option the question does not offer, or free text
      * the question does not admit. Decided against the question the task
@@ -173,6 +182,9 @@ public enum RefusalCode {
             case LEASE_LAPSED -> CLAIM_ABSENT;
             case RECEIPT_MISMATCH -> RECEIPT_WRONG;
             case CONFIRMATION_REQUIRED, CONFIRMATION_STALE -> CHILDREN_UNFINISHED;
+            case ROOT_UNSENT -> ROOT_UNSENT;
+            case ROOT_CLOSED -> ROOT_CLOSED;
+            case CHILDREN_PRESENT -> CHILDREN_PRESENT;
             case ANSWER_NOT_AN_OPTION -> OPTION_UNOFFERED;
             case DEFERRAL_PENDING -> DEFERRAL_PENDING;
             case NOTHING_TO_CLAIM -> DRAW_EMPTY;
@@ -221,6 +233,9 @@ public enum RefusalCode {
             case RECEIPT_WRONG -> remedies.receiptWrong();
             case DRAW_EMPTY -> remedies.drawEmpty();
             case CHILDREN_UNFINISHED -> remedies.childrenUnfinished();
+            case ROOT_UNSENT -> remedies.rootUnsent();
+            case ROOT_CLOSED -> remedies.rootClosed();
+            case CHILDREN_PRESENT -> remedies.childrenPresent();
             case OPTION_UNOFFERED -> remedies.optionUnoffered();
             case DEFERRAL_PENDING -> remedies.deferralPending();
             case IDEMPOTENCY_KEY_REUSED -> remedies.idempotencyKeyReused();
@@ -287,6 +302,9 @@ public enum RefusalCode {
         RECEIPT_WRONG(RefusalCode.RECEIPT_WRONG, "receiptWrong"),
         CHILDREN_UNFINISHED(RefusalCode.CHILDREN_UNFINISHED, "childrenUnfinished"),
         CHILDREN_CONFIRMATION_STALE(RefusalCode.CHILDREN_UNFINISHED, "childrenConfirmationStale"),
+        ROOT_UNSENT(RefusalCode.ROOT_UNSENT, "rootUnsent"),
+        ROOT_CLOSED(RefusalCode.ROOT_CLOSED, "rootClosed"),
+        CHILDREN_PRESENT(RefusalCode.CHILDREN_PRESENT, "childrenPresent"),
         OPTION_UNOFFERED(RefusalCode.OPTION_UNOFFERED, "optionUnoffered"),
         FREE_TEXT_UNOFFERED(RefusalCode.OPTION_UNOFFERED, "freeTextUnoffered"),
         DEFERRAL_PENDING(RefusalCode.DEFERRAL_PENDING, "deferralPending"),
@@ -299,6 +317,7 @@ public enum RefusalCode {
         ARGUMENT_UNKNOWN(RefusalCode.ARGUMENT_UNKNOWN, "argumentUnknown"),
         ARGUMENT_UNKNOWN_UNDER_FIELDS(RefusalCode.ARGUMENT_UNKNOWN, "argumentUnknownUnderFields"),
         CALL_UNKNOWN(RefusalCode.VERB_NOT_CARRIED, "callUnknown"),
+        METHOD_NOT_CARRIED(RefusalCode.VERB_NOT_CARRIED, "methodNotCarried"),
         ARGUMENT_MISSING(RefusalCode.ARGUMENT_MISSING, "argumentMissing"),
         ARGUMENT_MISSING_OPTIONS(RefusalCode.ARGUMENT_MISSING, "argumentMissingOptions"),
         ARGUMENT_MISSING_ANSWER(RefusalCode.ARGUMENT_MISSING, "argumentMissingAnswer"),

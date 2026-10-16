@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.tenancy;
 
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -156,10 +163,10 @@ final class Db {
             throws SQLException {
         try (var st = c.prepareStatement("""
                 INSERT INTO dispatch.task
-                    (tenant_id, scope_id, selector_id, number, sub, title, apparatus)
+                    (tenant_id, scope_id, selector_id, number, sub, title, apparatus, updated_at)
                 VALUES (?::uuid, ?::uuid, ?,
                         (SELECT coalesce(max(number), 0) + 1 FROM dispatch.task),
-                        0, ?, 'code')
+                        0, ?, 'code', now())
                 RETURNING id
                 """)) {
             st.setString(1, tenant.toString());

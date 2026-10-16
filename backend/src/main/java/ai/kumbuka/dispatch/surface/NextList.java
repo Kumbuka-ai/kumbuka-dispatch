@@ -17,6 +17,7 @@ import ai.kumbuka.dispatch.domain.TaskView;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The calls open to a caller, with one sentence each, and what the task waits
@@ -83,28 +84,29 @@ public final class NextList {
     }
 
     /**
-     * What the task waits for, where nothing is open to the caller; null
+     * What the task waits for, where nothing is open to the caller; empty
      * otherwise.
      *
      * <p>A parked task -- on hold without a holder, after its third lapsed
      * lease -- waits for a person: only the web interface moves it out of the
      * hold, or the commissioner withdraws it.
      */
-    public static String waitingFor(TaskView view, List<Step> next, Instant now) {
+    public static Optional<String> waitingFor(TaskView view, List<Step> next, Instant now) {
         if (!next.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         Notices notices = Texts.notices();
-        return switch (view.state()) {
+        Instant notBefore = view.notBefore();
+        return Optional.of(switch (view.state()) {
             case DRAFT -> notices.waitingDraft();
-            case OPEN -> view.notBefore() != null && view.notBefore().isAfter(now)
+            case OPEN -> notBefore != null && notBefore.isAfter(now)
                 ? notices.waitingDeferred()
                 : notices.waitingOpen();
             case ACTIVE -> notices.waitingActive();
             case ON_HOLD -> onHold(view, notices);
             case DELIVERED -> notices.waitingDelivered();
             case CLOSED -> notices.waitingClosed();
-        };
+        });
     }
 
     private static String onHold(TaskView view, Notices notices) {

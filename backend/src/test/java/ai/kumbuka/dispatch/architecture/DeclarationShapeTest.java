@@ -27,7 +27,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>The schema is {@code contract/declaration-shape.schema.json}, written
  * from the contract and from nothing this service produces. It closes every
  * level the contract enumerates, so a member the contract does not name is
- * reported as much as one it requires and that is missing. One rule is beyond
+ * reported as much as one it requires and that is missing, with one documented
+ * exception: an argument may carry {@code description} and {@code
+ * value_descriptions}, which C5.4 does not name and the bundles of C12.2
+ * publish through the declaration; the schema's {@code $comment} says so. The
+ * {@code shape_version} is pinned to the one value C5.5 names for every
+ * service, so the expectation stands here and not in the code that writes the
+ * declaration. One rule is beyond
  * what the schema subset says and is checked here: an argument's {@code
  * default} is a value of the argument's own JSON type, never its text.
  *
@@ -42,7 +48,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>The validator reads the keywords the schema uses and no others: {@code
  * type}, {@code required}, {@code properties}, {@code additionalProperties},
- * {@code items}, {@code minItems}, {@code enum} and {@code pattern}. A keyword
+ * {@code items}, {@code minItems}, {@code enum}, {@code const} and {@code
+ * pattern}. A keyword
  * it does not read is refused rather than ignored, so the schema cannot say
  * more than is checked.
  */
@@ -51,7 +58,7 @@ public class DeclarationShapeTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private static final List<String> KEYWORDS = List.of("$comment", "type", "required",
-        "properties", "additionalProperties", "items", "minItems", "enum", "pattern");
+        "properties", "additionalProperties", "items", "minItems", "enum", "const", "pattern");
 
     /** The violations of one declaration, by JSON path; empty where it conforms. */
     public static List<String> violations(Map<String, Object> declaration) {
@@ -102,6 +109,12 @@ public class DeclarationShapeTest {
             .as("RED STATE, observed: a required member missing and an undeclared one present")
             .containsExactly("$: missing 'address_form'", "$: 'verbs' is not a member of this "
                 + "level");
+
+        Map<String, Object> otherShape = conforming();
+        otherShape.put("shape_version", "2");
+        assertThat(violations(otherShape))
+            .as("RED STATE, observed: a shape version other than the one C5.5 names")
+            .containsExactly("$.shape_version: '2' is not '3'");
     }
 
     // ======================================================================
@@ -124,6 +137,9 @@ public class DeclarationShapeTest {
         }
         if (schema.get("enum") instanceof List<?> allowed && !allowed.contains(value)) {
             found.add(path + ": '" + value + "' is not one of " + allowed);
+        }
+        if (schema.containsKey("const") && !schema.get("const").equals(value)) {
+            found.add(path + ": '" + value + "' is not '" + schema.get("const") + "'");
         }
         if (schema.get("pattern") instanceof String pattern && value instanceof String text
                 && !Pattern.compile(pattern).matcher(text).find()) {
@@ -235,7 +251,7 @@ public class DeclarationShapeTest {
         call.put("refusals", List.of("NOT_FOUND"));
         Map<String, Object> declaration = new LinkedHashMap<>();
         declaration.put("version", "sha256:" + "0".repeat(64));
-        declaration.put("shape_version", "1");
+        declaration.put("shape_version", "3");
         declaration.put("service", "thing");
         declaration.put("scheme", "thing");
         declaration.put("address_form", "thing://<scope>/<selector>/<id>");

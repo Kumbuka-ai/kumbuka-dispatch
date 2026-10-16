@@ -73,7 +73,7 @@ class DeclarationConformanceIT {
             .containsExactlyInAnyOrderElementsOf(TargetSurface.OTHERS);
         for (ProcessVerb call : ProcessVerb.values()) {
             if (call.isTransition()) {
-                assertThat(call.transition().wireName())
+                assertThat(call.transition().orElseThrow().wireName())
                     .as("a transition is bound to the row of the table of its own name")
                     .isEqualTo(call.verb());
             }
@@ -102,23 +102,19 @@ class DeclarationConformanceIT {
     @Test
     void the_mandatory_arguments_are_the_ones_the_concept_names() {
         for (ProcessVerb call : ProcessVerb.values()) {
-            Argument remark = call.argument("remark", Argument.Placement.FIELDS);
-            if (remark != null) {
+            call.argument("remark", Argument.Placement.FIELDS).ifPresent(remark ->
                 assertThat(remark.required())
                     .as("remark is mandatory on fail, reject and rework and optional "
                         + "elsewhere: %s", call.call())
-                    .isEqualTo(TargetSurface.REMARK_REQUIRED.contains(call.verb()));
-            }
-            Argument duration = call.argument("duration", Argument.Placement.TOP);
-            if (duration != null) {
+                    .isEqualTo(TargetSurface.REMARK_REQUIRED.contains(call.verb())));
+            call.argument("duration", Argument.Placement.TOP).ifPresent(duration ->
                 assertThat(duration.required())
-                    .as("a duration is optional everywhere: %s", call.call()).isFalse();
-            }
+                    .as("a duration is optional everywhere: %s", call.call()).isFalse());
             assertThat(call.argument("date", Argument.Placement.FIELDS))
-                .as("create takes no date, and nothing else does: %s", call.call()).isNull();
+                .as("create takes no date, and nothing else does: %s", call.call()).isEmpty();
         }
         for (String name : TargetSurface.CLAIM_NEXT_REQUIRED) {
-            assertThat(ProcessVerb.CLAIM_NEXT.argument(name, Argument.Placement.TOP).required())
+            assertThat(ProcessVerb.CLAIM_NEXT.declared(name, Argument.Placement.TOP).required())
                 .as("%s is mandatory on claim_next", name).isTrue();
         }
     }
@@ -154,7 +150,7 @@ class DeclarationConformanceIT {
         assertThat(ProcessVerb.CLAIM.description()).isEqualTo(TargetSurface.CLAIM_DESCRIPTION);
         assertThat(ProcessVerb.CLAIM_NEXT.description())
             .isEqualTo(TargetSurface.CLAIM_NEXT_DESCRIPTION);
-        assertThat(ProcessVerb.CLAIM_NEXT.argument("apparatus", Argument.Placement.TOP)
+        assertThat(ProcessVerb.CLAIM_NEXT.declared("apparatus", Argument.Placement.TOP)
                 .description())
             .isEqualTo(TargetSurface.APPARATUS_ARGUMENT);
         assertThat(ProcessVerb.CLAIM.description())
@@ -176,7 +172,7 @@ class DeclarationConformanceIT {
                 .isEqualTo(described.get(call.call()));
         }
         assertThat(Contract.collapsed(ProcessVerb.CLAIM_NEXT
-                .argument("apparatus", Argument.Placement.TOP).description()))
+                .declared("apparatus", Argument.Placement.TOP).description()))
             .isEqualTo(Contract.quotedUnder("### 3.3"));
     }
 

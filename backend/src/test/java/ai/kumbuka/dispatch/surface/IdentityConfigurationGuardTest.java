@@ -7,6 +7,7 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.fixture.LogLines;
 import io.smallrye.config.PropertiesConfigSource;
 import io.smallrye.config.SmallRyeConfigBuilder;
 import org.eclipse.microprofile.config.Config;
@@ -16,7 +17,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -64,6 +68,31 @@ class IdentityConfigurationGuardTest {
             .as("and the platform's one audience (ADR-0034) is configured, with the "
                 + "environment variable a deployment overrides it with")
             .contains(IdentityConfigurationGuard.AUDIENCE_KEY + "=${DISPATCH_OIDC_AUDIENCE:");
+    }
+
+    /**
+     * The refusal stands in a log line of its own: the log format carries no
+     * exception (C13.1, C13.2), so the reason a start is refused reaches an
+     * operator's crash loop only through that line.
+     */
+    @Test
+    void the_refusal_stands_in_a_log_line_of_its_own() {
+        List<LogRecord> lines = LogLines.of(IdentityConfigurationGuard.class, () ->
+            IdentityConfigurationGuard.verify(configOf(
+                IdentityConfigurationGuard.PRINCIPAL_CLAIM_KEY,
+                IdentityConfigurationGuard.EXPECTED_PRINCIPAL_CLAIM)));
+
+        assertThat(lines)
+            .as("RED STATE, observed with the guard only throwing: no line said why the start "
+                + "was refused, and the format no longer prints the exception that did")
+            .singleElement()
+            .satisfies(line -> {
+                assertThat(line.getLevel().intValue()).as("WARN, a configuration anomaly")
+                    .isEqualTo(Level.WARNING.intValue());
+                assertThat(LogLines.text(line)).contains(IdentityConfigurationGuard.AUDIENCE_KEY)
+                    .contains("DISPATCH_OIDC_AUDIENCE");
+                assertThat(line.getThrown()).as("the line carries no exception").isNull();
+            });
     }
 
     @Test
