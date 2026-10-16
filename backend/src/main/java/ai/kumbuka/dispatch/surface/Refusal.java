@@ -310,6 +310,30 @@ public record Refusal(RefusalCode code, String message, Data data) {
     }
 
     /**
+     * A child named a bracket root that is still a draft. Carries the call and
+     * nothing of the root: the root is the caller's own draft, and sending it
+     * is what opens the bracket (TAR-0004 section 2).
+     */
+    public static Refusal rootUnsent(VerbName call) {
+        return of(Message.ROOT_UNSENT, Texts.refusals().rootUnsent(call), Data.attempted(call));
+    }
+
+    /** A child named a bracket root that is closed. Carries the call alone. */
+    public static Refusal rootClosed(VerbName call) {
+        return of(Message.ROOT_CLOSED, Texts.refusals().rootClosed(call), Data.attempted(call));
+    }
+
+    /**
+     * A draft bracket root was to be deleted while tasks stand under it.
+     *
+     * @param children the complete address of each task under the root
+     */
+    public static Refusal childrenPresent(VerbName call, List<String> children) {
+        return of(Message.CHILDREN_PRESENT, Texts.refusals().childrenPresent(call),
+            Data.attempted(call).children(children, null));
+    }
+
+    /**
      * The answer names an option the question does not offer, or free text it
      * does not admit. The options are the question's text, so they are pointed
      * at by the read and not listed.

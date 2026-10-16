@@ -131,7 +131,8 @@ public final class DeclarationTranscript {
             reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING",
                 "CHILDREN_UNFINISHED"), address, token, confirmation, remark);
         put(calls, "create", "CREATE", "TASK_LEAN_CREATED",
-            reasons(WRITE, "TRANSITION_REFUSED", "IDEMPOTENCY_KEY_REUSED"), scope, selector,
+            reasons(WRITE, "TRANSITION_REFUSED", "IDEMPOTENCY_KEY_REUSED", "ROOT_UNSENT",
+                "ROOT_CLOSED"), scope, selector,
             "parent:string:TOP:optional", key, "title:string:FIELDS:required",
             "apparatus:string:FIELDS:required", "text:string:FIELDS:optional",
             "metadata:object:FIELDS:optional");
@@ -140,7 +141,8 @@ public final class DeclarationTranscript {
             "title:string:FIELDS:optional", "apparatus:string:FIELDS:optional",
             "text:string:FIELDS:optional", "metadata:object:FIELDS:optional");
         put(calls, "delete", "ITEM_DELETE", "TASK_DELETED",
-            reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token);
+            reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING",
+                "CHILDREN_PRESENT"), address, token);
         put(calls, "read", "ITEM_READ", "TASK_HEAD", reasons(List.of()), address);
         put(calls, "read_text", "ITEM_READ_CALL", "TASK_TEXT",
             reasons(List.of(), "CLAIM_HELD", "CLAIM_ABSENT"), address, "part:string:TOP:required");

@@ -482,6 +482,13 @@ public enum ProcessVerb {
         if (this == CLAIM) {
             codes.add(RefusalCode.DEFERRAL_PENDING);
         }
+        if (this == CREATE) {
+            codes.add(RefusalCode.ROOT_UNSENT);
+            codes.add(RefusalCode.ROOT_CLOSED);
+        }
+        if (this == DELETE) {
+            codes.add(RefusalCode.CHILDREN_PRESENT);
+        }
         if (this == CLAIM_NEXT) {
             codes.add(RefusalCode.DRAW_EMPTY);
         }

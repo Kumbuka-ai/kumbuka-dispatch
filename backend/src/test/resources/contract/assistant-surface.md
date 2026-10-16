@@ -12,6 +12,7 @@ sources:
   - "platform-specs 0f3978e, code-conventions/service-contract.md: CLAIM_ABSENT, TRANSITION_REFUSED, ROLE_INSUFFICIENT, SCOPE_READ_ONLY as a row of the table, HEADER_INVALID, rules C14.4 and C14.5, the members of data"
   - "platform-specs ff0a4ba, code-conventions/service-contract.md, contract round 2: the names declaration and whoami reserved (C3.2), data.children as complete addresses, accepts as DEC-0042 now has it"
   - "the operator's addendum of 2026-10-16 to this service: CHILDREN_UNFINISHED and OPTION_UNOFFERED, codes of this service"
+  - "platform-specs ff0a4ba, TAR-0004 sections 2 and 3 and concept section 2.5: the bracket rule (ROOT_UNSENT, ROOT_CLOSED, CHILDREN_PRESENT) and no addendum to the commission of a delivered task"
 ---
 <!--
 Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
@@ -308,7 +309,11 @@ no `offenders`: it lists the arguments the level accepts under `data.accepts`, w
 and a call this service does not have is answered with the calls there are under `data.accepts`
 and no `attempted`. `CHILDREN_UNFINISHED` names the unfinished children of the bracket root
 under `data.children`, each by its complete address, beside `data.confirmation`, the one handed
-out now. `OPTION_UNOFFERED` names the field of the answer under `data.offenders` and points at the
+out now. A child is created only under a root that was sent and is not closed: `ROOT_UNSENT` and
+`ROOT_CLOSED` carry `attempted` and nothing more. A draft root under which any task stands is not
+deleted: `CHILDREN_PRESENT` names each task under it by its complete address in `data.children`,
+and nothing is deleted. A delivered task takes no addendum to its commission:
+`TRANSITION_REFUSED`, whose `next` names the rework that takes its place. `OPTION_UNOFFERED` names the field of the answer under `data.offenders` and points at the
 read for the options. `CONFLICT_TOKEN_STALE` carries the task as it stands -- `data.address`,
 `data.fields`, `data.conflict_token` and `data.service` (DEC-0041) -- and `UNEXPECTED_FAILURE` its
 reference in `data.reference`. `VERB_NOT_CARRIED` lists the calls the address carries under
@@ -336,6 +341,9 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `CHILDREN_UNFINISHED` | Repeat the call with data.confirmation, or finish the tasks in data.children first. |
 | `OPTION_UNOFFERED` | Answer with one of the options the read of the task lists, or with free text where the question admits it. |
 | `DEFERRAL_PENDING` | Take the task up after that instant, or take up another task now. |
+| `ROOT_UNSENT` | Send the root first, then create the child under it. |
+| `ROOT_CLOSED` | Create the task as a root of a bracket of its own, or under a root that is open. |
+| `CHILDREN_PRESENT` | Send the root and close it as a bracket root; data.children lists the tasks under it. |
 | `PAGE_SIZE_REJECTED` | Send page_size as a whole number within the bounds the message names. |
 | `CURSOR_MALFORMED` | Call the query again from the first page. |
 | `CURSOR_FOREIGN` | Repeat the call with the arguments that handed the cursor out. |
@@ -380,6 +388,9 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `textHolderLapsed` | `CLAIM_ABSENT` | `{call} reads the text of a task its executor holds, and your lease on this one ended.` |
 | `receiptWrong` | `RECEIPT_WRONG` | `{call} needs the receipt your claim handed out for this task: the receipt given is a different one.` |
 | `childrenUnfinished` | `CHILDREN_UNFINISHED` | `{call} would close a bracket root while tasks of its bracket are unfinished; data.children lists them. Repeat the call with data.confirmation to withdraw them and close the root.` |
+| `rootUnsent` | `ROOT_UNSENT` | `{call} names a bracket root that is still a draft, and a child is created only under a root that was sent.` |
+| `rootClosed` | `ROOT_CLOSED` | `{call} names a bracket root that is closed, and a closed root takes no further child.` |
+| `childrenPresent` | `CHILDREN_PRESENT` | `{call} would delete a bracket root while tasks stand under it; data.children lists them, and nothing was deleted.` |
 | `childrenConfirmationStale` | `CHILDREN_UNFINISHED` | `{call} carries a confirmation that no longer holds: the unfinished tasks of the bracket changed since it was handed out, and data.children lists them now. Repeat the call with the one in data.confirmation.` |
 | `optionUnoffered` | `OPTION_UNOFFERED` | `{call} names an option the question does not offer; data.offenders names the field, and the read of the task lists the options.` |
 | `freeTextUnoffered` | `OPTION_UNOFFERED` | `{call} answers in free text, and the question admits none; data.offenders names the field, and the read of the task lists the options.` |

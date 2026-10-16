@@ -78,6 +78,15 @@ public interface RefusalRemedies {
     String childrenUnfinished();
 
     @Message
+    String rootUnsent();
+
+    @Message
+    String rootClosed();
+
+    @Message
+    String childrenPresent();
+
+    @Message
     String optionUnoffered();
 
     @Message

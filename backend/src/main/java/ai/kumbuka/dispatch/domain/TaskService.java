@@ -185,6 +185,15 @@ public class TaskService {
         requireDraft(s, "delete");
         requireCommissioner(caller, "delete");
         requireToken(s, conflictToken);
+        if (task.isBracketRoot()) {
+            List<Task> under = tasks.lockChildren(scopeId, task.selector.id, task.number);
+            if (!under.isEmpty()) {
+                throw new DispatchException(DispatchException.Reason.CHILDREN_PRESENT,
+                    address + " is a draft root with tasks under it; it is deleted only alone, "
+                        + "and nothing is deleted along.",
+                    under.stream().map(child -> child.address().toString()).toList());
+            }
+        }
         tasks.delete(task);
         LOG.infof("delete %s", address);
         return address;
@@ -289,6 +298,11 @@ public class TaskService {
         if (s.state() == TaskState.DRAFT) {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
                 address + " is a draft and is edited, not annotated.");
+        }
+        if (s.state() == TaskState.DELIVERED && part == TextType.DISPATCH) {
+            throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
+                address + " is delivered: its commission takes no addendum now, and rework "
+                    + "sends the answer back with a remark (TAR-0004 section 3).");
         }
         TaskText supplemented = TaskTexts.youngestBase(tasks.texts(task.id), part)
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
@@ -659,7 +673,9 @@ public class TaskService {
     }
 
     /**
-     * Locks the bracket root and refuses a closed one.
+     * Locks the bracket root and refuses one that is a draft or closed: a
+     * child is created only under a root that was sent and is not closed
+     * (TAR-0004 section 2).
      *
      * <p>Locked, so the check and the insert of the child stand in one order
      * with the closing of the root: a root that is being closed is read once
@@ -671,8 +687,13 @@ public class TaskService {
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
                 "no bracket " + selector.name + "/" + number + "; a bracket opens with its "
                     + "root."));
-        if (TaskSituation.of(root, now(), List.of()).state() == TaskState.CLOSED) {
-            throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
+        TaskState state = TaskSituation.of(root, now(), List.of()).state();
+        if (state == TaskState.DRAFT) {
+            throw new DispatchException(DispatchException.Reason.ROOT_UNSENT,
+                root.address() + " is a draft, and a bracket opens when its root is sent.");
+        }
+        if (state == TaskState.CLOSED) {
+            throw new DispatchException(DispatchException.Reason.ROOT_CLOSED,
                 root.address() + " is closed, and a closed root has only closed children.");
         }
     }

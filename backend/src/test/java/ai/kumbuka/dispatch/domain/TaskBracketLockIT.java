@@ -103,7 +103,7 @@ class TaskBracketLockIT {
                 .isEmpty();
             assertThat(created).isInstanceOfSatisfying(DispatchException.class, refused ->
                 assertThat(refused.reason())
-                    .isEqualTo(DispatchException.Reason.TRANSITION_NOT_PERMITTED));
+                    .isEqualTo(DispatchException.Reason.ROOT_CLOSED));
             assertThat(waited).as("the creation waited at the root the closing held").isTrue();
         } finally {
             thread.shutdownNow();

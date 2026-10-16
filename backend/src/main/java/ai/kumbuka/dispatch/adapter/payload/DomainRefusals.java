@@ -100,6 +100,10 @@ public final class DomainRefusals {
             case SELECTOR_UNDECLARED -> Refusal.selectorUndeclared(call);
             case SELECTOR_WITHDRAWN -> Refusal.selectorWithdrawn(call);
             case IDEMPOTENCY_KEY_REUSED -> Refusal.idempotencyKeyReused(call);
+            case ROOT_UNSENT -> Refusal.rootUnsent(call);
+            case ROOT_CLOSED -> Refusal.rootClosed(call);
+            case CHILDREN_PRESENT -> Refusal.childrenPresent(call,
+                childrenIn(targetIn(verb, given), e));
             case DRAW_EMPTY -> Refusal.nothingToTake(call, VerbName.of(ProcessVerb.QUERY, surface));
             case PAGE_SIZE_REJECTED -> Refusal.pageSizeRejected(call, e.offenders());
             case CURSOR_MALFORMED -> Refusal.cursorMalformed(call,
@@ -292,6 +296,25 @@ public final class DomainRefusals {
             String shortForm = space < 0 ? named : named.substring(0, space);
             int slash = shortForm.indexOf('/');
             children.add(new VerbSurface.Item(root.scope(),
+                AddressParser.item(shortForm.substring(0, slash), shortForm.substring(slash + 1)))
+                .complete());
+        }
+        return children;
+    }
+
+    /**
+     * The complete address of each task the kernel names under a root, in the
+     * scope of the root the call named. The kernel reached the root, so the
+     * call named it well formed and in a scope the caller sees.
+     */
+    private static List<String> childrenIn(String root, DispatchException e) {
+        String scope = AddressParser.partsOf(root).orElseThrow(() ->
+            new IllegalStateException("the kernel refused a root the call did not name"))
+            .scope();
+        List<String> children = new ArrayList<>();
+        for (String shortForm : e.offenders()) {
+            int slash = shortForm.indexOf('/');
+            children.add(new VerbSurface.Item(scope,
                 AddressParser.item(shortForm.substring(0, slash), shortForm.substring(slash + 1)))
                 .complete());
         }

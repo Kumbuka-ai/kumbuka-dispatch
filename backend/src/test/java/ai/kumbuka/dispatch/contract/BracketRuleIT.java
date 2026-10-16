@@ -66,7 +66,7 @@ class BracketRuleIT {
 
         Response overMcp = Mcp.call("dispatch_create", child(root));
         assertRefusal(Mcp.refusal(overMcp), "ROOT_UNSENT", List.of("attempted"));
-        Response overRest = given().contentType(ContentType.JSON).body(child(root))
+        Response overRest = given().contentType(ContentType.JSON).body(childOverRest(root))
             .post(SurfaceFixture.collection());
         assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(409);
         assertRefusal(overRest.jsonPath().getMap("$"), "ROOT_UNSENT", List.of("attempted"));
@@ -81,7 +81,7 @@ class BracketRuleIT {
 
         assertRefusal(Mcp.refusal(Mcp.call("dispatch_create", child(root))), "ROOT_CLOSED",
             List.of("attempted"));
-        Response overRest = given().contentType(ContentType.JSON).body(child(root))
+        Response overRest = given().contentType(ContentType.JSON).body(childOverRest(root))
             .post(SurfaceFixture.collection());
         assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(409);
         assertRefusal(overRest.jsonPath().getMap("$"), "ROOT_CLOSED", List.of("attempted"));
@@ -156,6 +156,11 @@ class BracketRuleIT {
     private static Map<String, Object> child(String root) {
         return Map.of("scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
             "parent", root, "fields", Map.of("title", "a child", "apparatus", "code"));
+    }
+
+    /** The same child over REST, whose path names the scope and the bracket kind. */
+    private static Map<String, Object> childOverRest(String root) {
+        return Map.of("parent", root, "fields", Map.of("title", "a child", "apparatus", "code"));
     }
 
     /** The task's current conflict token, as its read hands it out. */

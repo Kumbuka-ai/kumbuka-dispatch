@@ -134,7 +134,7 @@ class TaskBracketIT {
         DispatchException refused = catchThrowableOfType(DispatchException.class, () ->
             tasks.create(SCOPE, SELECTOR, root.address().number(),
                 new TaskService.Draft("late", "code", null, null), C, IdempotencyKey.NONE));
-        assertThat(refused.reason()).isEqualTo(DispatchException.Reason.TRANSITION_NOT_PERMITTED);
+        assertThat(refused.reason()).isEqualTo(DispatchException.Reason.ROOT_CLOSED);
     }
 
     private TaskStage.Staged child(TaskStage.Staged root) {
