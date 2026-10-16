@@ -317,6 +317,7 @@ public enum RefusalCode {
         ARGUMENT_UNKNOWN(RefusalCode.ARGUMENT_UNKNOWN, "argumentUnknown"),
         ARGUMENT_UNKNOWN_UNDER_FIELDS(RefusalCode.ARGUMENT_UNKNOWN, "argumentUnknownUnderFields"),
         CALL_UNKNOWN(RefusalCode.VERB_NOT_CARRIED, "callUnknown"),
+        METHOD_NOT_CARRIED(RefusalCode.VERB_NOT_CARRIED, "methodNotCarried"),
         ARGUMENT_MISSING(RefusalCode.ARGUMENT_MISSING, "argumentMissing"),
         ARGUMENT_MISSING_OPTIONS(RefusalCode.ARGUMENT_MISSING, "argumentMissingOptions"),
         ARGUMENT_MISSING_ANSWER(RefusalCode.ARGUMENT_MISSING, "argumentMissingAnswer"),

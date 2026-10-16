@@ -77,7 +77,7 @@ class CounterProbeIndependenceTest {
             @CounterProbe
             class Planted {
                 Object kind = %1$s.domain.TaskState.OPEN;
-                Object form = Form.BODY;
+                Object form = Form.STRING;
             }
             """.formatted(SourceTree.BASE);
         assertThat(offences("Planted", SourceTree.BASE + ".surface", planted, main))

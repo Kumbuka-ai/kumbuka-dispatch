@@ -120,6 +120,9 @@ public interface RefusalMessages {
     String callUnknown(List<VerbName> accepts);
 
     @Message
+    String methodNotCarried();
+
+    @Message
     String argumentMissing(VerbName call, ArgumentPath path);
 
     @Message
@@ -222,7 +225,7 @@ public interface RefusalMessages {
     String invalidOnce(VerbName call, ArgumentPath path);
 
     @Message
-    String invalidBody(VerbName call, ArgumentPath path);
+    String invalidBody(VerbName call);
 
     @Message
     String headerInvalid();

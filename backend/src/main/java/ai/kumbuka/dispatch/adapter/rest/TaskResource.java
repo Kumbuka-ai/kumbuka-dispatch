@@ -319,8 +319,7 @@ public class TaskResource {
             parsed = null;
         }
         if (!(parsed instanceof Map<?, ?> map)) {
-            throw new SurfaceException(Refusal.argumentInvalid(call,
-                ArgumentPath.of(ArgumentPath.Transport.BODY), Form.BODY));
+            throw new SurfaceException(Refusal.payloadMalformed(call));
         }
         Map<String, Object> carried = new LinkedHashMap<>();
         map.forEach((name, value) -> carried.put(String.valueOf(name), value));

@@ -157,3 +157,14 @@ a draft root under which any task stands is not deleted -- `CHILDREN_PRESENT` 40
 `attempted` and `children`, the complete address of each; and a delivered task takes no addendum to
 its commission -- `TRANSITION_REFUSED`, with `rework` in `next`. The three codes are this
 service's own; the texts were written with this surface.
+
+## The amendment of 2026-10-16, fifth: contract round 3
+
+From platform-specs `37f4d6e` (contract round 3), whose rule C8.7 the copy in
+`contract/shared-code-table.md` now holds verbatim: every refusal that falls once the route stands
+carries `attempted`, and a row's `data` names the members beyond it; `HEADER_INVALID`, a path below
+a reserved name and `NOT_FOUND` carry no `data`. `SCOPE_READ_ONLY` carries `attempted`. A body that
+does not parse is `PAYLOAD_MALFORMED` with `attempted` alone, so the message `invalidBody` names the
+call and no transport location. The framework's 404 is `NOT_FOUND`, the same bytes as any other;
+its 405 is `VERB_NOT_CARRIED` with `Allow` and the calls at the address, under the message
+`methodNotCarried`, which was written with this surface.

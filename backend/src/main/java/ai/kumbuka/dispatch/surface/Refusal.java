@@ -550,9 +550,32 @@ public record Refusal(RefusalCode code, String message, Data data) {
             Data.attempted(call));
     }
 
-    /** The caller may read this scope and not write to it. Carries no data (C8.7). */
+    /**
+     * The caller may read this scope and not write to it. Carries the call and
+     * nothing beyond it (C8.7).
+     */
     public static Refusal scopeReadOnly(VerbName call) {
-        return of(Message.SCOPE_READ_ONLY, Texts.refusals().scopeReadOnly(call), null);
+        return of(Message.SCOPE_READ_ONLY, Texts.refusals().scopeReadOnly(call),
+            Data.attempted(call));
+    }
+
+    /**
+     * A body that does not parse, or is no JSON object. It has one possible
+     * offender, so it names none (C8.7): the call and nothing beyond it.
+     */
+    public static Refusal payloadMalformed(VerbName call) {
+        return of(Message.INVALID_BODY, Texts.refusals().invalidBody(call), Data.attempted(call));
+    }
+
+    /**
+     * A method no route takes, answered where the framework found the route
+     * and not the method (C3.3, C8.3). No call is known, so it names none; it
+     * lists the calls the address carries, where the address is one, under
+     * {@code data.accepts}, and the route's methods travel in {@code Allow}.
+     */
+    public static Refusal methodNotCarried(List<VerbName> accepts) {
+        return of(Message.METHOD_NOT_CARRIED, Texts.refusals().methodNotCarried(),
+            Data.attempted(null).accepts(accepts));
     }
 
     /**
@@ -631,7 +654,6 @@ public record Refusal(RefusalCode code, String message, Data data) {
             case ADDENDUM_TARGET -> refusals.invalidAddendumTarget(call, at);
             case ADDENDA_EXHAUSTED -> refusals.invalidAddendaExhausted(call, at);
             case ONCE -> refusals.invalidOnce(call, at);
-            case BODY -> refusals.invalidBody(call, at);
         };
     }
 }

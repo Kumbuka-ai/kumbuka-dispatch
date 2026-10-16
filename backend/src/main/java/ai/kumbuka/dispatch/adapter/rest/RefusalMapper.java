@@ -19,14 +19,17 @@ import ai.kumbuka.dispatch.surface.VerbName;
 import ai.kumbuka.dispatch.surface.VerbSurface;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
 import org.jboss.logging.Logger;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -108,24 +111,64 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
 
     /**
      * Everything that is no refusal (C8.3). A {@link WebApplicationException}
-     * is the framework's own answer — a route that does not exist, a method
-     * the route does not take — and goes back unchanged; anything else is a
+     * is the framework's own answer. A route that does not exist is {@code
+     * NOT_FOUND}, byte for byte the one of an absent task; a method the route
+     * does not take is {@code VERB_NOT_CARRIED} with the route's {@code Allow}
+     * and the calls carried at the address. Every other status of the
+     * framework, the security layer's 401 and 403 among them, goes back
+     * unchanged (the authentication exception of DEC-0042). Anything else is a
      * defect on our side, logged once with a reference and answered with it.
      */
     @Provider
     public static class Unexpected implements ExceptionMapper<Throwable> {
 
         @Inject CallContext context;
+        @Context UriInfo uri;
 
         @Override
         public Response toResponse(Throwable failure) {
             if (failure instanceof WebApplicationException framework) {
-                return framework.getResponse();
+                Response given = framework.getResponse();
+                return switch (given.getStatus()) {
+                    case 404 -> answer(Refusal.notFound(), null);
+                    case 405 -> methodNotCarried(given, depthOf(uri.getPath()));
+                    default -> given;
+                };
             }
             VerbName call = context.made()
                 ? VerbName.of(context.verb(), context.surface()) : null;
             return answer(UnexpectedFailures.refuse(call,
                 context.made() ? DomainRefusals.whereIn(context.given()) : UNREAD, failure), null);
+        }
+
+        /**
+         * The framework's 405 in the envelope: the calls carried at the address
+         * where it is one, and the route's methods in {@code Allow}. The
+         * framework's own {@code Allow} is taken where it sends one; where it
+         * does not, the route's methods are this surface's, as every other 405
+         * of it names them.
+         */
+        private static Response methodNotCarried(Response given,
+                                                 Optional<CustomMethod.Depth> depth) {
+            String allow = given.getHeaderString(HttpHeaders.ALLOW);
+            if (allow == null) {
+                allow = depth.map(CustomMethod::allow).orElse(null);
+            }
+            return answer(Refusal.methodNotCarried(
+                depth.map(CustomMethod::accepts).orElse(List.of())), allow);
+        }
+
+        /** The depth of a REST path: a collection, a task, or neither. */
+        private static Optional<CustomMethod.Depth> depthOf(String path) {
+            String[] segments = (path.startsWith("/") ? path.substring(1) : path).split("/", -1);
+            if (segments.length < 3 || !"api".equals(segments[0])) {
+                return Optional.empty();
+            }
+            return switch (segments.length) {
+                case 3 -> Optional.of(CustomMethod.Depth.COLLECTION);
+                case 4 -> Optional.of(CustomMethod.Depth.ITEM);
+                default -> Optional.empty();
+            };
         }
     }
 }

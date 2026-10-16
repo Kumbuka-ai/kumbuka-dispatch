@@ -236,10 +236,11 @@ class CodeTableIT {
 
     /**
      * A token that carries no capacity of the service is refused for who the
-     * caller is, before anything about an object is said (the 403 class of
-     * C8.7): {@code ROLE_INSUFFICIENT} 403 with {@code attempted} and no state,
-     * no {@code next}, on a task the scope shows. On a scope the caller cannot
-     * see it stays {@code NOT_FOUND}.
+     * caller is, before any address is resolved (the 403 class of C8.7): {@code
+     * ROLE_INSUFFICIENT} 403 with {@code attempted} and nothing beyond it, no
+     * state and no {@code next}, on a task the scope shows. Decided before the
+     * address, it answers the same bytes on a scope the caller cannot see, and
+     * so says nothing about that scope.
      *
      * <p>RED STATE, observed with the branch for a caller without a capacity
      * taken out of the edge: the refusal on the visible scope failed as an
@@ -261,10 +262,17 @@ class CodeTableIT {
         String hidden = "dispatch://" + NotFoundIdentityIT.INVISIBLE_SCOPE + "/"
             + SurfaceFixture.SELECTOR + "/1.0";
         NotFoundIdentityIT.stageInvisibleScope();
-        rest(given().contentType(ContentType.JSON).header("If-Match", "\"t\"")
-            .post(NotFoundIdentityIT.path(hidden) + ":withdraw"), "NOT_FOUND", 404);
-        mcp(Mcp.call("dispatch_withdraw", Map.of("address", hidden, "conflict_token", "t")),
-            "NOT_FOUND");
+        Response onTheVisible = given().contentType(ContentType.JSON)
+            .header("If-Match", "\"t\"").post(SurfaceFixture.item(id) + ":withdraw");
+        Response onTheHidden = given().contentType(ContentType.JSON)
+            .header("If-Match", "\"t\"").post(NotFoundIdentityIT.path(hidden) + ":withdraw");
+        assertThat(onTheHidden.statusCode()).isEqualTo(403);
+        assertThat(onTheHidden.asString()).as("the same bytes: nothing about the scope")
+            .isEqualTo(onTheVisible.asString());
+        assertThat(Mcp.call("dispatch_withdraw", Map.of("address", hidden,
+                "conflict_token", "t")).asString())
+            .isEqualTo(Mcp.call("dispatch_withdraw", Map.of("address", address,
+                "conflict_token", "t")).asString());
     }
 
     @Test
