@@ -36,7 +36,7 @@ class SharedClassNamesTest {
         "VerbSurface", "AddressParser", "RefusalCode", "RefusalCatalogueGuard", "RefusalMapper",
         "UnexpectedFailures", "SurfaceDeclaration", "DeclarationResource", "WhoamiResource",
         "McpAdapter", "ScopeDirectory", "ScopeAccessRepository", "PageRequest", "Page",
-        "PageCursor", "SortKey", "IdentityConfigurationGuard",
+        "PageCursor", "SortKey", "KeysetClause", "IdentityConfigurationGuard",
         "TenantBound", "TenantBindingInterceptor", "TenantDatabaseBinding",
         "TenantMigrationCallback", "TenancyConfigurationGuard", "TenantRequestFilter");
 

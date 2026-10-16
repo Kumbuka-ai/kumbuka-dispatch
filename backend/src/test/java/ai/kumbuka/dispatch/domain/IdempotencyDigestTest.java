@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * below are the properties of a comparison and not of a hash — the hash is
  * incidental, the canonical form is the part that has to be right.
  *
- * <p>The unit half of the pair. {@code IdempotentCallsIT} exercises the same
+ * <p>The unit half of the pair. {@code IdempotencyIT} exercises the same
  * rule against a running service and a real ledger; this one exercises the
  * cases a service-level probe would have to construct twenty calls to reach.
  */
