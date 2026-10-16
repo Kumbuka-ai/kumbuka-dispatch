@@ -1,4 +1,13 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
+
+import org.jspecify.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -68,7 +77,7 @@ public final class Receipt {
      * was right through timing, which turns guessing a 256-bit token into
      * guessing it one byte at a time.
      */
-    public static boolean matches(String presented, String storedHash) {
+    public static boolean matches(@Nullable String presented, @Nullable String storedHash) {
         if (presented == null || storedHash == null) {
             return false;
         }

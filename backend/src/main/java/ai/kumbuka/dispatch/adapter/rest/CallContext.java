@@ -11,8 +11,10 @@ import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Surface;
 import jakarta.enterprise.context.RequestScoped;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The call a REST request became, for the refusal mapper.
@@ -27,40 +29,31 @@ import java.util.Map;
 @RequestScoped
 public class CallContext {
 
-    private Surface surface;
-    private ProcessVerb verb;
-    private Actor actor;
-    private Map<String, Object> given = Map.of();
-
-    void call(Surface on, ProcessVerb call, Map<String, Object> arguments) {
-        this.surface = on;
-        this.verb = call;
-        this.given = arguments;
+    /** One call, as the resource read it: the surface, the verb and the arguments. */
+    record Made(Surface surface, ProcessVerb verb, Map<String, Object> given) {
     }
 
-    void caller(Actor who) {
+    /** The call; absent until the request became one. */
+    private @Nullable Made made;
+
+    /** Who calls; absent until the caller was made, and where the token carried no capacity. */
+    private @Nullable Actor actor;
+
+    void call(Surface on, ProcessVerb call, Map<String, Object> arguments) {
+        this.made = new Made(on, call, arguments);
+    }
+
+    void caller(@Nullable Actor who) {
         this.actor = who;
     }
 
-    /** Whether the request became a call at all. */
-    boolean made() {
-        return verb != null;
+    /** The call the request became; empty where it became none. */
+    Optional<Made> made() {
+        return Optional.ofNullable(made);
     }
 
-    Surface surface() {
-        return surface;
-    }
-
-    ProcessVerb verb() {
-        return verb;
-    }
-
-    /** Who calls, or null where the token carried no usable capacity. */
-    Actor actor() {
-        return actor;
-    }
-
-    Map<String, Object> given() {
-        return given;
+    /** Who calls; empty where the token carried no usable capacity. */
+    Optional<Actor> actor() {
+        return Optional.ofNullable(actor);
     }
 }

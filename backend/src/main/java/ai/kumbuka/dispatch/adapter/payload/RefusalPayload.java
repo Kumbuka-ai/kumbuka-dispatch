@@ -8,14 +8,17 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A refusal on either surface (C8.4, DEC-0042): the code a caller matches on,
  * the message that explains it, and the data it acts on. {@code data} is
  * absent, not empty, on the one refusal that must say nothing.
+ *
+ * @param data absent for NOT_FOUND and the refusals decided before the route
  */
 public record RefusalPayload(
     @JsonProperty("reason") String reason,
     @JsonProperty("message") String message,
-    @JsonProperty("data") RefusalDataPayload data) {
+    @JsonProperty("data") @Nullable RefusalDataPayload data) {
 }

@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.TaskView;
 import ai.kumbuka.dispatch.surface.RefusalCode.Message;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
@@ -39,24 +40,46 @@ import java.util.List;
  *
  * @param code    the code a caller matches on
  * @param message the declared message, rendered
- * @param data    what the caller acts on; null for {@link RefusalCode#NOT_FOUND},
- *                which must be byte-identical across its causes
+ * @param data    what the caller acts on; absent for {@link RefusalCode#NOT_FOUND},
+ *                which must be byte-identical across its causes, and for the
+ *                refusals decided before the route stands
  */
-public record Refusal(RefusalCode code, String message, Data data) {
+public record Refusal(RefusalCode code, String message, @Nullable Data data) {
 
     /**
      * The members a refusal may carry. Each means one thing on every service
-     * (DEC-0042); a member with no value is absent on the wire.
+     * (DEC-0042); a member with no value is absent on the wire, and each
+     * component is absent exactly where its member is.
      *
-     * @param current the task as it stands, for a stale conflict token: its
-     *                fields travel so that the caller can merge (DEC-0041)
+     * @param attempted     the call as the caller's surface names it; absent where no
+     *                      call is known
+     * @param state         the task's state; absent on a refusal about no task
+     * @param next          the calls open to the caller; absent where the refusal names none
+     * @param waitingFor    what the task waits for; absent where a call is open
+     * @param offenders     the declared paths the refusal concerns; absent where it
+     *                      concerns no argument
+     * @param accepts       what the call or the address accepts; absent elsewhere
+     * @param children      the complete addresses of the tasks under a root; absent
+     *                      on a refusal about no bracket
+     * @param confirmation  the confirmation handed out now; absent where none is
+     * @param conflictToken the task's current token, for a stale one; absent elsewhere
+     * @param reference     the identifier of an unexpected failure; absent elsewhere
+     * @param address       the complete address, for a stale token; absent elsewhere
+     * @param current       the task as it stands, for a stale conflict token: its
+     *                      fields travel so that the caller can merge (DEC-0041);
+     *                      absent elsewhere
+     * @param service       the service that holds the task, for a stale token;
+     *                      absent elsewhere
      */
-    public record Data(String attempted, String state, List<NextList.Step> next,
-                       String waitingFor, List<String> offenders, List<String> accepts,
-                       List<String> children, String confirmation, String conflictToken,
-                       String reference, String address, TaskView current, String service) {
+    public record Data(@Nullable String attempted, @Nullable String state,
+                       @Nullable List<NextList.Step> next, @Nullable String waitingFor,
+                       @Nullable List<String> offenders, @Nullable List<String> accepts,
+                       @Nullable List<String> children, @Nullable String confirmation,
+                       @Nullable String conflictToken, @Nullable String reference,
+                       @Nullable String address, @Nullable TaskView current,
+                       @Nullable String service) {
 
-        static Data attempted(VerbName call) {
+        static Data attempted(@Nullable VerbName call) {
             return new Data(call == null ? null : call.toString(), null, null, null, null, null,
                 null, null, null, null, null, null, null);
         }
@@ -88,7 +111,7 @@ public record Refusal(RefusalCode code, String message, Data data) {
                 confirmation, conflictToken, reference, address, current, service);
         }
 
-        Data children(List<String> unfinished, String handedOut) {
+        Data children(List<String> unfinished, @Nullable String handedOut) {
             return new Data(attempted, state, next, waitingFor, offenders, accepts,
                 List.copyOf(unfinished), handedOut, conflictToken, reference, address, current,
                 service);
@@ -114,8 +137,10 @@ public record Refusal(RefusalCode code, String message, Data data) {
      * Where a refused call stood: the task's state as a caller reads it, the
      * calls open to the caller with one sentence each, and what the task waits
      * for where none is.
+     *
+     * @param waitingFor what the task waits for; absent where a call is open to the caller
      */
-    public record Situation(String state, List<NextList.Step> next, String waitingFor) {
+    public record Situation(String state, List<NextList.Step> next, @Nullable String waitingFor) {
 
         public Situation {
             next = next == null ? List.of() : List.copyOf(next);
@@ -224,7 +249,7 @@ public record Refusal(RefusalCode code, String message, Data data) {
         }
     }
 
-    private static Refusal of(Message message, String text, Data data) {
+    private static Refusal of(Message message, String text, @Nullable Data data) {
         return new Refusal(message.code(), text, data);
     }
 
@@ -301,7 +326,7 @@ public record Refusal(RefusalCode code, String message, Data data) {
      *                     longer holds
      */
     public static Refusal childrenUnfinished(VerbName call, List<String> children,
-                                             String confirmation, boolean stale) {
+                                             @Nullable String confirmation, boolean stale) {
         Data data = Data.attempted(call).children(children, confirmation);
         return stale
             ? of(Message.CHILDREN_CONFIRMATION_STALE,
@@ -612,7 +637,7 @@ public record Refusal(RefusalCode code, String message, Data data) {
      *
      * @param call the call, or null for a request that reached no call
      */
-    public static Refusal unexpected(VerbName call, String reference) {
+    public static Refusal unexpected(@Nullable VerbName call, String reference) {
         Data data = Data.attempted(call).reference(reference);
         return call == null
             ? of(Message.UNEXPECTED_FAILURE_OF_REQUEST,

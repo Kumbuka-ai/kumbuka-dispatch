@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.domain;
 
+import org.jspecify.annotations.Nullable;
+
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,20 +30,22 @@ import java.util.UUID;
  * @param identity        the durable identity; the technical address
  * @param address         where the task lives in its scope
  * @param state           the effective state
- * @param holdReason      set exactly in {@code on_hold}
- * @param outcome         set exactly in {@code closed}
+ * @param holdReason      set exactly in {@code on_hold}; absent in every other state
+ * @param outcome         set exactly in {@code closed}; absent in every other state
  * @param holder          whether nobody, the caller or another holds the task
- * @param leaseExpiresAt  the end of the lease, for the holder only
- * @param notBefore       the instant a {@code defer} named
- * @param questionOptions the pending question's options and whether free text is admitted
+ * @param leaseExpiresAt  the end of the lease, for the holder only; absent for every
+ *                        other caller and where no lease runs
+ * @param notBefore       the instant a {@code defer} named; absent where none stands
+ * @param questionOptions the pending question's options and whether free text is
+ *                        admitted; absent without a question
  * @param lapseCount      the lapsed leases recorded so far
  * @param title           the commission's title
  * @param apparatus       the apparatus the task is addressed to
- * @param dispatchMetadata the commissioner's metadata
- * @param returnMetadata  the executor's metadata
+ * @param dispatchMetadata the commissioner's metadata; absent where none was given
+ * @param returnMetadata  the executor's metadata; absent where none was delivered
  * @param conflictToken   the token a fenced call presents
  * @param curatedIn       the complete address of the object the task was curated
- *                        into, when the caller may see its scope
+ *                        into, when the caller may see its scope; absent otherwise
  * @param texts           the texts that exist, by type and suffix
  * @param next            the transitions open to the caller
  */
@@ -49,24 +53,28 @@ public record TaskView(
     UUID identity,
     ExchangeAddress address,
     TaskState state,
-    HoldReason holdReason,
-    Outcome outcome,
+    @Nullable HoldReason holdReason,
+    @Nullable Outcome outcome,
     HolderState holder,
-    Instant leaseExpiresAt,
-    Instant notBefore,
-    Map<String, Object> questionOptions,
+    @Nullable Instant leaseExpiresAt,
+    @Nullable Instant notBefore,
+    @Nullable Map<String, Object> questionOptions,
     int lapseCount,
     String title,
     String apparatus,
-    Map<String, Object> dispatchMetadata,
-    Map<String, Object> returnMetadata,
+    @Nullable Map<String, Object> dispatchMetadata,
+    @Nullable Map<String, Object> returnMetadata,
     String conflictToken,
-    String curatedIn,
+    @Nullable String curatedIn,
     List<TextHead> texts,
     List<TaskVerb> next) {
 
-    /** One text that exists, without its content. */
-    public record TextHead(TextType type, String addendumSuffix) {
+    /**
+     * One text that exists, without its content.
+     *
+     * @param addendumSuffix the letter of an addendum; absent on the text it supplements
+     */
+    public record TextHead(TextType type, @Nullable String addendumSuffix) {
 
         /** One text that exists, as a head lists it: its type, and its suffix where it has one. */
         Map<String, Object> fields() {
@@ -90,13 +98,14 @@ public record TaskView(
      * @param texts the texts that exist, by type and suffix, in the order written
      */
     static TaskView of(Task task, TaskSituation situation, Actor caller, List<TextHead> texts,
-                       String curatedIn) {
+                       @Nullable String curatedIn) {
         HolderState holder = HolderState.of(situation.holder(), caller);
         return new TaskView(task.uuid, task.address(), situation.state(),
-            situation.holdReason(), task.outcome(), holder,
-            holder == HolderState.SELF ? task.leaseExpiresAt() : null,
-            task.notBefore(), task.questionOptions(), task.lapseCount(), task.title,
-            task.apparatus, task.dispatchMetadata, task.returnMetadata(),
+            situation.holdReason(), task.outcome().orElse(null), holder,
+            holder == HolderState.SELF ? task.leaseExpiresAt().orElse(null) : null,
+            task.notBefore().orElse(null), task.questionOptions().orElse(null),
+            task.lapseCount(), task.title, task.apparatus, task.dispatchMetadata,
+            task.returnMetadata().orElse(null),
             task.conflictToken(), curatedIn,
             texts,
             Decision.openVerbs(situation, caller));
@@ -137,7 +146,8 @@ public record TaskView(
         return fields;
     }
 
-    private static void putIfPresent(Map<String, Object> fields, String name, Object value) {
+    private static void putIfPresent(Map<String, Object> fields, String name,
+                                     @Nullable Object value) {
         if (value != null) {
             fields.put(name, value);
         }

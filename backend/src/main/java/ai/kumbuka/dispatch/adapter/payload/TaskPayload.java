@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -19,12 +20,14 @@ import java.util.Map;
  *
  * @param fields the task's fields, from the one mapping of its type in the
  *               domain; lean for a writing call, the full head for a read
+ * @param waitingFor absent where a call is open to the caller
+ * @param receipt absent on every answer but a claim
  */
 public record TaskPayload(
     @JsonProperty("address") String address,
     @JsonProperty("fields") Map<String, Object> fields,
     @JsonProperty("conflict_token") String conflictToken,
     @JsonProperty("next") List<NextStepPayload> next,
-    @JsonProperty("waiting_for") String waitingFor,
-    @JsonProperty("receipt") String receipt) {
+    @JsonProperty("waiting_for") @Nullable String waitingFor,
+    @JsonProperty("receipt") @Nullable String receipt) {
 }

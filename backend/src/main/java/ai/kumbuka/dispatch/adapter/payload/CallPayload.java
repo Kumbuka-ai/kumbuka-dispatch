@@ -28,6 +28,7 @@ import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.SurfaceException;
 import ai.kumbuka.dispatch.surface.VerbName;
 import ai.kumbuka.dispatch.surface.VerbSurface;
+import org.jspecify.annotations.Nullable;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -199,11 +200,12 @@ public final class CallPayload {
     private void refuseMistyped() {
         for (Argument argument : verb.arguments()) {
             Object value = levelOf(argument).get(argument.name());
-            Form form = value == null ? null : mistyped(argument, value);
-            if (form == null) {
+            Optional<Form> mistyped = value == null ? Optional.empty() : mistyped(argument, value);
+            if (mistyped.isEmpty()) {
                 refuseOutsideThePage(argument, value);
                 continue;
             }
+            Form form = mistyped.get();
             if (PAGE_SIZE.equals(argument.name())) {
                 // ADR-0049: every page size a listing cannot take is refused
                 // as one, a value that is no whole number as much as one out
@@ -223,38 +225,41 @@ public final class CallPayload {
      * Bound#PAGE_SIZE_MAX}: a form the declaration fixes, decided before any
      * scope is resolved (ADR-0049, C1.2).
      */
-    private void refuseOutsideThePage(Argument argument, Object value) {
+    private void refuseOutsideThePage(Argument argument, @Nullable Object value) {
         if (value == null || !PAGE_SIZE.equals(argument.name())) {
             return;
         }
-        Long size = wholeOf(value);
-        if (size != null && (size < 1 || size > Bound.PAGE_SIZE_MAX.value())) {
+        Optional<Long> size = wholeOf(value);
+        if (size.isPresent() && (size.get() < 1 || size.get() > Bound.PAGE_SIZE_MAX.value())) {
             throw refused(Refusal.pageSizeRejected(call, List.of(ArgumentPath.of(argument))));
         }
     }
 
-    private static Form mistyped(Argument argument, Object value) {
+    /** The form a value fails, of the argument it arrived as; empty where it has the form. */
+    private static Optional<Form> mistyped(Argument argument, Object value) {
         return switch (argument.type()) {
             case Argument.STRING -> {
                 if (value instanceof Map || value instanceof List) {
-                    yield Form.STRING;
+                    yield Optional.of(Form.STRING);
                 }
                 if (!argument.values().isEmpty()
                         && !argument.valueNames().contains(String.valueOf(value))) {
-                    yield Form.ONE_OF;
+                    yield Optional.of(Form.ONE_OF);
                 }
-                yield null;
+                yield Optional.empty();
             }
             case Argument.ARRAY -> value instanceof List<?> list
                     && list.stream().allMatch(String.class::isInstance)
-                ? null
-                : Form.LIST_OF_STRINGS;
-            case Argument.OBJECT -> value instanceof Map ? null : Form.OBJECT;
+                ? Optional.empty()
+                : Optional.of(Form.LIST_OF_STRINGS);
+            case Argument.OBJECT -> value instanceof Map ? Optional.empty()
+                : Optional.of(Form.OBJECT);
             case Argument.BOOLEAN -> value instanceof Boolean
                     || "true".equals(value) || "false".equals(value)
-                ? null
-                : Form.BOOLEAN;
-            case Argument.INTEGER -> wholeOf(value) == null ? Form.WHOLE_NUMBER : null;
+                ? Optional.empty()
+                : Optional.of(Form.BOOLEAN);
+            case Argument.INTEGER -> wholeOf(value).isEmpty() ? Optional.of(Form.WHOLE_NUMBER)
+                : Optional.empty();
             default -> throw new IllegalStateException(
                 argument.name() + " is declared with a type the surface does not read");
         };
@@ -264,7 +269,7 @@ public final class CallPayload {
      * Where a refused value stands: the argument, and for a list the position
      * of the first element that is no string (DEC-0043 R19).
      */
-    private static ArgumentPath positionOf(Argument argument, Object value) {
+    private static ArgumentPath positionOf(Argument argument, @Nullable Object value) {
         if (Argument.ARRAY.equals(argument.type()) && value instanceof List<?> list) {
             for (int i = 0; i < list.size(); i++) {
                 if (!(list.get(i) instanceof String)) {
@@ -310,44 +315,44 @@ public final class CallPayload {
 
     /** The task the top-level argument {@code address} names. */
     public VerbSurface.Item address() {
-        return item(topPath(ADDRESS), top(ADDRESS));
+        return item(topPath(ADDRESS), required(ADDRESS));
     }
 
     /** The scope a call on a collection names. */
     public String scope() {
-        return AddressParser.scopeOf(top(SCOPE))
+        return AddressParser.scopeOf(required(SCOPE))
             .orElseThrow(() -> refused(Refusal.argumentInvalid(call, topPath(SCOPE), Form.SCOPE)));
     }
 
     /** The bracket kind a call on a collection names. */
     public String selector() {
-        return AddressParser.selectorOf(top(SELECTOR)).orElseThrow(() ->
+        return AddressParser.selectorOf(required(SELECTOR)).orElseThrow(() ->
             refused(Refusal.argumentInvalid(call, topPath(SELECTOR), Form.SELECTOR)));
     }
 
     /**
      * The bracket root a create names as its parent, as the number of its
-     * bracket; null where it names none.
+     * bracket; empty where it names none.
      */
-    public Integer parentNumber(String scope, String selector) {
-        String parent = top(PARENT);
-        if (parent == null) {
-            return null;
+    public Optional<Integer> parentNumber(String scope, String selector) {
+        Optional<String> parent = top(PARENT);
+        if (parent.isEmpty()) {
+            return Optional.empty();
         }
         ArgumentPath path = topPath(PARENT);
-        VerbSurface.Item root = item(path, parent);
+        VerbSurface.Item root = item(path, parent.get());
         if (!root.scope().equals(scope) || !root.address().selector().equals(selector)) {
             throw refused(Refusal.argumentInvalid(call, path, Form.PARENT_ELSEWHERE));
         }
         if (root.address().sub() != 0) {
             throw refused(Refusal.argumentInvalid(call, path, Form.PARENT_NOT_A_ROOT));
         }
-        return root.address().number();
+        return Optional.of(root.address().number());
     }
 
     /** The task a relation is curated into. */
     public VerbSurface.Item curatedIn() {
-        return item(fieldPath(CURATED_IN), field(CURATED_IN));
+        return item(fieldPath(CURATED_IN), requiredField(CURATED_IN));
     }
 
     private VerbSurface.Item item(ArgumentPath path, String raw) {
@@ -363,8 +368,8 @@ public final class CallPayload {
 
     /** A draft as create writes it. */
     public TaskService.Draft draft() {
-        return new TaskService.Draft(field("title"), field(APPARATUS), field(TEXT),
-            metadata().orElse(null));
+        return new TaskService.Draft(field("title").orElse(null), field(APPARATUS).orElse(null),
+            field(TEXT).orElse(null), metadata().orElse(null));
     }
 
     /** The changes of an update; refused where it names none. */
@@ -378,13 +383,13 @@ public final class CallPayload {
         return changes;
     }
 
-    /** The conflict token, as the call carried it; null where it carried none. */
-    public String conflictToken() {
+    /** The conflict token, as the call carried it; empty where it carried none. */
+    public Optional<String> conflictToken() {
         return top(CONFLICT_TOKEN);
     }
 
-    /** The idempotency key, as the call carried it; null where it carried none. */
-    public String idempotencyKey() {
+    /** The idempotency key, as the call carried it; empty where it carried none. */
+    public Optional<String> idempotencyKey() {
         return top(KEY);
     }
 
@@ -398,17 +403,19 @@ public final class CallPayload {
      * the time it is read, and a defect where it is not.
      */
     private String required(String name) {
-        String value = top(name);
-        if (value == null) {
-            throw new IllegalStateException(verb.call() + " carries no " + name
-                + " past the form check");
-        }
-        return value;
+        return top(name).orElseThrow(() -> new IllegalStateException(verb.call()
+            + " carries no " + name + " past the form check"));
+    }
+
+    /** An argument under {@code fields} the form check has already required. */
+    private String requiredField(String name) {
+        return field(name).orElseThrow(() -> new IllegalStateException(verb.call()
+            + " carries no fields." + name + " past the form check"));
     }
 
     /** The part an addendum is written to. */
     public String addendumPart() {
-        return field(PART);
+        return requiredField(PART);
     }
 
     /** The path of the part an addendum is written to, for its refusal. */
@@ -418,7 +425,7 @@ public final class CallPayload {
 
     /** The text of an addendum. */
     public String text() {
-        return field(TEXT);
+        return requiredField(TEXT);
     }
 
     /**
@@ -427,7 +434,8 @@ public final class CallPayload {
      * refused by name where a combination is not one the kernel can take.
      */
     public TaskCall transition(Actor actor, TaskVerb transition, Clock clock) {
-        return new TaskCall(actor, top(RECEIPT), top(CONFLICT_TOKEN), top(CONFIRMATION),
+        return new TaskCall(actor, top(RECEIPT).orElse(null), top(CONFLICT_TOKEN).orElse(null),
+            top(CONFIRMATION).orElse(null),
             payloadOf(transition, clock));
     }
 
@@ -435,14 +443,16 @@ public final class CallPayload {
         return switch (transition) {
             case SEND, ACCEPT -> TaskInput.NONE;
             case CLAIM, CLAIM_NEXT, RENEW, RESUME -> lease(clock);
-            case RELEASE, WITHDRAW -> new TaskInput.Remark(field(REMARK));
-            case REJECT, FAIL, REWORK -> new TaskInput.RequiredRemark(field(REMARK));
-            case DEFER -> new TaskInput.Deferral(instant("not_before"), field(REMARK));
+            case RELEASE, WITHDRAW -> new TaskInput.Remark(field(REMARK).orElse(null));
+            case REJECT, FAIL, REWORK -> new TaskInput.RequiredRemark(requiredField(REMARK));
+            case DEFER -> new TaskInput.Deferral(instant("not_before"),
+                field(REMARK).orElse(null));
             case ASK -> question();
             case ANSWER -> reply();
             case HOLD -> new TaskInput.Pause(
-                HoldReason.valueOf(field("reason").toUpperCase(Locale.ROOT)), field(REMARK));
-            case DELIVER -> new TaskInput.Delivery(field(TEXT), metadata().orElse(null));
+                HoldReason.valueOf(requiredField("reason").toUpperCase(Locale.ROOT)),
+                field(REMARK).orElse(null));
+            case DELIVER -> new TaskInput.Delivery(requiredField(TEXT), metadata().orElse(null));
         };
     }
 
@@ -452,10 +462,11 @@ public final class CallPayload {
      * named.
      */
     private TaskInput lease(Clock clock) {
-        String raw = top(DURATION);
-        if (raw == null) {
+        Optional<String> given = top(DURATION);
+        if (given.isEmpty()) {
             return TaskInput.NONE;
         }
+        String raw = given.get();
         Duration duration;
         try {
             duration = Duration.parse(raw);
@@ -472,25 +483,23 @@ public final class CallPayload {
     }
 
     private Instant instant(String name) {
-        Instant at = parsedInstant(field(name));
-        if (at == null) {
-            throw refused(Refusal.argumentInvalid(call, fieldPath(name), Form.INSTANT));
-        }
+        Instant at = parsedInstant(requiredField(name)).orElseThrow(() ->
+            refused(Refusal.argumentInvalid(call, fieldPath(name), Form.INSTANT)));
         if (at.isBefore(EARLIEST) || !at.isBefore(LATEST)) {
             throw refused(Refusal.argumentInvalid(call, fieldPath(name), Form.INSTANT_RANGE));
         }
         return at;
     }
 
-    /** The instant ISO-8601 text names, in UTC or with an offset; null where it names none. */
-    private static Instant parsedInstant(String raw) {
+    /** The instant ISO-8601 text names, in UTC or with an offset; empty where it names none. */
+    private static Optional<Instant> parsedInstant(String raw) {
         try {
-            return Instant.parse(raw);
+            return Optional.of(Instant.parse(raw));
         } catch (DateTimeParseException notUtc) {
             try {
-                return OffsetDateTime.parse(raw).toInstant();
+                return Optional.of(OffsetDateTime.parse(raw).toInstant());
             } catch (DateTimeParseException e) {
-                return null;
+                return Optional.empty();
             }
         }
     }
@@ -502,12 +511,12 @@ public final class CallPayload {
             throw refused(Refusal.argumentMissing(call, Refusal.Missing.OPTIONS,
                 List.of(fieldPath("options"))));
         }
-        return new TaskInput.Question(field("question"), options, freeText);
+        return new TaskInput.Question(requiredField("question"), options, freeText);
     }
 
     private TaskInput reply() {
-        String option = field(OPTION);
-        String text = field(TEXT);
+        @Nullable String option = field(OPTION).orElse(null);
+        @Nullable String text = field(TEXT).orElse(null);
         if (option == null && text == null) {
             throw refused(Refusal.argumentMissing(call, Refusal.Missing.ANSWER,
                 List.of(fieldPath(OPTION), fieldPath(TEXT))));
@@ -551,10 +560,11 @@ public final class CallPayload {
     public TaskFilter filter(String scope, String selector) {
         Map<String, String> filters = new LinkedHashMap<>();
         for (String name : FILTERS) {
-            String raw = top(name);
-            if (raw == null) {
+            Optional<String> given = top(name);
+            if (given.isEmpty()) {
                 continue;
             }
+            String raw = given.get();
             Argument argument = declared(name, Argument.Placement.TOP);
             List<String> values = List.of(raw.split(",", -1)).stream().map(String::trim).toList();
             String value = name.equals(TaskFilter.Field.ADDRESS.wireName())
@@ -592,8 +602,8 @@ public final class CallPayload {
 
     /** The page a listing asks for; the kernel refuses what it cannot take. */
     public PageRequest page() {
-        return PageRequest.of(wholeNumber(PAGE_SIZE), top(SORT),
-            SortKey.Direction.of(top("direction")), top("after"));
+        return PageRequest.of(wholeNumber(PAGE_SIZE).orElse(null), top(SORT).orElse(null),
+            SortKey.Direction.of(top("direction").orElse(null)), top("after").orElse(null));
     }
 
     /**
@@ -611,11 +621,7 @@ public final class CallPayload {
 
     /** The declared argument of this name at one level; a defect where there is none. */
     public Argument declared(String name, Argument.Placement placement) {
-        Argument argument = verb.argument(name, placement);
-        if (argument == null) {
-            throw new IllegalStateException(verb.call() + " declares no " + name);
-        }
-        return argument;
+        return verb.declared(name, placement);
     }
 
     /** The path of the declared top-level argument of this name. */
@@ -628,13 +634,13 @@ public final class CallPayload {
         return ArgumentPath.of(declared(name, Argument.Placement.FIELDS));
     }
 
-    /** A top-level string, or null where it is absent. */
-    public String top(String name) {
+    /** A top-level string; empty where it is absent. */
+    public Optional<String> top(String name) {
         return string(top.get(name));
     }
 
-    /** A string under {@code fields}, or null where it is absent. */
-    public String field(String name) {
+    /** A string under {@code fields}; empty where it is absent. */
+    public Optional<String> field(String name) {
         return string(written.get(name));
     }
 
@@ -654,10 +660,10 @@ public final class CallPayload {
     }
 
     /**
-     * A whole number at the top level, or null where it is absent. A number
+     * A whole number at the top level; empty where it is absent. A number
      * past what a long holds arrives as the long's bound on its side.
      */
-    public Long wholeNumber(String name) {
+    public Optional<Long> wholeNumber(String name) {
         return wholeOf(top.get(name));
     }
 
@@ -674,21 +680,21 @@ public final class CallPayload {
     }
 
     /**
-     * The whole number a value names, or null where it names none: a JSON
+     * The whole number a value names; empty where it names none: a JSON
      * number with no fraction, or text that is a whole number. A number past
      * what a long holds comes back as the long's bound on its side, which is
      * enough to refuse it as too large without ever building it.
      */
-    static Long wholeOf(Object value) {
+    static Optional<Long> wholeOf(@Nullable Object value) {
         if (value instanceof Integer || value instanceof Long
                 || value instanceof Short || value instanceof Byte) {
-            return ((Number) value).longValue();
+            return Optional.of(((Number) value).longValue());
         }
         if (value instanceof String s) {
             return wholeOf(s.trim());
         }
         if (!(value instanceof Number n)) {
-            return null;
+            return Optional.empty();
         }
         BigDecimal exact;
         if (n instanceof BigDecimal d) {
@@ -698,36 +704,36 @@ public final class CallPayload {
         } else if (Double.isFinite(n.doubleValue())) {
             exact = BigDecimal.valueOf(n.doubleValue());
         } else {
-            return null;
+            return Optional.empty();
         }
         if (exact.signum() != 0 && exact.stripTrailingZeros().scale() > 0) {
-            return null;
+            return Optional.empty();
         }
         if (exact.compareTo(LONG_MAX) > 0) {
-            return Long.MAX_VALUE;
+            return Optional.of(Long.MAX_VALUE);
         }
         if (exact.compareTo(LONG_MIN) < 0) {
-            return Long.MIN_VALUE;
+            return Optional.of(Long.MIN_VALUE);
         }
-        return exact.longValueExact();
+        return Optional.of(exact.longValueExact());
     }
 
     /** Text that is a sign and digits; more than eighteen digits are read as a bound. */
-    private static Long wholeOf(String text) {
+    private static Optional<Long> wholeOf(String text) {
         if (!WHOLE_TEXT.matcher(text).matches()) {
-            return null;
+            return Optional.empty();
         }
         boolean negative = text.startsWith("-");
         String digits = text.replaceFirst("^[+-]?0*", "");
         if (digits.length() > MAX_LONG_DIGITS) {
-            return negative ? Long.MIN_VALUE : Long.MAX_VALUE;
+            return Optional.of(negative ? Long.MIN_VALUE : Long.MAX_VALUE);
         }
         long magnitude = digits.isEmpty() ? 0 : Long.parseLong(digits);
-        return negative ? -magnitude : magnitude;
+        return Optional.of(negative ? -magnitude : magnitude);
     }
 
-    private static String string(Object value) {
-        return value == null ? null : String.valueOf(value);
+    private static Optional<String> string(@Nullable Object value) {
+        return value == null ? Optional.empty() : Optional.of(String.valueOf(value));
     }
 
     private static SurfaceException refused(Refusal refusal) {

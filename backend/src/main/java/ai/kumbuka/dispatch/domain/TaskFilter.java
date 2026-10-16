@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -52,13 +53,13 @@ public record TaskFilter(
             return wireName;
         }
 
-        static Field byWireName(String name) {
+        static Optional<Field> byWireName(String name) {
             for (Field f : values()) {
                 if (f.wireName.equals(name)) {
-                    return f;
+                    return Optional.of(f);
                 }
             }
-            return null;
+            return Optional.empty();
         }
 
         /** Every declared name, for a refusal that says what would have worked. */
@@ -88,7 +89,7 @@ public record TaskFilter(
      * @param raw field name to its comma-separated values, as the caller wrote them
      */
     public static TaskFilter of(Map<String, String> raw) {
-        boolean undeclared = raw.keySet().stream().anyMatch(name -> Field.byWireName(name) == null);
+        boolean undeclared = raw.keySet().stream().anyMatch(name -> Field.byWireName(name).isEmpty());
         if (undeclared) {
             // The names that arrived are the caller's and stay with it (DEC-0043 R19).
             throw new DispatchException(DispatchException.Reason.FILTER_FIELD_UNKNOWN,
@@ -146,22 +147,20 @@ public record TaskFilter(
     private static Set<Integer> brackets(List<String> values) {
         Set<Integer> out = new LinkedHashSet<>();
         for (int i = 0; i < values.size(); i++) {
-            Integer number = bracketNumber(values.get(i));
-            if (number == null) {
-                throw refused(Field.BRACKET, "a value that is no bracket number", values.size(), i);
-            }
-            out.add(number);
+            int at = i;
+            out.add(bracketNumber(values.get(i)).orElseThrow(() ->
+                refused(Field.BRACKET, "a value that is no bracket number", values.size(), at)));
         }
         return out;
     }
 
-    /** A bracket number: a whole number from 1; null where the text names none. */
-    private static Integer bracketNumber(String value) {
+    /** A bracket number: a whole number from 1; empty where the text names none. */
+    private static Optional<Integer> bracketNumber(String value) {
         try {
             int number = Integer.parseInt(value);
-            return number < 1 ? null : number;
+            return number < 1 ? Optional.empty() : Optional.of(number);
         } catch (NumberFormatException e) {
-            return null;
+            return Optional.empty();
         }
     }
 

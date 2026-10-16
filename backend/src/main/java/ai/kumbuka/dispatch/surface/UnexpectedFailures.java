@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.surface;
 
 import org.jboss.logging.Logger;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +51,7 @@ public final class UnexpectedFailures {
      * @param cause   what went wrong, or null where the failure arrived as a
      *                typed refusal the surface cannot serve
      */
-    public static Refusal refuse(VerbName call, String address, Throwable cause) {
+    public static Refusal refuse(@Nullable VerbName call, String address, Throwable cause) {
         String named = call == null ? "this request" : call.toString();
         String reference = UUID.randomUUID().toString();
         String chain = classNames(cause);

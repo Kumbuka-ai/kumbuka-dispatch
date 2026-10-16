@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -17,16 +18,24 @@ import java.util.Map;
  * level, its properties, and for a property its type, its closed set of
  * values, its description, and for a list the rule every element obeys.
  *
- * @param properties the properties of an object, by name, in declaration order
+ * @param properties the properties of an object, by name, in declaration order;
+ *                   absent on a schema of no object
+ * @param required absent on a schema of no object
+ * @param additionalProperties absent on a schema of no object
+ * @param items absent on a schema of no list
+ * @param minItems absent where a list may be empty or the schema is of no list
+ * @param pattern absent where the elements obey no pattern
+ * @param values absent where the value is not of a closed set
+ * @param description absent on the outer object of a call
  */
 public record SchemaPayload(
     @JsonProperty("type") String type,
-    @JsonProperty("properties") Map<String, SchemaPayload> properties,
-    @JsonProperty("required") List<String> required,
-    @JsonProperty("additionalProperties") Boolean additionalProperties,
-    @JsonProperty("items") SchemaPayload items,
-    @JsonProperty("minItems") Integer minItems,
-    @JsonProperty("pattern") String pattern,
-    @JsonProperty("enum") List<String> values,
-    @JsonProperty("description") String description) {
+    @JsonProperty("properties") @Nullable Map<String, SchemaPayload> properties,
+    @JsonProperty("required") @Nullable List<String> required,
+    @JsonProperty("additionalProperties") @Nullable Boolean additionalProperties,
+    @JsonProperty("items") @Nullable SchemaPayload items,
+    @JsonProperty("minItems") @Nullable Integer minItems,
+    @JsonProperty("pattern") @Nullable String pattern,
+    @JsonProperty("enum") @Nullable List<String> values,
+    @JsonProperty("description") @Nullable String description) {
 }

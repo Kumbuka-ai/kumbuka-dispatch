@@ -30,6 +30,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.UUID;
@@ -94,7 +95,8 @@ public class VerbSurface {
     // ======================================================================
 
     @Transactional
-    public Result create(Actor actor, String scope, String selector, Integer parentNumber,
+    public Result create(Actor actor, String scope, String selector,
+                         @Nullable Integer parentNumber,
                          TaskService.Draft draft, IdempotencyKey key) {
         UUID scopeId = resolve(actor, scope, Access.WRITE);
         TaskView created = tasks.create(scopeId, selector, parentNumber, draft, actor, key);
@@ -103,7 +105,8 @@ public class VerbSurface {
     }
 
     @Transactional
-    public Result update(Actor actor, Item at, TaskService.Draft changes, String conflictToken) {
+    public Result update(Actor actor, Item at, TaskService.Draft changes,
+                         @Nullable String conflictToken) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
         return new Result(at.scope(),
             tasks.update(scopeId, at.address(), changes, conflictToken, actor));
@@ -111,7 +114,7 @@ public class VerbSurface {
 
     /** Deletes a draft and answers the complete address it had. */
     @Transactional
-    public String delete(Actor actor, Item at, String conflictToken) {
+    public String delete(Actor actor, Item at, @Nullable String conflictToken) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
         return tasks.delete(scopeId, at.address(), conflictToken, actor).complete(at.scope());
     }
@@ -171,7 +174,7 @@ public class VerbSurface {
      * target in a scope the caller may read and not write is admissible.
      */
     @Transactional
-    public Result relate(Actor actor, Item at, Item target, String conflictToken) {
+    public Result relate(Actor actor, Item at, Item target, @Nullable String conflictToken) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
         UUID targetScopeId = resolve(actor, target.scope(), Access.READ);
         return new Result(at.scope(), tasks.relate(scopeId, at.address(), targetScopeId,
@@ -179,7 +182,7 @@ public class VerbSurface {
     }
 
     @Transactional
-    public Result unrelate(Actor actor, Item at, String conflictToken) {
+    public Result unrelate(Actor actor, Item at, @Nullable String conflictToken) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
         return new Result(at.scope(),
             tasks.unrelate(scopeId, at.address(), conflictToken, actor));

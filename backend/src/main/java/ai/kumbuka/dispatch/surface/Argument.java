@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -29,7 +31,7 @@ import java.util.function.Supplier;
  *                    messages/argument.properties}, read when the text is
  *                    needed and never when the declaration is built
  * @param itemPattern for an {@link #ARRAY} argument, the regular expression
- *                    every element obeys, or null. It travels into the
+ *                    every element obeys; absent for every other argument. It travels into the
  *                    published schema so a conforming client can refuse a
  *                    malformed element before sending it; the surface enforces
  *                    the same rule
@@ -39,11 +41,11 @@ import java.util.function.Supplier;
  *                    enforced by the surface
  * @param fallback    the value an optional argument takes when it is left out
  *                    or sent as {@code null} (DEC-0043 R17), as the
- *                    declaration publishes it; null for a required argument
+ *                    declaration publishes it; absent for a required argument
  */
 public record Argument(String name, String type, boolean required, Placement placement,
-                       Supplier<String> text, String itemPattern, List<Value> values,
-                       String fallback) {
+                       Supplier<String> text, @Nullable String itemPattern, List<Value> values,
+                       @Nullable String fallback) {
 
     /**
      * One value of a closed set, and what choosing it means.
@@ -158,7 +160,7 @@ public record Argument(String name, String type, boolean required, Placement pla
     }
 
     /** A string that takes one of a closed set of values; fallback null where it is required. */
-    public static Argument oneOf(String name, Placement placement, String fallback,
+    public static Argument oneOf(String name, Placement placement, @Nullable String fallback,
                                  List<Value> values, Supplier<String> description) {
         return new Argument(name, STRING, fallback == null, placement, description, null,
             values, fallback);

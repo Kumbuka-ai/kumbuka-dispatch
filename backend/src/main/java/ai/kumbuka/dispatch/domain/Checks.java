@@ -10,6 +10,7 @@ package ai.kumbuka.dispatch.domain;
 import ai.kumbuka.dispatch.domain.Decision.Check;
 import ai.kumbuka.dispatch.domain.Decision.Refused;
 import ai.kumbuka.dispatch.domain.DispatchException.Reason;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -111,7 +112,7 @@ final class Checks {
         };
     }
 
-    private static Optional<Refused> receipt(TaskSituation s, String presented) {
+    private static Optional<Refused> receipt(TaskSituation s, @Nullable String presented) {
         if (presented == null || presented.isBlank()) {
             return refuse(Check.PROOF, Reason.RECEIPT_ABSENT, s.address() + " needs the "
                 + "receipt its claim handed out: every write by an executor carries it.");
@@ -123,7 +124,7 @@ final class Checks {
         return Optional.empty();
     }
 
-    static Optional<Refused> conflictToken(TaskSituation s, String presented) {
+    static Optional<Refused> conflictToken(TaskSituation s, @Nullable String presented) {
         if (presented == null || presented.isBlank()) {
             return refuse(Check.PROOF, Reason.CONFLICT_TOKEN_MISSING, "this call on "
                 + s.address() + " carries the conflict token of the caller's last read.");
@@ -177,7 +178,7 @@ final class Checks {
         };
     }
 
-    private static Optional<Refused> metadata(Map<String, Object> metadata) {
+    private static Optional<Refused> metadata(@Nullable Map<String, Object> metadata) {
         return Metadata.problem(metadata)
             .flatMap(message -> refuse(Check.PAYLOAD, Reason.METADATA_REFUSED, message));
     }

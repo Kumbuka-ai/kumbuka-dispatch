@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.domain;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.List;
 
 /**
@@ -272,7 +274,8 @@ public class DispatchException extends RuntimeException {
 
     private final transient Reason reason;
     private final transient List<String> offenders;
-    private final transient String confirmation;
+    /** The confirmation this refusal hands out; absent on every refusal but one. */
+    private final transient @Nullable String confirmation;
 
     public DispatchException(Reason reason, String message) {
         this(reason, message, List.of());
@@ -290,7 +293,7 @@ public class DispatchException extends RuntimeException {
      * be withdrawn.
      */
     public DispatchException(Reason reason, String message, List<String> offenders,
-                             String confirmation) {
+                             @Nullable String confirmation) {
         super(message);
         this.reason = reason;
         this.offenders = List.copyOf(offenders);

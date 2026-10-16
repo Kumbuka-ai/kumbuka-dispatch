@@ -11,6 +11,7 @@ import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Refusal;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.VerbName;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
@@ -112,7 +113,8 @@ public enum CustomMethod {
 
     /** The declared call this route makes. */
     public ProcessVerb verb() {
-        return ProcessVerb.byName(Surface.REST, call);
+        return ProcessVerb.byName(Surface.REST, call).orElseThrow(() ->
+            new IllegalStateException("the route " + call + " names no declared call"));
     }
 
     /**
@@ -150,7 +152,7 @@ public enum CustomMethod {
      *
      * @param verb the colon segment's verb, or null where the segment has none
      */
-    public static Optional<CustomMethod> find(String method, Depth depth, String verb) {
+    public static Optional<CustomMethod> find(String method, Depth depth, @Nullable String verb) {
         return Arrays.stream(values())
             .filter(r -> r.method.equals(method) && r.depth == depth
                 && (verb == null ? !r.custom : r.custom && r.call.equals(verb)))
@@ -186,7 +188,7 @@ public enum CustomMethod {
      * A path segment taken apart at its last colon: the address part and the
      * verb, or the segment and null where it carries no colon.
      */
-    public static String[] split(String segment) {
+    public static @Nullable String[] split(String segment) {
         int at = segment.lastIndexOf(SEPARATOR);
         return at < 0
             ? new String[] {segment, null}

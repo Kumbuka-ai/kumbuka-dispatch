@@ -200,10 +200,10 @@ class ApparatusPatternIT {
         try {
             List<String> given = new CallPayload(ProcessVerb.CLAIM_NEXT,
                 Surface.MCP, arguments).list("apparatus", Argument.Placement.TOP);
-            if (ApparatusPatterns.firstMalformed(given) != null) {
+            if (ApparatusPatterns.firstMalformed(given).isPresent()) {
                 return MALFORMED;
             }
-            return ApparatusPatterns.firstUnbounded(given) != null ? UNBOUNDED : ADMITTED;
+            return ApparatusPatterns.firstUnbounded(given).isPresent() ? UNBOUNDED : ADMITTED;
         } catch (SurfaceException refused) {
             return refused.refusal().code().name();
         }

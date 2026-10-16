@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.adapter.rest;
 
 import ai.kumbuka.dispatch.adapter.payload.DomainRefusals;
 import ai.kumbuka.dispatch.adapter.payload.Payloads;
+import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.Refusal;
@@ -27,6 +28,7 @@ import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
 import org.jboss.logging.Logger;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
 import java.util.List;
@@ -54,11 +56,11 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
     @Override
     public Response toResponse(SurfaceException refused) {
         LOG.debugf("refusal: %s", refused.refusal().code());
-        return answer(refused.refusal(), refused.allow());
+        return answer(refused.refusal(), refused.allow().orElse(null));
     }
 
     /** One refusal as an HTTP response: its code's status, its envelope, and for a 405 the methods. */
-    static Response answer(Refusal refusal, String allow) {
+    static Response answer(Refusal refusal, @Nullable String allow) {
         Response.ResponseBuilder response = Response.status(refusal.code().status())
             .type(MediaType.APPLICATION_JSON)
             .entity(Payloads.refusal(refusal));
@@ -83,13 +85,15 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
         @Override
         public Response toResponse(DispatchException e) {
             LOG.debugf("refusal: %s", e.reason());
-            if (!context.made()) {
+            Optional<CallContext.Made> made = context.made();
+            if (made.isEmpty()) {
                 return answer(RefusalCode.of(e.reason()) == RefusalCode.NOT_FOUND
                     ? Refusal.notFound()
                     : UnexpectedFailures.refuse(null, UNREAD, e), null);
             }
-            return answer(DomainRefusals.of(e, context.surface(), context.actor(),
-                context.verb(), context.given(), this::readQuietly, clock), null);
+            CallContext.Made call = made.get();
+            return answer(DomainRefusals.of(e, call.surface(), context.actor().orElse(null),
+                call.verb(), call.given(), this::readQuietly, clock), null);
         }
 
         /**
@@ -99,9 +103,13 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
          * at the edge.
          */
         private Optional<VerbSurface.Result> readQuietly(String complete) {
+            Optional<Actor> actor = context.actor();
+            if (actor.isEmpty()) {
+                return Optional.empty();
+            }
             try {
                 AddressParser.Parts parts = AddressParser.uri(complete);
-                return Optional.of(verbs.read(context.actor(), new VerbSurface.Item(
+                return Optional.of(verbs.read(actor.get(), new VerbSurface.Item(
                     parts.scope(), AddressParser.item(parts.selector(), parts.id()))));
             } catch (DispatchException | SurfaceException unreadable) {
                 return Optional.empty();
@@ -135,10 +143,11 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                     default -> given;
                 };
             }
-            VerbName call = context.made()
-                ? VerbName.of(context.verb(), context.surface()) : null;
+            Optional<CallContext.Made> made = context.made();
+            @Nullable VerbName call = made.map(m -> VerbName.of(m.verb(), m.surface()))
+                .orElse(null);
             return answer(UnexpectedFailures.refuse(call,
-                context.made() ? DomainRefusals.whereIn(context.given()) : UNREAD, failure), null);
+                made.map(m -> DomainRefusals.whereIn(m.given())).orElse(UNREAD), failure), null);
         }
 
         /**

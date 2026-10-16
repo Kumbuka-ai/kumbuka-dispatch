@@ -16,6 +16,7 @@ import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.PreMatching;
 import jakarta.ws.rs.ext.Provider;
 import org.jboss.logging.MDC;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.Locale;
@@ -71,7 +72,7 @@ public class RequestIdFilter implements ContainerRequestFilter, ContainerRespons
     }
 
     /** The id a request carries where it carries exactly one UUID; a fresh one otherwise. */
-    static String idOf(List<String> sent) {
+    static String idOf(@Nullable List<String> sent) {
         if (sent != null && sent.size() == 1 && UUID_FORM.matcher(sent.get(0)).matches()) {
             return sent.get(0).toLowerCase(Locale.ROOT);
         }

@@ -1,4 +1,13 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
+
+import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.List;
@@ -31,16 +40,19 @@ import java.util.UUID;
  * @param identity           the task's durable identity
  * @param address            where the task lives in its scope
  * @param state              the effective state
- * @param holdReason         set exactly in {@code on_hold}
- * @param outcome            set exactly in {@code closed}
- * @param holder             the effective holder's subject, or null
+ * @param holdReason         set exactly in {@code on_hold}; absent in every other state
+ * @param outcome            set exactly in {@code closed}; absent in every other state
+ * @param holder             the effective holder's subject; absent where nobody holds
+ *                           the task, a lapsed lease included
  * @param storedHolder       the holder the row names, lapsed or not; the lock on
- *                           acceptance compares with it in {@code delivered}
+ *                           acceptance compares with it in {@code delivered}; absent
+ *                           where the row names none
  * @param lapsed             the row says {@code active} and its lease has ended
- * @param receiptHash        the stored hash of the holder's receipt
+ * @param receiptHash        the stored hash of the holder's receipt; absent with the
+ *                           stored holder
  * @param conflictToken      the token the row currently carries
- * @param notBefore          the instant a {@code defer} named, or null
- * @param questionOptions    the pending question's options, or null
+ * @param notBefore          the instant a {@code defer} named; absent where none stands
+ * @param questionOptions    the pending question's options; absent without a question
  * @param root               whether the task is a bracket root
  * @param unfinishedChildren the children of a root that are not closed
  * @param now                the instant this situation was read at
@@ -49,15 +61,15 @@ public record TaskSituation(
     UUID identity,
     ExchangeAddress address,
     TaskState state,
-    HoldReason holdReason,
-    Outcome outcome,
-    String holder,
-    String storedHolder,
+    @Nullable HoldReason holdReason,
+    @Nullable Outcome outcome,
+    @Nullable String holder,
+    @Nullable String storedHolder,
     boolean lapsed,
-    String receiptHash,
+    @Nullable String receiptHash,
     String conflictToken,
-    Instant notBefore,
-    Map<String, Object> questionOptions,
+    @Nullable Instant notBefore,
+    @Nullable Map<String, Object> questionOptions,
     boolean root,
     List<Child> unfinishedChildren,
     Instant now) {
@@ -91,8 +103,8 @@ public record TaskSituation(
         boolean lapsed = stored == TaskState.ACTIVE && !leaseRuns(task, now);
 
         TaskState state = stored;
-        HoldReason reason = task.storedHoldReason();
-        String holder = task.storedHolder();
+        @Nullable HoldReason reason = task.storedHoldReason().orElse(null);
+        @Nullable String holder = task.storedHolder().orElse(null);
         if (lapsed) {
             boolean parks = task.lapseCount() + 1 >= LAPSES_TO_PARK;
             state = parks ? TaskState.ON_HOLD : TaskState.OPEN;
@@ -107,9 +119,10 @@ public record TaskSituation(
                 .toList()
             : List.of();
 
-        return new TaskSituation(task.uuid, task.address(), state, reason, task.outcome(), holder,
-            task.storedHolder(), lapsed, task.receiptHash(), task.conflictToken(),
-            task.notBefore(), task.questionOptions(), task.isBracketRoot(), unfinished, now);
+        return new TaskSituation(task.uuid, task.address(), state, reason,
+            task.outcome().orElse(null), holder, task.storedHolder().orElse(null), lapsed,
+            task.receiptHash().orElse(null), task.conflictToken(), task.notBefore().orElse(null),
+            task.questionOptions().orElse(null), task.isBracketRoot(), unfinished, now);
     }
 
     /**
@@ -121,7 +134,7 @@ public record TaskSituation(
      * leave the task unreachable.
      */
     private static boolean leaseRuns(Task task, Instant now) {
-        return task.leaseExpiresAt() != null && task.leaseExpiresAt().isAfter(now);
+        return task.leaseExpiresAt().filter(end -> end.isAfter(now)).isPresent();
     }
 
     /** Parked: its third lapse moved it to {@code on_hold} without a holder. */

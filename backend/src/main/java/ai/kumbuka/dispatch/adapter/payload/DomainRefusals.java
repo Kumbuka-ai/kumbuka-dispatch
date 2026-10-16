@@ -19,6 +19,7 @@ import ai.kumbuka.dispatch.surface.ArgumentName;
 import ai.kumbuka.dispatch.surface.ArgumentPath;
 import ai.kumbuka.dispatch.surface.Form;
 import ai.kumbuka.dispatch.surface.NextList;
+import ai.kumbuka.dispatch.surface.Participation;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Refusal;
 import ai.kumbuka.dispatch.surface.RefusalCode;
@@ -26,6 +27,7 @@ import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.UnexpectedFailures;
 import ai.kumbuka.dispatch.surface.VerbName;
 import ai.kumbuka.dispatch.surface.VerbSurface;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
 import java.util.ArrayList;
@@ -82,12 +84,13 @@ public final class DomainRefusals {
     /**
      * A kernel refusal of one call, in the caller's vocabulary.
      *
-     * @param actor the caller, or null where the token carried no usable
+     * @param actor the caller; absent where the token carried no usable
      *              capacity and so no caller was made
      * @param given the call's arguments as they arrived, read only for the
      *              address of the task the refusal is about
      */
-    public static Refusal of(DispatchException e, Surface surface, Actor actor, ProcessVerb verb,
+    public static Refusal of(DispatchException e, Surface surface, @Nullable Actor actor,
+                             ProcessVerb verb,
                              Map<String, Object> given, Reader read, Clock clock) {
         VerbName call = VerbName.of(verb, surface);
         RefusalCode code = RefusalCode.of(e.reason());
@@ -103,7 +106,9 @@ public final class DomainRefusals {
             case ROOT_UNSENT -> Refusal.rootUnsent(call);
             case ROOT_CLOSED -> Refusal.rootClosed(call);
             case CHILDREN_PRESENT -> Refusal.childrenPresent(call,
-                childrenIn(targetIn(verb, given), e));
+                childrenIn(targetIn(verb, given).orElseThrow(() ->
+                    new IllegalStateException("the kernel refused a root the call did not name")),
+                    e));
             case DRAW_EMPTY -> Refusal.nothingToTake(call, VerbName.of(ProcessVerb.QUERY, surface));
             case PAGE_SIZE_REJECTED -> Refusal.pageSizeRejected(call, e.offenders());
             case CURSOR_MALFORMED -> Refusal.cursorMalformed(call,
@@ -116,7 +121,7 @@ public final class DomainRefusals {
                 ArgumentPath.of(verb.topArguments()));
             case ARGUMENT_INVALID -> invalid(verb, call, e);
             case CONFLICT_TOKEN_MISSING -> Refusal.conflictTokenMissing(call);
-            case OPTION_UNOFFERED -> fieldIn(given, OPTION) != null
+            case OPTION_UNOFFERED -> fieldIn(given, OPTION).isPresent()
                 ? Refusal.optionUnoffered(call, pathIn(verb, OPTION, Argument.Placement.FIELDS),
                     false)
                 : Refusal.optionUnoffered(call, pathIn(verb, TEXT, Argument.Placement.FIELDS),
@@ -125,9 +130,13 @@ public final class DomainRefusals {
         };
     }
 
-    /** The call a kernel refusal is worded against, and how its task is read again. */
-    private record Context(Surface surface, Actor actor, ProcessVerb verb, VerbName call,
-                           Map<String, Object> given, Reader read, Clock clock) {
+    /**
+     * The call a kernel refusal is worded against, and how its task is read again.
+     *
+     * @param actor the caller; absent where the token carried no usable capacity
+     */
+    private record Context(Surface surface, @Nullable Actor actor, ProcessVerb verb,
+                           VerbName call, Map<String, Object> given, Reader read, Clock clock) {
     }
 
     /** The refusals about a task the caller may see: they carry its situation. */
@@ -139,19 +148,18 @@ public final class DomainRefusals {
         Reader read = c.read();
         Clock clock = c.clock();
         Map<String, Object> given = c.given();
-        String target = targetIn(verb, given);
+        Optional<String> target = targetIn(verb, given);
         if (actor == null) {
             // A token with no usable capacity reads nothing, so there is no
             // state to name; the refusal is about who the caller is.
             return Refusal.ofRole(call, Refusal.Part.CAPACITY);
         }
-        if (target == null && code == RefusalCode.ROLE_INSUFFICIENT) {
+        if (target.isEmpty() && code == RefusalCode.ROLE_INSUFFICIENT) {
             // A call on a collection that is the other part's: a draw by a
             // commissioner. No task is named, so none has a state to name.
             return Refusal.ofRole(call, part(verb, e));
         }
-        Optional<VerbSurface.Result> result = target == null ? Optional.empty()
-            : read.apply(target);
+        Optional<VerbSurface.Result> result = target.flatMap(read);
         if (result.isEmpty()) {
             return Refusal.notFound();
         }
@@ -182,12 +190,9 @@ public final class DomainRefusals {
      */
     private static ArgumentPath pathIn(ProcessVerb verb, String name,
                                        Argument.Placement placement) {
-        Argument argument = verb.argument(name, placement);
-        if (argument == null) {
-            throw new IllegalStateException(verb.call() + " declares no " + name
-                + ", and the kernel refused it");
-        }
-        return ArgumentPath.of(argument);
+        return ArgumentPath.of(verb.argument(name, placement).orElseThrow(() ->
+            new IllegalStateException(verb.call() + " declares no " + name
+                + ", and the kernel refused it")));
     }
 
     /**
@@ -197,10 +202,8 @@ public final class DomainRefusals {
     private static List<ArgumentName> differing(ProcessVerb verb, List<String> differ) {
         List<ArgumentName> names = new ArrayList<>();
         for (String name : differ) {
-            Argument argument = verb.argument(name, Argument.Placement.TOP);
-            if (argument != null) {
-                names.add(ArgumentName.of(argument));
-            }
+            verb.argument(name, Argument.Placement.TOP)
+                .ifPresent(argument -> names.add(ArgumentName.of(argument)));
         }
         return names;
     }
@@ -239,10 +242,11 @@ public final class DomainRefusals {
         String first = e.offenders().isEmpty() ? "" : e.offenders().get(0);
         int open = first.indexOf('[');
         String name = open < 0 ? first : first.substring(0, open);
-        Argument argument = verb.argument(name, Argument.Placement.TOP);
-        if (argument == null) {
+        Optional<Argument> declared = verb.argument(name, Argument.Placement.TOP);
+        if (declared.isEmpty()) {
             return Refusal.valueInvalid(call, e.offenders());
         }
+        Argument argument = declared.get();
         ArgumentPath path = open < 0 ? ArgumentPath.of(argument)
             : ArgumentPath.of(argument,
                 Integer.parseInt(first.substring(open + 1, first.length() - 1)));
@@ -268,10 +272,11 @@ public final class DomainRefusals {
         if (e.reason() == DispatchException.Reason.RATIFICATION_NOT_PERMITTED) {
             return Refusal.Part.COMMISSIONER_OTHER_THAN_THE_DELIVERER;
         }
-        if (verb.role() == null) {
+        Optional<Participation> role = verb.role();
+        if (role.isEmpty()) {
             return Refusal.Part.AUTHOR;
         }
-        return switch (verb.role()) {
+        return switch (role.get()) {
             case COMMISSIONER, BYSTANDER -> Refusal.Part.COMMISSIONER;
             case CANDIDATE -> Refusal.Part.EXECUTOR;
             case HOLDER -> Refusal.Part.HOLDER;
@@ -309,7 +314,7 @@ public final class DomainRefusals {
      */
     private static List<String> childrenIn(String root, DispatchException e) {
         String scope = AddressParser.partsOf(root).orElseThrow(() ->
-            new IllegalStateException("the kernel refused a root the call did not name"))
+            new IllegalStateException("the root the call named reads as no address"))
             .scope();
         List<String> children = new ArrayList<>();
         for (String shortForm : e.offenders()) {
@@ -325,7 +330,7 @@ public final class DomainRefusals {
                                                  VerbSurface.Result result, Clock clock) {
         List<NextList.Step> next = NextList.of(surface, result.view(), actor, false);
         return new Refusal.Situation(stateOf(result.view()), next,
-            NextList.waitingFor(result.view(), next, clock.instant()));
+            NextList.waitingFor(result.view(), next, clock.instant()).orElse(null));
     }
 
     /** The state as a refusal names it, with its hold reason or its outcome. */
@@ -342,20 +347,19 @@ public final class DomainRefusals {
 
     /**
      * The task a refused call was about: its address, or a create's parent;
-     * null where the call named none, or none that reads as an address. Read
+     * empty where the call named none, or none that reads as an address. Read
      * only to find the state the refusal carries, never to name it.
      */
-    private static String targetIn(ProcessVerb verb, Map<String, Object> given) {
+    private static Optional<String> targetIn(ProcessVerb verb, Map<String, Object> given) {
         Object target = given.get(verb == ProcessVerb.CREATE ? PARENT : ADDRESS);
-        return target == null ? null : wellFormed(String.valueOf(target));
+        return target == null ? Optional.empty() : wellFormed(String.valueOf(target));
     }
 
-    /** The address as the service renders it, or null where it reads as none. */
-    private static String wellFormed(String raw) {
+    /** The address as the service renders it; empty where it reads as none. */
+    private static Optional<String> wellFormed(String raw) {
         return AddressParser.partsOf(raw)
             .map(parts -> new VerbSurface.Item(parts.scope(),
-                AddressParser.item(parts.selector(), parts.id())).complete())
-            .orElse(null);
+                AddressParser.item(parts.selector(), parts.id())).complete());
     }
 
     /**
@@ -365,8 +369,7 @@ public final class DomainRefusals {
     public static String whereIn(Map<String, Object> given) {
         Object address = given.get(ADDRESS);
         if (address != null) {
-            String complete = wellFormed(String.valueOf(address));
-            return complete == null ? UNREAD : complete;
+            return wellFormed(String.valueOf(address)).orElse(UNREAD);
         }
         Object scope = given.get(SCOPE);
         Object selector = given.get(SELECTOR);
@@ -381,8 +384,10 @@ public final class DomainRefusals {
     }
 
     @SuppressWarnings("unchecked")
-    private static Object fieldIn(Map<String, Object> given, String name) {
+    private static Optional<Object> fieldIn(Map<String, Object> given, String name) {
         Object fields = given.get(CallPayload.FIELDS);
-        return fields instanceof Map ? ((Map<String, Object>) fields).get(name) : null;
+        return fields instanceof Map
+            ? Optional.ofNullable(((Map<String, Object>) fields).get(name))
+            : Optional.empty();
     }
 }

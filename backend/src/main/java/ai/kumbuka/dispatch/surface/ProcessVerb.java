@@ -8,10 +8,12 @@
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.TaskVerb;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -277,12 +279,14 @@ public enum ProcessVerb {
     }
 
     private final String verb;
-    private final TaskVerb transition;
-    private final Participation role;
+    /** The row of the transition table; absent for the nine calls that are no transition. */
+    private final @Nullable TaskVerb transition;
+    /** The part that makes the call; absent where it depends on the task. */
+    private final @Nullable Participation role;
     private final Supplier<String> description;
     private final List<Argument> arguments;
 
-    ProcessVerb(String verb, TaskVerb transition, Participation role,
+    ProcessVerb(String verb, @Nullable TaskVerb transition, @Nullable Participation role,
                 Supplier<String> description, List<Argument> arguments) {
         this.verb = verb;
         this.transition = transition;
@@ -306,9 +310,9 @@ public enum ProcessVerb {
         return surface == Surface.MCP ? call() : verb;
     }
 
-    /** The row of the transition table that decides this call, or null for the nine others. */
-    public TaskVerb transition() {
-        return transition;
+    /** The row of the transition table that decides this call; empty for the nine others. */
+    public Optional<TaskVerb> transition() {
+        return Optional.ofNullable(transition);
     }
 
     public boolean isTransition() {
@@ -316,12 +320,12 @@ public enum ProcessVerb {
     }
 
     /**
-     * The part that makes this call, or null where it depends on the task:
+     * The part that makes this call; empty where it depends on the task:
      * reading is open to whoever may see a task, an addendum to whoever wrote
      * the text it supplements.
      */
-    public Participation role() {
-        return role;
+    public Optional<Participation> role() {
+        return Optional.ofNullable(role);
     }
 
     /** What the call does, from its bundle (concept section 3.5, DEC-0043 R3 and R21). */
@@ -348,21 +352,17 @@ public enum ProcessVerb {
         return !fieldArguments().isEmpty();
     }
 
-    /** The declared argument of this name at one level, or null. */
-    public Argument argument(String name, Argument.Placement placement) {
+    /** The declared argument of this name at one level; empty where there is none. */
+    public Optional<Argument> argument(String name, Argument.Placement placement) {
         return arguments.stream()
             .filter(a -> a.name().equals(name) && a.placement() == placement)
-            .findFirst()
-            .orElse(null);
+            .findFirst();
     }
 
     /** The declared argument of this name at one level; a defect where there is none. */
     public Argument declared(String name, Argument.Placement placement) {
-        Argument argument = argument(name, placement);
-        if (argument == null) {
-            throw new IllegalStateException(call() + " declares no " + name);
-        }
-        return argument;
+        return argument(name, placement).orElseThrow(() ->
+            new IllegalStateException(call() + " declares no " + name));
     }
 
     /** Every declared top-level name, {@code fields} included where the call writes. */
@@ -384,14 +384,14 @@ public enum ProcessVerb {
                 "no call is declared for the transition " + transition));
     }
 
-    /** The call of this name on one surface, or null when no call goes by it. */
-    public static ProcessVerb byName(Surface surface, String name) {
+    /** The call of this name on one surface; empty when no call goes by it. */
+    public static Optional<ProcessVerb> byName(Surface surface, String name) {
         for (ProcessVerb call : values()) {
             if (call.on(surface).equals(name)) {
-                return call;
+                return Optional.of(call);
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     /** Every call name on one surface, in declaration order. */
@@ -459,24 +459,24 @@ public enum ProcessVerb {
         if (this != READ && this != READ_TEXT && this != QUERY && this != CLAIM_NEXT) {
             codes.add(RefusalCode.TRANSITION_REFUSED);
         }
-        if (argument(Shared.RECEIPT, Argument.Placement.TOP) != null || this == READ_TEXT) {
+        if (argument(Shared.RECEIPT, Argument.Placement.TOP).isPresent() || this == READ_TEXT) {
             codes.add(RefusalCode.CLAIM_HELD);
             codes.add(RefusalCode.CLAIM_ABSENT);
         }
-        if (argument(Shared.RECEIPT, Argument.Placement.TOP) != null) {
+        if (argument(Shared.RECEIPT, Argument.Placement.TOP).isPresent()) {
             codes.add(RefusalCode.RECEIPT_WRONG);
         }
-        if (argument("conflict_token", Argument.Placement.TOP) != null) {
+        if (argument("conflict_token", Argument.Placement.TOP).isPresent()) {
             codes.add(RefusalCode.CONFLICT_TOKEN_MISSING);
             codes.add(RefusalCode.CONFLICT_TOKEN_STALE);
         }
-        if (argument("confirmation", Argument.Placement.TOP) != null) {
+        if (argument("confirmation", Argument.Placement.TOP).isPresent()) {
             codes.add(RefusalCode.CHILDREN_UNFINISHED);
         }
-        if (argument("option", Argument.Placement.FIELDS) != null) {
+        if (argument("option", Argument.Placement.FIELDS).isPresent()) {
             codes.add(RefusalCode.OPTION_UNOFFERED);
         }
-        if (argument("idempotency_key", Argument.Placement.TOP) != null) {
+        if (argument("idempotency_key", Argument.Placement.TOP).isPresent()) {
             codes.add(RefusalCode.IDEMPOTENCY_KEY_REUSED);
         }
         if (this == CLAIM) {

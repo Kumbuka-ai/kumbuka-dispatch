@@ -25,10 +25,12 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.TenantId;
 import org.hibernate.generator.EventType;
 import org.hibernate.type.SqlTypes;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -83,41 +85,48 @@ public class Task {
     @Column(name = "state", nullable = false)
     private String state = TaskState.DRAFT.wireName();
 
+    /** Absent in every state but {@code on_hold}. */
     @Column(name = "hold_reason")
-    private String holdReason;
+    private @Nullable String holdReason;
 
+    /** Absent in every state but {@code closed}. */
     @Column(name = "outcome")
-    private String outcome;
+    private @Nullable String outcome;
 
     @Column(name = "state_changed_at", nullable = false)
     private Instant stateChangedAt;
 
+    /** Absent on a task copied from a stock row that named nobody. */
     @Column(name = "state_changed_by")
-    private String stateChangedBy;
+    private @Nullable String stateChangedBy;
 
     /** The options of the pending question and whether free text is admitted. */
     @Column(name = "question_options", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
-    private Map<String, Object> questionOptions;
+    private @Nullable Map<String, Object> questionOptions;
 
+    /** Absent unless the task was deferred and is open. */
     @Column(name = "not_before")
-    private Instant notBefore;
+    private @Nullable Instant notBefore;
 
     @Column(name = "lapse_count", nullable = false)
     private Short lapseCount = 0;
 
+    /** Absent while nobody holds the task. */
     @Column(name = "holder_subject")
-    private String holderSubject;
+    private @Nullable String holderSubject;
 
-    /** SHA-256 of the receipt, hex-encoded. Never the receipt. */
+    /** SHA-256 of the receipt, hex-encoded. Never the receipt. Absent with the holder. */
     @Column(name = "holder_receipt_hash")
-    private String holderReceiptHash;
+    private @Nullable String holderReceiptHash;
 
+    /** Absent unless the task is active under a lease. */
     @Column(name = "lease_expires_at")
-    private Instant leaseExpiresAt;
+    private @Nullable Instant leaseExpiresAt;
 
+    /** Absent unless the closed task was curated into another. */
     @Column(name = "curated_in_id")
-    private Long curatedInId;
+    private @Nullable Long curatedInId;
 
     // --- the commission's attributes, frozen at send (V18) -----------------
 
@@ -129,11 +138,11 @@ public class Task {
 
     @Column(name = "dispatch_metadata", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
-    public Map<String, Object> dispatchMetadata;
+    public @Nullable Map<String, Object> dispatchMetadata;
 
     @Column(name = "return_metadata", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
-    private Map<String, Object> returnMetadata;
+    private @Nullable Map<String, Object> returnMetadata;
 
     // --- stamps -------------------------------------------------------------
 
@@ -141,8 +150,9 @@ public class Task {
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     public Instant createdAt;
 
+    /** Absent on a task copied from a stock row that named nobody. */
     @Column(name = "created_by", updatable = false)
-    public String createdBy;
+    public @Nullable String createdBy;
 
     /**
      * The instant of the last write that changed the task, from the service's
@@ -153,12 +163,16 @@ public class Task {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** Absent on a task copied from a stock row that named nobody. */
     @Column(name = "updated_by")
-    public String updatedBy;
+    public @Nullable String updatedBy;
 
-    /** The instant of the write in progress, handed in by {@link #touch}; never stored. */
+    /**
+     * The instant of the write in progress, handed in by {@link #touch}; never
+     * stored. Absent outside a write.
+     */
     @Transient
-    private Instant writtenAt;
+    private @Nullable Instant writtenAt;
 
     /** Whether the write in progress has stamped the token already ({@link #changedBeside}). */
     @Transient
@@ -173,20 +187,20 @@ public class Task {
         return TaskState.fromWireName(state);
     }
 
-    HoldReason storedHoldReason() {
+    Optional<HoldReason> storedHoldReason() {
         return HoldReason.fromWireName(holdReason);
     }
 
-    public Outcome outcome() {
+    public Optional<Outcome> outcome() {
         return Outcome.fromWireName(outcome);
     }
 
-    public Map<String, Object> questionOptions() {
-        return questionOptions;
+    public Optional<Map<String, Object>> questionOptions() {
+        return Optional.ofNullable(questionOptions);
     }
 
-    public Instant notBefore() {
-        return notBefore;
+    public Optional<Instant> notBefore() {
+        return Optional.ofNullable(notBefore);
     }
 
     public int lapseCount() {
@@ -194,24 +208,24 @@ public class Task {
     }
 
     /** The stored holder, lapsed or not. */
-    String storedHolder() {
-        return holderSubject;
+    Optional<String> storedHolder() {
+        return Optional.ofNullable(holderSubject);
     }
 
-    String receiptHash() {
-        return holderReceiptHash;
+    Optional<String> receiptHash() {
+        return Optional.ofNullable(holderReceiptHash);
     }
 
-    Instant leaseExpiresAt() {
-        return leaseExpiresAt;
+    Optional<Instant> leaseExpiresAt() {
+        return Optional.ofNullable(leaseExpiresAt);
     }
 
-    public Long curatedInId() {
-        return curatedInId;
+    public Optional<Long> curatedInId() {
+        return Optional.ofNullable(curatedInId);
     }
 
-    public Map<String, Object> returnMetadata() {
-        return returnMetadata;
+    public Optional<Map<String, Object>> returnMetadata() {
+        return Optional.ofNullable(returnMetadata);
     }
 
     public boolean isBracketRoot() {
@@ -302,7 +316,8 @@ public class Task {
      * {@code closed}, {@code not_before} only in {@code open}, the question's
      * options only with a question.
      */
-    void enter(TaskState target, HoldReason reason, Outcome result, Instant at, String by) {
+    void enter(TaskState target, @Nullable HoldReason reason, @Nullable Outcome result,
+               Instant at, String by) {
         this.state = target.wireName();
         this.holdReason = reason == null ? null : reason.wireName();
         this.outcome = result == null ? null : result.wireName();
@@ -373,11 +388,11 @@ public class Task {
         this.questionOptions = options;
     }
 
-    void writeReturnMetadata(Map<String, Object> metadata) {
+    void writeReturnMetadata(@Nullable Map<String, Object> metadata) {
         this.returnMetadata = metadata;
     }
 
-    void curateIn(Long targetId) {
+    void curateIn(@Nullable Long targetId) {
         this.curatedInId = targetId;
     }
 }

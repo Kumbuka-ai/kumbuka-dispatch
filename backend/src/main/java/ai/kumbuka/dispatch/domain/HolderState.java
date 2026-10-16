@@ -1,6 +1,14 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import com.fasterxml.jackson.annotation.JsonValue;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What the caller needs to know about who holds a task.
@@ -41,7 +49,7 @@ public enum HolderState {
      * The state as it presents to the caller behind {@code actor}, given the
      * effective holder subject at {@code now} (null when no claim stands).
      */
-    public static HolderState of(String effectiveHolderSubject, Actor actor) {
+    public static HolderState of(@Nullable String effectiveHolderSubject, Actor actor) {
         if (effectiveHolderSubject == null) {
             return NOBODY;
         }

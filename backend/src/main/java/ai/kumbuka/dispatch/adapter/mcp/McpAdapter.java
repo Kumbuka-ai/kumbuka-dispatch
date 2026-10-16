@@ -49,6 +49,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
 import java.util.List;
@@ -115,15 +116,20 @@ public class McpAdapter {
     @Inject Clock clock;
 
     /** The service's version, from the build: the POM's version, never a literal (C4.5). */
+    @Inject
     @ConfigProperty(name = "quarkus.application.version")
     String version;
 
-    /** One tool call's name and arguments, as the envelope carries them. */
-    private record Params(String name, Map<String, Object> arguments) {
+    /**
+     * One tool call's name and arguments, as the envelope carries them.
+     *
+     * @param name the tool's name; absent where the envelope carried none
+     */
+    private record Params(@Nullable String name, Map<String, Object> arguments) {
     }
 
     @POST
-    public Response rpc(Map<String, Object> request) {
+    public Response rpc(@Nullable Map<String, Object> request) {
         if (request == null || !JSONRPC.equals(request.get(KEY_JSONRPC))) {
             return error(null, INVALID_PARAMS, Texts.protocol().envelopeRequired(), null);
         }
@@ -153,14 +159,16 @@ public class McpAdapter {
      * answered, refused or not.
      */
     private Response call(Object id, Params params) {
-        ProcessVerb verb = params.name() == null ? null
-            : ProcessVerb.byName(Surface.MCP, params.name());
-        if (verb == null) {
+        String name = params.name();
+        Optional<ProcessVerb> named = name == null ? Optional.empty()
+            : ProcessVerb.byName(Surface.MCP, name);
+        if (named.isEmpty()) {
             // The name that arrived is the caller's and stays with it (DEC-0043 R19).
             return error(id, INVALID_PARAMS, Texts.protocol().toolUnknown(),
                 new RpcErrorDataPayload(McpTools.names()));
         }
-        Actor actor = null;
+        ProcessVerb verb = named.get();
+        @Nullable Actor actor = null;
         try {
             CallPayload in = new CallPayload(verb, Surface.MCP, params.arguments());
             actor = caller.current();
@@ -171,7 +179,7 @@ public class McpAdapter {
             return refusal(id, refused.refusal());
         } catch (DispatchException refused) {
             LOG.debugf("refusal: %s", refused.reason());
-            Actor who = actor;
+            @Nullable Actor who = actor;
             return refusal(id, DomainRefusals.of(refused, Surface.MCP, who, verb,
                 params.arguments(), complete -> readQuietly(who, complete), clock));
         } catch (WebApplicationException framework) {
@@ -187,7 +195,10 @@ public class McpAdapter {
      * the refused one rolled back; empty where the caller may not read it,
      * which is itself a refusal and the reason this read lives at the edge.
      */
-    private Optional<VerbSurface.Result> readQuietly(Actor actor, String complete) {
+    private Optional<VerbSurface.Result> readQuietly(@Nullable Actor actor, String complete) {
+        if (actor == null) {
+            return Optional.empty();
+        }
         try {
             AddressParser.Parts parts = AddressParser.uri(complete);
             return Optional.of(verbs.read(actor, new VerbSurface.Item(parts.scope(),
@@ -198,7 +209,7 @@ public class McpAdapter {
     }
 
     @SuppressWarnings("unchecked")
-    private static Params params(Object raw) {
+    private static Params params(@Nullable Object raw) {
         Map<String, Object> params = raw instanceof Map ? (Map<String, Object>) raw : Map.of();
         Object name = params.get(KEY_NAME);
         Object arguments = params.get(KEY_ARGUMENTS);
@@ -232,7 +243,8 @@ public class McpAdapter {
         return Response.ok(new RpcResultPayload(JSONRPC, id, payload)).build();
     }
 
-    private static Response error(Object id, int code, String message, RpcErrorDataPayload data) {
+    private static Response error(@Nullable Object id, int code, String message,
+                                  @Nullable RpcErrorDataPayload data) {
         return Response.ok(new RpcErrorPayload(JSONRPC, id,
             new RpcErrorBodyPayload(code, message, data))).build();
     }
