@@ -243,8 +243,8 @@ class CodeTableIT {
      * so says nothing about that scope.
      *
      * <p>RED STATE, observed with the branch for a caller without a capacity
-     * taken out of the edge: the refusal on the visible scope failed as an
-     * unexpected failure.
+     * taken out of the edge: the edge read the task for a caller it had not
+     * made and failed with a null pointer, a 500 outside the envelope.
      */
     @Test
     void a_token_without_a_capacity_is_role_insufficient_without_a_situation() {

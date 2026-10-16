@@ -129,8 +129,8 @@ class CheckOrderConformanceIT {
      * NOT_FOUND}. The refusal says nothing about the scope; it is the same
      * whether the scope is there or not.
      *
-     * <p>RED STATE, observed with the form check moved behind the resolution of
-     * the scope: both surfaces answered {@code NOT_FOUND}.
+     * <p>RED STATE, observed with the scope resolved before the form check: the
+     * REST surface answered {@code NOT_FOUND} 404.
      */
     @Test
     void a_form_fault_on_an_invisible_scope_is_decided_before_the_scope() {
@@ -162,8 +162,8 @@ class CheckOrderConformanceIT {
      * cannot change one of them unseen (C3.2).
      *
      * <p>RED STATE, observed with the path split without its limit, which drops
-     * the empty segment: the two paths with a slash were not refused, and
-     * answered as the literal paths do.
+     * the empty segment: {@code /api/declaration/} was not refused and answered
+     * 200 with the declaration.
      */
     @Test
     void a_literal_path_with_a_trailing_slash_is_below_the_reserved_name() {
