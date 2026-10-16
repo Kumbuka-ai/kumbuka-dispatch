@@ -1,5 +1,13 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.tenancy;
 
+import ai.kumbuka.dispatch.fixture.LogLines;
 import io.smallrye.config.PropertiesConfigSource;
 import io.smallrye.config.SmallRyeConfigBuilder;
 import org.eclipse.microprofile.config.Config;
@@ -10,7 +18,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -61,6 +72,29 @@ class TenancyConfigurationRefusalTest {
      * is the whole construction: whatever this machine happens to export, the
      * configuration under test is the file.
      */
+    /**
+     * The refusal stands in a log line of its own: the log format carries no
+     * exception (C13.1, C13.2), so the reason a start is refused reaches an
+     * operator's crash loop only through that line.
+     */
+    @Test
+    void the_refusal_stands_in_a_log_line_of_its_own() {
+        List<LogRecord> lines = LogLines.of(TenancyConfigurationGuard.class, () ->
+            TenancyConfigurationGuard.requireConfigured(shipped()));
+
+        assertThat(lines)
+            .as("RED STATE, observed with the guard only throwing: no line said why the start "
+                + "was refused, and the format no longer prints the exception that did")
+            .singleElement()
+            .satisfies(line -> {
+                assertThat(line.getLevel().intValue()).as("WARN, a configuration anomaly")
+                    .isEqualTo(Level.WARNING.intValue());
+                assertThat(line.getMessage()).contains(TenancyConfigurationGuard.TENANT_KEY)
+                    .contains("DISPATCH_TENANT_ID");
+                assertThat(line.getThrown()).as("the line carries no exception").isNull();
+            });
+    }
+
     @Test
     void the_shipped_configuration_alone_does_not_start_the_service() {
         assertThatThrownBy(() -> TenancyConfigurationGuard.requireConfigured(shipped()))
