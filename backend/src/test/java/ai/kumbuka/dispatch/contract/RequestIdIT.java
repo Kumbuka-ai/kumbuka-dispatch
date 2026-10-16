@@ -63,8 +63,8 @@ class RequestIdIT {
     private final List<ExtLogRecord> records = new CopyOnWriteArrayList<>();
     private final Handler capture = new Handler() {
         @Override
-        public void publish(LogRecord record) {
-            if (record instanceof ExtLogRecord ext) {
+        public void publish(LogRecord logged) {
+            if (logged instanceof ExtLogRecord ext) {
                 ext.copyMdc();
                 records.add(ext);
             }
