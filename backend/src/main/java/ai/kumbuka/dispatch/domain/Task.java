@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.tenancy.StringUuidConverter;
@@ -10,7 +17,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.TenantId;
@@ -135,13 +144,25 @@ public class Task {
     @Column(name = "created_by", updatable = false)
     public String createdBy;
 
-    /** Written by the database on every update; the conflict token hangs on it. */
-    @Generated(event = {EventType.INSERT, EventType.UPDATE})
-    @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
-    public Instant updatedAt;
+    /**
+     * The instant of the last write that changed the task, from the service's
+     * clock; the conflict token hangs on it (C10.1). Written here and nowhere
+     * else: by {@link #begin} at the insert and by {@link #stampTheWrite} on
+     * every update the persistence context finds the row changed in.
+     */
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
     @Column(name = "updated_by")
     public String updatedBy;
+
+    /** The instant of the write in progress, handed in by {@link #touch}; never stored. */
+    @Transient
+    private Instant writtenAt;
+
+    /** Whether the write in progress has stamped the token already ({@link #changedBeside}). */
+    @Transient
+    private boolean stamped;
 
     // ----------------------------------------------------------------------
     // Reading what is stored
@@ -203,22 +224,73 @@ public class Task {
     }
 
     /**
-     * The conflict token: the last write, truncated to what the column stores.
-     *
-     * <p>Null before the first flush: the database writes {@code updated_at},
-     * and a task not yet inserted has none.
+     * The conflict token: the instant of the last write that changed the task,
+     * at the microsecond the column stores, as ISO-8601 text.
      */
     public String conflictToken() {
-        return updatedAt == null ? null : updatedAt.truncatedTo(ChronoUnit.MICROS).toString();
+        return updatedAt.truncatedTo(ChronoUnit.MICROS).toString();
+    }
+
+    /** The instant of the last write that changed the task. */
+    public Instant updatedAt() {
+        return updatedAt;
     }
 
     // ----------------------------------------------------------------------
     // Writing. Each method writes one consistent row shape.
     // ----------------------------------------------------------------------
 
-    /** Stamps who changed the row last; every write of the kernel passes here. */
-    void touch(String by) {
+    /**
+     * Opens a write: who writes, and the instant the token takes if the write
+     * changes the row. Every write of the kernel passes here before it flushes.
+     */
+    void touch(String by, Instant at) {
         this.updatedBy = by;
+        this.writtenAt = at;
+    }
+
+    /**
+     * Moves the token for a change the row itself does not show: a draft's
+     * text, which lives in its own row and is fenced by the task's token all
+     * the same.
+     */
+    void changedBeside(Instant at) {
+        this.updatedAt = following(at);
+        this.stamped = true;
+    }
+
+    /**
+     * Stamps the token on a write that changes the row, as {@code max(at,
+     * previous + 1 µs)}, so that two writes in one microsecond yield two tokens
+     * and a clock set back never yields an earlier one (C10.1).
+     *
+     * <p>Called by the persistence context only for an update it found the row
+     * changed in, so a write that changes nothing leaves the token as it is
+     * (DEC-0041). A changed row whose write did not pass {@link #touch} is a
+     * write the token would not fence, and it is refused here rather than
+     * stored.
+     */
+    @PreUpdate
+    void stampTheWrite() {
+        if (!stamped) {
+            if (writtenAt == null) {
+                throw new IllegalStateException("task " + id + " is written without touch(), "
+                    + "and its conflict token would not move");
+            }
+            this.updatedAt = following(writtenAt);
+        }
+        this.stamped = false;
+        this.writtenAt = null;
+    }
+
+    /** {@code max(at, previous + 1 µs)}, at the microsecond the column stores. */
+    private Instant following(Instant at) {
+        Instant now = at.truncatedTo(ChronoUnit.MICROS);
+        if (updatedAt == null) {
+            return now;
+        }
+        Instant floor = updatedAt.truncatedTo(ChronoUnit.MICROS).plus(1, ChronoUnit.MICROS);
+        return now.isBefore(floor) ? floor : now;
     }
 
     /**
@@ -244,12 +316,16 @@ public class Task {
         this.stateChangedBy = by;
     }
 
-    /** Stamps the creation: the state a new task begins in holds since now. */
+    /**
+     * Stamps the creation: the state a new task begins in holds since now, and
+     * the first token is now.
+     */
     void begin(Instant at, String by) {
         this.stateChangedAt = at;
         this.stateChangedBy = by;
         this.createdBy = by;
         this.updatedBy = by;
+        this.updatedAt = at.truncatedTo(ChronoUnit.MICROS);
     }
 
     /** Makes a new holder: receipt hash and lease, together. */

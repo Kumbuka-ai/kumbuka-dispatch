@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import org.junit.jupiter.api.Test;
@@ -123,6 +130,8 @@ class EffectiveStateTest {
         task.selector = selector;
         task.number = 1;
         task.sub = 0;
+        // A task is created with its first token, as the kernel creates it.
+        task.begin(java.time.Instant.parse("2026-01-01T00:00:00Z"), "commissioner");
         return task;
     }
 }

@@ -332,14 +332,15 @@ class TaskStoreShapeIT {
     /** A task in the configured tenant and scope; numbers start high to stay clear of other tests. */
     private static String insertTask(int number, String columns, String values) {
         return "INSERT INTO dispatch.task (tenant_id, scope_id, selector_id, number, sub, title, "
-            + "apparatus, " + columns + ") SELECT tenant_id, scope_id, id, " + (9000 + number)
-            + ", 0, 'probe', 'code', " + values + " FROM dispatch.selector WHERE name = 'sprint'";
+            + "apparatus, updated_at, " + columns + ") SELECT tenant_id, scope_id, id, "
+            + (9000 + number) + ", 0, 'probe', 'code', now(), " + values
+            + " FROM dispatch.selector WHERE name = 'sprint'";
     }
 
     private static String insertTaskAt(int number, int sub) {
         return "INSERT INTO dispatch.task (tenant_id, scope_id, selector_id, number, sub, title, "
-            + "apparatus) SELECT tenant_id, scope_id, id, " + number + ", " + sub
-            + ", 'probe', 'code' FROM dispatch.selector WHERE name = 'sprint'";
+            + "apparatus, updated_at) SELECT tenant_id, scope_id, id, " + number + ", " + sub
+            + ", 'probe', 'code', now() FROM dispatch.selector WHERE name = 'sprint'";
     }
 
     private static String insertText(long task, String type, String suffix) {

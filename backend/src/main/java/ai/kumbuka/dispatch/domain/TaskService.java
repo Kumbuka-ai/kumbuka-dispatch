@@ -149,6 +149,12 @@ public class TaskService {
         }
         Metadata.validate(changes.metadata());
 
+        // The text first: it reads the task's texts, and a read flushes what
+        // the task already carries. The task is written once, below.
+        Instant now = now();
+        boolean textChanged = changes.text() != null
+            && writeDispatchText(task, changes.text(), caller);
+        task.touch(caller.subject(), now);
         if (changes.title() != null) {
             task.title = changes.title();
         }
@@ -158,10 +164,9 @@ public class TaskService {
         if (changes.metadata() != null) {
             task.dispatchMetadata = changes.metadata();
         }
-        if (changes.text() != null) {
-            writeDispatchText(task, changes.text(), caller);
+        if (textChanged) {
+            task.changedBeside(now);
         }
-        task.touch(caller.subject());
         tasks.flush();
         LOG.infof("update %s", task.address());
         return view(task, caller);
@@ -310,7 +315,7 @@ public class TaskService {
                 "a task cannot be curated into itself");
         }
         task.curateIn(into.id);
-        task.touch(caller.subject());
+        task.touch(caller.subject(), now());
         tasks.flush();
         LOG.infof("relate %s", address);
         return view(task, caller);
@@ -322,7 +327,7 @@ public class TaskService {
                              Actor caller) {
         Task task = requireClosedForRelation(scopeId, address, conflictToken, caller);
         task.curateIn(null);
-        task.touch(caller.subject());
+        task.touch(caller.subject(), now());
         tasks.flush();
         LOG.infof("unrelate %s", address);
         return view(task, caller);
@@ -478,7 +483,7 @@ public class TaskService {
         }
         String receipt = Receipt.mint();
         task.reissue(receipt);
-        task.touch(caller.subject());
+        task.touch(caller.subject(), now());
         tasks.flush();
         LOG.infof("%s %s repeated: receipt reissued", verb.wireName(), task.address());
         return new TaskClaim(view(task, caller), receipt);
@@ -503,7 +508,7 @@ public class TaskService {
         task.enter(TaskState.ACTIVE, null, null, now, by);
         String receipt = Receipt.mint();
         task.award(by, receipt, now.plus(lease.duration()));
-        task.touch(by);
+        task.touch(by, now);
         tasks.flush();
 
         LOG.infof("%s %s -> %s", verb.wireName(), task.address(), TaskState.ACTIVE.wireName());
@@ -550,7 +555,7 @@ public class TaskService {
                 // The other payloads set no attribute of the task.
             }
         }
-        task.touch(by);
+        task.touch(by, now);
     }
 
     /** Inserts the text row the verb names, where the payload carries its text. */
@@ -580,7 +585,7 @@ public class TaskService {
             if (TaskSituation.of(child, now, List.of()).state() != TaskState.CLOSED) {
                 child.enter(TaskState.CLOSED, null, Outcome.WITHDRAWN, now, by);
                 child.dropHolder();
-                child.touch(by);
+                child.touch(by, now);
                 LOG.infof("withdraw %s -> %s", child.address(), TaskState.CLOSED.wireName());
             }
         }
@@ -702,13 +707,22 @@ public class TaskService {
         return String.valueOf(next);
     }
 
-    private void writeDispatchText(Task task, String text, Actor caller) {
+    /**
+     * Writes a draft's dispatch text.
+     *
+     * @return whether the text changed: a text written as it stands is no change
+     */
+    private boolean writeDispatchText(Task task, String text, Actor caller) {
         Optional<TaskText> base = TaskTexts.youngestBase(tasks.texts(task.id), TextType.DISPATCH);
-        if (base.isPresent()) {
-            base.get().text = text;
-        } else {
+        if (base.isEmpty()) {
             insertText(task, TextType.DISPATCH, null, text, caller);
+            return true;
         }
+        if (base.get().text.equals(text)) {
+            return false;
+        }
+        base.get().text = text;
+        return true;
     }
 
     private void insertText(Task task, TextType type, String suffix, String text, Actor caller) {
