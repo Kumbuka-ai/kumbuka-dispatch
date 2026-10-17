@@ -43,9 +43,11 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
  * In the bound tenant: an addendum with a ratified return, the shape the
  * deployed stock holds; an addendum with a question, a message and a reason
  * under a root whose next letter is already taken; two answered addenda under
- * one root, so the second takes the letter the first just took plus one; and
- * an addendum with no further text, which stays as it is. In the other
- * tenant: one addendum with a return.
+ * one root, so the second takes the letter the first just took plus one; an
+ * answered addendum under a root whose letters have a gap, so the answer goes
+ * after the highest letter and not into the gap; and an addendum with no
+ * further text, which stays as it is. In the other tenant: one addendum with
+ * a return.
  *
  * <h2>Where the expectation comes from</h2>
  *
@@ -107,6 +109,11 @@ class AddendumAnswerMigrationIT {
             insert(c, TENANT_A, a, 4, null, "open", "", "");
             insert(c, TENANT_A, a, 4, "a", "open", "", "");
 
+            insert(c, TENANT_A, a, 7, null, "closed", "", "");
+            insert(c, TENANT_A, a, 7, "a", "closed", ", return_body, ratified_at",
+                ", 'the answer to seven a', " + ts(RATIFIED));
+            insert(c, TENANT_A, a, 7, "c", "closed", "", "");
+
             insert(c, TENANT_B, b, 1, null, "closed", "", "");
             insert(c, TENANT_B, b, 1, "a", "closed", ", return_body, ratified_at",
                 ", 'the answer in the other tenant', " + ts(RATIFIED));
@@ -138,9 +145,9 @@ class AddendumAnswerMigrationIT {
 
     @Test
     void each_answer_stands_as_an_addendum_beside_the_one_it_answers() {
-        assertThat(after.keySet()).as("five new addenda, at the next free letter of their root")
+        assertThat(after.keySet()).as("six new addenda, after the highest letter of their root")
             .containsExactlyInAnyOrderElementsOf(concat(before.keySet(),
-                "A 1.0b", "A 2.0c", "A 3.0c", "A 3.0d", "B 1.0b"));
+                "A 1.0b", "A 2.0c", "A 3.0c", "A 3.0d", "A 7.0d", "B 1.0b"));
 
         assertAnswer("A 1.0b", "A 1.0a", "Antwort auf sprint/1.0a",
             "## Rückgabe\n\nthe answer to one a");
@@ -150,13 +157,15 @@ class AddendumAnswerMigrationIT {
             "## Rückgabe\n\nthe answer to three a");
         assertAnswer("A 3.0d", "A 3.0b", "Antwort auf sprint/3.0b",
             "## Rückgabe\n\nthe answer to three b\n\n## Frage\n\nand one more thing");
+        assertAnswer("A 7.0d", "A 7.0a", "Antwort auf sprint/7.0a",
+            "## Rückgabe\n\nthe answer to seven a");
         assertAnswer("B 1.0b", "B 1.0a", "Antwort auf sprint/1.0a",
             "## Rückgabe\n\nthe answer in the other tenant");
     }
 
     @Test
     void the_answered_addendum_loses_its_four_texts_and_keeps_everything_else() {
-        for (String answered : List.of("A 1.0a", "A 2.0a", "A 3.0a", "A 3.0b", "B 1.0a")) {
+        for (String answered : List.of("A 1.0a", "A 2.0a", "A 3.0a", "A 3.0b", "A 7.0a", "B 1.0a")) {
             Map<String, Object> was = new LinkedHashMap<>(before.get(answered));
             Map<String, Object> is = new LinkedHashMap<>(after.get(answered));
             for (String emptied : List.of("return_body", "executor_question",
@@ -176,7 +185,7 @@ class AddendumAnswerMigrationIT {
     @Test
     void a_row_with_nothing_to_answer_is_not_touched() {
         for (String untouched : List.of("A 1.0", "A 2.0", "A 2.0b", "A 3.0", "A 4.0", "A 4.0a",
-                "B 1.0")) {
+                "A 7.0", "A 7.0c", "B 1.0")) {
             assertThat(after.get(untouched)).as("%s as it was", untouched)
                 .isEqualTo(before.get(untouched));
         }
@@ -231,24 +240,77 @@ class AddendumAnswerMigrationIT {
     // ------------------------------------------------------------------
 
     @Test
-    void an_answer_that_already_stands_is_skipped() throws SQLException {
-        String skipped = harness.freshDatabase("addendum_answers_skipped", MIGRATOR);
-        harness.migrateTo(skipped, MIGRATOR, MIGRATOR_PASSWORD, "16", new TenantMigrationCallback());
+    void an_answer_that_already_stands_with_the_same_text_empties_the_row() throws SQLException {
+        String same = harness.freshDatabase("addendum_answers_same", MIGRATOR);
+        harness.migrateTo(same, MIGRATOR, MIGRATOR_PASSWORD, "16", new TenantMigrationCallback());
         Map<String, Map<String, Object>> staged;
-        try (Connection c = harness.adminConnection(skipped)) {
+        try (Connection c = harness.adminConnection(same)) {
+            long a = selector(c, TENANT_A, SCOPE_A);
+            insert(c, TENANT_A, a, 5, null, "closed", "", "");
+            insert(c, TENANT_A, a, 5, "a", "closed", ", return_body, ratified_at",
+                ", 'answered before', " + ts(RATIFIED));
+            insert(c, TENANT_A, a, 5, "b", "closed", ", title, dispatch_body",
+                ", 'Antwort auf sprint/5.0a', E'## Rückgabe\\n\\nanswered before'");
+            staged = stock(c);
+        }
+
+        harness.migrateTo(same, MIGRATOR, MIGRATOR_PASSWORD, "16.1", new TenantMigrationCallback());
+
+        try (Connection c = harness.adminConnection(same)) {
+            Map<String, Map<String, Object>> migrated = stock(c);
+            assertThat(migrated.keySet()).as("no second answer")
+                .containsExactlyElementsOf(staged.keySet());
+            assertThat(migrated.get("A 5.0b")).as("the standing answer as it was")
+                .isEqualTo(staged.get("A 5.0b"));
+            Map<String, Object> answered = migrated.get("A 5.0a");
+            for (String emptied : List.of("return_body", "executor_question",
+                    "commissioner_message", "termination_reason")) {
+                assertThat(answered.get(emptied)).as("5.0a: %s is emptied", emptied).isNull();
+            }
+            assertThat(answered.get("ratified_at")).as("5.0a keeps its ratification")
+                .isEqualTo(staged.get("A 5.0a").get("ratified_at"));
+        }
+
+        harness.migrate(same, MIGRATOR, MIGRATOR_PASSWORD, new TenantMigrationCallback());
+
+        try (Connection c = harness.adminConnection(same)) {
+            assertThat(rows(c, "SELECT x.addendum_suffix AS suffix, x.text FROM dispatch.task_text x "
+                    + "JOIN dispatch.task t ON t.id = x.task_id WHERE t.number = 5 "
+                    + "AND x.addendum_suffix IS NOT NULL ORDER BY x.addendum_suffix"))
+                .as("V17 runs through and copies both addenda, the answer once")
+                .containsExactly(
+                    Map.of("suffix", "a", "text", "addendum 5a\n\ncommission 5a"),
+                    Map.of("suffix", "b", "text",
+                        "Antwort auf sprint/5.0a\n\n## Rückgabe\n\nanswered before"));
+        }
+    }
+
+    @Test
+    void an_answer_that_already_stands_with_another_text_stops_the_run() throws SQLException {
+        String other = harness.freshDatabase("addendum_answers_other", MIGRATOR);
+        harness.migrateTo(other, MIGRATOR, MIGRATOR_PASSWORD, "16", new TenantMigrationCallback());
+        Map<String, Map<String, Object>> staged;
+        String catalogueBefore;
+        try (Connection c = harness.adminConnection(other)) {
             long a = selector(c, TENANT_A, SCOPE_A);
             insert(c, TENANT_A, a, 5, null, "closed", "", "");
             insert(c, TENANT_A, a, 5, "a", "closed", ", return_body, ratified_at",
                 ", 'answered before', " + ts(RATIFIED));
             insert(c, TENANT_A, a, 5, "b", "closed", ", title", ", 'Antwort auf sprint/5.0a'");
             staged = stock(c);
+            catalogueBefore = catalogue(c);
         }
 
-        harness.migrateTo(skipped, MIGRATOR, MIGRATOR_PASSWORD, "16.1", new TenantMigrationCallback());
+        FlywayException stopped = catchThrowableOfType(FlywayException.class, () -> harness
+            .migrateTo(other, MIGRATOR, MIGRATOR_PASSWORD, "16.1", new TenantMigrationCallback()));
 
-        try (Connection c = harness.adminConnection(skipped)) {
-            assertThat(stock(c)).as("no second answer, and the answered row left as it is")
-                .isEqualTo(staged);
+        assertStoppedWith(stopped,
+            "V16_1 stops: sprint/5.0a already has an answer whose text differs from the one "
+                + "this run would write");
+        try (Connection c = harness.adminConnection(other)) {
+            assertThat(stock(c)).as("nothing written").isEqualTo(staged);
+            assertThat(catalogue(c)).as("forced security and freeze as before the run")
+                .isEqualTo(catalogueBefore).isEqualTo("force=true selector=true freeze=O");
         }
     }
 
@@ -256,6 +318,7 @@ class AddendumAnswerMigrationIT {
     void a_root_without_a_free_letter_stops_the_run() throws SQLException {
         String full = harness.freshDatabase("addendum_answers_full", MIGRATOR);
         harness.migrateTo(full, MIGRATOR, MIGRATOR_PASSWORD, "16", new TenantMigrationCallback());
+        String catalogueBefore;
         try (Connection c = harness.adminConnection(full)) {
             long a = selector(c, TENANT_A, SCOPE_A);
             insert(c, TENANT_A, a, 6, null, "closed", "", "");
@@ -264,21 +327,29 @@ class AddendumAnswerMigrationIT {
             for (char letter = 'b'; letter <= 'z'; letter++) {
                 insert(c, TENANT_A, a, 6, String.valueOf(letter), "closed", "", "");
             }
+            catalogueBefore = catalogue(c);
         }
 
         FlywayException stopped = catchThrowableOfType(FlywayException.class, () -> harness
             .migrateTo(full, MIGRATOR, MIGRATOR_PASSWORD, "16.1", new TenantMigrationCallback()));
 
-        assertThat(stopped).as("V16_1 must stop rather than wrap past z").isNotNull();
+        assertStoppedWith(stopped, "V16_1 stops: sprint/6.0 has no free addendum letter after z");
+        try (Connection c = harness.adminConnection(full)) {
+            assertThat(catalogue(c)).as("forced security and freeze as before the run")
+                .isEqualTo(catalogueBefore).isEqualTo("force=true selector=true freeze=O");
+        }
+    }
+
+    // ------------------------------------------------------------------
+
+    private static void assertStoppedWith(FlywayException stopped, String message) {
+        assertThat(stopped).as("V16_1 must stop").isNotNull();
         PSQLException cause = rootSqlError(stopped);
         assertThat((Throwable) cause).as("the stop is a database refusal: %s", stopped.getMessage())
             .isNotNull();
         assertThat(cause.getSQLState()).isEqualTo("KD003");
-        assertThat(cause.getServerErrorMessage().getMessage())
-            .isEqualTo("V16_1 stops: sprint/6.0 has no free addendum letter after z");
+        assertThat(cause.getServerErrorMessage().getMessage()).isEqualTo(message);
     }
-
-    // ------------------------------------------------------------------
 
     private static void assertAnswer(String at, String answered, String title, String text) {
         Map<String, Object> answer = after.get(at);
@@ -306,12 +377,14 @@ class AddendumAnswerMigrationIT {
         // Distinct stamps per row, so a row carrying another row's is told apart.
         Instant created = Instant.parse("2026-08-01T08:00:00Z").plusSeconds(number * 3600L
             + (suffix == null ? 0 : suffix.charAt(0) * 60L));
-        boolean titled = columns.contains("title");
+        boolean titled = columns.contains(", title");
+        boolean bodied = columns.contains("dispatch_body");
         try (PreparedStatement st = c.prepareStatement("INSERT INTO dispatch.exchange (tenant_id, "
                 + "scope_id, selector_id, number, sub, addendum_suffix, status, "
-                + (titled ? "" : "title, ") + "dispatch_body, apparatus, dispatch_date, sent_at, "
+                + (titled ? "" : "title, ") + (bodied ? "" : "dispatch_body, ")
+                + "apparatus, dispatch_date, sent_at, "
                 + "created_at, created_by, updated_at, updated_by" + columns + ") VALUES "
-                + "(?, ?, ?, ?, 0, ?, ?, " + (titled ? "" : "?, ") + "?, 'code', "
+                + "(?, ?, ?, ?, 0, ?, ?, " + (titled ? "" : "?, ") + (bodied ? "" : "?, ") + "'code', "
                 + "DATE '2026-08-19', ?, ?, ?, ?, ?" + values + ")")) {
             int i = 1;
             st.setObject(i++, tenant);
@@ -323,7 +396,9 @@ class AddendumAnswerMigrationIT {
             if (!titled) {
                 st.setString(i++, suffix == null ? "task " + number : "addendum " + number + suffix);
             }
-            st.setString(i++, "commission " + number + (suffix == null ? "" : suffix));
+            if (!bodied) {
+                st.setString(i++, "commission " + number + (suffix == null ? "" : suffix));
+            }
             st.setTimestamp(i++, Timestamp.from(SENT));
             st.setTimestamp(i++, Timestamp.from(created));
             st.setString(i++, "author " + address);

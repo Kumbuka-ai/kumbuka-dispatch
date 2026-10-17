@@ -44,11 +44,19 @@
 -- id and not the name a caller uses, and the answer stands in the same scope
 -- as the addendum it answers.
 --
--- A SECOND RUN CHANGES NOTHING
+-- AN ANSWER THAT ALREADY STANDS
 --
 -- A row whose answer already stands -- an addendum under the same root with
--- that title -- is skipped and left as it is. After a run no row matches the
--- condition, so a second run finds nothing to do.
+-- that title -- gets no second one. If the text of every such addendum is
+-- byte for byte the text step 1 would write for the row, the four columns
+-- are emptied as in step 2 and the row is counted as skipped. If one differs,
+-- the run stops with KD003 and names the answered addendum by selector,
+-- number, sub and letter: which of the two texts is the answer is not this
+-- migration's to decide.
+--
+-- Every row matching the condition is therefore emptied, beside an answer
+-- the run wrote or beside one that already stood, or the run stops. After a run no row matches the condition, so a second run
+-- finds nothing to do.
 --
 -- READING ACROSS EVERY TENANT, AND PAST THE FREEZE
 --
@@ -56,14 +64,17 @@
 -- under FORCE ROW LEVEL SECURITY, so FORCE is lifted from both for the run and
 -- put back before it ends, as V17 does for its sources and for the same
 -- reason: through the policy the run would see the bound tenant's rows and
--- silently none of any other. `selector` is read for the name in the title. Every answered addendum carries a
--- ratified return, and `exchange_freeze` refuses a change to a ratified
--- return; the trigger is disabled for the one UPDATE that empties the four
--- columns and enabled again right after it. Both happen inside this
+-- silently none of any other. `selector` is read for the name in the title.
+-- Every answered addendum carries a ratified return, and `exchange_freeze`
+-- refuses a change to a ratified return; the trigger is disabled for the run
+-- and enabled again right after it. Both happen inside this
 -- migration's transaction, under the ACCESS EXCLUSIVE lock the first ALTER
 -- takes, so no other session sees the table without them.
 --
--- The run ends with a NOTICE naming how many rows it moved.
+-- A stop rolls the whole migration back, these ALTERs with it: the catalogue
+-- is then as it was before the run.
+--
+-- The run ends with a NOTICE naming how many rows it moved and skipped.
 -- ===========================================================================
 
 ALTER TABLE dispatch.exchange NO FORCE ROW LEVEL SECURITY;
@@ -74,6 +85,7 @@ DO $do$
 DECLARE
     answered     RECORD;
     answer_title TEXT;
+    answer_text  TEXT;
     letter       TEXT;
     code         INTEGER;
     moved        INTEGER := 0;
@@ -91,53 +103,62 @@ BEGIN
         answer_title := 'Antwort auf ' || answered.selector_name || '/' || answered.number || '.'
                  || answered.sub || answered.addendum_suffix;
 
+        answer_text := concat_ws(E'\n\n',
+            E'## Rückgabe\n\n' || answered.return_body,
+            E'## Frage\n\n'    || answered.executor_question,
+            E'## Nachricht\n\n' || answered.commissioner_message,
+            E'## Grund\n\n'    || answered.termination_reason);
+
         IF EXISTS (SELECT 1 FROM dispatch.exchange a
                     WHERE a.tenant_id = answered.tenant_id AND a.scope_id = answered.scope_id
                       AND a.selector_id = answered.selector_id AND a.number = answered.number
                       AND a.sub = answered.sub AND a.addendum_suffix IS NOT NULL
                       AND a.title = answer_title) THEN
+            IF EXISTS (SELECT 1 FROM dispatch.exchange a
+                        WHERE a.tenant_id = answered.tenant_id AND a.scope_id = answered.scope_id
+                          AND a.selector_id = answered.selector_id AND a.number = answered.number
+                          AND a.sub = answered.sub AND a.addendum_suffix IS NOT NULL
+                          AND a.title = answer_title
+                          AND a.dispatch_body IS DISTINCT FROM answer_text) THEN
+                RAISE EXCEPTION 'V16_1 stops: %/%.% already has an answer whose text differs from the one this run would write',
+                    answered.selector_name, answered.number, answered.sub || answered.addendum_suffix
+                    USING ERRCODE = 'KD003';
+            END IF;
             skipped := skipped + 1;
-            CONTINUE;
-        END IF;
+        ELSE
+            -- The next free letter at the address, read per row: an earlier row
+            -- of this run may have taken one under the same root. Compared by
+            -- code, not as text: under a linguistic collation the character
+            -- after z sorts before it.
+            SELECT max(ascii(a.addendum_suffix)) + 1 INTO code
+              FROM dispatch.exchange a
+             WHERE a.tenant_id = answered.tenant_id AND a.scope_id = answered.scope_id
+               AND a.selector_id = answered.selector_id AND a.number = answered.number
+               AND a.sub = answered.sub AND a.addendum_suffix IS NOT NULL;
+            letter := chr(code);
+            IF code > ascii('z') THEN
+                RAISE EXCEPTION 'V16_1 stops: %/%.% has no free addendum letter after z',
+                    answered.selector_name, answered.number, answered.sub
+                    USING ERRCODE = 'KD003';
+            END IF;
 
-        -- The next free letter at the address, read per row: an earlier row
-        -- of this run may have taken one under the same root. Compared by
-        -- code, not as text: under a linguistic collation the character
-        -- after z sorts before it.
-        SELECT max(ascii(a.addendum_suffix)) + 1 INTO code
-          FROM dispatch.exchange a
-         WHERE a.tenant_id = answered.tenant_id AND a.scope_id = answered.scope_id
-           AND a.selector_id = answered.selector_id AND a.number = answered.number
-           AND a.sub = answered.sub AND a.addendum_suffix IS NOT NULL;
-        letter := chr(code);
-        IF code > ascii('z') THEN
-            RAISE EXCEPTION 'V16_1 stops: %/%.% has no free addendum letter after z',
-                answered.selector_name, answered.number, answered.sub
-                USING ERRCODE = 'KD003';
+            INSERT INTO dispatch.exchange (
+                tenant_id, scope_id, selector_id, number, sub, addendum_suffix, status,
+                title, dispatch_body, apparatus, dispatch_date, sent_at,
+                created_at, created_by, updated_at, updated_by)
+            VALUES (
+                answered.tenant_id, answered.scope_id, answered.selector_id,
+                answered.number, answered.sub, letter, answered.status,
+                answer_title, answer_text,
+                'concept', answered.dispatch_date, answered.sent_at,
+                answered.created_at, answered.created_by, answered.updated_at, answered.updated_by);
+            moved := moved + 1;
         END IF;
-
-        INSERT INTO dispatch.exchange (
-            tenant_id, scope_id, selector_id, number, sub, addendum_suffix, status,
-            title, dispatch_body, apparatus, dispatch_date, sent_at,
-            created_at, created_by, updated_at, updated_by)
-        VALUES (
-            answered.tenant_id, answered.scope_id, answered.selector_id,
-            answered.number, answered.sub, letter, answered.status,
-            answer_title,
-            concat_ws(E'\n\n',
-                E'## Rückgabe\n\n' || answered.return_body,
-                E'## Frage\n\n'    || answered.executor_question,
-                E'## Nachricht\n\n' || answered.commissioner_message,
-                E'## Grund\n\n'    || answered.termination_reason),
-            'concept', answered.dispatch_date, answered.sent_at,
-            answered.created_at, answered.created_by, answered.updated_at, answered.updated_by);
 
         UPDATE dispatch.exchange
            SET return_body = NULL, executor_question = NULL,
                commissioner_message = NULL, termination_reason = NULL
          WHERE id = answered.id;
-
-        moved := moved + 1;
     END LOOP;
 
     RAISE NOTICE 'V16_1 moved % addendum answer(s) into sibling addenda, skipped % already moved',
