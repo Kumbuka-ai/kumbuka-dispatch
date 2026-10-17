@@ -30,14 +30,19 @@ GitHub release. Releases before 0.11.0 are described on the
   `KD003` on an addendum that carries a return, a question, a message or a
   reason besides its own text. `V16_1` moves each such text into an addendum
   of its own beside it, titled `Antwort auf <selector>/<number>.<sub><letter>`,
-  and empties those columns on the answered addendum. A database at `V16`
+  and empties those columns on the answered addendum. Where that answer
+  already stands with the same text, only the columns are emptied; where it
+  stands with a different text, `V16_1` stops with `KD003` and names the
+  addendum. A database at `V16`
   takes it as the next migration. `migration/check-kd003.sql` lists the rows
   it will move, read only.
 - **A database that already ran `V17`** (0.9.0 – 0.10.0, or a pre-release
   build) refuses to start with `Detected resolved migration not applied to
   database: 16.1`. Start 0.11.0 once with `QUARKUS_FLYWAY_OUT_OF_ORDER=true`:
   `V16_1` then runs once, against `exchange` only, and every later start
-  validates without the setting.
+  validates without the setting. This is only for a database without stock
+  to keep. A database with stock on which `V17` has already run is restored
+  from the backup to schema 16 and then runs `V16_1` to `V21`.
 
 ### Callers: refusals and status codes
 
