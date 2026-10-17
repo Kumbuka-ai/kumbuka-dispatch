@@ -26,6 +26,18 @@ GitHub release. Releases before 0.11.0 are described on the
   `V21` has run needs a database restored from before the migration.
 - `V19` and `V20` add an index for the task listing sorted by creation
   (`V20` replaces the one `V19` added). Both are additive.
+- **New migration `V16_1`, between `V16` and `V17`.** `V17` stops with
+  `KD003` on an addendum that carries a return, a question, a message or a
+  reason besides its own text. `V16_1` moves each such text into an addendum
+  of its own beside it, titled `Antwort auf <selector>/<number>.<sub><letter>`,
+  and empties those columns on the answered addendum. A database at `V16`
+  takes it as the next migration. `migration/check-kd003.sql` lists the rows
+  it will move, read only.
+- **A database that already ran `V17`** (0.9.0 – 0.10.0, or a pre-release
+  build) refuses to start with `Detected resolved migration not applied to
+  database: 16.1`. Start 0.11.0 once with `QUARKUS_FLYWAY_OUT_OF_ORDER=true`:
+  `V16_1` then runs once, against `exchange` only, and every later start
+  validates without the setting.
 
 ### Callers: refusals and status codes
 

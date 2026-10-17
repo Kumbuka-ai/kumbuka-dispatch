@@ -1,3 +1,10 @@
+<!--
+Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+SPDX-License-Identifier: AGPL-3.0-only
+This file is part of Kumbuka and is licensed under the GNU Affero
+General Public License v3.0 only. See the LICENSE file in the
+repository root for the full licence text.
+-->
 # Importing the steering corpus
 
 This directory carries a one-off import of the steering corpus of the
@@ -7,7 +14,9 @@ predecessor service into `dispatch.selector`, `dispatch.number_circle` and
     001-import-steering-corpus.sql   the import, 278 rows, generated
     002-backfill-steering-corpus.sql the backfill of sprint 173 and 174,
                                      4 exchanges, generated -- see the section
-                                     at the foot of this file
+                                     further down
+    check-kd003.sql                  a read-only check before deploying V17,
+                                     see the section at the foot of this file
     generate-import.py               the generator that writes both
 
 The SQL file is a projection of the source corpus. Do not hand-edit it: an
@@ -301,3 +310,34 @@ container there (`infra/scripts/release.sh`: "psql runs INSIDE the postgres
 container: the host carries no psql"). Both scripts in this directory are
 therefore fed in over `docker exec -i`, the same discipline `release.sh`,
 `deploy.sh` and `restore.sh` already use.
+
+---
+
+# Before deploying V17: the addendum check
+
+V17 copies `exchange` into `task` and `task_text` and stops with KD003 on an
+addendum row that carries a text besides its own: a return, a question, a
+message or a reason. The stock imported by 001 holds two such rows,
+`sprint/10.0a` and `sprint/155.2a`, each with a return; a release carrying V17
+stops on them and rolls back.
+
+V16_1 runs before V17 and moves each such text into an addendum of its own
+beside the one it answers, titled `Antwort auf <selector>/<number>.<sub><letter>`,
+and empties the four columns. `check-kd003.sql` lists the rows that are left
+for it to move, so the number is known before the deploy.
+
+    docker exec -i <postgres container> psql -U <superuser> -d <database> \
+        < check-kd003.sql
+
+Run it as the superuser: it reads past row-level security. The owning role is
+bound by `FORCE ROW LEVEL SECURITY` too and, without a tenant set, answers 0
+for a stock that is not.
+
+## What was measured
+
+Against a throwaway PostgreSQL 16 holding the stock of 001 and 002 at V16,
+on 2026-10-17. Never against production.
+
+    as superuser, at V16           2 rows: sprint/10.0a, sprint/155.2a
+    as superuser, after V16_1..V21 0 rows
+    as owner, no tenant bound      0 rows -- the wrong answer named above
