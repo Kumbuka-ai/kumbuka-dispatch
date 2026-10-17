@@ -87,7 +87,8 @@ class MigrationNamingTest {
         assertThat(SourceTree.migrations().stream().map(p -> p.getFileName().toString())
                 .filter(name -> !FILE.matcher(name).matches()).toList())
             .as("Flyway reads a version and a description from the name; anything else is "
-                + "skipped or misordered (C18.1). Name it V<n>__<snake_case>.sql")
+                + "skipped or misordered (C18.1). Name it V<n>__<snake_case>.sql, or "
+                + "V<n>_<m>__<snake_case>.sql for a step between two versions")
             .isEmpty();
     }
 
