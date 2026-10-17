@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Migrations are named {@code V<n>__<snake_case>.sql}, run with the tenancy
+ * Migrations are named {@code V<n>__<snake_case>.sql} or, for a step between
+ * two versions, {@code V<n>_<m>__<snake_case>.sql}, run with the tenancy
  * callback before each, and name their indexes and constraints after the
  * table they belong to (C18.1, C18.3).
  *
@@ -44,8 +45,15 @@ class MigrationNamingTest {
     /** The schema the migrations write. */
     static final String SCHEMA = "dispatch";
 
-    /** The file form of a versioned migration (C18.1). */
-    private static final Pattern FILE = Pattern.compile("V[1-9]\\d*__[a-z0-9]+(?:_[a-z0-9]+)*\\.sql");
+    /**
+     * The file form of a versioned migration (C18.1), and of a step between
+     * two versions already released: {@code V<n>_<m>__<snake_case>.sql}, which
+     * Flyway reads as version {@code n.m}. A step exists because a version once
+     * released cannot be renumbered, and a migration that must run before the
+     * next one, on a database that stands at the one before, has no other place.
+     */
+    private static final Pattern FILE = Pattern.compile(
+        "V[1-9]\\d*(?:_[1-9]\\d*)?__[a-z0-9]+(?:_[a-z0-9]+)*\\.sql");
 
     /**
      * Names applied migrations gave against the rule, as {@code V<n> name}.
@@ -81,6 +89,16 @@ class MigrationNamingTest {
             .as("Flyway reads a version and a description from the name; anything else is "
                 + "skipped or misordered (C18.1). Name it V<n>__<snake_case>.sql")
             .isEmpty();
+    }
+
+    @Test
+    void a_step_between_two_versions_stands_between_them() {
+        assertThat(SourceTree.migrations().stream()
+                .map(p -> p.getFileName().toString().replaceFirst("__.*", ""))
+                .dropWhile(v -> !v.equals("V16")).limit(3).toList())
+            .as("Flyway applies V16_1 as version 16.1, after V16 and before V17; the files are "
+                + "read in that order, so every check sees them as the database does")
+            .containsExactly("V16", "V16_1", "V17");
     }
 
     @Test
@@ -149,6 +167,13 @@ class MigrationNamingTest {
                 "V30 note_pair: a constraint of note is renamed to idx_, uq_, ck_ or fk_ note_…");
         assertThat(FILE.matcher("V7__Claim-And-Metadata.sql").matches())
             .as("RED STATE, observed: a description that is no snake_case is refused").isFalse();
+        assertThat(FILE.matcher("V16_0__step.sql").matches())
+            .as("RED STATE, observed: a step numbered 0 is refused, it would sort before its "
+                + "version").isFalse();
+        assertThat(FILE.matcher("V16.1__step.sql").matches())
+            .as("RED STATE, observed: a step written with a dot is refused").isFalse();
+        assertThat(FILE.matcher("V16_1__step.sql").matches())
+            .as("a step between two versions is admitted").isTrue();
     }
 
     /** Every name the migrations give against the rule, as {@code V<n> name: why}. */

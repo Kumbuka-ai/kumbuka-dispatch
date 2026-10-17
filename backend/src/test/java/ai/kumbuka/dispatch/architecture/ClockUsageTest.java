@@ -132,6 +132,17 @@ class ClockUsageTest {
                 "task.updated_at: trigger task_stamp_updated_at sets it to a time (V17)");
     }
 
+    @Test
+    void the_replay_takes_a_step_between_two_versions_in_its_place() {
+        assertThat(SourceTree.migrations().stream()
+                .filter(m -> SourceTree.versionOf(m) <= BEFORE_THE_MOVE)
+                .map(m -> m.getFileName().toString().replaceFirst("__.*", ""))
+                .dropWhile(v -> !v.equals("V16")).limit(3).toList())
+            .as("V16_1 is replayed after V16 and before V17, and counts as up to V%d",
+                BEFORE_THE_MOVE)
+            .containsExactly("V16", "V16_1", "V17");
+    }
+
     /** The red state of the replay, observed on every build: drop, re-create, alter. */
     @Test
     void the_replay_reads_a_drop_a_second_creation_and_an_altered_default() {

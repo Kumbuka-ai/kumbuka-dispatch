@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.tenancy;
 
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -147,7 +154,10 @@ class TaskStockCopyStopIT {
     private static void stopsAndLeavesNothing(String database, Stock offending, String message)
             throws SQLException {
         String url = harness.freshDatabase(database, MIGRATOR);
-        harness.migrateTo(url, MIGRATOR, MIGRATOR_PASSWORD, "16", new TenantMigrationCallback());
+        // Staged after V16_1, which moves an answer off an addendum before V17
+        // reads the stock. V17's own check for that case stays, and is seen red
+        // only on a row written after V16_1 ran.
+        harness.migrateTo(url, MIGRATOR, MIGRATOR_PASSWORD, "16.1", new TenantMigrationCallback());
 
         SourceTables.Snapshot before;
         try (Connection c = harness.adminConnection(url)) {
@@ -195,10 +205,10 @@ class TaskStockCopyStopIT {
                     + "WHERE version = '17' AND success"))
                 .as("the Flyway history does not carry V17 as applied")
                 .isZero();
-            assertThat(scalarString(c, "SELECT max(version::int)::text FROM "
-                    + "dispatch.flyway_schema_history WHERE success"))
-                .as("and the database stands at V16")
-                .isEqualTo("16");
+            assertThat(scalarString(c, "SELECT version FROM dispatch.flyway_schema_history "
+                    + "WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1"))
+                .as("and the database stands at V16_1")
+                .isEqualTo("16.1");
         }
     }
 

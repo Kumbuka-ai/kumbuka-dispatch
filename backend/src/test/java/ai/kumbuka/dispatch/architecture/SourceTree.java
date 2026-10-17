@@ -134,8 +134,13 @@ final class SourceTree {
             .toList();
     }
 
-    /** The name of a migration file: its version and its description. */
-    static final Pattern MIGRATION = Pattern.compile("V(\\d+)__([^.]*)\\.sql");
+    /**
+     * The name of a migration file: its version, a step within that version
+     * where it has one, and its description. A step is a migration placed
+     * between two releases already numbered: {@code V16_1} runs after
+     * {@code V16} and before {@code V17}.
+     */
+    static final Pattern MIGRATION = Pattern.compile("V(\\d+)(?:_(\\d+))?__([^.]*)\\.sql");
 
     /**
      * Every migration file of the service, in the order Flyway applies them:
@@ -153,6 +158,7 @@ final class SourceTree {
         try (Stream<Path> found = Files.list(dir)) {
             return found.filter(Files::isRegularFile)
                 .sorted(Comparator.comparingInt(SourceTree::versionOf)
+                    .thenComparingInt(SourceTree::stepOf)
                     .thenComparing(Path::toString))
                 .toList();
         } catch (IOException unreadable) {
@@ -164,5 +170,11 @@ final class SourceTree {
     static int versionOf(Path migration) {
         Matcher m = MIGRATION.matcher(migration.getFileName().toString());
         return m.matches() ? Integer.parseInt(m.group(1)) : Integer.MAX_VALUE;
+    }
+
+    /** The step within its version a migration file names; 0 where it names none. */
+    static int stepOf(Path migration) {
+        Matcher m = MIGRATION.matcher(migration.getFileName().toString());
+        return m.matches() && m.group(2) != null ? Integer.parseInt(m.group(2)) : 0;
     }
 }
