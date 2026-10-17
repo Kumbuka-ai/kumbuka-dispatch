@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.tenancy;
 
 import io.quarkus.test.common.QuarkusTestResource;
@@ -12,6 +19,10 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Comparator;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,7 +67,8 @@ class ColdStartIT {
             // sends the next reader looking at the database instead of at
             // this line. The two sources are genuinely different: one is the
             // files on disk, the other is what the database recorded running.
-            long expected = countVersionedMigrationFiles();
+            List<String> versions = versionedMigrationFiles();
+            long expected = versions.size();
             assertThat(expected)
                 .as("the migration directory must have been found at all")
                 .isPositive();
@@ -70,10 +82,13 @@ class ColdStartIT {
                 .as("every versioned migration on disk must have applied successfully")
                 .isEqualTo(String.valueOf(expected));
 
-            assertThat(scalar(c, "SELECT max(version::int) FROM dispatch.flyway_schema_history "
-                + "WHERE success AND version IS NOT NULL"))
+            // The last one applied, not the largest number: a step between two
+            // versions (V16_1, version 16.1) is no integer, and the files run
+            // in version order, so the last applied is the highest.
+            assertThat(scalar(c, "SELECT version FROM dispatch.flyway_schema_history "
+                + "WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1"))
                 .as("and the schema must stand at the highest of them")
-                .isEqualTo(String.valueOf(expected));
+                .isEqualTo(versions.get(versions.size() - 1));
         }
     }
 
@@ -150,20 +165,26 @@ class ColdStartIT {
     }
 
     /**
-     * Counts {@code V<n>__*.sql} files in the migration directory.
+     * The versions the migration files in the migration directory name, as
+     * Flyway writes them into its history ({@code V16_1} is {@code 16.1}),
+     * lowest first.
      *
-     * <p>Deliberately not a constant: this is the one number in the test that
+     * <p>Deliberately not a constant: this is the one list in the test that
      * would otherwise need editing every time a migration is added, and the
      * edit that gets forgotten produces a failure describing the wrong thing.
      */
-    private static long countVersionedMigrationFiles() throws IOException {
+    private static List<String> versionedMigrationFiles() throws IOException {
         Path dir = Files.isDirectory(Paths.get("src/main/resources/db/migration"))
             ? Paths.get("src/main/resources/db/migration")
             : Paths.get("backend/src/main/resources/db/migration");
+        Pattern versioned = Pattern.compile("V(\\d+)(?:_(\\d+))?__.*\\.sql");
         try (Stream<Path> files = Files.list(dir)) {
-            return files.map(f -> f.getFileName().toString())
-                .filter(n -> n.matches("V\\d+__.*\\.sql"))
-                .count();
+            return files.map(f -> versioned.matcher(f.getFileName().toString()))
+                .filter(Matcher::matches)
+                .sorted(Comparator.comparingInt((Matcher m) -> Integer.parseInt(m.group(1)))
+                    .thenComparingInt(m -> m.group(2) == null ? 0 : Integer.parseInt(m.group(2))))
+                .map(m -> m.group(2) == null ? m.group(1) : m.group(1) + "." + m.group(2))
+                .toList();
         }
     }
 

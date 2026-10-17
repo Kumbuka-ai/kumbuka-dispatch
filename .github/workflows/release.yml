@@ -1,3 +1,9 @@
+# Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Kumbuka and is licensed under the GNU Affero
+# General Public License v3.0 only. See the LICENSE file in the
+# repository root for the full licence text.
+
 name: Release
 
 # ---------------------------------------------------------------------------
@@ -44,7 +50,13 @@ jobs:
       contents: read
       packages: write
     steps:
+      # The tree of the TAG. On a tag push github.ref is the tag; on a re-run
+      # by workflow_dispatch it is the branch the run was started from, and
+      # building that under the tag's name is exactly what this workflow
+      # refuses. So the tag is checked out by name.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
@@ -71,11 +83,13 @@ jobs:
             echo "no tag: this workflow releases from a tag and has nothing to build" >&2
             exit 1
           fi
-          echo "tag=$REF" >> "$GITHUB_OUTPUT"
-          echo "version=${REF#v}" >> "$GITHUB_OUTPUT"
           # ghcr rejects an upper-case path segment; the owner is lower-cased
           # here rather than assumed to be lower-case already.
-          echo "owner=$(printf '%s' "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$REF"
+            echo "version=${REF#v}"
+            echo "owner=$(printf '%s' "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          } >> "$GITHUB_OUTPUT"
 
       # The POM carries a -SNAPSHOT version so a local build is never mistaken
       # for a release. The coordinate a consumer pins is the tag, so the tag's
@@ -167,23 +181,33 @@ jobs:
       # lifecycle, so compiling, test compilation and the Quarkus build are
       # skipped explicitly: the jars are packaged from the classes the suite
       # above compiled and tested.
+      #
+      # THE DECLARATION BESIDE THEM. `-Pdeclaration` attaches
+      # target/declaration.json as ai.kumbuka:kumbuka-dispatch:<version>:json:declaration.
+      # The suite above wrote that file from the body GET /api/declaration
+      # served for this very build and held it byte for byte against it
+      # (DeclarationFileIT), so a router can build against the declaration of
+      # the version it pins without starting it. The profile refuses to
+      # package when the file is missing: no release without its declaration.
       - name: Deploy to GitHub Packages (from the tested build)
         working-directory: backend
         env:
           GITHUB_ACTOR_FOR_MAVEN: ${{ github.actor }}
           GITHUB_TOKEN_FOR_MAVEN: ${{ secrets.GITHUB_TOKEN }}
-        run: mvn -B -ntp -Dmaven.main.skip=true -Dmaven.test.skip=true -Dquarkus.build.skip=true deploy
+        run: mvn -B -ntp -Pdeclaration -Dmaven.main.skip=true -Dmaven.test.skip=true -Dquarkus.build.skip=true deploy
 
 
   # -------------------------------------------------------------------------
   # The GitHub release, last — so a release never points at an image that was
   # not pushed, and never at a library jar that was not published. It waits on
-  # both: a release left behind by a failed deploy promises an artifact nobody
-  # can resolve, and that artifact is what downstream builds pin themselves to.
+  # the release job, which pushes the image and deploys the jar and the
+  # declaration: a release left behind by a failed deploy promises an artifact
+  # nobody can resolve, and that artifact is what downstream builds pin
+  # themselves to.
   #
-  # The two jobs it waits on stay concurrent with each other. Publishing is an
-  # addition to the image, not a substitute for it, so `image` still depends on
-  # `verify` alone and neither of the two is ordered behind the other.
+  # The notes are the tagged version's section of CHANGELOG.md, then the
+  # coordinates of what was published, then GitHub's generated list of pull
+  # requests.
   # -------------------------------------------------------------------------
   github-release:
     name: github release
@@ -194,6 +218,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - id: meta
         env:
@@ -206,21 +232,46 @@ jobs:
           echo "tag=$REF" >> "$GITHUB_OUTPUT"
           echo "owner=$(printf '%s' "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
+      # The section of CHANGELOG.md headed `## <version>`, up to the next
+      # `## ` heading. A tag without a section is not refused: the release then
+      # carries the coordinates and the generated list alone.
       - name: gh release create
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          OWNER: ${{ steps.meta.outputs.owner }}
         run: |
-          TAG="${{ steps.meta.outputs.tag }}"
-          OWNER="${{ steps.meta.outputs.owner }}"
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --generate-notes \
-            --notes "
-          ## Container image
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          {
+            awk -v head="## $VERSION" '
+              $0 == head { on = 1; next }
+              on && /^## / { exit }
+              on { print }
+            ' CHANGELOG.md 2>/dev/null || true
+            cat <<NOTES
+
+          ## Published
+
+          Container image:
 
           \`\`\`
           ghcr.io/$OWNER/kumbuka-dispatch:$TAG
           \`\`\`
 
+          Library and declaration in GitHub Packages:
+
+          \`\`\`
+          ai.kumbuka:kumbuka-dispatch:$VERSION
+          ai.kumbuka:kumbuka-dispatch:$VERSION:json:declaration
+          \`\`\`
+
+          The declaration is byte for byte what \`GET /api/declaration\` serves for this version.
+
           Configuration is environment variables with a \`DISPATCH_\` prefix; see the README for the full set. The service role's password must be rotated away from the migration's placeholder before the service is reachable from outside a development machine.
-          "
+          NOTES
+          } > release-notes.md
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            --notes-file release-notes.md
