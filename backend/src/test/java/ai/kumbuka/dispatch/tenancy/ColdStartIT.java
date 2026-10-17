@@ -165,15 +165,13 @@ class ColdStartIT {
     }
 
     /**
-     * Counts {@code V<n>__*.sql} files in the migration directory.
+     * The versions the migration files in the migration directory name, as
+     * Flyway writes them into its history ({@code V16_1} is {@code 16.1}),
+     * lowest first.
      *
-     * <p>Deliberately not a constant: this is the one number in the test that
+     * <p>Deliberately not a constant: this is the one list in the test that
      * would otherwise need editing every time a migration is added, and the
      * edit that gets forgotten produces a failure describing the wrong thing.
-     */
-    /**
-     * The versions the migration files name, as Flyway writes them into its
-     * history ({@code V16_1} is {@code 16.1}), lowest first.
      */
     private static List<String> versionedMigrationFiles() throws IOException {
         Path dir = Files.isDirectory(Paths.get("src/main/resources/db/migration"))
