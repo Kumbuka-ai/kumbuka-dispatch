@@ -566,6 +566,9 @@ public class TaskService {
                 : verb.holdReason();
             task.enter(verb.target(), reason, verb.outcome(), now, by);
         }
+        if (Checks.selfAccepting(verb, s, by)) {
+            task.markSelfAccepted();
+        }
         switch (verb.holding()) {
             case NONE, TAKE -> {
                 // TAKE is applied by take(), which mints the receipt.

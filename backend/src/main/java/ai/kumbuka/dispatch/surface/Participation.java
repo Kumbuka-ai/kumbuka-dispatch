@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
@@ -15,6 +22,9 @@ import java.util.Locale;
  * it. The kernel decides with the relation of each row of the transition
  * table; this is the same relation named for a caller who is told which part
  * it has, in a refusal that says the call belongs to another.
+ *
+ * <p>An identity holding both capacities takes the part the task gives it: the
+ * holder where it holds the task, the commissioner everywhere else.
  */
 public enum Participation {
 
@@ -32,11 +42,11 @@ public enum Participation {
 
     /** The part {@code caller} takes in the task whose head is {@code view}. */
     public static Participation of(Actor caller, TaskView view) {
-        if (caller.isConsole()) {
-            return COMMISSIONER;
-        }
         if (view.holder() == HolderState.SELF) {
             return HOLDER;
+        }
+        if (caller.isConsole()) {
+            return COMMISSIONER;
         }
         return view.state() == TaskState.OPEN ? CANDIDATE : BYSTANDER;
     }

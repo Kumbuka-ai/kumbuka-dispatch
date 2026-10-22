@@ -32,6 +32,9 @@ import java.util.UUID;
  * @param state           the effective state
  * @param holdReason      set exactly in {@code on_hold}; absent in every other state
  * @param outcome         set exactly in {@code closed}; absent in every other state
+ * @param selfAccepted    set exactly on a task closed as {@code accepted}: true where
+ *                        the identity that delivered accepted it, false where another
+ *                        did; absent on every other task (TAR-0004 section 3)
  * @param holder          whether nobody, the caller or another holds the task
  * @param leaseExpiresAt  the end of the lease, for the holder only; absent for every
  *                        other caller and where no lease runs
@@ -55,6 +58,7 @@ public record TaskView(
     TaskState state,
     @Nullable HoldReason holdReason,
     @Nullable Outcome outcome,
+    @Nullable Boolean selfAccepted,
     HolderState holder,
     @Nullable Instant leaseExpiresAt,
     @Nullable Instant notBefore,
@@ -101,7 +105,10 @@ public record TaskView(
                        @Nullable String curatedIn) {
         HolderState holder = HolderState.of(situation.holder(), caller);
         return new TaskView(task.uuid, task.address(), situation.state(),
-            situation.holdReason(), task.outcome().orElse(null), holder,
+            situation.holdReason(), task.outcome().orElse(null),
+            task.outcome().filter(o -> o == Outcome.ACCEPTED).map(o -> task.selfAccepted())
+                .orElse(null),
+            holder,
             holder == HolderState.SELF ? task.leaseExpiresAt().orElse(null) : null,
             task.notBefore().orElse(null), task.questionOptions().orElse(null),
             task.lapseCount(), task.title, task.apparatus, task.dispatchMetadata,
@@ -126,6 +133,7 @@ public record TaskView(
         fields.put("state", state.wireName());
         putIfPresent(fields, "hold_reason", holdReason == null ? null : holdReason.wireName());
         putIfPresent(fields, "outcome", outcome == null ? null : outcome.wireName());
+        putIfPresent(fields, "self_accepted", selfAccepted);
         putIfPresent(fields, "not_before", notBefore);
         putIfPresent(fields, "lease_expires_at", leaseExpiresAt);
         if (!head) {

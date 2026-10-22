@@ -53,9 +53,14 @@ What travels with a call:
   `NOT_FOUND` says the same for an absent task, an invisible scope and an
   address no route serves.
 
-Who calls is read from the token: a caller holds the commissioning capacity
-(realm role `dispatch-console`) or the executing one (`dispatch-executor`),
-exactly one of them. A token with neither or both is refused.
+Who calls is read from the token: the commissioning capacity is the realm
+role `dispatch-console`, the executing one `dispatch-executor`. They are
+capacities of an identity, not kinds of caller: an identity may hold both, and
+takes whichever part a call asks for. A token with neither is refused. An
+identity holding the executing capacity alone never accepts, its own answer or
+any other; an identity holding both may accept its own, and the closed task is
+then marked `self_accepted`, which `read` and `query` answer and nothing
+removes.
 
 ## How isolation is built
 

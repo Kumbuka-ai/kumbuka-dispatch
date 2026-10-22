@@ -2,7 +2,7 @@
 type: contract-copy
 title: "The dispatch service's verb surface: twenty-five calls, two sizes of answer, refusals that explain themselves"
 written: 2026-10-06
-amended: 2026-10-16
+amended: 2026-10-22
 sources:
   - "platform-specs aa42521, docs/architecture/targets/TAR-0004-the-dispatch-service-carries-commissioned-work-from-issue-to-acceptance.md, sections 3, 5, 6, 7"
   - "platform-specs aa42521, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3"
@@ -15,6 +15,13 @@ sources:
   - "platform-specs ff0a4ba, TAR-0004 sections 2 and 3 and concept section 2.5: the bracket rule (ROOT_UNSENT, ROOT_CLOSED, CHILDREN_PRESENT) and no addendum to the commission of a delivered task"
   - "platform-specs 37f4d6e, code-conventions/service-contract.md, contract round 3: attempted as a rule, the framework's 404 and 405 in the envelope (C3.3, C8.3), no transport location in offenders"
 ---
+<!--
+Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+SPDX-License-Identifier: AGPL-3.0-only
+This file is part of Kumbuka and is licensed under the GNU Affero
+General Public License v3.0 only. See the LICENSE file in the
+repository root for the full licence text.
+-->
 <!--
 Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
 SPDX-License-Identifier: AGPL-3.0-only
@@ -43,7 +50,12 @@ that is closed has only closed children.
 
 A task is in one of six states: `draft`, `open`, `active`, `on_hold` (with `question`,
 `dependency` or `external`), `delivered`, `closed` (with `accepted`, `rejected`, `failed` or
-`withdrawn`).
+`withdrawn`). A task closed as `accepted` carries `self_accepted`: `true` where the identity that
+delivered it accepted it itself, `false` where another did. Nothing removes the mark.
+
+Commissioning and executing are capacities of an identity, not kinds of caller. An identity may
+hold both and takes whichever part a call asks for; holding the executing capacity alone, it never
+accepts.
 
 ## 2. One form for every call
 
@@ -259,7 +271,7 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 ## 4. Answers
 
 A writing call answers lean: `address`, `fields` with the state and its attributes (`hold_reason`,
-`outcome`, `not_before`) and, for the holder, `lease_expires_at`; `conflict_token`; `next`.
+`outcome`, `self_accepted`, `not_before`) and, for the holder, `lease_expires_at`; `conflict_token`; `next`.
 `dispatch_claim` and `dispatch_claim_next` add `receipt`. `dispatch_read` and `dispatch_query`
 answer the full head: in addition `title`, `apparatus`, `identity` (the technical address),
 `holder` (`self`, `other` or `nobody`), `lapse_count`, the pending question's options, both

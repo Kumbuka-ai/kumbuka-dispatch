@@ -93,6 +93,13 @@ public class Task {
     @Column(name = "outcome")
     private @Nullable String outcome;
 
+    /**
+     * Whether the identity that delivered accepted the task itself. Set by
+     * the acceptance and by nothing else, never cleared (V22).
+     */
+    @Column(name = "self_accepted", nullable = false)
+    private boolean selfAccepted;
+
     @Column(name = "state_changed_at", nullable = false)
     private Instant stateChangedAt;
 
@@ -193,6 +200,11 @@ public class Task {
 
     public Optional<Outcome> outcome() {
         return Outcome.fromWireName(outcome);
+    }
+
+    /** Whether the identity that delivered accepted the task itself. */
+    public boolean selfAccepted() {
+        return selfAccepted;
     }
 
     public Optional<Map<String, Object>> questionOptions() {
@@ -374,6 +386,11 @@ public class Task {
     }
 
     /** Drops holder, receipt hash and lease together. */
+    /** Marks the acceptance as the deliverer's own. Nothing clears the mark. */
+    void markSelfAccepted() {
+        this.selfAccepted = true;
+    }
+
     void dropHolder() {
         this.holderSubject = null;
         this.holderReceiptHash = null;

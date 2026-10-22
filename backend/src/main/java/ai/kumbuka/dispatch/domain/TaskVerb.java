@@ -110,7 +110,7 @@ public enum TaskVerb {
         moves(ACTIVE, null, null, Holding.RESTART, TextType.REMARK)),
 
     ACCEPT("accept",
-        when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.NOT_THE_DELIVERER,
+        when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.SELF_ACCEPTANCE,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Nothing.class, TaskInput.NONE),
         moves(CLOSED, null, Outcome.ACCEPTED, Holding.DROP, null)),
@@ -154,11 +154,15 @@ public enum TaskVerb {
         CANDIDATE
     }
 
-    /** The lock between executor and acceptor (check 4). */
+    /** The mark on acceptance (check 4). */
     public enum Lock {
         NONE,
-        /** Never the identity that delivered, whatever capacity it carries. */
-        NOT_THE_DELIVERER
+        /**
+         * The identity that delivered passes only holding the commissioning
+         * capacity too, and its acceptance is then marked {@code self_accepted}
+         * on the task (TAR-0004 section 3, REQ-0034).
+         */
+        SELF_ACCEPTANCE
     }
 
     /** What fences the call (check 5). */
