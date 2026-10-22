@@ -385,12 +385,12 @@ public class Task {
         this.leaseExpiresAt = null;
     }
 
-    /** Drops holder, receipt hash and lease together. */
     /** Marks the acceptance as the deliverer's own. Nothing clears the mark. */
     void markSelfAccepted() {
         this.selfAccepted = true;
     }
 
+    /** Drops holder, receipt hash and lease together. */
     void dropHolder() {
         this.holderSubject = null;
         this.holderReceiptHash = null;
