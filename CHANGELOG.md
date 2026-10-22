@@ -22,12 +22,15 @@ GitHub release. Releases before 0.11.0 are described on the
   refused with `ROLE_INSUFFICIENT`. The identity takes whichever part a call
   asks for: it commissions, takes up, delivers and accepts. A token carrying
   neither role is refused as before.
-- **Acceptance of one's own answer is marked, not refused.** An identity
-  holding both capacities may accept a task it delivered itself; the closed
-  task then carries `self_accepted: true`. Accepted by another identity, it
-  carries `self_accepted: false`. The field stands on every task closed as
-  `accepted` and on no other, in the answer of the acceptance, of `read` and
-  of `query`. Nothing removes the mark.
+- **Acceptance of one's own answer is stamped, not refused.** An identity
+  holding both capacities may accept a task it delivered itself. Every
+  acceptance stamps `self_accepted`: `true` where the identity that delivered
+  accepts, `false` where another does. The stamp is in the answer of the
+  acceptance, of `read` and of `query`, and never changes. Where it is unknown
+  -- a task not closed as `accepted`, or one accepted before this release --
+  the field is absent, as every member without a value is. There is no filter
+  on it in `query`: a fifth filter would change the description of
+  `dispatch_query`, which the router carries.
 - **An identity holding the executing capacity alone never accepts**, its own
   answer or another's, and is refused alike on both surfaces
   (`ROLE_INSUFFICIENT`). Granting an agent that capacity alone is how
@@ -42,12 +45,13 @@ GitHub release. Releases before 0.11.0 are described on the
 
 ### Upgrade and rollback
 
-- Migration `V22` adds the column `task.self_accepted` (`NOT NULL DEFAULT
-  false`), a check that it stands only on a task closed as `accepted`, and a
-  trigger that refuses clearing it. It is additive and reads no row: every
-  existing task takes `false`. 0.11.0 does not know the column: its inserts
-  take the default and its updates leave the column alone, so the schema
-  stays usable for it. Whether a 0.11.0 image starts on a database `V22` has
+- Migration `V22` adds the nullable column `task.self_accepted` without a
+  default, a check that it stands only on a task closed as `accepted`, and a
+  trigger that refuses changing it once stamped. It is additive and writes
+  no row: every existing task holds NULL, unknown, and none is stamped
+  `false`, because the earlier service did not record whose acceptance it
+  was. 0.11.0 does not know the column: its inserts leave it NULL and its
+  updates leave it alone, so the schema stays usable for it. Whether a 0.11.0 image starts on a database `V22` has
   migrated is Flyway's validation, and is not established by this release.
 
 ## 0.11.0

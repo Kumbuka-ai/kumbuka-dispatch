@@ -149,7 +149,7 @@ final class TaskStage {
     record Row(long id, String state, String holdReason, String outcome, String holder,
                Instant leaseExpiresAt, int lapseCount, Instant notBefore,
                String stateChangedBy, Long curatedIn, String receiptHash, String createdBy,
-               String updatedBy, boolean selfAccepted) {
+               String updatedBy, Boolean selfAccepted) {
     }
 
     static Row row(UUID identity) {
@@ -169,7 +169,7 @@ final class TaskStage {
             return new Row(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
                 rs.getString(5), instant(rs.getTimestamp(6)), rs.getInt(7),
                 instant(rs.getTimestamp(8)), rs.getString(9), (Long) rs.getObject(10),
-                rs.getString(11), rs.getString(12), rs.getString(13), rs.getBoolean(14));
+                rs.getString(11), rs.getString(12), rs.getString(13), (Boolean) rs.getObject(14));
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }

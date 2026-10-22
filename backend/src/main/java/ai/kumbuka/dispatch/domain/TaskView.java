@@ -32,9 +32,11 @@ import java.util.UUID;
  * @param state           the effective state
  * @param holdReason      set exactly in {@code on_hold}; absent in every other state
  * @param outcome         set exactly in {@code closed}; absent in every other state
- * @param selfAccepted    set exactly on a task closed as {@code accepted}: true where
- *                        the identity that delivered accepted it, false where another
- *                        did; absent on every other task (TAR-0004 section 3)
+ * @param selfAccepted    the stamp of the acceptance: true where the identity that
+ *                        delivered accepted it, false where another did; absent where
+ *                        it is unknown -- on every task not closed as {@code accepted},
+ *                        and on every task accepted before the stamp existed
+ *                        (TAR-0004 section 3)
  * @param holder          whether nobody, the caller or another holds the task
  * @param leaseExpiresAt  the end of the lease, for the holder only; absent for every
  *                        other caller and where no lease runs
@@ -106,8 +108,7 @@ public record TaskView(
         HolderState holder = HolderState.of(situation.holder(), caller);
         return new TaskView(task.uuid, task.address(), situation.state(),
             situation.holdReason(), task.outcome().orElse(null),
-            task.outcome().filter(o -> o == Outcome.ACCEPTED).map(o -> task.selfAccepted())
-                .orElse(null),
+            task.selfAccepted().orElse(null),
             holder,
             holder == HolderState.SELF ? task.leaseExpiresAt().orElse(null) : null,
             task.notBefore().orElse(null), task.questionOptions().orElse(null),

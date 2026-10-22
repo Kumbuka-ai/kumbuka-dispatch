@@ -68,7 +68,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Every call presents what checks 5 to 7 ask -- H's receipt, the current
  * conflict token, a valid payload -- and the task is a root without children,
- * so a cell is decided by checks 1 to 4 and a permitted cell is permitted
+ * so a cell is decided by checks 1 to 3 (4 is a stamp) and a permitted cell is permitted
  * whole. Each row is permitted for its relation in at least one situation and
  * refused for each relation in at least one; a row is never permitted for a
  * relation the target does not name, and that refusal is in the matrix too.
@@ -339,7 +339,6 @@ class TransitionMatrixTest {
                 case LEASE_LAPSED -> "RL";
                 default -> "R?" + r.reason();
             };
-            case LOCK -> r.reason() == Reason.RATIFICATION_NOT_PERMITTED ? "L" : "L?" + r.reason();
             case PROOF, CONFIRMATION, PAYLOAD -> r.check() + ":" + r.reason();
         };
     }

@@ -58,9 +58,10 @@ role `dispatch-console`, the executing one `dispatch-executor`. They are
 capacities of an identity, not kinds of caller: an identity may hold both, and
 takes whichever part a call asks for. A token with neither is refused. An
 identity holding the executing capacity alone never accepts, its own answer or
-any other; an identity holding both may accept its own, and the closed task is
-then marked `self_accepted`, which `read` and `query` answer and nothing
-removes.
+any other; an identity holding both may accept its own. Every acceptance is
+stamped `self_accepted` -- `true` where the identity that delivered accepted,
+`false` where another did -- which `read` and `query` answer and nothing
+changes; on a task accepted before the stamp existed it is unknown and absent.
 
 ## How isolation is built
 

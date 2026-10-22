@@ -18,7 +18,9 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The seven checks of {@link Decision}, one method each.
+ * The checks of {@link Decision}, one method each, numbered as concept
+ * section 2.3 numbers them. Its fourth, the mark on acceptance, refuses
+ * nothing and is no check here: the transition stamps it.
  *
  * <p>Each reads one part of a {@link TaskVerb} row against the
  * {@link TaskSituation} and the {@link TaskCall}, and answers empty or the
@@ -90,34 +92,6 @@ final class Checks {
         }
         return refuse(Check.RELATION, Reason.CLAIM_REQUIRED, verb.wireName() + " is the "
             + "holder's call, and " + s.address() + " is not held by the caller.");
-    }
-
-    /**
-     * Check 4: the mark on acceptance -- the identity that delivered accepts
-     * only when it holds the commissioning capacity too, and the acceptance is
-     * then marked (TAR-0004 section 3, REQ-0034).
-     *
-     * <p>The one row that carries this lock is commissioner's, so check 3
-     * refuses an identity without the commissioning capacity before this one
-     * is reached; that order is the four-eyes point. The lock still states the
-     * rule in full, so that it holds for a row whose relation reads otherwise.
-     * The mark itself is written by the transition, where {@link
-     * #selfAccepting} says it applies.
-     */
-    static Optional<Refused> lock(TaskVerb verb, TaskSituation s, Actor caller) {
-        if (selfAccepting(verb, s, caller.subject()) && !caller.isConsole()) {
-            return refuse(Check.LOCK, Reason.RATIFICATION_NOT_PERMITTED, "the identity that "
-                + "delivered " + s.address() + " accepts it only holding the commissioning "
-                + "capacity too: an executor alone that accepted its own answer would be "
-                + "reviewing itself.");
-        }
-        return Optional.empty();
-    }
-
-    /** Whether the identity {@code subject} is accepting what it delivered itself. */
-    static boolean selfAccepting(TaskVerb verb, TaskSituation s, String subject) {
-        return verb.lock() == TaskVerb.Lock.SELF_ACCEPTANCE
-            && subject.equals(s.storedHolder());
     }
 
     /** Check 5: the receipt or the conflict token. */

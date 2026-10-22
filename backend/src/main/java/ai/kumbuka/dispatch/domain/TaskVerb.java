@@ -24,8 +24,8 @@ import static ai.kumbuka.dispatch.domain.TaskState.OPEN;
  * section 2.2).
  *
  * <p>Each row is data and nothing else: the effective states it applies in,
- * the condition on an attribute, the caller's relation to the task, the lock
- * on acceptance, the proof it needs, the payload it takes, the state it moves
+ * the condition on an attribute, the caller's relation to the task, the proof
+ * it needs, the payload it takes, the state it moves
  * to with the attributes it sets, what happens to holder, lease and count, the
  * text row it inserts. {@link Decision#of}
  * reads the checks off a row and {@link TaskService} reads the effects; no
@@ -38,97 +38,97 @@ import static ai.kumbuka.dispatch.domain.TaskState.OPEN;
 public enum TaskVerb {
 
     SEND("send",
-        when(EnumSet.of(DRAFT), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
+        when(EnumSet.of(DRAFT), Condition.NONE, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Nothing.class, TaskInput.NONE),
         moves(OPEN, null, null, Holding.NONE, null)),
 
     CLAIM("claim",
-        when(EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE, Lock.NONE,
+        when(EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE,
             Proof.NONE),
         takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
         moves(ACTIVE, null, null, Holding.TAKE, null)),
 
     CLAIM_NEXT("claim_next",
-        when(EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE, Lock.NONE,
+        when(EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE,
             Proof.NONE),
         takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
         moves(ACTIVE, null, null, Holding.TAKE, null)),
 
     RELEASE("release",
-        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Remark.class, new TaskInput.Remark(null)),
         moves(OPEN, null, null, Holding.DROP, TextType.REMARK)),
 
     DEFER("defer",
-        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Deferral.class, null),
         moves(OPEN, null, null, Holding.DROP, TextType.REMARK)),
 
     RENEW("renew",
-        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
         moves(ACTIVE, null, null, Holding.LEASE, null)),
 
     ASK("ask",
-        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Question.class, null),
         moves(ON_HOLD, HoldReason.QUESTION, null, Holding.PAUSE, TextType.QUESTION)),
 
     ANSWER("answer",
-        when(EnumSet.of(ON_HOLD), Condition.QUESTION_PENDING, Relation.COMMISSIONER, Lock.NONE,
+        when(EnumSet.of(ON_HOLD), Condition.QUESTION_PENDING, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Reply.class, null),
         moves(ACTIVE, null, null, Holding.RESTART, TextType.ANSWER)),
 
     HOLD("hold",
-        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Pause.class, null),
         moves(ON_HOLD, null, null, Holding.PAUSE, TextType.REMARK)),
 
     RESUME("resume",
-        when(EnumSet.of(ON_HOLD), Condition.PAUSED_BY_HOLDER, Relation.HOLDER, Lock.NONE,
+        when(EnumSet.of(ON_HOLD), Condition.PAUSED_BY_HOLDER, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
         moves(ACTIVE, null, null, Holding.LEASE, null)),
 
     DELIVER("deliver",
-        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER, Lock.NONE,
+        when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Delivery.class, null),
         moves(DELIVERED, null, null, Holding.PAUSE, TextType.RETURN)),
 
     REWORK("rework",
-        when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
+        when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.RequiredRemark.class, null),
         moves(ACTIVE, null, null, Holding.RESTART, TextType.REMARK)),
 
     ACCEPT("accept",
-        when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.SELF_ACCEPTANCE,
+        when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Nothing.class, TaskInput.NONE),
         moves(CLOSED, null, Outcome.ACCEPTED, Holding.DROP, null)),
 
     REJECT("reject",
-        when(EnumSet.of(OPEN), Condition.NONE, Relation.CANDIDATE, Lock.NONE,
+        when(EnumSet.of(OPEN), Condition.NONE, Relation.CANDIDATE,
             Proof.NONE),
         takes(TaskInput.RequiredRemark.class, null),
         moves(CLOSED, null, Outcome.REJECTED, Holding.DROP, TextType.REMARK)),
 
     FAIL("fail",
-        when(EnumSet.of(ACTIVE, ON_HOLD), Condition.NONE, Relation.HOLDER, Lock.NONE,
+        when(EnumSet.of(ACTIVE, ON_HOLD), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.RequiredRemark.class, null),
         moves(CLOSED, null, Outcome.FAILED, Holding.DROP, TextType.REMARK)),
 
     WITHDRAW("withdraw",
-        when(EnumSet.of(OPEN, ACTIVE, ON_HOLD, DELIVERED), Condition.NONE, Relation.COMMISSIONER, Lock.NONE,
+        when(EnumSet.of(OPEN, ACTIVE, ON_HOLD, DELIVERED), Condition.NONE, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Remark.class, new TaskInput.Remark(null)),
         moves(CLOSED, null, Outcome.WITHDRAWN, Holding.DROP, TextType.REMARK));
@@ -152,17 +152,6 @@ public enum TaskVerb {
         HOLDER,
         /** An executor that could take the task up. */
         CANDIDATE
-    }
-
-    /** The mark on acceptance (check 4). */
-    public enum Lock {
-        NONE,
-        /**
-         * The identity that delivered passes only holding the commissioning
-         * capacity too, and its acceptance is then marked {@code self_accepted}
-         * on the task (TAR-0004 section 3, REQ-0034).
-         */
-        SELF_ACCEPTANCE
     }
 
     /** What fences the call (check 5). */
@@ -190,9 +179,8 @@ public enum TaskVerb {
         DROP
     }
 
-    /** Checks 1 to 5 of a row: where it applies, who calls, what proves the call. */
-    record When(Set<TaskState> states, Condition condition, Relation relation, Lock lock,
-                Proof proof) {
+    /** The situational checks and the proof of a row: where it applies, who calls, what proves the call. */
+    record When(Set<TaskState> states, Condition condition, Relation relation, Proof proof) {
     }
 
     /**
@@ -217,8 +205,8 @@ public enum TaskVerb {
     }
 
     private static When when(Set<TaskState> states, Condition condition, Relation relation,
-                             Lock lock, Proof proof) {
-        return new When(Set.copyOf(states), condition, relation, lock, proof);
+                             Proof proof) {
+        return new When(Set.copyOf(states), condition, relation, proof);
     }
 
     private static Takes takes(Class<? extends TaskInput> shape, @Nullable TaskInput fallback) {
@@ -259,10 +247,6 @@ public enum TaskVerb {
 
     public Relation relation() {
         return when.relation();
-    }
-
-    public Lock lock() {
-        return when.lock();
     }
 
     public Proof proof() {

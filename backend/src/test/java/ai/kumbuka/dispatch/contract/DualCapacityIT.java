@@ -7,6 +7,7 @@
  */
 package ai.kumbuka.dispatch.contract;
 
+import ai.kumbuka.dispatch.platform.PlatformFixture;
 import ai.kumbuka.dispatch.surface.Mcp;
 import ai.kumbuka.dispatch.surface.SurfaceFixture;
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -32,8 +33,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>An identity holding both runs a task from create to accept by itself,
  * and its acceptance of its own answer is marked {@code self_accepted}, which
  * {@code read} and {@code query} answer. An acceptance by another commissioner
- * carries {@code self_accepted: false}: the field stands on every task closed
- * as accepted and on no other. An identity holding the executing capacity
+ * is stamped {@code self_accepted: false}. Where the stamp is unknown -- a task
+ * not closed as accepted, or one accepted before the stamp existed -- the field
+ * is absent, as every member without a value is (service contract C7.2). An identity holding the executing capacity
  * alone never accepts, its own answer or another's, and is refused alike on
  * MCP and on REST. That last case is the four-eyes point, and the one that
  * distinguishes the requirement from a plain permission check.
@@ -162,6 +164,32 @@ class DualCapacityIT {
             "address", address, "conflict_token", open.get("conflict_token"))));
         assertThat(Mcp.field(withdrawn, "outcome")).isEqualTo("withdrawn");
         assertThat(fields(withdrawn)).doesNotContainKey("self_accepted");
+    }
+
+    /**
+     * A task accepted before the stamp existed holds NULL, and is answered as
+     * unknown: the field is absent, never false. The acceptance of the earlier
+     * service is staged by writing the closed state directly, as that service
+     * wrote it, without the column it did not know.
+     */
+    @Test
+    void a_task_accepted_before_the_stamp_existed_is_unknown_not_false() {
+        String id = SurfaceFixture.open("accepted by the earlier service", "code");
+        String address = SurfaceFixture.address(id);
+        claimAndDeliver(address);
+        PlatformFixture.run("UPDATE dispatch.task SET state = 'closed', outcome = 'accepted', "
+            + "holder_subject = NULL, holder_receipt_hash = NULL "
+            + "WHERE scope_id = '" + SubstrateDatabaseResource.SCOPE_ID + "' AND number = "
+            + id.substring(0, id.indexOf('.')) + " AND sub = 0 AND selector_id = (SELECT id "
+            + "FROM dispatch.selector WHERE scope_id = '" + SubstrateDatabaseResource.SCOPE_ID
+            + "' AND name = '" + SurfaceFixture.SELECTOR + "')");
+
+        Map<String, Object> read = Mcp.answer(Mcp.call("dispatch_read",
+            Map.of("address", address)));
+        assertThat(Mcp.field(read, "outcome")).isEqualTo("accepted");
+        assertThat(fields(read)).doesNotContainKey("self_accepted");
+        assertThat(given().get(SurfaceFixture.item(id)).jsonPath().getMap("fields"))
+            .as("and over REST").doesNotContainKey("self_accepted");
     }
 
     // =======================================================================

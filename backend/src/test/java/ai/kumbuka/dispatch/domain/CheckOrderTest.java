@@ -25,18 +25,15 @@ import static ai.kumbuka.dispatch.domain.TransitionMatrixTest.situation;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Acceptance criteria 3 and 5: one fault answers with one reason, and the mark
- * on acceptance (check 4): the identity that delivered accepts only holding the
- * commissioning capacity too (TAR-0004 section 3, REQ-0034).
+ * Acceptance criteria 3 and 5: one fault answers with one reason, and the
+ * acceptance by the identity that delivered (TAR-0004 section 3, REQ-0034).
  *
- * <p>The order is state, condition, relation, lock, proof, confirmation,
- * payload (concept section 2.3). For each pair of neighbours there is one call
- * that breaks both, and the answer must be the earlier one's: check and
- * reason. Swapping any two neighbours in {@link Decision#ORDER} turns the
- * case of that pair red. The one exception is the pair lock and proof: the
- * lock refuses only a deliverer without the commissioning capacity, which the
- * relation of the one row carrying it has refused already, so no call breaks
- * the lock and reaches it. The lock is held on its own instead.
+ * <p>The order is state, condition, relation, proof, confirmation, payload
+ * (concept section 2.3). For each pair of neighbours there is one call that
+ * breaks both, and the answer must be the earlier one's: check and reason.
+ * Swapping any two neighbours in {@link Decision#ORDER} turns the case of that
+ * pair red. The concept's mark on acceptance is no check: it refuses nothing,
+ * and the transition stamps it ({@code TaskHoldingIT}).
  */
 class CheckOrderTest {
 
@@ -58,30 +55,12 @@ class CheckOrderTest {
     }
 
     @Test
-    void relation_before_lock() {
-        // accept by the executor that delivered: not a commissioner, and the
-        // deliverer.
+    void relation_before_proof() {
+        // accept by the executor alone that delivered: not a commissioner, and
+        // a stale token.
         Decision d = Decision.of(TaskVerb.ACCEPT, situation("delivered"),
-            TaskCall.by(H).withConflictToken(TOKEN));
+            TaskCall.by(H).withConflictToken("stale"));
         assertRefused(d, Check.RELATION, Reason.ACTOR_UNKNOWN);
-    }
-
-    @Test
-    void the_lock_refuses_only_a_deliverer_without_the_commissioning_capacity() {
-        TaskSituation delivered = situation("delivered");
-        assertThat(Checks.lock(TaskVerb.ACCEPT, delivered, H))
-            .as("the executor alone that delivered")
-            .hasValueSatisfying(r -> assertThat(r.reason())
-                .isEqualTo(Reason.RATIFICATION_NOT_PERMITTED));
-        assertThat(Checks.lock(TaskVerb.ACCEPT, delivered, D))
-            .as("the identity that delivered, holding both").isEmpty();
-        assertThat(Checks.lock(TaskVerb.ACCEPT, delivered, C))
-            .as("another commissioner").isEmpty();
-
-        // past the lock, the deliverer holding both meets the proof
-        Decision d = Decision.of(TaskVerb.ACCEPT, delivered,
-            TaskCall.by(D).withConflictToken("stale"));
-        assertRefused(d, Check.PROOF, Reason.CONFLICT_TOKEN_STALE);
     }
 
     @Test
@@ -113,8 +92,6 @@ class CheckOrderTest {
             .isInstanceOf(Decision.Permitted.class);
         assertThat(Decision.open(TaskVerb.ACCEPT, delivered, D))
             .as("and accept is listed as open to it").isTrue();
-        assertThat(Checks.selfAccepting(TaskVerb.ACCEPT, delivered, D.subject()))
-            .as("and its acceptance is the one that is marked").isTrue();
 
         assertRefused(Decision.of(TaskVerb.ACCEPT, delivered,
                 TaskCall.by(H).withConflictToken(TOKEN)), Check.RELATION, Reason.ACTOR_UNKNOWN);
@@ -124,8 +101,12 @@ class CheckOrderTest {
         assertThat(Decision.of(TaskVerb.ACCEPT, delivered,
                 TaskCall.by(C).withConflictToken(TOKEN)))
             .as("another commissioner accepts").isInstanceOf(Decision.Permitted.class);
-        assertThat(Checks.selfAccepting(TaskVerb.ACCEPT, delivered, C.subject()))
-            .as("unmarked").isFalse();
+    }
+
+    @Test
+    void the_order_has_no_check_for_the_mark_on_acceptance() {
+        assertThat(Decision.ORDER).containsExactly(Check.STATE, Check.CONDITION,
+            Check.RELATION, Check.PROOF, Check.CONFIRMATION, Check.PAYLOAD);
     }
 
     @Test

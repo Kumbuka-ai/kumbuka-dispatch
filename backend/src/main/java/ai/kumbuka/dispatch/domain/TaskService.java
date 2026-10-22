@@ -566,8 +566,9 @@ public class TaskService {
                 : verb.holdReason();
             task.enter(verb.target(), reason, verb.outcome(), now, by);
         }
-        if (Checks.selfAccepting(verb, s, by)) {
-            task.markSelfAccepted();
+        if (verb.outcome() == Outcome.ACCEPTED) {
+            // The mark on acceptance (TAR-0004 section 3): a stamp, not a check.
+            task.stampAcceptance(by.equals(s.storedHolder()));
         }
         switch (verb.holding()) {
             case NONE, TAKE -> {
@@ -639,7 +640,7 @@ public class TaskService {
      *
      * <p>Only check 6 reads the children, and only {@link #act} runs it on a
      * closing verb, with the children it read there. A head's {@code next}
-     * comes from checks 1 to 4 and does not need them.
+     * comes from checks 1 to 3 and does not need them.
      */
     private TaskSituation situation(Task task) {
         return TaskSituation.of(task, now(), List.of());

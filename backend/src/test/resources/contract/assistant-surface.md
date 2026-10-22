@@ -50,8 +50,10 @@ that is closed has only closed children.
 
 A task is in one of six states: `draft`, `open`, `active`, `on_hold` (with `question`,
 `dependency` or `external`), `delivered`, `closed` (with `accepted`, `rejected`, `failed` or
-`withdrawn`). A task closed as `accepted` carries `self_accepted`: `true` where the identity that
-delivered it accepted it itself, `false` where another did. Nothing removes the mark.
+`withdrawn`). An acceptance is stamped `self_accepted`: `true` where the identity that delivered
+the task accepted it itself, `false` where another did. Nothing changes the stamp. Where it is
+unknown -- a task not closed as `accepted`, or one accepted before the stamp existed -- it is
+absent.
 
 Commissioning and executing are capacities of an identity, not kinds of caller. An identity may
 hold both and takes whichever part a call asks for; holding the executing capacity alone, it never

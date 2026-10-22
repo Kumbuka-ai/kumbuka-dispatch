@@ -94,11 +94,13 @@ public class Task {
     private @Nullable String outcome;
 
     /**
-     * Whether the identity that delivered accepted the task itself. Set by
-     * the acceptance and by nothing else, never cleared (V22).
+     * Whether the identity that delivered accepted the task itself: stamped
+     * true or false by the acceptance and by nothing else, never changed
+     * afterwards (V22). Absent where it is unknown: on every task not closed
+     * as accepted, and on every task accepted before the stamp existed.
      */
-    @Column(name = "self_accepted", nullable = false)
-    private boolean selfAccepted;
+    @Column(name = "self_accepted")
+    private @Nullable Boolean selfAccepted;
 
     @Column(name = "state_changed_at", nullable = false)
     private Instant stateChangedAt;
@@ -202,9 +204,12 @@ public class Task {
         return Outcome.fromWireName(outcome);
     }
 
-    /** Whether the identity that delivered accepted the task itself. */
-    public boolean selfAccepted() {
-        return selfAccepted;
+    /**
+     * Whether the identity that delivered accepted the task itself; empty where
+     * that is unknown.
+     */
+    public Optional<Boolean> selfAccepted() {
+        return Optional.ofNullable(selfAccepted);
     }
 
     public Optional<Map<String, Object>> questionOptions() {
@@ -385,9 +390,9 @@ public class Task {
         this.leaseExpiresAt = null;
     }
 
-    /** Marks the acceptance as the deliverer's own. Nothing clears the mark. */
-    void markSelfAccepted() {
-        this.selfAccepted = true;
+    /** Stamps whether the acceptance is the deliverer's own. Nothing changes the stamp. */
+    void stampAcceptance(boolean byTheDeliverer) {
+        this.selfAccepted = byTheDeliverer;
     }
 
     /** Drops holder, receipt hash and lease together. */
