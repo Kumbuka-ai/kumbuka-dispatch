@@ -205,10 +205,9 @@ class DualCapacityIT {
             assertThat(overMcp.get("reason")).as("%s over MCP", id).isEqualTo("ROLE_INSUFFICIENT");
             assertThat(overRest.statusCode()).as("%s over REST: %s", id, overRest.asString())
                 .isEqualTo(403);
-            assertThat(List.of(overRest.jsonPath().getString("reason"),
-                    overRest.jsonPath().getString("message")))
+            assertThat(sameRefusal(overRest))
                 .as("%s: the same refusal on both transports", id)
-                .isEqualTo(List.of(overMcp.get("reason"), overMcp.get("message")));
+                .isEqualTo(sameRefusal(overMcp));
             assertThat(given().get(SurfaceFixture.item(id)).jsonPath()
                     .getString("fields.state"))
                 .as("%s: and nothing was accepted", id).isEqualTo("delivered");
@@ -225,10 +224,9 @@ class DualCapacityIT {
         Response claimOverRest = given().contentType(ContentType.JSON).body(Map.of())
             .post(SurfaceFixture.item(open) + ":claim");
         assertThat(claimOverMcp.get("reason")).isEqualTo("ROLE_INSUFFICIENT");
-        assertThat(List.of(claimOverRest.jsonPath().getString("reason"),
-                claimOverRest.jsonPath().getString("message")))
+        assertThat(sameRefusal(claimOverRest))
             .as("the same refusal on both transports: %s", claimOverRest.asString())
-            .isEqualTo(List.of(claimOverMcp.get("reason"), claimOverMcp.get("message")));
+            .isEqualTo(sameRefusal(claimOverMcp));
     }
 
     // =======================================================================
@@ -253,6 +251,22 @@ class DualCapacityIT {
     }
 
     // -----------------------------------------------------------------------
+
+    /**
+     * A refusal as both transports must agree on it: the reason, and the
+     * message with the call named as REST names it. The message names the
+     * call by the caller's surface, {@code dispatch_accept} on MCP and {@code
+     * accept} on REST; the rest of it is the same text.
+     */
+    private static List<String> sameRefusal(Map<String, Object> overMcp) {
+        return List.of(String.valueOf(overMcp.get("reason")),
+            String.valueOf(overMcp.get("message")).replaceFirst("^dispatch_", ""));
+    }
+
+    private static List<String> sameRefusal(Response overRest) {
+        return List.of(overRest.jsonPath().getString("reason"),
+            overRest.jsonPath().getString("message"));
+    }
 
     /** Claims and delivers the task as the current identity, over MCP. */
     private static void claimAndDeliver(String address) {
