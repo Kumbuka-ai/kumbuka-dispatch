@@ -44,7 +44,7 @@ class PayloadsTest {
     void an_instant_is_written_to_the_microsecond_as_it_is_stored() {
         Instant fromTheClock = Instant.parse("2026-10-06T11:05:42.538822988Z");
         TaskView held = new TaskView(UUID.randomUUID(), new ExchangeAddress("sprint", 7, 0),
-            TaskState.ACTIVE, null, null, HolderState.SELF, fromTheClock, fromTheClock, null, 0,
+            TaskState.ACTIVE, null, null, null, HolderState.SELF, fromTheClock, fromTheClock, null, 0,
             "t", "code", null, null, "token", null, List.of(), List.of());
 
         JsonNode answer = JSON.valueToTree(Payloads.task(new CallBinding.Answered(
@@ -59,7 +59,7 @@ class PayloadsTest {
     @Test
     void a_member_with_no_value_is_absent() {
         TaskView open = new TaskView(UUID.randomUUID(), new ExchangeAddress("sprint", 7, 0),
-            TaskState.OPEN, null, null, HolderState.NOBODY, null, null, null, 0,
+            TaskState.OPEN, null, null, null, HolderState.NOBODY, null, null, null, 0,
             "t", "code", null, null, "token", null, List.of(), List.of());
 
         JsonNode answer = JSON.valueToTree(Payloads.task(new CallBinding.Answered(

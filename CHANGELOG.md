@@ -13,6 +13,47 @@ release. The release workflow puts the section of the tagged version into the
 GitHub release. Releases before 0.11.0 are described on the
 [releases page](https://github.com/Kumbuka-ai/kumbuka-dispatch/releases) only.
 
+## 0.12.0
+
+### Callers
+
+- **One identity may hold both capacities.** A token carrying both
+  `dispatch-console` and `dispatch-executor` is accepted; until now it was
+  refused with `ROLE_INSUFFICIENT`. The identity takes whichever part a call
+  asks for: it commissions, takes up, delivers and accepts. A token carrying
+  neither role is refused as before.
+- **Acceptance of one's own answer is stamped, not refused.** An identity
+  holding both capacities may accept a task it delivered itself. Every
+  acceptance stamps `self_accepted`: `true` where the identity that delivered
+  accepts, `false` where another does. The stamp is in the answer of the
+  acceptance, of `read` and of `query`, and never changes. Where it is unknown
+  -- a task not closed as `accepted`, or one accepted before this release --
+  the field is absent, as every member without a value is. There is no filter
+  on it in `query`: a fifth filter would change the description of
+  `dispatch_query`, which the router carries.
+- **An identity holding the executing capacity alone never accepts**, its own
+  answer or another's, and is refused alike on both surfaces
+  (`ROLE_INSUFFICIENT`). Granting an agent that capacity alone is how
+  four-eyes is configured.
+- The declaration is unchanged, byte for byte: tool descriptions and message
+  patterns stay as the router serves them. Two of them now say less than
+  holds: the description of `dispatch_accept` names acceptance as the act of
+  an identity other than the one that delivered, and the message
+  `roleCapacity` still says "exactly one of them". The message
+  `roleOtherThanTheDeliverer` is no longer reached. They change with the next
+  release that the router takes up together with this one.
+
+### Upgrade and rollback
+
+- Migration `V22` adds the nullable column `task.self_accepted` without a
+  default, a check that it stands only on a task closed as `accepted`, and a
+  trigger that refuses changing it once stamped. It is additive and writes
+  no row: every existing task holds NULL, unknown, and none is stamped
+  `false`, because the earlier service did not record whose acceptance it
+  was. 0.11.0 does not know the column: its inserts leave it NULL and its
+  updates leave it alone, so the schema stays usable for it. Whether a 0.11.0 image starts on a database `V22` has
+  migrated is Flyway's validation, and is not established by this release.
+
 ## 0.11.0
 
 ### Upgrade and rollback

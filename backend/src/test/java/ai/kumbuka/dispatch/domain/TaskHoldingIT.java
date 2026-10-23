@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.platform.PlatformFixture;
@@ -241,25 +248,44 @@ class TaskHoldingIT {
     }
 
     // =======================================================================
-    // Criterion 5 -- the lock on acceptance
+    // Criterion 5 -- the mark on acceptance (TAR-0004 section 3, REQ-0034)
     // =======================================================================
 
     @Test
-    void the_identity_that_delivered_cannot_accept_even_with_the_commissioning_capacity() {
+    void the_identity_that_delivered_accepts_holding_both_capacities_and_the_row_is_marked() {
         TaskStage.Staged s = stage.stage("delivered", SELECTOR);
-        Actor delivererAsCommissioner = new Actor(H.subject(), Actor.Kind.CONSOLE);
+        Actor delivererWithBoth = new Actor(H.subject(), Actor.Kind.EXECUTOR, Actor.Kind.CONSOLE);
         String token = stage.token(s);
 
         assertRefused(() -> tasks.act(SCOPE, s.address(), TaskVerb.ACCEPT,
-                TaskCall.by(delivererAsCommissioner).withConflictToken(token)),
-            DispatchException.Reason.RATIFICATION_NOT_PERMITTED);
-        assertThat(TaskStage.row(s.identity()).state()).isEqualTo("delivered");
+                TaskCall.by(H).withConflictToken(token)),
+            DispatchException.Reason.ACTOR_UNKNOWN);
+        assertThat(TaskStage.row(s.identity()).state())
+            .as("the executor alone that delivered accepts nothing").isEqualTo("delivered");
 
         TaskView accepted = tasks.act(SCOPE, s.address(), TaskVerb.ACCEPT,
-            TaskCall.by(C).withConflictToken(token));
+            TaskCall.by(delivererWithBoth).withConflictToken(token));
         assertThat(accepted.outcome()).isEqualTo(Outcome.ACCEPTED);
-        assertThat(TaskStage.row(s.identity()).stateChangedBy())
-            .as("who accepted is the one who made the last transition").isEqualTo(C.subject());
+        assertThat(accepted.selfAccepted()).isTrue();
+        TaskStage.Row row = TaskStage.row(s.identity());
+        assertThat(row.selfAccepted()).as("the mark is stored with the acceptance").isTrue();
+        assertThat(row.stateChangedBy())
+            .as("who accepted is the one who made the last transition").isEqualTo(H.subject());
+        assertThat(tasks.read(SCOPE, s.address(), C).selfAccepted())
+            .as("and read answers it to another caller as well").isTrue();
+    }
+
+    @Test
+    void an_acceptance_by_another_commissioner_leaves_the_row_unmarked() {
+        TaskStage.Staged s = stage.stage("delivered", SELECTOR);
+
+        TaskView accepted = tasks.act(SCOPE, s.address(), TaskVerb.ACCEPT,
+            TaskCall.by(C).withConflictToken(stage.token(s)));
+
+        assertThat(accepted.outcome()).isEqualTo(Outcome.ACCEPTED);
+        assertThat(accepted.selfAccepted()).isFalse();
+        assertThat(TaskStage.row(s.identity()).selfAccepted()).isFalse();
+        assertThat(TaskStage.row(s.identity()).stateChangedBy()).isEqualTo(C.subject());
     }
 
     @Test

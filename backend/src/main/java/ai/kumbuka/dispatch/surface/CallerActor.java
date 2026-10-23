@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
@@ -7,11 +14,14 @@ import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
+import java.util.EnumSet;
+import java.util.Set;
+
 /**
  * Derives the calling actor from the token, and from nothing else.
  *
- * <p>The subject is the token's stable subject and the capacity comes from the
- * realm roles. Neither is ever read from a request body: authorship is
+ * <p>The subject is the token's stable subject and the capacities come from
+ * the realm roles. Neither is ever read from a request body: authorship is
  * server-derived from the write channel, so a surface that accepted an actor
  * would let a caller sign somebody else's name to a transition.
  *
@@ -21,9 +31,11 @@ import org.jboss.logging.Logger;
  * that are bolts rather than conveniences. A token that authenticated but
  * carries no capacity is therefore a refusal and not a weaker actor.
  *
- * <p>Both roles at once is refused as well. It is not a superset: an identity
- * that is an executor <em>and</em> a console would pass the ratification bolt
- * while also being the thing the bolt exists to stop.
+ * <p>Both roles at once is admitted (TAR-0004 section 3, REQ-0034): the
+ * capacities are granted to an identity, not kinds of caller, and the person
+ * who works alone holds both. Four-eyes is the grant of the executing role
+ * without the commissioning one; an acceptance of its own answer by an
+ * identity holding both is marked on the task, not refused.
  */
 @RequestScoped
 public class CallerActor {
@@ -35,15 +47,13 @@ public class CallerActor {
      * <p>Every other refusal here is a caller being told no, which is the
      * surface working; those are DEBUG in {@link RefusalMapper}. This one is
      * not about the call at all. A token that authenticated and carries no
-     * capacity — or both — is a <strong>realm misconfiguration</strong>: the
+     * capacity is a <strong>realm misconfiguration</strong>: the
      * roles are wrong, no caller can fix it, and nothing else will say so. The
      * caller sees a 403 and falls silent, and the roles stay wrong.
      *
-     * <p>The subject is not logged, and of the capacity only whether the token
-     * carried both roles or neither. Which token it was belongs to the audit
+     * <p>The subject is not logged. Which token it was belongs to the audit
      * log under its own rules; what the operator needs from this line is that
-     * the realm is handing out unusable tokens at all, and which of the two
-     * misconfigurations it is.
+     * the realm is handing out unusable tokens at all.
      */
     private static final Logger LOG = Logger.getLogger(CallerActor.class);
 
@@ -52,29 +62,27 @@ public class CallerActor {
     /**
      * @return the actor this request acts as
      * @throws DispatchException with {@code ACTOR_UNKNOWN} when the token
-     *         carries no capacity, or carries both
+     *         carries no capacity
      */
     public Actor current() {
-        boolean executor = identity.hasRole(Actor.ROLE_EXECUTOR);
-        boolean console = identity.hasRole(Actor.ROLE_CONSOLE);
-
-        if (executor == console) {
-            LOG.warnf("a token authenticated with an unusable capacity (holds both: %s): %s",
-                executor, DispatchException.Reason.ACTOR_UNKNOWN);
-            throw new DispatchException(DispatchException.Reason.ACTOR_UNKNOWN,
-                executor
-                    ? ("this token carries both '" + Actor.ROLE_EXECUTOR + "' and '"
-                        + Actor.ROLE_CONSOLE + "'. The two are capacities and not levels: "
-                        + "an identity holding both would pass the ratification bolt while "
-                        + "also being what the bolt exists to stop.")
-                    : ("this token carries neither '" + Actor.ROLE_EXECUTOR + "' nor '"
-                        + Actor.ROLE_CONSOLE + "'. The capacity is not defaulted, because "
-                        + "the two guarantees hanging off it are permissions rather than "
-                        + "conveniences and one of them would be decided by omission."));
+        Set<Actor.Kind> capacities = EnumSet.noneOf(Actor.Kind.class);
+        if (identity.hasRole(Actor.ROLE_EXECUTOR)) {
+            capacities.add(Actor.Kind.EXECUTOR);
+        }
+        if (identity.hasRole(Actor.ROLE_CONSOLE)) {
+            capacities.add(Actor.Kind.CONSOLE);
         }
 
-        return new Actor(
-            identity.getPrincipal().getName(),
-            executor ? Actor.Kind.EXECUTOR : Actor.Kind.CONSOLE);
+        if (capacities.isEmpty()) {
+            LOG.warnf("a token authenticated without a capacity: %s",
+                DispatchException.Reason.ACTOR_UNKNOWN);
+            throw new DispatchException(DispatchException.Reason.ACTOR_UNKNOWN,
+                "this token carries neither '" + Actor.ROLE_EXECUTOR + "' nor '"
+                    + Actor.ROLE_CONSOLE + "'. The capacity is not defaulted, because "
+                    + "the two guarantees hanging off it are permissions rather than "
+                    + "conveniences and one of them would be decided by omission.");
+        }
+
+        return new Actor(identity.getPrincipal().getName(), capacities);
     }
 }

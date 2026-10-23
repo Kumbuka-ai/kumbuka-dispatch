@@ -29,8 +29,9 @@ import static org.assertj.core.api.Assertions.fail;
 
 /**
  * What the database secures about the store of the rebuilt lifecycle (V17,
- * V18): the column order, the value sets, the shape of a row, the guard on the
- * texts after the send and the freeze of a sent task's content. Each rule is proven by a statement in plain SQL that the database
+ * V18, V22): the column order, the value sets, the shape of a row, the guard on the
+ * texts after the send, the freeze of a sent task's content and the stamp of
+ * an acceptance. Each rule is proven by a statement in plain SQL that the database
  * refuses, issued under the runtime role with its real grants and the tenant
  * bound as the service binds it.
  *
@@ -48,7 +49,9 @@ class TaskStoreShapeIT {
         "hold_reason", "outcome", "state_changed_at", "state_changed_by", "question_options",
         "not_before", "lapse_count", "holder_subject", "holder_receipt_hash", "lease_expires_at",
         "curated_in_id", "title", "apparatus", "dispatch_metadata", "return_metadata",
-        "created_at", "created_by", "updated_at", "updated_by");
+        "created_at", "created_by", "updated_at", "updated_by",
+        // V22 appends the stamp: a column added later stands at the end.
+        "self_accepted");
 
     private static final List<String> TASK_TEXT_COLUMNS = List.of(
         "id", "tenant_id", "scope_id", "task_id", "text_type", "addendum_suffix", "text",
@@ -201,6 +204,69 @@ class TaskStoreShapeIT {
             succeeds(c, insertTask(26, "state, not_before", "'open', now()"));
             succeeds(c, insertTask(27, "state, outcome, curated_in_id", "'closed', 'accepted', " + target));
         });
+    }
+
+    // ------------------------------------------------------------------
+    // The mark of a self-acceptance (V22)
+    // ------------------------------------------------------------------
+
+    /**
+     * The stamp stands only on a task closed as accepted and never changes
+     * once set, to the other value or back to NULL; an insert that does not
+     * name it -- the image before V22, and every row V22 found -- holds NULL,
+     * unknown, and is never stamped false by the migration.
+     *
+     * <p>RED PROBE: with the check of V22 left out, the first two refusals
+     * pass; with its trigger left out, the three changing updates pass; with
+     * a default of false on the column, the unnamed insert reads false.
+     */
+    @Test
+    void the_stamp_of_an_acceptance_stands_only_where_it_belongs_and_never_changes()
+            throws SQLException {
+        withServiceRole(c -> {
+            refused(c, insertTask(50, "state, holder_subject, holder_receipt_hash, "
+                    + "self_accepted", "'delivered', 'exec', 'hash', false"),
+                "ck_task_self_accepted_only_accepted");
+            refused(c, insertTask(51, "state, outcome, self_accepted", "'closed', 'withdrawn', true"),
+                "ck_task_self_accepted_only_accepted");
+
+            long self = id(c, insertTask(52, "state, outcome, self_accepted",
+                "'closed', 'accepted', true") + " RETURNING id");
+            long other = id(c, insertTask(54, "state, outcome, self_accepted",
+                "'closed', 'accepted', false") + " RETURNING id");
+            refusedByStamp(c, "UPDATE dispatch.task SET self_accepted = false WHERE id = " + self);
+            refusedByStamp(c, "UPDATE dispatch.task SET self_accepted = NULL WHERE id = " + self);
+            refusedByStamp(c, "UPDATE dispatch.task SET self_accepted = true WHERE id = " + other);
+
+            long unnamed = id(c, insertTask(53, "state, outcome", "'closed', 'accepted'")
+                + " RETURNING id");
+            try (Statement st = c.createStatement();
+                 ResultSet rs = st.executeQuery(
+                     "SELECT self_accepted FROM dispatch.task WHERE id = " + unnamed)) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getObject(1))
+                    .as("an insert that does not name the column, as the image before V22 "
+                        + "writes, holds NULL: unknown, never false").isNull();
+            }
+            assertThat(count(c, "UPDATE dispatch.task SET self_accepted = false WHERE id = "
+                    + unnamed))
+                .as("the acceptance stamps it once, under the runtime role").isEqualTo(1);
+        });
+    }
+
+    private static void refusedByStamp(Connection c, String sql) throws SQLException {
+        Savepoint sp = c.setSavepoint();
+        try {
+            assertThatThrownBy(() -> exec(c, sql))
+                .as("RED STATE expected: the stamp never changes%n  %s", sql)
+                .isInstanceOf(PSQLException.class)
+                .satisfies(e -> {
+                    assertThat(((PSQLException) e).getSQLState()).isEqualTo("P0001");
+                    assertThat(e.getMessage()).contains("never changes");
+                });
+        } finally {
+            c.rollback(sp);
+        }
     }
 
     // ------------------------------------------------------------------

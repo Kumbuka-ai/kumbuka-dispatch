@@ -18,7 +18,9 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The seven checks of {@link Decision}, one method each.
+ * The checks of {@link Decision}, one method each, numbered as concept
+ * section 2.3 numbers them. Its fourth, the mark on acceptance, refuses
+ * nothing and is no check here: the transition stamps it.
  *
  * <p>Each reads one part of a {@link TaskVerb} row against the
  * {@link TaskSituation} and the {@link TaskCall}, and answers empty or the
@@ -90,17 +92,6 @@ final class Checks {
         }
         return refuse(Check.RELATION, Reason.CLAIM_REQUIRED, verb.wireName() + " is the "
             + "holder's call, and " + s.address() + " is not held by the caller.");
-    }
-
-    /** Check 4: the lock on acceptance -- never the identity that delivered. */
-    static Optional<Refused> lock(TaskVerb verb, TaskSituation s, Actor caller) {
-        if (verb.lock() == TaskVerb.Lock.NOT_THE_DELIVERER
-                && caller.subject().equals(s.storedHolder())) {
-            return refuse(Check.LOCK, Reason.RATIFICATION_NOT_PERMITTED, "the identity that "
-                + "delivered " + s.address() + " cannot accept it, whatever capacity it "
-                + "carries: an executor that accepted its own answer would be reviewing itself.");
-        }
-        return Optional.empty();
     }
 
     /** Check 5: the receipt or the conflict token. */

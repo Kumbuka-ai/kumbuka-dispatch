@@ -168,3 +168,19 @@ does not parse is `PAYLOAD_MALFORMED` with `attempted` alone, so the message `in
 call and no transport location. The framework's 404 is `NOT_FOUND`, the same bytes as any other;
 its 405 is `VERB_NOT_CARRIED` with `Allow` and the calls at the address, under the message
 `methodNotCarried`, which was written with this surface.
+
+## The amendment of 2026-10-22: two capacities on one identity, and `self_accepted`
+
+From REQ-0034 and TAR-0004 section 3 as changed on platform-specs `ff87988`: an identity may hold
+the commissioning and the executing capacity at once, and every acceptance is stamped
+`self_accepted`, true where the identity that delivered accepts, which `read` and `query` answer. Sections
+1 and 4 say so. The tool descriptions and the message patterns quoted here are unchanged, because
+they are the declaration's, and the router serves the declaration it was built from (DEC-0043):
+the description of `dispatch_accept` still names acceptance as the act of an identity other than
+the one that delivered, the message `roleOtherThanTheDeliverer` is no longer reached, and
+`roleCapacity` still says "exactly one of them". Each waits for a release of service and router
+together.
+
+Corrected the same day by the operator's addendum: the stamp has three values, `true`, `false`
+and unknown, and unknown is absent on the wire as every member without a value is. `query` gets
+no filter on it here, because a fifth filter changes the description of `dispatch_query`.

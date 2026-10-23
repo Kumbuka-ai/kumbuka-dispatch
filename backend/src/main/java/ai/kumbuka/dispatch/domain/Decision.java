@@ -22,13 +22,18 @@ import java.util.Optional;
  * <h2>The order of the checks is fixed (concept section 2.3)</h2>
  *
  * {@link #ORDER}: state; condition on an attribute; relation of the caller;
- * the lock on acceptance; receipt or conflict token; confirmation; payload.
- * The first that fails answers, so one fault always answers with one reason,
- * whatever else is wrong with the call.
+ * receipt or conflict token; confirmation; payload. The first that fails
+ * answers, so one fault always answers with one reason, whatever else is wrong
+ * with the call.
  *
- * <p>The first four are about the situation and the caller; a list of the
+ * <p>The first three are about the situation and the caller; a list of the
  * calls open to a caller is the verbs for which they pass ({@link #open}). The
  * last three are faults of a request, which no list can know.
+ *
+ * <p>The concept's fourth step, the mark on acceptance, refuses nothing and is
+ * therefore not here: it is a stamp the transition writes (TAR-0004 section 3,
+ * {@link TaskService}). An identity holding the executing capacity alone is
+ * refused acceptance by the relation, never by a check of its own.
  *
  * <p>A pure function: it reads the {@link TaskSituation} and the {@link TaskCall}
  * and writes nothing. {@link TaskService} calls it before every write, under
@@ -41,7 +46,6 @@ public sealed interface Decision {
         STATE(true),
         CONDITION(true),
         RELATION(true),
-        LOCK(true),
         PROOF(false),
         CONFIRMATION(false),
         PAYLOAD(false);
@@ -59,7 +63,7 @@ public sealed interface Decision {
     }
 
     /** The order every decision runs its checks in. */
-    List<Check> ORDER = List.of(Check.STATE, Check.CONDITION, Check.RELATION, Check.LOCK,
+    List<Check> ORDER = List.of(Check.STATE, Check.CONDITION, Check.RELATION,
         Check.PROOF, Check.CONFIRMATION, Check.PAYLOAD);
 
     /** The call may proceed. */
@@ -138,7 +142,6 @@ public sealed interface Decision {
             case STATE -> Checks.state(verb, s, call.caller());
             case CONDITION -> Checks.condition(verb, s);
             case RELATION -> Checks.relation(verb, s, call.caller());
-            case LOCK -> Checks.lock(verb, s, call.caller());
             case PROOF -> Checks.proof(verb, s, call);
             case CONFIRMATION -> Checks.confirmation(verb, s, call);
             case PAYLOAD -> Checks.payload(verb, s, call);

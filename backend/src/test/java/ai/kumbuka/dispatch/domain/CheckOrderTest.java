@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.domain.Decision.Check;
@@ -9,6 +16,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static ai.kumbuka.dispatch.domain.TransitionMatrixTest.C;
+import static ai.kumbuka.dispatch.domain.TransitionMatrixTest.D;
 import static ai.kumbuka.dispatch.domain.TransitionMatrixTest.H;
 import static ai.kumbuka.dispatch.domain.TransitionMatrixTest.NOW;
 import static ai.kumbuka.dispatch.domain.TransitionMatrixTest.RECEIPT;
@@ -17,19 +25,17 @@ import static ai.kumbuka.dispatch.domain.TransitionMatrixTest.situation;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Acceptance criteria 3 and 5: one fault answers with one reason, and the lock
- * on acceptance holds whatever capacity the deliverer carries.
+ * Acceptance criteria 3 and 5: one fault answers with one reason, and the
+ * acceptance by the identity that delivered (TAR-0004 section 3, REQ-0034).
  *
- * <p>The order is state, condition, relation, lock, proof, confirmation,
- * payload (concept section 2.3). For each pair of neighbours there is one call
- * that breaks both, and the answer must be the earlier one's: check and
- * reason. Swapping any two neighbours in {@link Decision#ORDER} turns the
- * case of that pair red.
+ * <p>The order is state, condition, relation, proof, confirmation, payload
+ * (concept section 2.3). For each pair of neighbours there is one call that
+ * breaks both, and the answer must be the earlier one's: check and reason.
+ * Swapping any two neighbours in {@link Decision#ORDER} turns the case of that
+ * pair red. The concept's mark on acceptance is no check: it refuses nothing,
+ * and the transition stamps it ({@code TaskHoldingIT}).
  */
 class CheckOrderTest {
-
-    /** A console identity carrying the subject of the executor that delivered. */
-    static final Actor DELIVERER_AS_COMMISSIONER = new Actor(H.subject(), Actor.Kind.CONSOLE);
 
     @Test
     void state_before_condition() {
@@ -49,20 +55,12 @@ class CheckOrderTest {
     }
 
     @Test
-    void relation_before_lock() {
-        // accept by the executor that delivered: not a commissioner, and the
-        // deliverer.
+    void relation_before_proof() {
+        // accept by the executor alone that delivered: not a commissioner, and
+        // a stale token.
         Decision d = Decision.of(TaskVerb.ACCEPT, situation("delivered"),
-            TaskCall.by(H).withConflictToken(TOKEN));
+            TaskCall.by(H).withConflictToken("stale"));
         assertRefused(d, Check.RELATION, Reason.ACTOR_UNKNOWN);
-    }
-
-    @Test
-    void lock_before_proof() {
-        // the deliverer with the commissioning capacity, and a stale token.
-        Decision d = Decision.of(TaskVerb.ACCEPT, situation("delivered"),
-            TaskCall.by(DELIVERER_AS_COMMISSIONER).withConflictToken("stale"));
-        assertRefused(d, Check.LOCK, Reason.RATIFICATION_NOT_PERMITTED);
     }
 
     @Test
@@ -86,18 +84,29 @@ class CheckOrderTest {
     }
 
     @Test
-    void the_identity_that_delivered_never_accepts_even_with_the_commissioning_capacity() {
-        Decision d = Decision.of(TaskVerb.ACCEPT, situation("delivered"),
-            TaskCall.by(DELIVERER_AS_COMMISSIONER).withConflictToken(TOKEN));
-        assertRefused(d, Check.LOCK, Reason.RATIFICATION_NOT_PERMITTED);
-        assertThat(Decision.open(TaskVerb.ACCEPT, situation("delivered"),
-                DELIVERER_AS_COMMISSIONER))
-            .as("and accept is not listed as open to it")
-            .isFalse();
-        assertThat(Decision.of(TaskVerb.ACCEPT, situation("delivered"),
-                TaskCall.by(C).withConflictToken(TOKEN)))
-            .as("while another commissioner accepts")
+    void the_identity_that_delivered_accepts_holding_both_capacities_and_alone_never() {
+        TaskSituation delivered = situation("delivered");
+        assertThat(Decision.of(TaskVerb.ACCEPT, delivered,
+                TaskCall.by(D).withConflictToken(TOKEN)))
+            .as("the deliverer holding both accepts")
             .isInstanceOf(Decision.Permitted.class);
+        assertThat(Decision.open(TaskVerb.ACCEPT, delivered, D))
+            .as("and accept is listed as open to it").isTrue();
+
+        assertRefused(Decision.of(TaskVerb.ACCEPT, delivered,
+                TaskCall.by(H).withConflictToken(TOKEN)), Check.RELATION, Reason.ACTOR_UNKNOWN);
+        assertThat(Decision.open(TaskVerb.ACCEPT, delivered, H))
+            .as("the executor alone that delivered: accept is not open to it").isFalse();
+
+        assertThat(Decision.of(TaskVerb.ACCEPT, delivered,
+                TaskCall.by(C).withConflictToken(TOKEN)))
+            .as("another commissioner accepts").isInstanceOf(Decision.Permitted.class);
+    }
+
+    @Test
+    void the_order_has_no_check_for_the_mark_on_acceptance() {
+        assertThat(Decision.ORDER).containsExactly(Check.STATE, Check.CONDITION,
+            Check.RELATION, Check.PROOF, Check.CONFIRMATION, Check.PAYLOAD);
     }
 
     @Test

@@ -15,7 +15,7 @@ import io.quarkus.security.runtime.QuarkusSecurityIdentity;
 import io.quarkus.test.security.TestIdentityAssociation;
 
 /**
- * The two identities the surface probes call as, and the accounts behind them.
+ * The identities the surface probes call as, and the accounts behind them.
  *
  * <p>Two are needed rather than one because the two guarantees this surface
  * carries are permissions bound to the caller: an executing apparatus does not
@@ -75,6 +75,13 @@ public final class SurfaceFixture {
      */
     public static final String MUTED = SubstrateDatabaseResource.MUTED_SUBJECT;
 
+    /**
+     * An identity holding both capacities: the person who works alone, or
+     * through assistants acting under the person's own login (TAR-0004
+     * section 3). It takes whichever part a call asks for.
+     */
+    public static final String BOTH = "probe-both";
+
     private SurfaceFixture() {
     }
 
@@ -98,7 +105,7 @@ public final class SurfaceFixture {
                 + SubstrateDatabaseResource.SCOPE_ID + "' AND name = '" + WITHDRAWN_SELECTOR
                 + "')");
         for (String subject : new String[] {CONSOLE, OTHER_CONSOLE, EXECUTOR,
-            OTHER_EXECUTOR}) {
+            OTHER_EXECUTOR, BOTH}) {
             PlatformFixture.run(
                 "SELECT set_config('app.tenant_id', '"
                     + SubstrateDatabaseResource.TENANT_ID + "', false)",
@@ -128,6 +135,11 @@ public final class SurfaceFixture {
     /** Calls as a second executor, which is how "only the holder" is observable. */
     public static void asOtherExecutor(TestIdentityAssociation identity) {
         as(identity, OTHER_EXECUTOR, Actor.ROLE_EXECUTOR);
+    }
+
+    /** Calls as the identity holding both capacities. */
+    public static void asBoth(TestIdentityAssociation identity) {
+        as(identity, BOTH, Actor.ROLE_CONSOLE, Actor.ROLE_EXECUTOR);
     }
 
     /** Calls as a console identity whose membership is muted. */
@@ -170,11 +182,13 @@ public final class SurfaceFixture {
             .build());
     }
 
-    private static void as(TestIdentityAssociation identity, String subject, String role) {
-        identity.setTestIdentity(QuarkusSecurityIdentity.builder()
-            .setPrincipal(new QuarkusPrincipal(subject))
-            .addRole(role)
-            .build());
+    private static void as(TestIdentityAssociation identity, String subject, String... roles) {
+        var builder = QuarkusSecurityIdentity.builder()
+            .setPrincipal(new QuarkusPrincipal(subject));
+        for (String role : roles) {
+            builder.addRole(role);
+        }
+        identity.setTestIdentity(builder.build());
     }
 
     /** The item URI of an exchange, as this surface exposes it. */
