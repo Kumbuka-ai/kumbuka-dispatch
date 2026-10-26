@@ -22,6 +22,9 @@ public interface ToolDescriptions {
     String send();
 
     @Message
+    String recall();
+
+    @Message
     String claim();
 
     @Message

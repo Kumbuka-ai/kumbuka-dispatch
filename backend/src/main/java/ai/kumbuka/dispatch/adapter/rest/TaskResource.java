@@ -53,7 +53,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The REST surface: the twenty-five calls of the declaration on the routes of
+ * The REST surface: the twenty-six calls of the declaration on the routes of
  * {@link CustomMethod}, and nothing else.
  *
  * <p>A request becomes a call: its name from the route, its arguments from

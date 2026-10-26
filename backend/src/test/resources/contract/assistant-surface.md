@@ -1,8 +1,8 @@
 ---
 type: contract-copy
-title: "The dispatch service's verb surface: twenty-five calls, two sizes of answer, refusals that explain themselves"
+title: "The dispatch service's verb surface: twenty-six calls, two sizes of answer, refusals that explain themselves"
 written: 2026-10-06
-amended: 2026-10-22
+amended: 2026-10-26
 sources:
   - "platform-specs aa42521, docs/architecture/targets/TAR-0004-the-dispatch-service-carries-commissioned-work-from-issue-to-acceptance.md, sections 3, 5, 6, 7"
   - "platform-specs aa42521, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3"
@@ -14,6 +14,7 @@ sources:
   - "the operator's addendum of 2026-10-16 to this service: CHILDREN_UNFINISHED and OPTION_UNOFFERED, codes of this service"
   - "platform-specs ff0a4ba, TAR-0004 sections 2 and 3 and concept section 2.5: the bracket rule (ROOT_UNSENT, ROOT_CLOSED, CHILDREN_PRESENT) and no addendum to the commission of a delivered task"
   - "platform-specs 37f4d6e, code-conventions/service-contract.md, contract round 3: attempted as a rule, the framework's 404 and 405 in the envelope (C3.3, C8.3), no transport location in offenders"
+  - "platform-specs 4978ca9, TAR-0004 sections 2 and 3, DEC-0014, REQ-0035: recall from open to draft up to the first take-up and never on a root with a task under it, an addendum only to a task whose work runs, take-up by claim naming the task and claim_next retiring"
 ---
 <!--
 Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
@@ -80,11 +81,21 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 ### 3.1 Transitions
 
 **`dispatch_send`**
-> Sends your draft: the task is frozen and opens for an executor to take it up. Moves the task from
-> draft to open (intermediate). Call as the commissioner, with the conflict token of your last read.
+> Sends your draft: it opens for an executor to take it up. Moves the task from draft to open
+> (intermediate). Call as the commissioner, with the conflict token of your last read.
 >
-> From here on the commission's text stays as sent; add to it with dispatch_annotate. Withdraw the
-> task with dispatch_withdraw.
+> Until the first take-up, dispatch_recall takes it back to draft for you to change and send again;
+> from the first take-up on its text stays as sent, and dispatch_annotate supplements it while the
+> work runs. Withdraw the task with dispatch_withdraw.
+
+**`dispatch_recall`**
+> Takes your sent task back to draft, up to the moment an executor first takes it up. Moves the task
+> from open to draft (intermediate). Call as the commissioner, with the conflict token of your last
+> read. A bracket root comes back while its bracket is empty.
+>
+> Change the draft with dispatch_update and send it again with dispatch_send; the new text replaces
+> the one sent. From the first take-up on the text stays as sent: give the task up with
+> dispatch_withdraw.
 
 **`dispatch_claim`** (concept section 3.5, worded positively under DEC-0043 R21)
 > Takes up one open task and makes you its holder. Moves the task from open to active
@@ -99,17 +110,15 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 > Your hold lasts 30 minutes, or the duration you state; extend it with dispatch_renew.
 
 **`dispatch_claim_next`** (concept section 3.5, worded positively under DEC-0043 R21)
-> Takes up the next open task addressed to you, chosen by the service; use dispatch_claim when you
-> know the address. Moves the task from open to active (intermediate). Call as an executor with
-> scope, selector and apparatus.
+> Retiring: take up a task by its address with dispatch_claim; this call stays served while callers
+> move. Takes up the next open task addressed to you, chosen by the service. Moves the task from
+> open to active (intermediate). Call as an executor with scope, selector and apparatus.
 >
 > Returns the address, a receipt and the end of your hold. Keep the receipt: every later call on
 > this task needs it.
 >
 > The task's text comes from dispatch_read_text, part "dispatch": read it next, before you start
 > working.
->
-> dispatch_query lists the open tasks you can draw.
 
 **`dispatch_release`**
 > Gives a task you hold back: it is open again for any executor. Moves the task from active to open
@@ -213,7 +222,8 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 > Changes your draft: its title, apparatus, text or metadata; what you leave out stays as it is.
 > Call as the commissioner, with the conflict token of your last read. The task stays a draft.
 >
-> Once sent, a task keeps its text; add to it with dispatch_annotate.
+> A sent task comes back to draft with dispatch_recall up to its first take-up; from then on it
+> keeps its text.
 
 **`dispatch_delete`**
 > Deletes your draft outright and removes every trace of it. Call as the commissioner, with the
@@ -246,11 +256,12 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 > answer, more follow: pass it as after, with the same other arguments, for the next page.
 
 **`dispatch_annotate`**
-> Adds an addendum to a text of a sent task: a supplement with its own time and author that stays
-> for good. Name the part it supplements. Call as the identity that wrote that text; the task keeps
-> its state.
+> Adds an addendum to a text of a task whose work runs, active or on_hold: a supplement with its own
+> time and author that stays for good. Name the part it supplements. Call as the identity that wrote
+> that text; the task keeps its state.
 >
-> Read addenda with dispatch_read_text, part "addenda".
+> Before the first take-up, change the commission through dispatch_recall; a delivered answer goes
+> back with dispatch_rework. Read addenda with dispatch_read_text, part "addenda".
 
 **`dispatch_relate`**
 > Records the object a closed task was curated into: another task you can see, in any scope and
@@ -327,8 +338,11 @@ under `data.children`, each by its complete address, beside `data.confirmation`,
 out now. A child is created only under a root that was sent and is not closed: `ROOT_UNSENT` and
 `ROOT_CLOSED` carry `attempted` and nothing more. A draft root under which any task stands is not
 deleted: `CHILDREN_PRESENT` names each task under it by its complete address in `data.children`,
-and nothing is deleted. A delivered task takes no addendum to its commission:
-`TRANSITION_REFUSED`, whose `next` names the rework that takes its place. `OPTION_UNOFFERED` names the field of the answer under `data.offenders` and points at the
+and nothing is deleted. An addendum is added to a task whose work runs, `active` or `on_hold`:
+on any other task it is `TRANSITION_REFUSED`; on an open one the message names the recall that
+takes the commission back, on a delivered one the rework that sends the answer back. A recall of a
+task that was taken up, or of a bracket root under which any task stands, is `TRANSITION_REFUSED`
+with a message of its own, beside the state and the calls in `next`. `OPTION_UNOFFERED` names the field of the answer under `data.offenders` and points at the
 read for the options. `CONFLICT_TOKEN_STALE` carries the task as it stands -- `data.address`,
 `data.fields`, `data.conflict_token` and `data.service` (DEC-0041) -- and `UNEXPECTED_FAILURE` its
 reference in `data.reference`. `VERB_NOT_CARRIED` lists the calls the address carries under
@@ -394,6 +408,10 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `stateDoesNotAllow` | `TRANSITION_REFUSED` | `{call} is not possible in the task's present state, which data.state shows. You can make: {#each calls}{it}{#if it_hasNext}, {/if}{/each}.` |
 | `stateNothingOpen` | `TRANSITION_REFUSED` | `{call} is not possible in the task's present state, which data.state shows, and no call is open to you on it now; data.waiting_for says what it waits for.` |
 | `stateClosed` | `TRANSITION_REFUSED` | `{call} is not possible on this task: it is closed and finished. Nothing further can be done with it.` |
+| `contentFrozen` | `TRANSITION_REFUSED` | `{call} returns a task to draft before its first take-up, and this one was taken up: the take-up froze its content. Give it up with {withdraw}, or supplement it with {annotate} while the work runs.` |
+| `bracketOccupied` | `TRANSITION_REFUSED` | `{call} returns a bracket root to draft while its bracket is empty, and tasks stand under this one. Withdraw it with its bracket through {withdraw}.` |
+| `addendumBeforeTakeUp` | `TRANSITION_REFUSED` | `{call} adds to a task while its work runs, active or on_hold, and this one is open: its commission comes back to draft through {recall} up to the first take-up, and {withdraw} gives it up.` |
+| `addendumAfterDelivery` | `TRANSITION_REFUSED` | `{call} adds to a task while its work runs, active or on_hold, and this one is delivered: {rework} sends the answer back with a remark.` |
 | `roleCommissioner` | `ROLE_INSUFFICIENT` | `{call} is the commissioner's call, and you take part in this task in another part.` |
 | `roleExecutor` | `ROLE_INSUFFICIENT` | `{call} is an executor's call, and you take part here in another part.` |
 | `roleHolder` | `ROLE_INSUFFICIENT` | `{call} is the holder's call, and you take part in this task in another part.` |

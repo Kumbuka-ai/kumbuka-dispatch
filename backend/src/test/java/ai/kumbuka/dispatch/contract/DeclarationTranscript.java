@@ -84,6 +84,8 @@ public final class DeclarationTranscript {
 
         put(calls, "send", "ITEM_TRANSITION", "TASK_LEAN",
             reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token);
+        put(calls, "recall", "ITEM_TRANSITION", "TASK_LEAN",
+            reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token);
         put(calls, "claim", "ITEM_TRANSITION", "CLAIM_RECEIPT",
             reasons(WRITE, "TRANSITION_REFUSED",
                 "DEFERRAL_PENDING", "IDEMPOTENCY_KEY_REUSED"), address, duration, key);

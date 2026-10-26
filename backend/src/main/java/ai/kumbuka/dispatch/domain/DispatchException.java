@@ -28,6 +28,27 @@ public class DispatchException extends RuntimeException {
     public enum Reason {
         /** The verb is not permitted from the current status. */
         TRANSITION_NOT_PERMITTED,
+
+        /**
+         * The commission was taken up once, and the first take-up froze it:
+         * a recall applies only before (DEC-0014, REQ-0035).
+         *
+         * <p>Its own reason rather than the transition refusal: the task IS
+         * in the state the call applies in, and what refuses it is its
+         * history, which no state shows. Told on the wire as the transition
+         * refusal it is, with a sentence of its own.
+         */
+        CONTENT_FROZEN,
+
+        /**
+         * A bracket root with tasks under it, in any state, was to return to
+         * draft: a root returns only while its bracket is empty.
+         *
+         * <p>Apart from {@link #CHILDREN_PRESENT}, which refuses deleting a
+         * draft root and whose remedy is to send and close it; this root is
+         * sent, and the way out is to withdraw it with its bracket.
+         */
+        BRACKET_OCCUPIED,
         /** The selector was never declared in this scope. */
         SELECTOR_NOT_DECLARED,
         /** The selector exists but was withdrawn. */

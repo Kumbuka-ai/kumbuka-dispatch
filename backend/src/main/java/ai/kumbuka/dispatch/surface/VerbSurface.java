@@ -36,7 +36,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * The twenty-five calls, each bound to the kernel in one transaction.
+ * The twenty-six calls, each bound to the kernel in one transaction.
  *
  * <p>Both surfaces reach the kernel through here and through nothing else
  * (C1.1): the adapter reads the call, checks its form against the declaration

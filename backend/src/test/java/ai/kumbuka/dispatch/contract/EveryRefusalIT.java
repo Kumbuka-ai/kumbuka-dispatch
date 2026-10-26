@@ -145,7 +145,7 @@ class EveryRefusalIT {
             .as("the call, where its state stands, and the calls there are -- and neither the "
                 + "address the caller named nor the state, which data.state carries")
             .isEqualTo("dispatch_send is not possible in the task's present state, which "
-                + "data.state shows. You can make: dispatch_withdraw.")
+                + "data.state shows. You can make: dispatch_recall, dispatch_withdraw.")
             .doesNotContain(address);
         Map<String, Object> data = data(refusal);
         assertThat(data.get("attempted")).isEqualTo("dispatch_send");
@@ -184,6 +184,78 @@ class EveryRefusalIT {
             "address", address, "conflict_token", token(address))));
         assertThat(String.valueOf(refusal.get("message"))).contains("finished");
         assertThat(data(refusal).get("state")).isEqualTo("closed (withdrawn)");
+    }
+
+    @Test
+    void a_recall_after_the_first_take_up_names_the_state_the_cause_and_the_way_out() {
+        String id = SurfaceFixture.open("taken once", "code");
+        String address = SurfaceFixture.address(id);
+        SurfaceFixture.asExecutor(identity);
+        String receipt = receiptOf(Mcp.call("dispatch_claim", Map.of("address", address)));
+        Mcp.answer(Mcp.call("dispatch_release", Map.of("address", address, "receipt", receipt)));
+        SurfaceFixture.asConsole(identity);
+
+        Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_recall", Map.of(
+            "address", address, "conflict_token", token(address))));
+        assertThat(refusal.get("reason")).isEqualTo("TRANSITION_REFUSED");
+        assertThat(String.valueOf(refusal.get("message")))
+            .isEqualTo("dispatch_recall returns a task to draft before its first take-up, and "
+                + "this one was taken up: the take-up froze its content. Give it up with "
+                + "dispatch_withdraw, or supplement it with dispatch_annotate while the work "
+                + "runs.");
+        assertThat(data(refusal).get("state")).isEqualTo("open");
+        assertThat(String.valueOf(data(refusal).get("next"))).contains("dispatch_withdraw")
+            .doesNotContain("dispatch_recall");
+
+        Response rest = given().contentType(ContentType.JSON).header("If-Match", token(address))
+            .post(SurfaceFixture.item(id) + ":recall");
+        assertThat(rest.statusCode()).isEqualTo(409);
+        assertThat(rest.jsonPath().getString("message"))
+            .startsWith("recall returns a task to draft before its first take-up");
+    }
+
+    @Test
+    void a_recall_of_a_root_with_a_task_under_it_names_the_bracket() {
+        String root = SurfaceFixture.address(SurfaceFixture.open("an occupied root", "code"));
+        Mcp.answer(Mcp.call("dispatch_create", Map.of("scope", SurfaceFixture.SCOPE,
+            "selector", SurfaceFixture.SELECTOR, "parent", root,
+            "fields", Map.of("title", "a draft child", "apparatus", "code"))));
+
+        Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_recall", Map.of(
+            "address", root, "conflict_token", token(root))));
+        assertThat(refusal.get("reason")).isEqualTo("TRANSITION_REFUSED");
+        assertThat(String.valueOf(refusal.get("message")))
+            .isEqualTo("dispatch_recall returns a bracket root to draft while its bracket is "
+                + "empty, and tasks stand under this one. Withdraw it with its bracket through "
+                + "dispatch_withdraw.");
+        assertThat(data(refusal).get("state")).isEqualTo("open");
+    }
+
+    @Test
+    void an_addendum_outside_the_work_names_recall_on_an_open_task_and_rework_after_delivery() {
+        String address = SurfaceFixture.address(SurfaceFixture.open("annotated early", "code"));
+        Map<String, Object> early = Mcp.refusal(Mcp.call("dispatch_annotate", Map.of(
+            "address", address, "fields", Map.of("part", "dispatch", "text", "more"))));
+        assertThat(early.get("reason")).isEqualTo("TRANSITION_REFUSED");
+        assertThat(String.valueOf(early.get("message")))
+            .isEqualTo("dispatch_annotate adds to a task while its work runs, active or "
+                + "on_hold, and this one is open: its commission comes back to draft through "
+                + "dispatch_recall up to the first take-up, and dispatch_withdraw gives it up.");
+        assertThat(data(early).get("state")).isEqualTo("open");
+
+        SurfaceFixture.asExecutor(identity);
+        String receipt = receiptOf(Mcp.call("dispatch_claim", Map.of("address", address)));
+        Mcp.answer(Mcp.call("dispatch_deliver", Map.of("address", address, "receipt", receipt,
+            "fields", Map.of("text", "the answer"))));
+        SurfaceFixture.asConsole(identity);
+        Map<String, Object> late = Mcp.refusal(Mcp.call("dispatch_annotate", Map.of(
+            "address", address, "fields", Map.of("part", "dispatch", "text", "more"))));
+        assertThat(String.valueOf(late.get("message")))
+            .isEqualTo("dispatch_annotate adds to a task while its work runs, active or "
+                + "on_hold, and this one is delivered: dispatch_rework sends the answer back "
+                + "with a remark.");
+        assertThat(data(late).get("state")).isEqualTo("delivered");
+        assertThat(String.valueOf(data(late).get("next"))).contains("dispatch_rework");
     }
 
     @Test

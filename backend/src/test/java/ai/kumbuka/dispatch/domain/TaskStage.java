@@ -149,7 +149,7 @@ final class TaskStage {
     record Row(long id, String state, String holdReason, String outcome, String holder,
                Instant leaseExpiresAt, int lapseCount, Instant notBefore,
                String stateChangedBy, Long curatedIn, String receiptHash, String createdBy,
-               String updatedBy, Boolean selfAccepted) {
+               String updatedBy, Boolean selfAccepted, Instant firstTakenAt) {
     }
 
     static Row row(UUID identity) {
@@ -161,7 +161,7 @@ final class TaskStage {
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery("SELECT id, state, hold_reason, outcome, holder_subject, "
                  + "lease_expires_at, lapse_count, not_before, state_changed_by, curated_in_id, "
-                 + "holder_receipt_hash, created_by, updated_by, self_accepted "
+                 + "holder_receipt_hash, created_by, updated_by, self_accepted, first_taken_at "
                  + "FROM dispatch.task WHERE uuid = '" + identity + "'")) {
             if (!rs.next()) {
                 return null;
@@ -169,7 +169,8 @@ final class TaskStage {
             return new Row(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
                 rs.getString(5), instant(rs.getTimestamp(6)), rs.getInt(7),
                 instant(rs.getTimestamp(8)), rs.getString(9), (Long) rs.getObject(10),
-                rs.getString(11), rs.getString(12), rs.getString(13), (Boolean) rs.getObject(14));
+                rs.getString(11), rs.getString(12), rs.getString(13), (Boolean) rs.getObject(14),
+                instant(rs.getTimestamp(15)));
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }

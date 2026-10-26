@@ -176,7 +176,7 @@ public enum RefusalCode {
     public static RefusalCode of(DispatchException.Reason reason) {
         return switch (reason) {
             case NOT_FOUND, SCOPE_UNRESOLVED -> NOT_FOUND;
-            case TRANSITION_NOT_PERMITTED -> TRANSITION_REFUSED;
+            case TRANSITION_NOT_PERMITTED, CONTENT_FROZEN, BRACKET_OCCUPIED -> TRANSITION_REFUSED;
             case RATIFICATION_NOT_PERMITTED, ACTOR_UNKNOWN -> ROLE_INSUFFICIENT;
             case CLAIM_REQUIRED -> CLAIM_HELD;
             case LEASE_LAPSED -> CLAIM_ABSENT;
@@ -287,6 +287,10 @@ public enum RefusalCode {
         STATE_DOES_NOT_ALLOW(RefusalCode.TRANSITION_REFUSED, "stateDoesNotAllow"),
         STATE_NOTHING_OPEN(RefusalCode.TRANSITION_REFUSED, "stateNothingOpen"),
         STATE_CLOSED(RefusalCode.TRANSITION_REFUSED, "stateClosed"),
+        CONTENT_FROZEN(RefusalCode.TRANSITION_REFUSED, "contentFrozen"),
+        BRACKET_OCCUPIED(RefusalCode.TRANSITION_REFUSED, "bracketOccupied"),
+        ADDENDUM_BEFORE_TAKE_UP(RefusalCode.TRANSITION_REFUSED, "addendumBeforeTakeUp"),
+        ADDENDUM_AFTER_DELIVERY(RefusalCode.TRANSITION_REFUSED, "addendumAfterDelivery"),
         HOLDER_NOBODY(RefusalCode.CLAIM_ABSENT, "holderNobody"),
         TEXT_HOLDER_NOBODY(RefusalCode.CLAIM_ABSENT, "textHolderNobody"),
         ROLE_COMMISSIONER(RefusalCode.ROLE_INSUFFICIENT, "roleCommissioner"),

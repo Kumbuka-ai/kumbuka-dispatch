@@ -7,7 +7,7 @@
 # The REST surface of the dispatch service.
 #
 # THIS FILE IS THE EXPECTATION. It is written by hand from TAR-0004 section 3
-# (the twenty-five calls, on MCP and REST under the same names) and from the
+# (the twenty-six calls, on MCP and REST under the same names) and from the
 # concept document's section 3 (what each call takes), in the path form of the
 # adapter this surface replaced. It is deliberately NOT derived from the built
 # code: a probe that reads its expectation out of the thing it probes checks
@@ -33,6 +33,7 @@
 
 class	verb	method	path	depth	repeat
 call	send	POST	/api/{scope}/{selector}/{id}:send	item	conflict-token
+call	recall	POST	/api/{scope}/{selector}/{id}:recall	item	conflict-token
 call	claim	POST	/api/{scope}/{selector}/{id}:claim	item	idempotency-key
 call	claim_next	POST	/api/{scope}/{selector}:claim_next	collection	idempotency-key
 call	release	POST	/api/{scope}/{selector}/{id}:release	item	receipt

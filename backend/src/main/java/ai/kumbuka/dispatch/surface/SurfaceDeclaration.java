@@ -61,7 +61,7 @@ public final class SurfaceDeclaration {
     private SurfaceDeclaration() {
     }
 
-    /** The twenty-five calls, in the order of TAR-0004 section 3. */
+    /** The twenty-six calls, in the order of TAR-0004 section 3. */
     public static List<ProcessVerb> calls() {
         return List.of(ProcessVerb.values());
     }

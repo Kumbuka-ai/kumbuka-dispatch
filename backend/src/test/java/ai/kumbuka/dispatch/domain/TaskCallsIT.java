@@ -199,9 +199,10 @@ class TaskCallsIT {
             .withConflictToken(stage.token(s)).with(new TaskInput.Reply(null, MARK + "reply"))));
         answers.add(tasks.act(SCOPE, d.address(), TaskVerb.DELIVER, TaskCall.by(H)
             .withReceipt(claim.receipt()).with(new TaskInput.Delivery(MARK + "answer", null))));
-        answers.add(note(d.address(), TextType.RETURN, MARK + "addendum", H));
         answers.add(tasks.act(SCOPE, d.address(), TaskVerb.REWORK, TaskCall.by(C)
             .withConflictToken(stage.token(s)).with(new TaskInput.RequiredRemark(MARK + "remark"))));
+        // Reworked, the task is active again, and the holder supplements its answer.
+        answers.add(note(d.address(), TextType.RETURN, MARK + "addendum", H));
         answers.add(tasks.read(SCOPE, d.address(), C));
         answers.add(tasks.query(SCOPE, SELECTOR, TaskFilter.none(), TaskStage.page(10), C));
 
@@ -233,7 +234,7 @@ class TaskCallsIT {
 
     @Test
     void read_text_answers_one_part_and_counts_the_addenda_of_it() {
-        TaskStage.Staged s = stage.open(SELECTOR);
+        TaskStage.Staged s = stage.active(SELECTOR);
         note(s.address(), TextType.DISPATCH, "a correction", C);
         note(s.address(), TextType.DISPATCH, "another", C);
 
@@ -257,7 +258,7 @@ class TaskCallsIT {
         assertRefused(() -> note(d.address(), TextType.DISPATCH, "x", C),
             DispatchException.Reason.TRANSITION_NOT_PERMITTED);
 
-        TaskStage.Staged s = stage.stage("closed", SELECTOR);
+        TaskStage.Staged s = stage.stage("active", SELECTOR);
         assertRefused(() -> note(s.address(), TextType.DISPATCH, "x", K),
             DispatchException.Reason.ACTOR_UNKNOWN);
         assertRefused(() -> note(s.address(), TextType.RETURN, "x", C),
@@ -271,7 +272,7 @@ class TaskCallsIT {
             .isEqualTo(before);
         assertThat(note(s.address(), TextType.DISPATCH, "after the end", C)
                 .texts())
-            .as("in every state after draft, closed included")
+            .as("while the work runs")
             .contains(new TaskView.TextHead(TextType.DISPATCH, "a"));
     }
 
@@ -426,7 +427,7 @@ class TaskCallsIT {
 
     @Test
     void a_suffix_past_z_is_refused_and_never_wrapped() {
-        TaskStage.Staged s = stage.open(SELECTOR);
+        TaskStage.Staged s = stage.active(SELECTOR);
         for (char letter = 'a'; letter <= 'z'; letter++) {
             note(s.address(), TextType.DISPATCH, "correction " + letter, C);
         }
@@ -436,7 +437,7 @@ class TaskCallsIT {
 
     @Test
     void a_repeated_annotation_under_one_key_attaches_once() {
-        TaskStage.Staged s = stage.open(SELECTOR);
+        TaskStage.Staged s = stage.active(SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("correct-once");
         tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, "the correction", C, key);
         tasks.annotate(SCOPE, s.address(), TextType.DISPATCH, "the correction", C, key);

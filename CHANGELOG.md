@@ -13,6 +13,43 @@ release. The release workflow puts the section of the tagged version into the
 GitHub release. Releases before 0.11.0 are described on the
 [releases page](https://github.com/Kumbuka-ai/kumbuka-dispatch/releases) only.
 
+## Unreleased
+
+### Callers
+
+- **New call `recall`** (`dispatch_recall`, `POST …/{id}:recall` with
+  `If-Match`). The commissioner takes an open task back to draft as long as
+  no executor has ever taken it up, changes it with `update` and sends it
+  again; the new text replaces the one sent, which is kept nowhere. From the
+  first take-up on, a recall is refused (`TRANSITION_REFUSED`, message
+  `contentFrozen`), and so is a recall of a bracket root under which any task
+  stands, a draft included (`TRANSITION_REFUSED`, message `bracketOccupied`).
+  `next` lists `recall` only where it succeeds.
+- **An addendum only while the work runs.** `annotate` is accepted in
+  `active` and `on_hold` and refused in `draft`, `open`, `delivered` and
+  `closed`, for every part (`TRANSITION_REFUSED`). On an open task the
+  message names `recall`, on a delivered one `rework`. Until now an addendum
+  was accepted in every state after `draft`.
+- **`claim_next` is retiring.** It works as before; its description now says
+  so and points at `claim` with the task's address.
+- The descriptions of `send`, `update`, `annotate` and `claim_next` change,
+  and `recall` is new: the declaration changes with them. The router carries
+  the declaration of the dispatch version it pins, so its surface takes these
+  up when its pin moves to the release that carries them.
+
+### Upgrade and rollback
+
+- Migration `V23` adds the nullable column `task.first_taken_at` without a
+  default, and a trigger that refuses changing it once set. The first claim
+  sets it; release, defer, a lapsed lease, rework and later claims leave it.
+  It writes no row of the stock. For a task without it, "taken up" is derived
+  from what the stock records: a counted lapse, a return, question, answer or
+  remark, a standing deferral, or a stored state only a take-up reaches. A
+  task taken up and released without a remark, with no lapse, by an image
+  that does not set the column -- 0.12.0 and earlier, also after a rollback
+  -- leaves no such trace and can be recalled. 0.12.0 does not know the
+  column: its inserts leave it NULL and its updates leave it alone.
+
 ## 0.12.0
 
 ### Callers

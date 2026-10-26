@@ -50,8 +50,9 @@ class TaskStoreShapeIT {
         "not_before", "lapse_count", "holder_subject", "holder_receipt_hash", "lease_expires_at",
         "curated_in_id", "title", "apparatus", "dispatch_metadata", "return_metadata",
         "created_at", "created_by", "updated_at", "updated_by",
-        // V22 appends the stamp: a column added later stands at the end.
-        "self_accepted");
+        // V22 appends the stamp, V23 the first take-up: a column added later
+        // stands at the end.
+        "self_accepted", "first_taken_at");
 
     private static final List<String> TASK_TEXT_COLUMNS = List.of(
         "id", "tenant_id", "scope_id", "task_id", "text_type", "addendum_suffix", "text",
@@ -252,6 +253,57 @@ class TaskStoreShapeIT {
                     + unnamed))
                 .as("the acceptance stamps it once, under the runtime role").isEqualTo(1);
         });
+    }
+
+    // ------------------------------------------------------------------
+    // The first take-up (V23)
+    // ------------------------------------------------------------------
+
+    /**
+     * The instant of the first take-up is set once and never changes, to
+     * another instant or back to NULL; an insert that does not name it -- the
+     * image before V23, and every row V23 found -- holds NULL.
+     *
+     * <p>RED PROBE: with the trigger of V23 left out, the two changing
+     * updates pass.
+     */
+    @Test
+    void the_first_take_up_is_set_once_and_never_changes() throws SQLException {
+        withServiceRole(c -> {
+            long unnamed = id(c, insertTask(60, "state", "'open'") + " RETURNING id");
+            try (Statement st = c.createStatement();
+                 ResultSet rs = st.executeQuery(
+                     "SELECT first_taken_at FROM dispatch.task WHERE id = " + unnamed)) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getObject(1))
+                    .as("an insert that does not name the column holds NULL").isNull();
+            }
+            assertThat(count(c, "UPDATE dispatch.task SET first_taken_at = now() WHERE id = "
+                    + unnamed))
+                .as("the first take-up sets it once, under the runtime role").isEqualTo(1);
+            assertThat(count(c, "UPDATE dispatch.task SET lapse_count = 1 WHERE id = " + unnamed))
+                .as("a write that leaves it stands").isEqualTo(1);
+
+            refusedByFirstTakeUp(c, "UPDATE dispatch.task SET first_taken_at = now() "
+                + "+ interval '1 hour' WHERE id = " + unnamed);
+            refusedByFirstTakeUp(c, "UPDATE dispatch.task SET first_taken_at = NULL WHERE id = "
+                + unnamed);
+        });
+    }
+
+    private static void refusedByFirstTakeUp(Connection c, String sql) throws SQLException {
+        Savepoint sp = c.setSavepoint();
+        try {
+            assertThatThrownBy(() -> exec(c, sql))
+                .as("RED STATE expected: the first take-up never changes%n  %s", sql)
+                .isInstanceOf(PSQLException.class)
+                .satisfies(e -> {
+                    assertThat(((PSQLException) e).getSQLState()).isEqualTo("P0001");
+                    assertThat(e.getMessage()).contains("never changes");
+                });
+        } finally {
+            c.rollback(sp);
+        }
     }
 
     private static void refusedByStamp(Connection c, String sql) throws SQLException {

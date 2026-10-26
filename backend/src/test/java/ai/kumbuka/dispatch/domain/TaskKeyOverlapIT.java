@@ -136,7 +136,7 @@ class TaskKeyOverlapIT {
 
     @Test
     void an_overlapping_addendum_under_one_key_is_attached_once() throws Exception {
-        TaskStage.Staged open = stage.open(SELECTOR);
+        TaskStage.Staged open = stage.active(SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("annotate-once");
         Callable<TaskView> annotate = () -> tasks.annotate(SCOPE, open.address(),
             TextType.DISPATCH, "one more thing", C, key);

@@ -34,8 +34,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * specification ({@link TargetSurface}) or read from the contract copy
  * ({@link Contract}), never from the declaration it checks.
  *
- * <p>Red probes, observed: a twenty-sixth call declared, and a declared call
- * removed, each turn {@link #the_declaration_carries_the_twenty_five_calls_of_the_target}
+ * <p>Red probes, observed: a call declared beyond the target, and a declared
+ * call removed, each turn {@link #the_declaration_carries_the_twenty_six_calls_of_the_target}
  * red; a description over 500 characters stops the service at start and with
  * it the build, and turns {@link #every_description_is_within_its_budget} red.
  */
@@ -50,9 +50,9 @@ class DeclarationConformanceIT {
     // =======================================================================
 
     @Test
-    void the_declaration_carries_the_twenty_five_calls_of_the_target() {
+    void the_declaration_carries_the_twenty_six_calls_of_the_target() {
         assertThat(ProcessVerb.names(Surface.REST))
-            .as("TAR-0004 section 3: sixteen transitions and nine further calls, and no "
+            .as("TAR-0004 section 3: seventeen transitions and nine further calls, and no "
                 + "other")
             .containsExactlyInAnyOrderElementsOf(TargetSurface.REST);
         assertThat(ProcessVerb.names(Surface.MCP))
@@ -64,7 +64,7 @@ class DeclarationConformanceIT {
     }
 
     @Test
-    void the_sixteen_transitions_are_the_transitions_and_the_nine_are_not() {
+    void the_seventeen_transitions_are_the_transitions_and_the_nine_are_not() {
         assertThat(Arrays.stream(ProcessVerb.values()).filter(ProcessVerb::isTransition)
                 .map(ProcessVerb::verb).toList())
             .containsExactlyInAnyOrderElementsOf(TargetSurface.TRANSITIONS);
@@ -223,7 +223,7 @@ class DeclarationConformanceIT {
     @Test
     void the_declaration_is_servable() {
         SurfaceDeclaration.requireServable();
-        assertThat(SurfaceDeclaration.calls()).hasSize(25);
+        assertThat(SurfaceDeclaration.calls()).hasSize(26);
     }
 
     /**

@@ -51,7 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and DELETE are compared on the assistant surface alone.
  *
  * <p>RED STATE, observed 2026-10-15: with the line in {@code CallPayload}
- * that drops a {@code null} removed, this turns red on all twenty-five calls
+ * that drops a {@code null} removed, this turns red on all twenty-six calls
  * over MCP, each for the undeclared name sent as {@code null}, which is then
  * refused as {@code ARGUMENT_UNKNOWN} where its absence goes on to the
  * refusal of the address. The declared arguments stayed green: their checks

@@ -285,6 +285,38 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
     }
 
     /**
+     * A recall the state admits and the task refuses: the first take-up froze
+     * its content, or tasks stand under the root. Carries the situation, so
+     * the state and the calls open are named beside the reason.
+     */
+    public static Refusal recallRefused(VerbName call, Situation at, boolean frozen,
+                                        VerbName withdraw, VerbName annotate) {
+        RefusalMessages refusals = Texts.refusals();
+        Data data = Data.attempted(call).situation(at);
+        return frozen
+            ? of(Message.CONTENT_FROZEN, refusals.contentFrozen(call, withdraw, annotate), data)
+            : of(Message.BRACKET_OCCUPIED, refusals.bracketOccupied(call, withdraw), data);
+    }
+
+    /**
+     * An addendum to a task whose work does not run: open, it is the
+     * commission's to change by recall; delivered, the answer goes back by
+     * rework.
+     *
+     * @param way the call that changes the commission or the answer instead:
+     *            recall on an open task, rework on a delivered one
+     */
+    public static Refusal addendumOutsideTheWork(VerbName call, Situation at, boolean open,
+                                                 VerbName way, VerbName withdraw) {
+        RefusalMessages refusals = Texts.refusals();
+        Data data = Data.attempted(call).situation(at);
+        return open
+            ? of(Message.ADDENDUM_BEFORE_TAKE_UP,
+                refusals.addendumBeforeTakeUp(call, way, withdraw), data)
+            : of(Message.ADDENDUM_AFTER_DELIVERY, refusals.addendumAfterDelivery(call, way), data);
+    }
+
+    /**
      * The call belongs to another part. Carries the calls open to the caller
      * and no state: the refusal is about who calls, not where the task stands.
      */

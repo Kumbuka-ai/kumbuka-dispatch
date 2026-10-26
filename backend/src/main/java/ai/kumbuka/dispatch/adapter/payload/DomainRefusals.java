@@ -166,8 +166,7 @@ public final class DomainRefusals {
         Refusal.Situation at = situationOf(surface, actor, result.get(), clock);
         TaskView view = result.get().view();
         return switch (code) {
-            case TRANSITION_REFUSED -> Refusal.ofState(call, at,
-                view.state() == TaskState.CLOSED);
+            case TRANSITION_REFUSED -> ofState(c, e, at, view);
             case ROLE_INSUFFICIENT -> Refusal.ofRole(call, at, part(verb, e));
             case CLAIM_HELD, CLAIM_ABSENT -> Refusal.notTheHolder(call, at, unheld(view, e),
                 verb == ProcessVerb.READ_TEXT);
@@ -181,6 +180,33 @@ public final class DomainRefusals {
                 result.get().address(), view, AddressParser.SCHEME);
             default -> UnexpectedFailures.refuse(call, result.get().address(), e);
         };
+    }
+
+    /**
+     * A refusal for the state, worded by what refused it: a recall the task's
+     * history or bracket refuses, an addendum to a task whose work does not
+     * run, or the state itself.
+     */
+    private static Refusal ofState(Context c, DispatchException e, Refusal.Situation at,
+                                   TaskView view) {
+        Surface surface = c.surface();
+        VerbName withdraw = VerbName.of(ProcessVerb.WITHDRAW, surface);
+        DispatchException.Reason reason = e.reason();
+        if (reason == DispatchException.Reason.CONTENT_FROZEN
+                || reason == DispatchException.Reason.BRACKET_OCCUPIED) {
+            return Refusal.recallRefused(c.call(), at,
+                reason == DispatchException.Reason.CONTENT_FROZEN, withdraw,
+                VerbName.of(ProcessVerb.ANNOTATE, surface));
+        }
+        if (c.verb() == ProcessVerb.ANNOTATE && view.state() == TaskState.OPEN) {
+            return Refusal.addendumOutsideTheWork(c.call(), at, true,
+                VerbName.of(ProcessVerb.RECALL, surface), withdraw);
+        }
+        if (c.verb() == ProcessVerb.ANNOTATE && view.state() == TaskState.DELIVERED) {
+            return Refusal.addendumOutsideTheWork(c.call(), at, false,
+                VerbName.of(ProcessVerb.REWORK, surface), withdraw);
+        }
+        return Refusal.ofState(c.call(), at, view.state() == TaskState.CLOSED);
     }
 
     /**

@@ -55,6 +55,10 @@ import java.util.UUID;
  * @param questionOptions    the pending question's options; absent without a question
  * @param root               whether the task is a bracket root
  * @param unfinishedChildren the children of a root that are not closed
+ * @param takenUp            whether an executor ever took the task up: see
+ *                           {@link #takenUp(Task, Beside)}
+ * @param childrenPresent    whether the task is a bracket root with a task under it,
+ *                           in any state
  * @param now                the instant this situation was read at
  */
 public record TaskSituation(
@@ -72,6 +76,8 @@ public record TaskSituation(
     @Nullable Map<String, Object> questionOptions,
     boolean root,
     List<Child> unfinishedChildren,
+    boolean takenUp,
+    boolean childrenPresent,
     Instant now) {
 
     /**
@@ -86,6 +92,26 @@ public record TaskSituation(
     public record Child(UUID identity, ExchangeAddress address, TaskState state) {
     }
 
+    /**
+     * What a situation reads beside the task's own row.
+     *
+     * @param workTexts       whether a text of the work stands beside the commission:
+     *                        a return, a question, an answer or a remark
+     * @param childrenPresent whether the task is a bracket root with a task under it,
+     *                        in any state, a draft included
+     */
+    public record Beside(boolean workTexts, boolean childrenPresent) {
+
+        /** Nothing beside the row: the commission's texts alone, and no task under it. */
+        public static final Beside NOTHING = new Beside(false, false);
+
+        /** What the texts that exist say, and whether a task stands under the root. */
+        public static Beside of(List<TaskView.TextHead> texts, boolean childrenPresent) {
+            return new Beside(texts.stream().anyMatch(t -> t.type() != TextType.DISPATCH),
+                childrenPresent);
+        }
+    }
+
     public TaskSituation {
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(now, "now");
@@ -96,9 +122,10 @@ public record TaskSituation(
      * What a task is at {@code now}.
      *
      * @param children the children of the task when it is a bracket root, in
-     *                 any state; ignored otherwise
+     *                 any state, where the call reads them; ignored otherwise
+     * @param beside   what was read beside the row: the texts and the tasks under it
      */
-    public static TaskSituation of(Task task, Instant now, List<Task> children) {
+    public static TaskSituation of(Task task, Instant now, List<Task> children, Beside beside) {
         TaskState stored = task.storedState();
         boolean lapsed = stored == TaskState.ACTIVE && !leaseRuns(task, now);
 
@@ -114,7 +141,8 @@ public record TaskSituation(
 
         List<Child> unfinished = task.isBracketRoot()
             ? children.stream()
-                .map(c -> new Child(c.uuid, c.address(), of(c, now, List.of()).state()))
+                .map(c -> new Child(c.uuid, c.address(),
+                    of(c, now, List.of(), Beside.NOTHING).state()))
                 .filter(c -> c.state() != TaskState.CLOSED)
                 .toList()
             : List.of();
@@ -122,7 +150,32 @@ public record TaskSituation(
         return new TaskSituation(task.uuid, task.address(), state, reason,
             task.outcome().orElse(null), holder, task.storedHolder().orElse(null), lapsed,
             task.receiptHash().orElse(null), task.conflictToken(), task.notBefore().orElse(null),
-            task.questionOptions().orElse(null), task.isBracketRoot(), unfinished, now);
+            task.questionOptions().orElse(null), task.isBracketRoot(), unfinished,
+            takenUp(task, beside), task.isBracketRoot() && beside.childrenPresent(), now);
+    }
+
+    /**
+     * Whether an executor ever took the task up: the first take-up froze its
+     * content, and from then on it is never recalled (DEC-0014, REQ-0035).
+     *
+     * <p>Where the kernel recorded the instant of the first take-up (V23), that
+     * instant answers. A task without it was sent before the instant was
+     * recorded, or taken up by an image that did not record it, and counts as
+     * taken up where the store shows a trace of a take-up: a lapse counted; a
+     * text of the work beside the commission (a return, a question, an answer,
+     * a remark); a deferral still standing, which only a holder sets; or a
+     * stored state only a take-up reaches. A task taken up and given back
+     * without any of these traces -- released without a remark under such an
+     * image -- leaves none, and counts as never taken up.
+     */
+    static boolean takenUp(Task task, Beside beside) {
+        TaskState stored = task.storedState();
+        return task.firstTakenAt().isPresent()
+            || task.lapseCount() > 0
+            || beside.workTexts()
+            || task.notBefore().isPresent()
+            || stored == TaskState.ACTIVE || stored == TaskState.ON_HOLD
+            || stored == TaskState.DELIVERED;
     }
 
     /**

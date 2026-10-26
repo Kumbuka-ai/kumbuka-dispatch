@@ -340,7 +340,7 @@ class TaskPagingIT {
      */
     @Test
     void a_page_carries_the_text_heads_a_read_carries() {
-        TaskStage.Staged annotated = stage.open(SELECTOR);
+        TaskStage.Staged annotated = stage.active(SELECTOR);
         tasks.annotate(SCOPE, annotated.address(), TextType.DISPATCH, "an addendum", C,
             IdempotencyKey.NONE);
         stage.draft(SELECTOR);
@@ -351,8 +351,11 @@ class TaskPagingIT {
             TaskStage.page(200), C).tasks();
         assertThat(heads).hasSize(3);
         for (TaskView head : heads) {
+            TaskView read = tasks.read(SCOPE, head.address(), C);
             assertThat(head.texts()).as("texts of %s", head.address())
-                .isEqualTo(tasks.read(SCOPE, head.address(), C).texts());
+                .isEqualTo(read.texts());
+            assertThat(head.next()).as("calls open on %s", head.address())
+                .isEqualTo(read.next());
         }
         assertThat(heads.getFirst().texts()).extracting(TaskView.TextHead::addendumSuffix)
             .as("the commission and its addendum").containsExactly(null, "a");

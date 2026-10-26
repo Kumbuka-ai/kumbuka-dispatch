@@ -17,7 +17,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * The twenty-five calls of the verb surface: the sixteen transitions and the
+ * The twenty-six calls of the verb surface: the seventeen transitions and the
  * nine calls that are not transitions (TAR-0004 section 3), with the arguments
  * of concept section 3.2 and the descriptions of section 3.5.
  *
@@ -44,10 +44,14 @@ import java.util.function.Supplier;
 public enum ProcessVerb {
 
     // ======================================================================
-    // The sixteen transitions, in the order of TAR-0004 section 3
+    // The seventeen transitions, in the order of TAR-0004 section 3
     // ======================================================================
 
     SEND("send", TaskVerb.SEND, Participation.COMMISSIONER, () -> Texts.tools().send(),
+        List.of(address(), conflictToken())),
+
+    RECALL("recall", TaskVerb.RECALL, Participation.COMMISSIONER,
+        () -> Texts.tools().recall(),
         List.of(address(), conflictToken())),
 
     CLAIM("claim", TaskVerb.CLAIM, Participation.CANDIDATE, () -> Texts.tools().claim(),

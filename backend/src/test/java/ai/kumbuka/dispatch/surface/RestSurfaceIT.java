@@ -264,7 +264,7 @@ class RestSurfaceIT {
                 .doesNotContain("\"" + earlier + "\"");
             assertThat(refused.jsonPath().getList("data.accepts", String.class)).as(earlier)
                 .as("the verbs a task's address carries (C3.3)")
-                .hasSize(22).contains("send", "accept").doesNotContain("create", "query");
+                .hasSize(23).contains("send", "recall", "accept").doesNotContain("create", "query");
         }
         assertThat(Writes.snapshot()).isEqualTo(before);
     }

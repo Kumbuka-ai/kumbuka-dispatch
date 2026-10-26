@@ -121,6 +121,14 @@ public class Task {
     @Column(name = "lapse_count", nullable = false)
     private Short lapseCount = 0;
 
+    /**
+     * The instant of the first take-up: set by it and by nothing else, never
+     * changed afterwards (V23). Absent where the task was not taken up under
+     * a kernel that records it; {@link TaskSituation#of} derives the rest.
+     */
+    @Column(name = "first_taken_at")
+    private @Nullable Instant firstTakenAt;
+
     /** Absent while nobody holds the task. */
     @Column(name = "holder_subject")
     private @Nullable String holderSubject;
@@ -222,6 +230,11 @@ public class Task {
 
     public int lapseCount() {
         return lapseCount;
+    }
+
+    /** The instant of the first take-up, where it was recorded. */
+    public Optional<Instant> firstTakenAt() {
+        return Optional.ofNullable(firstTakenAt);
     }
 
     /** The stored holder, lapsed or not. */
@@ -360,11 +373,17 @@ public class Task {
         this.updatedAt = at.truncatedTo(ChronoUnit.MICROS);
     }
 
-    /** Makes a new holder: receipt hash and lease, together. */
-    void award(String subject, String receipt, Instant leaseEnd) {
+    /**
+     * Makes a new holder: receipt hash and lease, together. The first holder
+     * also stamps the instant of the first take-up; every later one leaves it.
+     */
+    void award(String subject, String receipt, Instant leaseEnd, Instant at) {
         this.holderSubject = subject;
         this.holderReceiptHash = Receipt.hash(receipt);
         this.leaseExpiresAt = leaseEnd;
+        if (firstTakenAt == null) {
+            this.firstTakenAt = at;
+        }
     }
 
     /**

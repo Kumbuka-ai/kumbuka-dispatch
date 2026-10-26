@@ -452,6 +452,28 @@ public class TaskRepository {
             .getSingleResult();
     }
 
+    /**
+     * The numbers among {@code numbers} whose bracket has a task under its
+     * root, in any state: one statement for a page of a listing, which reads
+     * no task it does not show.
+     */
+    @Transactional
+    public Set<Integer> bracketsWithChildren(UUID scopeId, Long selectorId,
+                                             Collection<Integer> numbers) {
+        if (numbers.isEmpty()) {
+            return Set.of();
+        }
+        return Set.copyOf(em.createQuery("""
+                SELECT DISTINCT t.number FROM Task t
+                WHERE t.scopeId = :scope AND t.selector.id = :sel AND t.number IN :nums
+                  AND t.sub > 0
+                """, Integer.class)
+            .setParameter(P_SCOPE, scopeId)
+            .setParameter(P_SELECTOR, selectorId)
+            .setParameter("nums", numbers)
+            .getResultList());
+    }
+
     /** Inserts and flushes, so a constraint answers at the call site. */
     @Transactional
     public Task insert(Task task) {
