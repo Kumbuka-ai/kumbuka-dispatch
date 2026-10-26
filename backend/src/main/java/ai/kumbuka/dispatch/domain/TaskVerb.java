@@ -43,6 +43,12 @@ public enum TaskVerb {
         takes(TaskInput.Nothing.class, TaskInput.NONE),
         moves(OPEN, null, null, Holding.NONE, null)),
 
+    RECALL("recall",
+        when(EnumSet.of(OPEN), Condition.NEVER_TAKEN_UP, Relation.COMMISSIONER,
+            Proof.CONFLICT_TOKEN),
+        takes(TaskInput.Nothing.class, TaskInput.NONE),
+        moves(DRAFT, null, null, Holding.NONE, null)),
+
     CLAIM("claim",
         when(EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE,
             Proof.NONE),
@@ -141,7 +147,12 @@ public enum TaskVerb {
         /** The pause is a question. */
         QUESTION_PENDING,
         /** The pause is the holder's own: a dependency or something external. */
-        PAUSED_BY_HOLDER
+        PAUSED_BY_HOLDER,
+        /**
+         * No executor ever took the task up, and no task stands under it as a
+         * bracket root: the first take-up froze the content (DEC-0014).
+         */
+        NEVER_TAKEN_UP
     }
 
     /** The relation the caller must have to the task (check 3). */

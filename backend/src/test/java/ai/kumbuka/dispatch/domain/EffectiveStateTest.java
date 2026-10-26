@@ -30,7 +30,8 @@ class EffectiveStateTest {
 
     @Test
     void a_running_lease_is_active_with_its_holder() {
-        TaskSituation s = TaskSituation.of(active(NOW.plusSeconds(60), 5), NOW, List.of());
+        TaskSituation s = TaskSituation.of(active(NOW.plusSeconds(60), 5), NOW, List.of(),
+            TaskSituation.Beside.NOTHING);
         assertThat(s.state()).isEqualTo(TaskState.ACTIVE);
         assertThat(s.holder()).isEqualTo("holder");
         assertThat(s.lapsed()).isFalse();
@@ -39,7 +40,8 @@ class EffectiveStateTest {
     @Test
     void the_first_and_second_lapse_open_the_task_without_a_holder() {
         for (int recorded : new int[] {0, 1}) {
-            TaskSituation s = TaskSituation.of(active(NOW.minusSeconds(1), recorded), NOW, List.of());
+            TaskSituation s = TaskSituation.of(active(NOW.minusSeconds(1), recorded), NOW,
+                List.of(), TaskSituation.Beside.NOTHING);
             assertThat(s.state()).as("%d lapse(s) recorded", recorded).isEqualTo(TaskState.OPEN);
             assertThat(s.holdReason()).isNull();
             assertThat(s.holder()).isNull();
@@ -50,7 +52,8 @@ class EffectiveStateTest {
     @Test
     void the_third_lapse_parks_the_task_without_a_holder() {
         for (int recorded : new int[] {2, 3, 7}) {
-            TaskSituation s = TaskSituation.of(active(NOW.minusSeconds(1), recorded), NOW, List.of());
+            TaskSituation s = TaskSituation.of(active(NOW.minusSeconds(1), recorded), NOW,
+                List.of(), TaskSituation.Beside.NOTHING);
             assertThat(s.state()).as("%d lapse(s) recorded", recorded)
                 .isEqualTo(TaskState.ON_HOLD);
             assertThat(s.holdReason()).isEqualTo(HoldReason.EXTERNAL);
@@ -61,7 +64,8 @@ class EffectiveStateTest {
 
     @Test
     void a_lease_ending_exactly_now_has_lapsed() {
-        assertThat(TaskSituation.of(active(NOW, 0), NOW, List.of()).state())
+        assertThat(TaskSituation.of(active(NOW, 0), NOW, List.of(),
+            TaskSituation.Beside.NOTHING).state())
             .isEqualTo(TaskState.OPEN);
     }
 
@@ -69,8 +73,9 @@ class EffectiveStateTest {
     void every_other_stored_state_is_itself() {
         Task task = task();
         task.enter(TaskState.ON_HOLD, HoldReason.DEPENDENCY, null, NOW, "holder");
-        task.award("holder", "r", null);
-        TaskSituation s = TaskSituation.of(task, NOW, List.of());
+        task.award("holder", "r", null, NOW);
+        TaskSituation s = TaskSituation.of(task, NOW, List.of(),
+            TaskSituation.Beside.NOTHING);
         assertThat(s.state()).isEqualTo(TaskState.ON_HOLD);
         assertThat(s.holdReason()).isEqualTo(HoldReason.DEPENDENCY);
         assertThat(s.holder()).as("a paused holder holds without a lease").isEqualTo("holder");
@@ -82,11 +87,12 @@ class EffectiveStateTest {
         Task running = task();
         running.sub = 1;
         running.enter(TaskState.ACTIVE, null, null, NOW, "x");
-        running.award("x", "r", NOW.plusSeconds(60));
+        running.award("x", "r", NOW.plusSeconds(60), NOW);
         Task done = task();
         done.sub = 2;
         done.enter(TaskState.CLOSED, null, Outcome.ACCEPTED, NOW, "x");
-        TaskSituation s = TaskSituation.of(root, NOW, List.of(running, done));
+        TaskSituation s = TaskSituation.of(root, NOW, List.of(running, done),
+            TaskSituation.Beside.NOTHING);
         assertThat(s.unfinishedChildren()).extracting(TaskSituation.Child::address)
             .containsExactly(ExchangeAddress.child("sprint", 1, 1));
     }
@@ -115,7 +121,7 @@ class EffectiveStateTest {
     static Task active(Instant leaseEnd, int lapsesRecorded) {
         Task task = task();
         task.enter(TaskState.ACTIVE, null, null, NOW, "holder");
-        task.award("holder", "receipt", leaseEnd);
+        task.award("holder", "receipt", leaseEnd, NOW);
         for (int i = 0; i < lapsesRecorded; i++) {
             task.recordLapse();
         }

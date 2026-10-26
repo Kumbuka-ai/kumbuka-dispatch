@@ -89,6 +89,12 @@ class ProcessSurfaceIT {
             "address", address, "part", "dispatch")));
         assertThat(texts(text)).as("the holder reads the revised commission")
             .containsExactly(REVISED);
+
+        // While the work runs, the commissioner supplements the commission.
+        SurfaceFixture.asConsole(identity);
+        call(answers, "dispatch_annotate", Map.of("address", address,
+            "fields", Map.of("part", "dispatch", "text", ADDENDUM)));
+        SurfaceFixture.asExecutor(identity);
         call(answers, "dispatch_ask", Map.of("address", address, "receipt", receipt,
             "fields", Map.of("question", QUESTION, "options", List.of("left", "right"))));
 
@@ -105,8 +111,6 @@ class ProcessSurfaceIT {
         assertThat(texts(thread)).containsExactly(QUESTION, "left");
         call(answers, "dispatch_deliver", Map.of("address", address, "receipt", receipt,
             "fields", Map.of("text", ANSWER, "metadata", Map.of("pr", "17"))));
-        call(answers, "dispatch_annotate", Map.of("address", address,
-            "fields", Map.of("part", "return", "text", ADDENDUM)));
 
         // The commissioner reads the head, then the answer, and accepts.
         SurfaceFixture.asConsole(identity);
@@ -119,7 +123,10 @@ class ProcessSurfaceIT {
         Map<String, Object> answerText = Mcp.answer(Mcp.call("dispatch_read_text", Map.of(
             "address", address, "part", "return")));
         assertThat(texts(answerText)).containsExactly(ANSWER);
-        assertThat(answerText.get("addenda")).as("the addenda are counted, not carried")
+        Map<String, Object> commission = Mcp.answer(Mcp.call("dispatch_read_text", Map.of(
+            "address", address, "part", "dispatch")));
+        assertThat(texts(commission)).containsExactly(REVISED);
+        assertThat(commission.get("addenda")).as("the addenda are counted, not carried")
             .isEqualTo(1);
         call(answers, "dispatch_query", Map.of("scope", SurfaceFixture.SCOPE,
             "selector", SurfaceFixture.SELECTOR, "address", address));

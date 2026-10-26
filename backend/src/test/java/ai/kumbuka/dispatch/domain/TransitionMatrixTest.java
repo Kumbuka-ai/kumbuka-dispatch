@@ -40,7 +40,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code asked}, {@code waiting}, {@code blocked} (on_hold with question,
  * dependency, external; H holds); {@code parked} (the third lapse: on_hold
  * external without a holder, H the former holder); {@code delivered} (H
- * delivered and is kept as holder); {@code closed}.
+ * delivered and is kept as holder); {@code closed}. Each was taken up where an
+ * executor held it or holds it -- every one but {@code draft}, {@code open} and
+ * {@code closed}, which was withdrawn from open -- and none is a root with a
+ * task under it; that case is {@link CheckOrderTest}'s.
  *
  * <h2>The callers</h2>
  *
@@ -62,6 +65,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * LEASE_LAPSED}: a former holder calling the holder's verb. {@code CD} refused
  * at the condition, the deferral ({@code DEFERRAL_PENDING}). {@code CT}
  * refused at the condition, the hold reason ({@code TRANSITION_NOT_PERMITTED}).
+ * {@code CF} refused at the condition, the first take-up froze the content
+ * ({@code CONTENT_FROZEN}).
  * {@code RA} refused at the relation, the capacity ({@code ACTOR_UNKNOWN}).
  * {@code RC} refused at the relation, not the holder ({@code CLAIM_REQUIRED}).
  * {@code RL} refused at the relation, the former holder ({@code LEASE_LAPSED}).
@@ -97,6 +102,17 @@ class TransitionMatrixTest {
             send       | parked    | S  | S  | S  | S
             send       | delivered | S  | S  | S  | S
             send       | closed    | S  | S  | S  | S
+            recall     | draft     | S  | S  | S  | S
+            recall     | open      | ok | RA | RA | ok
+            recall     | deferred  | CF | CF | CF | CF
+            recall     | active    | S  | S  | S  | S
+            recall     | lapsed    | CF | CF | CF | CF
+            recall     | asked     | S  | S  | S  | S
+            recall     | waiting   | S  | S  | S  | S
+            recall     | blocked   | S  | S  | S  | S
+            recall     | parked    | S  | S  | S  | S
+            recall     | delivered | S  | S  | S  | S
+            recall     | closed    | S  | S  | S  | S
             claim      | draft     | S  | S  | S  | S
             claim      | open      | RA | ok | ok | ok
             claim      | deferred  | CD | CD | CD | CD
@@ -292,8 +308,8 @@ class TransitionMatrixTest {
             }
         }
         assertThat(cells)
-            .as("sixteen verbs, eleven situations, four callers")
-            .isEqualTo(16 * 11 * 4);
+            .as("seventeen verbs, eleven situations, four callers")
+            .isEqualTo(17 * 11 * 4);
         assertThat(wrong)
             .as("a cell where the kernel decides other than TAR-0004 sections 3 and 5 "
                 + "prescribe, or where the list of open calls disagrees with the decision")
@@ -332,6 +348,7 @@ class TransitionMatrixTest {
             case STATE -> r.reason() == Reason.LEASE_LAPSED ? "SL"
                 : r.reason() == Reason.TRANSITION_NOT_PERMITTED ? "S" : "S?" + r.reason();
             case CONDITION -> r.reason() == Reason.DEFERRAL_PENDING ? "CD"
+                : r.reason() == Reason.CONTENT_FROZEN ? "CF"
                 : r.reason() == Reason.TRANSITION_NOT_PERMITTED ? "CT" : "C?" + r.reason();
             case RELATION -> switch (r.reason()) {
                 case ACTOR_UNKNOWN -> "RA";
@@ -360,7 +377,7 @@ class TransitionMatrixTest {
 
     static TaskInput validPayload(TaskVerb verb) {
         return switch (verb) {
-            case SEND, CLAIM, CLAIM_NEXT, RELEASE, RENEW, RESUME, ACCEPT, WITHDRAW ->
+            case SEND, RECALL, CLAIM, CLAIM_NEXT, RELEASE, RENEW, RESUME, ACCEPT, WITHDRAW ->
                 TaskInput.NONE;
             case DEFER -> new TaskInput.Deferral(NOW.plusSeconds(3600), null);
             case ASK -> new TaskInput.Question("which one?", List.of("yes", "no"), true);
@@ -402,6 +419,6 @@ class TransitionMatrixTest {
             reason == HoldReason.QUESTION
                 ? Map.of("options", List.of("yes", "no"), "free_text", false)
                 : null,
-            true, List.of(), NOW);
+            true, List.of(), stored != null || notBefore != null, false, NOW);
     }
 }

@@ -36,6 +36,18 @@ public interface RefusalMessages {
     String stateClosed(VerbName call);
 
     @Message
+    String contentFrozen(VerbName call, VerbName withdraw, VerbName annotate);
+
+    @Message
+    String bracketOccupied(VerbName call, VerbName withdraw);
+
+    @Message
+    String addendumBeforeTakeUp(VerbName call, VerbName recall, VerbName withdraw);
+
+    @Message
+    String addendumAfterDelivery(VerbName call, VerbName rework);
+
+    @Message
     String roleCommissioner(VerbName call);
 
     @Message

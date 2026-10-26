@@ -441,7 +441,7 @@ public final class CallPayload {
 
     private TaskInput payloadOf(TaskVerb transition, Clock clock) {
         return switch (transition) {
-            case SEND, ACCEPT -> TaskInput.NONE;
+            case SEND, RECALL, ACCEPT -> TaskInput.NONE;
             case CLAIM, CLAIM_NEXT, RENEW, RESUME -> lease(clock);
             case RELEASE, WITHDRAW -> new TaskInput.Remark(field(REMARK).orElse(null));
             case REJECT, FAIL, REWORK -> new TaskInput.RequiredRemark(requiredField(REMARK));

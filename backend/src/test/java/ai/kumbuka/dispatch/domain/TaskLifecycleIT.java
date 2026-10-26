@@ -48,6 +48,7 @@ class TaskLifecycleIT {
     /** The refusals that say "not in this state" or "not this caller". */
     static final Set<DispatchException.Reason> STATE_OR_ENTITLEMENT = EnumSet.of(
         DispatchException.Reason.TRANSITION_NOT_PERMITTED,
+        DispatchException.Reason.CONTENT_FROZEN,
         DispatchException.Reason.LEASE_LAPSED,
         DispatchException.Reason.DEFERRAL_PENDING,
         DispatchException.Reason.ACTOR_UNKNOWN,
@@ -112,7 +113,7 @@ class TaskLifecycleIT {
                 }
             }
         }
-        assertThat(attempts).isEqualTo(11 * 3 * 16);
+        assertThat(attempts).isEqualTo(11 * 3 * 17);
         assertThat(wrong)
             .as("next must be the list of calls that succeed: one that fails is a list that "
                 + "misleads, and one that succeeds unlisted is a call nobody was told of")

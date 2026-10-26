@@ -48,8 +48,8 @@ class SurfaceConformanceIT {
     }
 
     @Test
-    void the_specification_names_twenty_five_call_forms() {
-        assertThat(VerbSurfaceSpecification.of("call")).hasSize(25);
+    void the_specification_names_twenty_six_call_forms() {
+        assertThat(VerbSurfaceSpecification.of("call")).hasSize(26);
     }
 
     private static boolean answeredBySurface(Response answer) {

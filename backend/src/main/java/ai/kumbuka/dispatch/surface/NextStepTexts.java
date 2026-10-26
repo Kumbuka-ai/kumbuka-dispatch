@@ -21,6 +21,9 @@ public interface NextStepTexts {
     String send();
 
     @Message
+    String recall();
+
+    @Message
     String claim();
 
     @Message

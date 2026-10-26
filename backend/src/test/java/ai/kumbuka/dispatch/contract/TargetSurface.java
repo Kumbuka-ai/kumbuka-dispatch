@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * The surface the target and the concept document fix, as fixed values.
  *
- * <p>Written by hand from {@code platform-specs}: the twenty-five calls from
+ * <p>Written by hand from {@code platform-specs}: the twenty-six calls from
  * TAR-0004 section 3, and what each takes from the table in section 3.2 of
  * {@code concept-dispatch-store-kernel-and-surface.md}. Never read from the
  * declaration: a test whose expectation comes from the thing it checks
@@ -37,9 +37,9 @@ public final class TargetSurface {
     private TargetSurface() {
     }
 
-    /** The sixteen transitions of TAR-0004 section 3, in its order. */
+    /** The seventeen transitions of TAR-0004 section 3, in its order. */
     public static final List<String> TRANSITIONS = List.of(
-        "send", "claim", "claim_next", "release", "defer", "renew", "ask", "answer",
+        "send", "recall", "claim", "claim_next", "release", "defer", "renew", "ask", "answer",
         "hold", "resume", "deliver", "rework", "accept", "reject", "fail", "withdraw");
 
     /** The nine calls that are not transitions, TAR-0004 section 3, in its order. */
@@ -73,6 +73,7 @@ public final class TargetSurface {
             List.of("title", "apparatus", "text", "metadata")));
         table.put("delete", new Arguments(List.of("address", "conflict_token"), List.of()));
         table.put("send", new Arguments(List.of("address", "conflict_token"), List.of()));
+        table.put("recall", new Arguments(List.of("address", "conflict_token"), List.of()));
         table.put("claim", new Arguments(
             List.of("address", "duration", "idempotency_key"), List.of()));
         table.put("claim_next", new Arguments(
@@ -140,15 +141,20 @@ public final class TargetSurface {
             + "Your hold lasts 30 minutes, or the duration you state; extend it with "
             + "dispatch_renew.";
 
+    /**
+     * Concept section 3.5, with the call marked as retiring: take-up has one
+     * verb, claim naming a task (TAR-0004 section 3, platform-specs 4978ca9),
+     * and the draw stays served while its callers move.
+     */
     public static final String CLAIM_NEXT_DESCRIPTION =
-        "Takes up the next open task addressed to you, chosen by the service; use "
-            + "dispatch_claim when you know the address. Moves the task from open to active "
-            + "(intermediate). Call as an executor with scope, selector and apparatus.\n\n"
+        "Retiring: take up a task by its address with dispatch_claim; this call stays served "
+            + "while callers move. Takes up the next open task addressed to you, chosen by the "
+            + "service. Moves the task from open to active (intermediate). Call as an executor "
+            + "with scope, selector and apparatus.\n\n"
             + "Returns the address, a receipt and the end of your hold. Keep the receipt: "
             + "every later call on this task needs it.\n\n"
             + "The task's text comes from dispatch_read_text, part \"dispatch\": read it next, "
-            + "before you start working.\n\n"
-            + "dispatch_query lists the open tasks you can draw.";
+            + "before you start working.";
 
     public static final String APPARATUS_ARGUMENT =
         "Which apparatus you draw for. Every task is addressed to an apparatus: the kind of "

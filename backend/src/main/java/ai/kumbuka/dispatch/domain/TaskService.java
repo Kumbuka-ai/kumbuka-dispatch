@@ -22,11 +22,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * The kernel of the task lifecycle (TAR-0004, concept section 2): the
- * sixteen transitions and the nine calls that are not transitions.
+ * seventeen transitions and the nine calls that are not transitions.
  *
  * <p>Every transition is one transaction: lock the row, compute the
  * {@link TaskSituation}, call {@link Decision#of}, set the attributes the
@@ -270,10 +271,16 @@ public class TaskService {
             shown.stream().map(t -> t.id).toList());
         Map<Long, String> curated = tasks.completeAddresses(shown.stream()
             .flatMap(t -> t.curatedInId().stream()).distinct().toList());
+        Set<Integer> occupied = tasks.bracketsWithChildren(scopeId, declared.id, shown.stream()
+            .filter(Task::isBracketRoot).map(t -> t.number).toList());
         List<TaskView> heads = shown.stream()
-            .map(t -> TaskView.of(t, TaskSituation.of(t, now, List.of()), caller,
-                texts.getOrDefault(t.id, List.of()),
-                t.curatedInId().map(curated::get).orElse(null)))
+            .map(t -> {
+                List<TaskView.TextHead> written = texts.getOrDefault(t.id, List.of());
+                TaskSituation.Beside beside = TaskSituation.Beside.of(written,
+                    t.isBracketRoot() && occupied.contains(t.number));
+                return TaskView.of(t, TaskSituation.of(t, now, List.of(), beside), caller,
+                    written, t.curatedInId().map(curated::get).orElse(null));
+            })
             .toList();
         Optional<String> next = more
             ? Optional.of(new PageCursor(binding,
@@ -283,7 +290,10 @@ public class TaskService {
     }
 
     /**
-     * Adds an addendum to a text of a sent task.
+     * Adds an addendum to a text of a task whose work runs: {@code active} or
+     * {@code on_hold} (TAR-0004 section 3). Before the first take-up the
+     * commissioner recalls the commission to change it; a delivered answer
+     * goes back with rework; a closed task is finished.
      *
      * <p>Only the identity that wrote the supplemented text adds to it; the
      * addendum hangs on the youngest text of that type, takes the next free
@@ -307,14 +317,11 @@ public class TaskService {
             return view(task, caller);
         }
         TaskSituation s = situation(task);
-        if (s.state() == TaskState.DRAFT) {
+        if (s.state() != TaskState.ACTIVE && s.state() != TaskState.ON_HOLD) {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
-                address + " is a draft and is edited, not annotated.");
-        }
-        if (s.state() == TaskState.DELIVERED && part == TextType.DISPATCH) {
-            throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
-                address + " is delivered: its commission takes no addendum now, and rework "
-                    + "sends the answer back with a remark (TAR-0004 section 3).");
+                address + " is " + s.state().wireName() + ", and an addendum is added while "
+                    + "the work runs, active or on_hold (TAR-0004 section 3). "
+                    + outsideTheWork(s.state()));
         }
         TaskText supplemented = TaskTexts.youngestBase(tasks.texts(task.id), part)
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
@@ -327,6 +334,18 @@ public class TaskService {
         remember(scopeId, caller, key, ANNOTATE, digest, task);
         LOG.infof("annotate %s %s", address, part.wireName());
         return view(task, caller);
+    }
+
+    /** What the commissioner does with a task an addendum does not reach, by its state. */
+    private static String outsideTheWork(TaskState state) {
+        return switch (state) {
+            case DRAFT -> "A draft is changed with update.";
+            case OPEN -> "Before the first take-up recall takes the commission back to draft; "
+                + "withdraw gives it up.";
+            case DELIVERED -> "Rework sends the answer back with a remark.";
+            case CLOSED -> "A closed task is finished.";
+            case ACTIVE, ON_HOLD -> throw new IllegalStateException(state + " takes addenda");
+        };
     }
 
     /** Records the object a closed task was curated into: any task of the tenant. */
@@ -375,8 +394,10 @@ public class TaskService {
      * of the address, and reads the unfinished set under those locks. A child
      * another transaction finished meanwhile is read as finished and keeps its
      * outcome; a child another transaction is creating waits on the root's
-     * lock in {@link #create} and finds the root closed. A transition on a
-     * child locks its own row only.
+     * lock in {@link #create} and finds the root closed. A recall of a root
+     * locks the same way and reads whether any child stands; a child being
+     * created waits on the root's lock and finds the root a draft. A
+     * transition on a child locks its own row only.
      */
     @Transactional
     public TaskView act(UUID scopeId, ExchangeAddress address, TaskVerb verb, TaskCall call) {
@@ -386,10 +407,12 @@ public class TaskService {
         }
         Task task = lockOrRefuse(scopeId, address);
         Instant now = now();
-        List<Task> children = task.isBracketRoot() && verb.closes()
+        boolean readsChildren = verb.closes()
+            || verb.condition() == TaskVerb.Condition.NEVER_TAKEN_UP;
+        List<Task> children = task.isBracketRoot() && readsChildren
             ? tasks.lockChildren(scopeId, task.selector.id, task.number)
             : List.of();
-        TaskSituation s = TaskSituation.of(task, now, children);
+        TaskSituation s = situation(task, now, children);
         if (Decision.of(verb, s, call) instanceof Decision.AlreadyThere) {
             LOG.debugf("%s on %s: already %s", verb.wireName(), address,
                 Objects.requireNonNull(verb.outcome(), "a verb already there closes").wireName());
@@ -526,7 +549,7 @@ public class TaskService {
 
     private TaskClaim take(Task task, TaskVerb verb, TaskCall call) {
         Instant now = now();
-        TaskSituation s = TaskSituation.of(task, now, List.of());
+        TaskSituation s = situation(task, now, List.of());
         TaskInput.Lease lease = (TaskInput.Lease) decide(verb, s, call);
 
         String by = call.caller().subject();
@@ -535,7 +558,7 @@ public class TaskService {
         }
         task.enter(TaskState.ACTIVE, null, null, now, by);
         String receipt = Receipt.mint();
-        task.award(by, receipt, now.plus(lease.duration()));
+        task.award(by, receipt, now.plus(lease.duration()), now);
         task.touch(by, now);
         tasks.flush();
 
@@ -615,7 +638,8 @@ public class TaskService {
     /** Closes each unfinished child as withdrawn, before its root closes. */
     private void withdrawChildren(List<Task> children, Instant now, String by) {
         for (Task child : children) {
-            if (TaskSituation.of(child, now, List.of()).state() != TaskState.CLOSED) {
+            if (TaskSituation.of(child, now, List.of(), TaskSituation.Beside.NOTHING).state()
+                    != TaskState.CLOSED) {
                 child.enter(TaskState.CLOSED, null, Outcome.WITHDRAWN, now, by);
                 child.dropHolder();
                 child.touch(by, now);
@@ -636,14 +660,39 @@ public class TaskService {
     }
 
     /**
-     * The situation of a task now, without its children.
+     * The situation of a task now, without its unfinished children.
      *
-     * <p>Only check 6 reads the children, and only {@link #act} runs it on a
-     * closing verb, with the children it read there. A head's {@code next}
-     * comes from checks 1 to 3 and does not need them.
+     * <p>Only check 6 reads the unfinished children, and only {@link #act}
+     * runs it on a closing verb, with the children it read there. A head's
+     * {@code next} comes from checks 1 to 3 and does not need them; check 2
+     * of a recall needs whether a child stands at all, which {@link #beside}
+     * reads.
      */
     private TaskSituation situation(Task task) {
-        return TaskSituation.of(task, now(), List.of());
+        return situation(task, now(), List.of());
+    }
+
+    /** The situation of a task at {@code now}, with the children a call locked. */
+    private TaskSituation situation(Task task, Instant now, List<Task> children) {
+        return TaskSituation.of(task, now, children, beside(task, children));
+    }
+
+    /**
+     * What is read beside the row: the texts that exist, and whether a task
+     * stands under a root. Children the call locked answer the second;
+     * otherwise it is read.
+     */
+    private TaskSituation.Beside beside(Task task, List<Task> lockedChildren) {
+        boolean occupied = task.isBracketRoot()
+            && (!lockedChildren.isEmpty() || hasChildren(task));
+        return TaskSituation.Beside.of(
+            tasks.textHeads(List.of(task.id)).getOrDefault(task.id, List.of()), occupied);
+    }
+
+    /** Whether a task of the root's bracket stands under it, in any state. */
+    private boolean hasChildren(Task root) {
+        Integer highest = tasks.highestSub(root.scopeId, root.selector.id, root.number);
+        return highest != null && highest > 0;
     }
 
     /**
@@ -673,7 +722,8 @@ public class TaskService {
         if (s.state() != TaskState.DRAFT) {
             throw new DispatchException(DispatchException.Reason.TRANSITION_NOT_PERMITTED,
                 s.address() + " is " + s.state().wireName() + "; " + call + " applies only "
-                    + "to a draft. A sent task is corrected by an addendum.");
+                    + "to a draft. A sent task returns to draft by recall until its first "
+                    + "take-up; while its work runs, an addendum supplements it.");
         }
     }
 
@@ -706,7 +756,8 @@ public class TaskService {
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
                 "no bracket " + selector.name + "/" + number + "; a bracket opens with its "
                     + "root."));
-        TaskState state = TaskSituation.of(root, now(), List.of()).state();
+        TaskState state = TaskSituation.of(root, now(), List.of(), TaskSituation.Beside.NOTHING)
+            .state();
         if (state == TaskState.DRAFT) {
             throw new DispatchException(DispatchException.Reason.ROOT_UNSENT,
                 root.address() + " is a draft, and a bracket opens when its root is sent.");

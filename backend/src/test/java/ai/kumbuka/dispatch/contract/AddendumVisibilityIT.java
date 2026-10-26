@@ -27,14 +27,15 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * An addendum to a sent commission is visible to whoever reads the task, in
- * the answer as a caller receives it, without guessing an address.
+ * An addendum to a commission whose work runs is visible to whoever reads the
+ * task, in the answer as a caller receives it, without guessing an address.
  *
  * <p>The head of {@code read} and of every entry of {@code query} lists the
  * texts that exist, by type and suffix; {@code read_text} of the commission
  * carries the commission alone and counts its addenda; {@code read_text} of
  * the addenda carries them. Each of the four is asserted for the
- * commissioner and for the holder after a claim, on both surfaces, and on
+ * commissioner and for the holder, after the claim the addendum waits for
+ * (an addendum is added while the work runs), on both surfaces, and on
  * the MCP surface in the structured content and in the text content alike:
  * a client may read either.
  *
@@ -75,19 +76,25 @@ class AddendumVisibilityIT {
         String address = String.valueOf(created.get("address"));
         mcp("dispatch_send", Map.of("address", address,
             "conflict_token", created.get("conflict_token")));
+        SurfaceFixture.asExecutor(identity);
+        mcp("dispatch_claim", Map.of("address", address));
+        SurfaceFixture.asConsole(identity);
         mcp("dispatch_annotate", Map.of("address", address,
             "fields", Map.of("part", "dispatch", "text", ADDENDUM)));
 
         assertVisibleOverMcp(address, "the commissioner");
 
         SurfaceFixture.asExecutor(identity);
-        mcp("dispatch_claim", Map.of("address", address));
         assertVisibleOverMcp(address, "the holder");
     }
 
     @Test
     void over_rest_the_addendum_is_listed_in_the_head_and_read_in_its_part() {
         String id = SurfaceFixture.open("an annotated commission over rest", "code");
+        SurfaceFixture.asExecutor(identity);
+        given().contentType(ContentType.JSON).body(Map.of("duration", "PT1H"))
+            .post(SurfaceFixture.item(id) + ":claim").then().statusCode(200);
+        SurfaceFixture.asConsole(identity);
         Response annotated = given().contentType(ContentType.JSON)
             .body(Map.of("fields", Map.of("part", "dispatch", "text", ADDENDUM)))
             .post(SurfaceFixture.item(id) + ":annotate");
@@ -97,8 +104,6 @@ class AddendumVisibilityIT {
         assertVisibleOverRest(id, "the commissioner");
 
         SurfaceFixture.asExecutor(identity);
-        given().contentType(ContentType.JSON).body(Map.of("duration", "PT1H"))
-            .post(SurfaceFixture.item(id) + ":claim").then().statusCode(200);
         assertVisibleOverRest(id, "the holder");
     }
 

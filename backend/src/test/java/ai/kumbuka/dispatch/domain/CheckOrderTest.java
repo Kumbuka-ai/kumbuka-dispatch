@@ -139,6 +139,38 @@ class CheckOrderTest {
         assertRefused(d, Check.PAYLOAD, Reason.CLAIM_DURATION_NOT_POSITIVE);
     }
 
+    @Test
+    void a_recall_is_refused_once_taken_up_and_on_a_root_with_a_task_under_it() {
+        assertRefused(Decision.of(TaskVerb.RECALL, situation("lapsed"),
+                TaskCall.by(C).withConflictToken(TOKEN)),
+            Check.CONDITION, Reason.CONTENT_FROZEN);
+        assertRefused(Decision.of(TaskVerb.RECALL, rootWithUnfinishedChild(),
+                TaskCall.by(C).withConflictToken(TOKEN)),
+            Check.CONDITION, Reason.BRACKET_OCCUPIED);
+        assertThat(Decision.open(TaskVerb.RECALL, rootWithUnfinishedChild(), C))
+            .as("and recall is not listed as open on it").isFalse();
+        assertThat(Decision.of(TaskVerb.RECALL, situation("open"),
+                TaskCall.by(C).withConflictToken(TOKEN)))
+            .as("an open task never taken up, standing alone, is recalled")
+            .isInstanceOf(Decision.Permitted.class);
+    }
+
+    @Test
+    void a_recall_takes_the_commissioner_and_the_current_token() {
+        // The commissioner's call, fenced by the token (acceptance criterion 3).
+        assertRefused(Decision.of(TaskVerb.RECALL, situation("open"),
+                TaskCall.by(H).withConflictToken(TOKEN)),
+            Check.RELATION, Reason.ACTOR_UNKNOWN);
+        assertRefused(Decision.of(TaskVerb.RECALL, situation("open"),
+                TaskCall.by(C).withConflictToken("stale")),
+            Check.PROOF, Reason.CONFLICT_TOKEN_STALE);
+        // The history before the caller: an executor recalling a task taken up
+        // hears that it was taken up, as every caller does.
+        assertRefused(Decision.of(TaskVerb.RECALL, situation("lapsed"),
+                TaskCall.by(H).withConflictToken("stale")),
+            Check.CONDITION, Reason.CONTENT_FROZEN);
+    }
+
     // -----------------------------------------------------------------------
 
     static TaskSituation rootWithUnfinishedChild() {
@@ -148,7 +180,7 @@ class CheckOrderTest {
             false, null, TOKEN, null, null, true,
             List.of(new TaskSituation.Child(UUID.fromString("00000000-0000-0000-0000-0000000000bb"),
                 ExchangeAddress.child("sprint", 1, 1), TaskState.ACTIVE)),
-            NOW);
+            false, true, NOW);
     }
 
     static void assertRefused(Decision d, Check check, Reason reason) {

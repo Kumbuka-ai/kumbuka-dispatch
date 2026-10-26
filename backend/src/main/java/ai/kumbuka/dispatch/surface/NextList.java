@@ -124,6 +124,7 @@ public final class NextList {
         NextStepTexts next = Texts.next();
         return switch (verb) {
             case SEND -> next.send();
+            case RECALL -> next.recall();
             case CLAIM -> next.claim();
             case CLAIM_NEXT -> next.claimNext();
             case RELEASE -> next.release();

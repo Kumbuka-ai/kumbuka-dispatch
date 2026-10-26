@@ -63,7 +63,29 @@ final class Checks {
                 ? Optional.empty()
                 : refuse(Check.CONDITION, Reason.TRANSITION_NOT_PERMITTED, s.address()
                     + " is paused for a question; the commissioner's answer continues it.");
+            case NEVER_TAKEN_UP -> neverTakenUp(verb, s);
         };
+    }
+
+    /**
+     * Before the first take-up the commission is the commissioner's to change;
+     * the take-up froze it, and a root returns to draft only while its bracket
+     * is empty (TAR-0004 section 3, DEC-0014).
+     */
+    private static Optional<Refused> neverTakenUp(TaskVerb verb, TaskSituation s) {
+        if (s.takenUp()) {
+            return refuse(Check.CONDITION, Reason.CONTENT_FROZEN, s.address() + " is "
+                + s.state().wireName() + " and was taken up, and the first take-up froze its "
+                + "content; " + verb.wireName() + " applies only before it. Withdraw the task, "
+                + "or add an addendum while the work runs.");
+        }
+        if (s.childrenPresent()) {
+            return refuse(Check.CONDITION, Reason.BRACKET_OCCUPIED, s.address() + " is "
+                + s.state().wireName() + ", a bracket root with tasks under it; "
+                + verb.wireName() + " applies to a root standing alone. Withdraw the root "
+                + "with its bracket.");
+        }
+        return Optional.empty();
     }
 
     /** Check 3: the caller's relation to the task. */

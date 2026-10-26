@@ -103,6 +103,10 @@ class IdempotencyIT {
     @Test
     void a_repeated_addendum_attaches_nothing_second_on_either_surface() {
         String address = SurfaceFixture.address(SurfaceFixture.open("annotated once", "code"));
+        // An addendum is added while the work runs: an executor takes the task up first.
+        SurfaceFixture.asExecutor(identity);
+        Mcp.answer(Mcp.call("dispatch_claim", Map.of("address", address)));
+        SurfaceFixture.asConsole(identity);
         Map<String, Object> annotate = Map.of("address", address,
             "idempotency_key", "annotate-once",
             "fields", Map.of("part", "dispatch", "text", "the correction"));

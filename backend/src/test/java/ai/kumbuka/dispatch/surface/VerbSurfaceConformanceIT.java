@@ -140,7 +140,7 @@ class VerbSurfaceConformanceIT {
                 + "writes it by hand")
             .containsExactlyInAnyOrderElementsOf(VerbSurfaceSpecification.callForms());
         assertThat(VerbSurfaceSpecification.calls())
-            .as("and the specification names the twenty-five calls of TAR-0004 section 3")
+            .as("and the specification names the twenty-six calls of TAR-0004 section 3")
             .containsExactlyInAnyOrderElementsOf(TargetSurface.REST);
     }
 

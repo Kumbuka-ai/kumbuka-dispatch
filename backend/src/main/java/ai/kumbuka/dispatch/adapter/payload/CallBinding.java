@@ -26,7 +26,7 @@ import java.time.Clock;
 import java.util.List;
 
 /**
- * One checked call, made: each of the twenty-five becomes exactly one call of
+ * One checked call, made: each of the twenty-six becomes exactly one call of
  * {@link VerbSurface}, which resolves the scope, runs the check order and
  * opens the transaction (C1.1).
  *
