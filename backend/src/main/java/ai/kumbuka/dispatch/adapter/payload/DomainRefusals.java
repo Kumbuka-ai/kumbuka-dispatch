@@ -191,18 +191,22 @@ public final class DomainRefusals {
                                    TaskView view) {
         Surface surface = c.surface();
         VerbName withdraw = VerbName.of(ProcessVerb.WITHDRAW, surface);
-        return switch (e.reason()) {
-            case CONTENT_FROZEN, BRACKET_OCCUPIED -> Refusal.recallRefused(c.call(), at,
-                e.reason() == DispatchException.Reason.CONTENT_FROZEN, withdraw,
+        DispatchException.Reason reason = e.reason();
+        if (reason == DispatchException.Reason.CONTENT_FROZEN
+                || reason == DispatchException.Reason.BRACKET_OCCUPIED) {
+            return Refusal.recallRefused(c.call(), at,
+                reason == DispatchException.Reason.CONTENT_FROZEN, withdraw,
                 VerbName.of(ProcessVerb.ANNOTATE, surface));
-            default -> c.verb() == ProcessVerb.ANNOTATE && view.state() == TaskState.OPEN
-                ? Refusal.addendumOutsideTheWork(c.call(), at, true,
-                    VerbName.of(ProcessVerb.RECALL, surface), withdraw)
-                : c.verb() == ProcessVerb.ANNOTATE && view.state() == TaskState.DELIVERED
-                ? Refusal.addendumOutsideTheWork(c.call(), at, false,
-                    VerbName.of(ProcessVerb.REWORK, surface), withdraw)
-                : Refusal.ofState(c.call(), at, view.state() == TaskState.CLOSED);
-        };
+        }
+        if (c.verb() == ProcessVerb.ANNOTATE && view.state() == TaskState.OPEN) {
+            return Refusal.addendumOutsideTheWork(c.call(), at, true,
+                VerbName.of(ProcessVerb.RECALL, surface), withdraw);
+        }
+        if (c.verb() == ProcessVerb.ANNOTATE && view.state() == TaskState.DELIVERED) {
+            return Refusal.addendumOutsideTheWork(c.call(), at, false,
+                VerbName.of(ProcessVerb.REWORK, surface), withdraw);
+        }
+        return Refusal.ofState(c.call(), at, view.state() == TaskState.CLOSED);
     }
 
     /**
