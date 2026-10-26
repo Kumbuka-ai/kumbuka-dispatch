@@ -44,7 +44,7 @@ jobs:
   # -------------------------------------------------------------------------
   release:
     name: release · suite at the tag, image and library from that build
-    runs-on: ubuntu-latest
+    runs-on: apollo
     timeout-minutes: 60
     permissions:
       contents: read
@@ -212,7 +212,7 @@ jobs:
   github-release:
     name: github release
     needs: [release]
-    runs-on: ubuntu-latest
+    runs-on: apollo
     timeout-minutes: 10
     permissions:
       contents: write
