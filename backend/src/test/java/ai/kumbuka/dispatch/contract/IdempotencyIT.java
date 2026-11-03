@@ -242,7 +242,132 @@ class IdempotencyIT {
             .isNotEqualTo(first.jsonPath().getString("address"));
     }
 
+    // =======================================================================
+    // C10.4 in two halves: the repeat that still has its first result, and
+    // the one whose first result is gone
+    // =======================================================================
+
+    /**
+     * The first half: the same key with the same arguments within 24 hours
+     * answers the first result and writes nothing.
+     */
+    @Test
+    void within_a_day_the_same_key_and_arguments_answer_the_first_result() {
+        Map<String, Object> create = createUnder("c10-4-first-half", "kept and answered");
+        String first = String.valueOf(Mcp.answer(Mcp.call("dispatch_create", create))
+            .get("address"));
+        age("c10-4-first-half", "23 hours 59 minutes");
+        String before = Writes.snapshot();
+
+        String again = String.valueOf(Mcp.answer(Mcp.call("dispatch_create", create))
+            .get("address"));
+
+        assertThat(again).as("the first result, still standing").isEqualTo(first);
+        assertThat(Writes.snapshot()).as("the repeat wrote nothing").isEqualTo(before);
+    }
+
+    /**
+     * The second half: once the draft the key produced is deleted, a repeat
+     * under the key is refused and carries nothing out a second time.
+     */
+    @Test
+    void a_repeat_after_the_draft_was_deleted_is_refused_and_creates_nothing() {
+        Map<String, Object> create = createUnder("c10-4-second-half", "deleted, then repeated");
+        Map<String, Object> first = Mcp.answer(Mcp.call("dispatch_create", create));
+        Mcp.answer(Mcp.call("dispatch_delete", Map.of("address", first.get("address"),
+            "conflict_token", first.get("conflict_token"))));
+        String before = Writes.snapshot();
+
+        Response again = Mcp.call("dispatch_create", create);
+
+        assertThat(Mcp.reason(again))
+            .as("RED STATE, observed: deleting the draft deleted the key with it, and the "
+                + "repeat created a second draft as if it were the first call")
+            .isEqualTo("IDEMPOTENCY_KEY_REUSED");
+        assertThat(Writes.snapshot()).as("the refused repeat wrote nothing").isEqualTo(before);
+    }
+
+    @Test
+    void a_key_outside_one_to_255_printable_ascii_characters_is_argument_invalid() {
+        for (String key : List.of("", "k".repeat(256), "zzschlüssel", "zz\u0007bell",
+                "zz\ttab")) {
+            String before = Writes.snapshot();
+            Response refused = Mcp.call("dispatch_create",
+                createUnder(key, "a key outside its form"));
+            Map<String, Object> envelope = Mcp.refusal(refused);
+            assertThat(envelope.get("reason"))
+                .as("RED STATE, observed: a key of %d characters outside the form was taken",
+                    key.length())
+                .isEqualTo("ARGUMENT_INVALID");
+            assertThat(String.valueOf(envelope.get("data"))).contains("idempotency_key");
+            assertThat(refused.asString()).as("the refusal repeats no key")
+                .doesNotContain("zzschl").doesNotContain("zz\\u0007").doesNotContain("kkkkkkkk");
+            assertThat(Writes.snapshot()).as("and it wrote nothing").isEqualTo(before);
+        }
+
+        Response overRest = given().contentType(ContentType.JSON).header(KEY, "k".repeat(256))
+            .body(Map.of("fields", Map.of("title", "a long key over rest", "apparatus", "code")))
+            .post(SurfaceFixture.collection());
+        assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(400);
+        assertThat(overRest.jsonPath().getString("reason")).isEqualTo("ARGUMENT_INVALID");
+
+        Mcp.answer(Mcp.call("dispatch_create",
+            createUnder("~".repeat(255), "a key of 255 printable characters")));
+        Mcp.answer(Mcp.call("dispatch_create",
+            createUnder(" !", "a key of a space and a mark")));
+    }
+
+    /**
+     * A key older than 24 hours counts as absent, and a caller's expired keys
+     * are removed when that caller next writes a key, with no background job.
+     * Another caller's expired key stays until that caller writes one.
+     */
+    @Test
+    void a_callers_expired_keys_are_removed_when_it_next_writes_a_key() {
+        Mcp.answer(Mcp.call("dispatch_create", createUnder("expire-mine", "mine, expired")));
+        SurfaceFixture.asOtherConsole(identity);
+        Mcp.answer(Mcp.call("dispatch_create", createUnder("expire-theirs", "theirs, expired")));
+        SurfaceFixture.asConsole(identity);
+        age("expire-mine", "24 hours 1 minute");
+        age("expire-theirs", "24 hours 1 minute");
+        assertThat(rowsOf("expire-mine")).as("nothing removes a key by time alone").isEqualTo(1);
+
+        Mcp.answer(Mcp.call("dispatch_create", createUnder("expire-next", "the next key")));
+
+        assertThat(rowsOf("expire-mine"))
+            .as("RED STATE, observed: the expired key stayed in the ledger until the same key "
+                + "came again")
+            .isZero();
+        assertThat(rowsOf("expire-theirs")).as("another caller's expired key stays").isEqualTo(1);
+        assertThat(rowsOf("expire-next")).isEqualTo(1);
+    }
+
     // -----------------------------------------------------------------------
+
+    /** A create in the probe scope under a key. */
+    private static Map<String, Object> createUnder(String key, String title) {
+        return Map.of("scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "idempotency_key", key, "fields", Map.of("title", title, "apparatus", "code"));
+    }
+
+    /** The rows the ledger holds under a key, across callers and tenants. */
+    private static long rowsOf(String key) {
+        var config = org.eclipse.microprofile.config.ConfigProvider.getConfig();
+        try (java.sql.Connection c = java.sql.DriverManager.getConnection(
+                config.getValue("test.db.url", String.class),
+                config.getValue("test.db.admin.username", String.class),
+                config.getValue("test.db.admin.password", String.class));
+             java.sql.PreparedStatement s = c.prepareStatement(
+                 "SELECT count(*) FROM dispatch.task_idempotency_key WHERE idempotency_key = ?")) {
+            s.setString(1, key);
+            try (java.sql.ResultSet rs = s.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     /** The header that carries the key on REST. */
     private static final String KEY = "Idempotency-Key";
