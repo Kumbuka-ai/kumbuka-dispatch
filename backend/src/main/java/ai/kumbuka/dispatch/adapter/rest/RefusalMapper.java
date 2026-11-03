@@ -50,9 +50,6 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
 
     private static final Logger LOG = Logger.getLogger(RefusalMapper.class);
 
-    /** Where an unexpected failure's log line says the request was, when it became no call. */
-    private static final String UNREAD = "<unread>";
-
     @Override
     public Response toResponse(SurfaceException refused) {
         LOG.debugf("refusal: %s", refused.refusal().code());
@@ -89,7 +86,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
             if (made.isEmpty()) {
                 return answer(RefusalCode.of(e.reason()) == RefusalCode.NOT_FOUND
                     ? Refusal.notFound()
-                    : UnexpectedFailures.refuse(null, UNREAD, e), null);
+                    : UnexpectedFailures.refuse(null, e), null);
             }
             CallContext.Made call = made.get();
             return answer(DomainRefusals.of(e, call.surface(), context.actor().orElse(null),
@@ -146,8 +143,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
             Optional<CallContext.Made> made = context.made();
             @Nullable VerbName call = made.map(m -> VerbName.of(m.verb(), m.surface()))
                 .orElse(null);
-            return answer(UnexpectedFailures.refuse(call,
-                made.map(m -> DomainRefusals.whereIn(m.given())).orElse(UNREAD), failure), null);
+            return answer(UnexpectedFailures.refuse(call, failure), null);
         }
 
         /**

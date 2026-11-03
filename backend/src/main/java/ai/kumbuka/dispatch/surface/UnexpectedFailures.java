@@ -24,13 +24,14 @@ import java.util.UUID;
  * mint and the log line are one act, and nobody adding a throw site can
  * separate them.
  *
- * <p>The log line carries the reference, the call, the address and the class
- * names of the exception chain — and never the exception object (DEC-0051,
- * C13.2). A stack trace and an exception's message carry whatever the failing
- * code held, a caller's value or a commission's text included, and a log
- * shipper carries them out of the container past a boundary built as a
- * missing grant. The class names say what failed; the reference finds the
- * line.
+ * <p>The log line carries the reference, the call and the class names of the
+ * exception chain — and never the exception object, its message or an address
+ * the call carried (DEC-0051, C13.2, C13.3, F-0383). A stack trace and an
+ * exception's message carry whatever the failing code held, a caller's value
+ * or a commission's text included, and a log shipper carries them out of the
+ * container past a boundary built as a missing grant; an address is written by
+ * the caller. The class names say what failed; the reference finds the line,
+ * and the request id on it joins it to the call.
  */
 public final class UnexpectedFailures {
 
@@ -45,18 +46,15 @@ public final class UnexpectedFailures {
     /**
      * Records the failure and answers the caller with its reference.
      *
-     * @param call    the call, or null for a request that reached no call
-     * @param address where the call was made, for the log line alone: the
-     *                refusal names no address
-     * @param cause   what went wrong, or null where the failure arrived as a
-     *                typed refusal the surface cannot serve
+     * @param call  the call, or null for a request that reached no call
+     * @param cause what went wrong, or null where the failure arrived as a
+     *              typed refusal the surface cannot serve
      */
-    public static Refusal refuse(@Nullable VerbName call, String address, Throwable cause) {
+    public static Refusal refuse(@Nullable VerbName call, Throwable cause) {
         String named = call == null ? "this request" : call.toString();
         String reference = UUID.randomUUID().toString();
         String chain = classNames(cause);
-        LOG.errorf("unexpected failure on %s at %s, reference %s, cause %s", named, address,
-            reference, chain);
+        LOG.errorf("unexpected failure on %s, reference %s, cause %s", named, reference, chain);
         return Refusal.unexpected(call, reference);
     }
 

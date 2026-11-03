@@ -59,16 +59,11 @@ import java.util.function.Function;
 public final class DomainRefusals {
 
     private static final String ADDRESS = "address";
-    private static final String SCOPE = "scope";
-    private static final String SELECTOR = "selector";
     private static final String PARENT = "parent";
     private static final String RECEIPT = "receipt";
     private static final String TEXT = "text";
     private static final String OPTION = "option";
     private static final String AFTER = "after";
-
-    /** Where an unexpected failure's log line says the call was made, when no address reads. */
-    private static final String UNREAD = "<unread>";
 
     private DomainRefusals() {
     }
@@ -96,7 +91,7 @@ public final class DomainRefusals {
         RefusalCode code = RefusalCode.of(e.reason());
         return switch (code) {
             case NOT_FOUND -> Refusal.notFound();
-            case UNEXPECTED_FAILURE -> UnexpectedFailures.refuse(call, whereIn(given), e);
+            case UNEXPECTED_FAILURE -> UnexpectedFailures.refuse(call, e);
             case SCOPE_KIND_UNSUPPORTED -> Refusal.scopeKindUnsupported(call);
             case SCOPE_READ_ONLY -> Refusal.scopeReadOnly(call);
             case SCOPE_LOCKED -> Refusal.scopeLocked(call);
@@ -178,7 +173,7 @@ public final class DomainRefusals {
                 VerbName.of(ProcessVerb.READ, surface), at);
             case CONFLICT_TOKEN_STALE -> Refusal.conflictTokenStale(call, at,
                 result.get().address(), view, AddressParser.SCHEME);
-            default -> UnexpectedFailures.refuse(call, result.get().address(), e);
+            default -> UnexpectedFailures.refuse(call, e);
         };
     }
 
@@ -386,27 +381,6 @@ public final class DomainRefusals {
         return AddressParser.partsOf(raw)
             .map(parts -> new VerbSurface.Item(parts.scope(),
                 AddressParser.item(parts.selector(), parts.id())).complete());
-    }
-
-    /**
-     * The address or the collection a call named, for the log line of an
-     * unexpected failure (DEC-0051 decides what that line may carry).
-     */
-    public static String whereIn(Map<String, Object> given) {
-        Object address = given.get(ADDRESS);
-        if (address != null) {
-            return wellFormed(String.valueOf(address)).orElse(UNREAD);
-        }
-        Object scope = given.get(SCOPE);
-        Object selector = given.get(SELECTOR);
-        if (scope == null || selector == null) {
-            return UNREAD;
-        }
-        Optional<String> scopeSlug = AddressParser.scopeOf(String.valueOf(scope));
-        Optional<String> kind = AddressParser.selectorOf(String.valueOf(selector));
-        return scopeSlug.isPresent() && kind.isPresent()
-            ? AddressParser.completeCollection(scopeSlug.get(), kind.get())
-            : UNREAD;
     }
 
     @SuppressWarnings("unchecked")
