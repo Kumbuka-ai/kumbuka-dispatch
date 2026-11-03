@@ -110,8 +110,14 @@ class LogContentGuardTest {
      */
     private static final int MINIMUM_ALLOWED_FIXTURE_LOG_CALLS = 11;
 
+    /**
+     * Where a log call begins. Where it ends is read by {@link #closingParen},
+     * which skips string and character literals: a pattern that stopped at
+     * the first semicolon never read a call whose format string carries one
+     * (F-0379).
+     */
     private static final Pattern LOG_CALL = Pattern.compile(
-        "LOG\\.(trace|debug|info|warn|error)f?\\(([^;]*)\\)\\s*;", Pattern.DOTALL);
+        "LOG\\.(trace|debug|info|warn|error)f?\\(");
 
     /** An identifier as Java spells one. */
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*");
@@ -272,6 +278,29 @@ class LogContentGuardTest {
                 .startsWith("ForbiddenLogFixture.java: LOG call hands over 'failure'"));
     }
 
+    /**
+     * The red state for the two blind spots of F-0379.
+     *
+     * <p>A call whose format string carries a semicolon was not read at all,
+     * because the pattern stopped at the first semicolon; and a value handed
+     * over before a later string literal was not seen, because only what
+     * follows the last quote of the call was read. The fixture carries one
+     * call of each shape, and the guard must name the value in both.
+     */
+    @Test
+    void the_guard_reads_past_a_semicolon_and_past_a_later_literal() throws IOException {
+        Findings findings = scan(forbiddenFixtureRoot());
+
+        assertThat(findings.offenders())
+            .as("RED STATE, observed: a format string with a semicolon hid the whole call")
+            .anySatisfy(offence -> assertThat(offence)
+                .contains("'principal'").endsWith(", principal"));
+        assertThat(findings.offenders())
+            .as("RED STATE, observed: a string literal after the value hid the value")
+            .anySatisfy(offence -> assertThat(offence)
+                .contains("'body'").endsWith("\"a place\""));
+    }
+
     private static Findings scan(Path root) throws IOException {
         List<String> offenders = new ArrayList<>();
         int total = 0;
@@ -281,22 +310,34 @@ class LogContentGuardTest {
                     .filter(f -> f.toString().endsWith(".java"))::iterator) {
                 String source = Files.readString(file);
                 Matcher m = LOG_CALL.matcher(source);
-                while (m.find()) {
+                int from = 0;
+                while (m.find(from)) {
+                    int close = closingParen(source, m.end());
+                    if (close < 0) {
+                        break;
+                    }
+                    from = close;
                     total++;
-                    String call = m.group(2);
-                    if (!call.strip().startsWith("\"")) {
+                    String call = source.substring(m.end(), close);
+                    List<String> arguments = arguments(call);
+                    String first = arguments.get(0).strip();
+                    if (!first.startsWith("\"")) {
                         // The logger's overloads take a Throwable before the
                         // format string; whatever stands there is an object
                         // handed to the logger, never the platform's words.
                         offenders.add(file.getFileName() + ": LOG call hands over '"
-                            + call.strip().split(",", 2)[0].strip()
-                            + "' (an object before the format string) — " + call.strip());
+                            + first + "' (an object before the format string) — " + call.strip());
                         continue;
                     }
                     // The format string is quoted; only what follows it can be
-                    // an argument, and only arguments can carry content.
-                    String tail = call.substring(Math.max(call.lastIndexOf('"') + 1, 0));
-                    String offence = offenceIn(tail);
+                    // an argument, and only arguments can carry content. Every
+                    // argument is read, each without its literals: reading only
+                    // what follows the last quote of the call missed a value
+                    // handed over before a later literal (F-0379).
+                    List<String> values = arguments.subList(1, arguments.size()).stream()
+                        .map(LogContentGuardTest::withoutLiterals)
+                        .toList();
+                    String offence = offenceIn(String.join(",", values));
                     if (offence != null) {
                         offenders.add(file.getFileName() + ": LOG call carries '" + offence
                             + "' — " + call.strip());
@@ -305,6 +346,72 @@ class LogContentGuardTest {
             }
         }
         return new Findings(total, offenders);
+    }
+
+    /**
+     * The index of the parenthesis that closes the one opened just before
+     * {@code start}, or -1; a parenthesis inside a string or character
+     * literal counts for nothing.
+     */
+    private static int closingParen(String source, int start) {
+        int depth = 1;
+        for (int i = start; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '"' || c == '\'') {
+                i = endOfLiteral(source, i);
+            } else if (c == '(') {
+                depth++;
+            } else if (c == ')' && --depth == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** The index of the quote that closes the literal opened at {@code open}. */
+    private static int endOfLiteral(String source, int open) {
+        char quote = source.charAt(open);
+        int i = open + 1;
+        while (i < source.length() && source.charAt(i) != quote) {
+            i += source.charAt(i) == '\\' ? 2 : 1;
+        }
+        return i;
+    }
+
+    /** A call's arguments, split at the commas outside literals and nested calls. */
+    private static List<String> arguments(String call) {
+        List<String> arguments = new ArrayList<>();
+        int depth = 0;
+        int begin = 0;
+        for (int i = 0; i < call.length(); i++) {
+            char c = call.charAt(i);
+            if (c == '"' || c == '\'') {
+                i = endOfLiteral(call, i);
+            } else if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                arguments.add(call.substring(begin, i));
+                begin = i + 1;
+            }
+        }
+        arguments.add(call.substring(begin));
+        return arguments;
+    }
+
+    /** An argument with its string and character literals taken out. */
+    private static String withoutLiterals(String argument) {
+        StringBuilder kept = new StringBuilder();
+        for (int i = 0; i < argument.length(); i++) {
+            char c = argument.charAt(i);
+            if (c == '"' || c == '\'') {
+                i = endOfLiteral(argument, i);
+            } else {
+                kept.append(c);
+            }
+        }
+        return kept.toString();
     }
 
     /**

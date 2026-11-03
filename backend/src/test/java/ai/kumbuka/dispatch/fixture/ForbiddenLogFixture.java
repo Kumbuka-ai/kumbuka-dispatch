@@ -95,6 +95,24 @@ public class ForbiddenLogFixture {
         LOG.errorf(failure, "failed, reference %s", "a reference");
     }
 
+    /**
+     * A principal behind a format string that carries a semicolon (F-0379):
+     * the guard once read a call only up to the first semicolon, so this call
+     * was never read at all.
+     */
+    public void logAPrincipalAfterASemicolon(String principal) {
+        LOG.infof("one step; then %s", principal);
+    }
+
+    /**
+     * A body handed over before a later string literal (F-0379): the guard
+     * once read only what follows the last quote of the call, and a literal
+     * after the body hid it.
+     */
+    public void logABodyBeforeALiteral(String body) {
+        LOG.infof("%s at %s", body, "a place");
+    }
+
     /** Stands in for the entity, so the fixture needs no domain import. */
     public static class Exchangeish {
         public String title = "a commission's title";
