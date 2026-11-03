@@ -176,6 +176,10 @@ class SurfaceHeaderIT {
         headerInvalid(given().header(HEADER, "mcp").contentType(ContentType.JSON)
                 .body(Map.of("duration", "PT1H")).post(SurfaceFixture.item(id) + ":claim"),
             "before the caller's part");
+        headerInvalid(given().header(HEADER, "mcp").get("/api"),
+            "on the base path itself, which no route takes (F-0429)");
+        headerInvalid(given().header(HEADER, "mcp").get("/api/declaration"),
+            "on the literal path of the declaration");
     }
 
     @Test

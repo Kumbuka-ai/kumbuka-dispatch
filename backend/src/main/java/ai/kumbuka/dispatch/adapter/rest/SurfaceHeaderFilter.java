@@ -39,21 +39,30 @@ import java.util.List;
 @Priority(Priorities.AUTHENTICATION + 50)
 public class SurfaceHeaderFilter implements ContainerRequestFilter {
 
-    /** The path the REST surface is served under, as a request's path begins. */
-    private static final String REST_ROOT = "api/";
+    /** The base path of the REST surface (C3.1), as a request's path begins. */
+    private static final String REST_BASE = "api";
 
     @Inject SecurityIdentity identity;
 
     @Override
     public void filter(ContainerRequestContext request) {
-        String path = request.getUriInfo().getPath();
-        String relative = path.startsWith("/") ? path.substring(1) : path;
-        if (!relative.startsWith(REST_ROOT) || identity.isAnonymous()) {
+        if (!readsTheHeader(request.getUriInfo().getPath()) || identity.isAnonymous()) {
             return;
         }
         List<String> named = request.getHeaders().get(TaskResource.SURFACE);
         if (named != null && !named.isEmpty() && !List.of(TaskResource.ASSISTANT).equals(named)) {
             throw new SurfaceException(Refusal.headerInvalid());
         }
+    }
+
+    /**
+     * Whether a request on this path is one of the REST surface, which reads
+     * the header: the base path itself and every path below it (F-0429). The
+     * prefix alone left {@code /api} out, and a wrong header there was
+     * answered by the route instead of refused.
+     */
+    static boolean readsTheHeader(String path) {
+        String relative = path.startsWith("/") ? path.substring(1) : path;
+        return relative.equals(REST_BASE) || relative.startsWith(REST_BASE + "/");
     }
 }
