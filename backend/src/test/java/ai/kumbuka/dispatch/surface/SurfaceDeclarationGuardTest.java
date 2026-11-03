@@ -9,7 +9,9 @@ package ai.kumbuka.dispatch.surface;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -98,5 +100,89 @@ class SurfaceDeclarationGuardTest {
                 + "and names the argument")
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("address");
+    }
+
+    // ======================================================================
+    // The document as served (C5.6): the guard checks what the declaration
+    // route serves, not only the verb records it is built from
+    // ======================================================================
+
+    /** A served document the guard passes: the floor under the red states below. */
+    @Test
+    void a_complete_document_starts() {
+        DeclarationGuard.requireServable(document(call("dispatch_read", "Reads a task.",
+            List.of(argument("address", "The task's address.")), List.of("NOT_FOUND"))));
+    }
+
+    @Test
+    void a_document_naming_an_undeclared_refusal_refuses_the_start() {
+        assertThatThrownBy(() -> DeclarationGuard.requireServable(document(call("dispatch_read",
+            "Reads a task.", List.of(argument("address", "The task's address.")),
+            List.of("NOT_FOUND", "ZZ_UNDECLARED")))))
+            .as("RED STATE, observed: the guard checked the verb records only, and a served "
+                + "document naming a refusal its reasons do not declare started")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("dispatch_read")
+            .hasMessageContaining("ZZ_UNDECLARED");
+    }
+
+    @Test
+    void a_document_with_two_calls_under_one_name_refuses_the_start() {
+        Map<String, Object> read = call("dispatch_read", "Reads a task.",
+            List.of(argument("address", "The task's address.")), List.of("NOT_FOUND"));
+        assertThatThrownBy(() -> DeclarationGuard.requireServable(document(read, read)))
+            .as("RED STATE, observed: a served document with a duplicate call started")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("dispatch_read");
+    }
+
+    @Test
+    void a_document_with_an_undescribed_call_or_argument_refuses_the_start() {
+        assertThatThrownBy(() -> DeclarationGuard.requireServable(document(call("dispatch_read",
+            " ", List.of(argument("address", "The task's address.")), List.of()))))
+            .as("RED STATE, observed: a served call without a description started")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("dispatch_read");
+        assertThatThrownBy(() -> DeclarationGuard.requireServable(document(call("dispatch_read",
+            "Reads a task.", List.of(argument("address", "")), List.of()))))
+            .as("RED STATE, observed: a served argument without a description started")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("address");
+    }
+
+    @Test
+    void a_document_with_a_description_over_the_budget_refuses_the_start() {
+        assertThatThrownBy(() -> DeclarationGuard.requireServable(document(call("dispatch_read",
+            "x".repeat(SurfaceDeclaration.DESCRIPTION_BUDGET + 1),
+            List.of(argument("address", "The task's address.")), List.of()))))
+            .as("RED STATE, observed: a served description over the budget started")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("dispatch_read");
+    }
+
+    @SafeVarargs
+    private static Map<String, Object> document(Map<String, Object>... calls) {
+        Map<String, Object> document = new LinkedHashMap<>();
+        document.put("calls", List.of(calls));
+        document.put("reasons", List.of(Map.of("reason", "NOT_FOUND")));
+        return document;
+    }
+
+    private static Map<String, Object> call(String name, String description,
+                                            List<Map<String, Object>> arguments,
+                                            List<String> refusals) {
+        Map<String, Object> call = new LinkedHashMap<>();
+        call.put("call", name);
+        call.put("description", description);
+        call.put("arguments", arguments);
+        call.put("refusals", refusals);
+        return call;
+    }
+
+    private static Map<String, Object> argument(String name, String description) {
+        Map<String, Object> argument = new LinkedHashMap<>();
+        argument.put("name", name);
+        argument.put("description", description);
+        return argument;
     }
 }
