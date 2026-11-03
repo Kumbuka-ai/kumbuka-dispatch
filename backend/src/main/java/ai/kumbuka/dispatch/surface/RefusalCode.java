@@ -355,6 +355,7 @@ public enum RefusalCode {
         INVALID_ADDENDUM_TARGET(RefusalCode.ARGUMENT_INVALID, "invalidAddendumTarget"),
         INVALID_ADDENDA_EXHAUSTED(RefusalCode.ARGUMENT_INVALID, "invalidAddendaExhausted"),
         INVALID_ONCE(RefusalCode.ARGUMENT_INVALID, "invalidOnce"),
+        INVALID_IDEMPOTENCY_KEY(RefusalCode.ARGUMENT_INVALID, "invalidIdempotencyKey"),
         INVALID_BODY(RefusalCode.PAYLOAD_MALFORMED, "invalidBody"),
         HEADER_INVALID(RefusalCode.HEADER_INVALID, "headerInvalid"),
         INVALID_IN_REQUEST(RefusalCode.ADDRESS_MALFORMED, "invalidInRequest"),

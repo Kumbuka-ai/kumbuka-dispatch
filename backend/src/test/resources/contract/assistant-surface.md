@@ -476,6 +476,7 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `invalidAddendumTarget` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a part the task carries a text of; the read of the task lists them under fields.texts.` |
 | `invalidAddendaExhausted` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: that text already carries addenda a to z, and a further letter would reissue one that exists.` |
 | `invalidOnce` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it arrived twice: in the query or the body, and in the path or a header, and a call takes each argument once.` |
+| `invalidIdempotencyKey` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a key is 1 to 255 printable ASCII characters, from the space to the tilde.` |
 | `invalidBody` | `PAYLOAD_MALFORMED` | `{call} carries a body that is no JSON object: a body is a JSON object of the call's arguments.` |
 | `headerInvalid` | `HEADER_INVALID` | `The header Kumbuka-Surface takes the one value assistant, once, or is left out.` |
 | `scopeReserved` | `ADDRESS_MALFORMED` | `The names declaration and whoami are the REST surface's own paths and are no scope; a scope is named otherwise.` |

@@ -483,7 +483,10 @@ public class TaskRepository {
     }
 
     /**
-     * Deletes a draft: its texts and idempotency records first, then the task.
+     * Deletes a draft: its texts first, then the task. Its idempotency
+     * records stay and let go of it (V24): a key outlives the draft it
+     * created, so that a repeat under it is refused rather than creating the
+     * draft again (C10.4).
      *
      * <p>In that order because no key deletes along (V17 section 4): a
      * cascade would reach the text guard while the task row is already being
@@ -493,7 +496,7 @@ public class TaskRepository {
     public void delete(Task task) {
         em.createQuery("DELETE FROM TaskText x WHERE x.taskId = :task")
             .setParameter(P_TASK, task.id).executeUpdate();
-        em.createQuery("DELETE FROM SpentTaskKey k WHERE k.taskId = :task")
+        em.createQuery("UPDATE SpentTaskKey k SET k.taskId = NULL WHERE k.taskId = :task")
             .setParameter(P_TASK, task.id).executeUpdate();
         em.remove(task);
         em.flush();
@@ -668,6 +671,25 @@ public class TaskRepository {
             .stream()
             .findFirst()
             .map(this::underLock);
+    }
+
+    /**
+     * Removes a caller's keys first spent before {@code expiredBefore}, in
+     * every scope of the tenant, but the one the caller is spending now, which
+     * its own row lock holds and the call overwrites (C10.4: expiry is lazy,
+     * on the caller's next key).
+     */
+    @Transactional
+    public void forgetExpiredKeys(String callerSubject, String spending, Instant expiredBefore) {
+        em.createQuery("""
+                DELETE FROM SpentTaskKey k
+                WHERE k.callerSubject = :caller AND k.key <> :spending
+                  AND k.firstSeenAt <= :before
+                """)
+            .setParameter("caller", callerSubject)
+            .setParameter("spending", spending)
+            .setParameter("before", expiredBefore)
+            .executeUpdate();
     }
 
     /** Remembers a spent key. */
