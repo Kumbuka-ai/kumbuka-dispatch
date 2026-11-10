@@ -69,7 +69,7 @@ public class TagRepository {
         }
         Object[] row = (Object[]) rows.get(0);
         return Optional.of(new Tag((UUID) row[0], (String) row[1],
-            Tag.WITHDRAWN.equals(row[2])));
+            Tag.WITHDRAWN_STATUS.equals(row[2])));
     }
 
     /**

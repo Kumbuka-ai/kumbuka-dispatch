@@ -24,13 +24,13 @@ import java.util.regex.Pattern;
 public record Tag(UUID id, String token, boolean withdrawn) {
 
     /** The form of a token, as the platform declares it. */
-    public static final Pattern TOKEN = Pattern.compile("[a-z0-9][a-z0-9:-]{0,62}");
+    public static final Pattern TOKEN_FORM = Pattern.compile("[a-z0-9][a-z0-9:-]{0,62}");
 
     /** The status the platform writes for a withdrawn tag. */
-    public static final String WITHDRAWN = "withdrawn";
+    public static final String WITHDRAWN_STATUS = "withdrawn";
 
     /** Whether a text has the form of a token at all. */
     public static boolean isToken(String text) {
-        return TOKEN.matcher(text).matches();
+        return TOKEN_FORM.matcher(text).matches();
     }
 }
