@@ -237,6 +237,15 @@ public interface RefusalMessages {
     String invalidOnce(VerbName call, ArgumentPath path);
 
     @Message
+    String invalidTagUnknown(VerbName call, ArgumentPath path);
+
+    @Message
+    String invalidTagWithdrawn(VerbName call, ArgumentPath path);
+
+    @Message
+    String invalidTagFilter(VerbName call, ArgumentPath path);
+
+    @Message
     String invalidBody(VerbName call);
 
     @Message

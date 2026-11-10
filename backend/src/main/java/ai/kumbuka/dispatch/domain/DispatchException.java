@@ -290,7 +290,21 @@ public class DispatchException extends RuntimeException {
         CONFLICT_TOKEN_MISSING,
 
         /** The conflict token presented is not the one the task holds. */
-        CONFLICT_TOKEN_STALE
+        CONFLICT_TOKEN_STALE,
+
+        /**
+         * A tag was named by a token the task's scope does not declare, or
+         * declares in a scope the caller may not see (sprint/210). The
+         * vocabulary is the platform's; the refusal names the argument, never
+         * the token.
+         */
+        TAG_UNKNOWN,
+
+        /**
+         * A tag the platform withdrew was to be attached: a withdrawn tag takes
+         * no further task, and the tasks that carry it keep it.
+         */
+        TAG_WITHDRAWN
     }
 
     private final transient Reason reason;

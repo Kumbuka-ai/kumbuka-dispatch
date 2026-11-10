@@ -36,8 +36,38 @@ GitHub release. Releases before 0.11.0 are described on the
   and `recall` is new: the declaration changes with them. The router carries
   the declaration of the dispatch version it pins, so its surface takes these
   up when its pin moves to the release that carries them.
+- **Tags on tasks.** New calls `tag_attach` and `tag_detach`
+  (`dispatch_tag_attach`, `dispatch_tag_detach`, `POST …/{id}:tag_attach` and
+  `…:tag_detach`, with `fields.tag`, the token). They attach and detach a tag
+  of the task's scope, as the platform declares it in `platform.tag_access`,
+  in every state of the task, a sent and a closed one included, for whoever
+  holds the write right in the scope. They take no conflict token and change
+  neither the task's state, text, conflict token nor change stamp. A tag the
+  task carries already, or one it lacks on detach, is a success that changes
+  nothing. An undeclared token is refused as `ARGUMENT_INVALID` on
+  `fields.tag` (message `invalidTagUnknown`), a withdrawn one on attach as
+  `ARGUMENT_INVALID` (message `invalidTagWithdrawn`); a withdrawn tag still
+  detaches. The answer is the lean one with `fields.tags`.
+- `read` and every row of `query` carry `fields.tags`: the tokens the task
+  carries, ascending, withdrawn ones included, an empty list where it has
+  none. `query` takes the filter `tag`, one token, combined with the other
+  filters by AND; an undeclared token lists an empty page, a value that is no
+  single token is refused (`ARGUMENT_INVALID`, message `invalidTagFilter`).
+  The declaration names the fields of each answer under `answer.fields`; the
+  description of `query` changes with the new filter.
 
 ### Upgrade and rollback
+
+- The calls on tags and the filter `tag` read the platform's view
+  `platform.tag_access`, which the service role needs `SELECT` on (the
+  parallel commission in `kumbuka-server`). `read` and `query` ask it only for
+  tasks that carry a tag, so before the platform publishes it everything but
+  tagging works as before.
+- Migration `V24` adds the table `dispatch.task_tag` (task, tag, who attached
+  and when), its index, its tenant policy under FORCE row-level security and
+  its grant. It changes no existing table, column, policy or grant. An image
+  before it does not know the table; a draft it deletes takes its tags along
+  through the cascade.
 
 - Migration `V23` adds the nullable column `task.first_taken_at` without a
   default, and a trigger that refuses changing it once set. The first claim

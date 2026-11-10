@@ -153,6 +153,7 @@ public final class DeclarationTranscript {
                 "SORT_UNDECLARED"),
             scope, selector, "state:string:TOP:optional", "apparatus:string:TOP:optional",
             "bracket:string:TOP:optional", "address:string:TOP:optional",
+            "tag:string:TOP:optional",
             "page_size:integer:TOP:optional=50", "after:string:TOP:optional",
             "sort:string:TOP:optional=id", "direction:string:TOP:optional=asc");
         put(calls, "annotate", "ITEM_TRANSITION", "TASK_LEAN",
@@ -163,6 +164,14 @@ public final class DeclarationTranscript {
             "curated_in:string:FIELDS:required");
         put(calls, "unrelate", "ITEM_TRANSITION", "TASK_LEAN",
             reasons(WRITE, "TRANSITION_REFUSED", "CONFLICT_TOKEN_STALE", "CONFLICT_TOKEN_MISSING"), address, token);
+        // The two calls on the tags of a task (sprint/210): a write on an
+        // addressed task without a conflict token, which the declaration
+        // carries as a custom method on the item, as every such call here;
+        // no state refuses them.
+        put(calls, "tag_attach", "ITEM_TRANSITION", "TASK_LEAN", reasons(WRITE), address,
+            "tag:string:FIELDS:required");
+        put(calls, "tag_detach", "ITEM_TRANSITION", "TASK_LEAN", reasons(WRITE), address,
+            "tag:string:FIELDS:required");
         return java.util.Collections.unmodifiableMap(calls);
     }
 

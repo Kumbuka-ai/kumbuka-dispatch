@@ -17,9 +17,10 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * The twenty-six calls of the verb surface: the seventeen transitions and the
+ * The twenty-eight calls of the verb surface: the seventeen transitions and the
  * nine calls that are not transitions (TAR-0004 section 3), with the arguments
- * of concept section 3.2 and the descriptions of section 3.5.
+ * of concept section 3.2 and the descriptions of section 3.5, and the two calls
+ * on the tags of a task (sprint/210), which are no transitions either.
  *
  * <p><strong>This is the single source of the surface.</strong> The MCP tool
  * list, the input schemas, the closure of every call's arguments at both
@@ -177,6 +178,8 @@ public enum ProcessVerb {
                 () -> Texts.arguments().queryBracket()),
             Argument.top("address", Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().queryAddress()),
+            Argument.top(Shared.TAG, Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().queryTag()),
             Argument.top("page_size", Argument.INTEGER,
                 String.valueOf(Bound.PAGE_SIZE_DEFAULT.value()),
                 () -> Texts.arguments().queryPageSize()),
@@ -209,7 +212,21 @@ public enum ProcessVerb {
                 () -> Texts.arguments().relateCuratedIn()))),
 
     UNRELATE("unrelate", null, Participation.COMMISSIONER, () -> Texts.tools().unrelate(),
-        List.of(address(), conflictToken()));
+        List.of(address(), conflictToken())),
+
+    // ======================================================================
+    // The two calls on the tags of a task (sprint/210): a relation of the
+    // task, never a field of it, open in every state to whoever may write
+    // in the scope
+    // ======================================================================
+
+    TAG_ATTACH("tag_attach", null, null, () -> Texts.tools().tagAttach(),
+        List.of(address(),
+            Argument.field(Shared.TAG, Argument.STRING, () -> Texts.arguments().tagAttachTag()))),
+
+    TAG_DETACH("tag_detach", null, null, () -> Texts.tools().tagDetach(),
+        List.of(address(),
+            Argument.field(Shared.TAG, Argument.STRING, () -> Texts.arguments().tagDetachTag())));
 
     /** The prefix every call carries on the assistant surface. */
     public static final String PREFIX = "dispatch_";
@@ -225,6 +242,8 @@ public enum ProcessVerb {
         static final String REMARK = "remark";
 
         static final String RECEIPT = "receipt";
+
+        static final String TAG = "tag";
 
         private Shared() {
         }
@@ -434,9 +453,25 @@ public enum ProcessVerb {
         };
     }
 
+    /**
+     * The fields of the task this call's answer carries: those of its shape,
+     * and for a call on the tags the lean ones with {@code tags} besides.
+     */
+    public List<String> answerFields() {
+        return onTags() ? AnswerShape.leanWithTags() : answerShape().fields();
+    }
+
     /** Whether this call only reads: it leaves the scope as it is. */
     public boolean reads() {
         return this == READ || this == READ_TEXT || this == QUERY;
+    }
+
+    /**
+     * Whether this call writes the tags of a task: a relation, open in every
+     * state, so no state of the task refuses it.
+     */
+    public boolean onTags() {
+        return this == TAG_ATTACH || this == TAG_DETACH;
     }
 
     /**
@@ -460,7 +495,8 @@ public enum ProcessVerb {
             codes.add(RefusalCode.SCOPE_READ_ONLY);
             codes.add(RefusalCode.SCOPE_LOCKED);
         }
-        if (this != READ && this != READ_TEXT && this != QUERY && this != CLAIM_NEXT) {
+        if (this != READ && this != READ_TEXT && this != QUERY && this != CLAIM_NEXT
+                && !onTags()) {
             codes.add(RefusalCode.TRANSITION_REFUSED);
         }
         if (argument(Shared.RECEIPT, Argument.Placement.TOP).isPresent() || this == READ_TEXT) {

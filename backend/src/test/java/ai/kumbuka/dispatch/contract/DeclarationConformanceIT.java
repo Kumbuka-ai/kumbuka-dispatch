@@ -52,8 +52,8 @@ class DeclarationConformanceIT {
     @Test
     void the_declaration_carries_the_twenty_six_calls_of_the_target() {
         assertThat(ProcessVerb.names(Surface.REST))
-            .as("TAR-0004 section 3: seventeen transitions and nine further calls, and no "
-                + "other")
+            .as("TAR-0004 section 3: seventeen transitions and nine further calls, the two "
+                + "calls on the tags of sprint/210, and no other")
             .containsExactlyInAnyOrderElementsOf(TargetSurface.REST);
         assertThat(ProcessVerb.names(Surface.MCP))
             .as("on the assistant surface each is named dispatch_<verb>")
@@ -70,7 +70,9 @@ class DeclarationConformanceIT {
             .containsExactlyInAnyOrderElementsOf(TargetSurface.TRANSITIONS);
         assertThat(Arrays.stream(ProcessVerb.values()).filter(v -> !v.isTransition())
                 .map(ProcessVerb::verb).toList())
-            .containsExactlyInAnyOrderElementsOf(TargetSurface.OTHERS);
+            .as("the nine, and the two calls on the tags, which are no transitions")
+            .containsExactlyInAnyOrderElementsOf(java.util.stream.Stream.concat(
+                TargetSurface.OTHERS.stream(), TargetSurface.TAGS.stream()).toList());
         for (ProcessVerb call : ProcessVerb.values()) {
             if (call.isTransition()) {
                 assertThat(call.transition().orElseThrow().wireName())
@@ -223,7 +225,50 @@ class DeclarationConformanceIT {
     @Test
     void the_declaration_is_servable() {
         SurfaceDeclaration.requireServable();
-        assertThat(SurfaceDeclaration.calls()).hasSize(26);
+        assertThat(SurfaceDeclaration.calls()).hasSize(28);
+    }
+
+    /**
+     * Sprint/210: the declaration carries both calls on the tags, the field
+     * {@code tags} on every answer that carries it, and the filter {@code tag}.
+     * The calls write an addressed task without a conflict token, which this
+     * declaration carries as a custom method on the item.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void the_declaration_carries_the_calls_the_field_and_the_filter_of_the_tags() {
+        Map<String, Map<String, Object>> calls = new java.util.LinkedHashMap<>();
+        for (Object call : (List<Object>) SurfaceDeclaration.asMap().get("calls")) {
+            Map<String, Object> declared = (Map<String, Object>) call;
+            calls.put(String.valueOf(declared.get("identity")), declared);
+        }
+        for (String verb : TargetSurface.TAGS) {
+            Map<String, Object> call = calls.get("dispatch_" + verb);
+            assertThat(call).as("dispatch_%s is declared", verb).isNotNull();
+            assertThat(call.get("rest_name")).isEqualTo(verb);
+            assertThat(call.get("effect_class")).as("%s: a write on an addressed task without "
+                + "a conflict token", verb).isEqualTo("ITEM_TRANSITION");
+            assertThat(call.get("transition")).isEqualTo(false);
+            assertThat((List<String>) call.get("refusals")).as("%s: no state refuses it", verb)
+                .doesNotContain("TRANSITION_REFUSED", "CONFLICT_TOKEN_MISSING",
+                    "CONFLICT_TOKEN_STALE")
+                .contains("ARGUMENT_INVALID", "SCOPE_READ_ONLY", "NOT_FOUND");
+        }
+        for (String verb : List.of("read", "query", "tag_attach", "tag_detach")) {
+            Map<String, Object> answer = (Map<String, Object>) calls.get("dispatch_" + verb)
+                .get("answer");
+            assertThat((List<String>) answer.get("fields")).as("%s answers tags", verb)
+                .contains("tags");
+        }
+        for (String verb : List.of("send", "update", "claim")) {
+            Map<String, Object> answer = (Map<String, Object>) calls.get("dispatch_" + verb)
+                .get("answer");
+            assertThat((List<String>) answer.get("fields")).as("%s answers lean", verb)
+                .contains("state").doesNotContain("tags");
+        }
+        Argument tag = ProcessVerb.QUERY.declared("tag", Argument.Placement.TOP);
+        assertThat(tag.required()).as("the filter tag is optional").isFalse();
+        assertThat(tag.type()).as("one token, a string").isEqualTo(Argument.STRING);
     }
 
     /**

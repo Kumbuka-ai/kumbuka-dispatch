@@ -26,7 +26,7 @@ import java.time.Clock;
 import java.util.List;
 
 /**
- * One checked call, made: each of the twenty-six becomes exactly one call of
+ * One checked call, made: each of the twenty-eight becomes exactly one call of
  * {@link VerbSurface}, which resolves the scope, runs the check order and
  * opens the transaction (C1.1).
  *
@@ -118,6 +118,10 @@ public final class CallBinding {
                 in.curatedIn(), in.conflictToken().orElse(null)), false, null, clock);
             case UNRELATE -> answered(surface, actor, verb, verbs.unrelate(actor, in.address(),
                 in.conflictToken().orElse(null)), false, null, clock);
+            case TAG_ATTACH -> answered(surface, actor, verb,
+                verbs.tagAttach(actor, in.address(), in.tag()), false, null, clock);
+            case TAG_DETACH -> answered(surface, actor, verb,
+                verbs.tagDetach(actor, in.address(), in.tag()), false, null, clock);
             case CLAIM -> {
                 VerbSurface.Item at = in.address();
                 VerbSurface.Claimed claimed = verbs.claim(at,

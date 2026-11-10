@@ -45,7 +45,10 @@ public enum Form {
     CURATION_TARGET(RefusalCode.Message.INVALID_CURATION_TARGET),
     ADDENDUM_TARGET(RefusalCode.Message.INVALID_ADDENDUM_TARGET),
     ADDENDA_EXHAUSTED(RefusalCode.Message.INVALID_ADDENDA_EXHAUSTED),
-    ONCE(RefusalCode.Message.INVALID_ONCE);
+    ONCE(RefusalCode.Message.INVALID_ONCE),
+    TAG_UNKNOWN(RefusalCode.Message.INVALID_TAG_UNKNOWN),
+    TAG_WITHDRAWN(RefusalCode.Message.INVALID_TAG_WITHDRAWN),
+    TAG_FILTER(RefusalCode.Message.INVALID_TAG_FILTER);
 
     private final RefusalCode.Message message;
 

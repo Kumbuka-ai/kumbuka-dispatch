@@ -36,7 +36,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * The twenty-six calls, each bound to the kernel in one transaction.
+ * The twenty-eight calls, each bound to the kernel in one transaction.
  *
  * <p>Both surfaces reach the kernel through here and through nothing else
  * (C1.1): the adapter reads the call, checks its form against the declaration
@@ -186,6 +186,24 @@ public class VerbSurface {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
         return new Result(at.scope(),
             tasks.unrelate(scopeId, at.address(), conflictToken, actor));
+    }
+
+    /**
+     * Attaches a tag to a task. The scope is resolved for writing, which is
+     * the whole of the right to it: the part the caller takes in the task is
+     * not asked.
+     */
+    @Transactional
+    public Result tagAttach(Actor actor, Item at, String tag) {
+        UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
+        return new Result(at.scope(), tasks.tagAttach(scopeId, at.address(), tag, actor));
+    }
+
+    /** Detaches a tag from a task, under the scope's write right as above. */
+    @Transactional
+    public Result tagDetach(Actor actor, Item at, String tag) {
+        UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
+        return new Result(at.scope(), tasks.tagDetach(scopeId, at.address(), tag, actor));
     }
 
     // ======================================================================

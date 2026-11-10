@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * closure of every call.
  *
  * <p>Criterion 1 on MCP: {@code tools/list} is the twenty-six of TAR-0004
- * section 3, nothing missing and nothing extra. Criterion 3 on MCP: every call
+ * section 3 and the two calls on the tags, nothing missing and nothing extra. Criterion 3 on MCP: every call
  * with an invented argument, at the top and under {@code fields}, is refused
  * with the argument's name and writes nothing — observed as an unchanged
  * fingerprint of every table a call can write. Criterion 5: an undeclared
@@ -157,7 +157,7 @@ class McpProjectionIT {
         assertThat(String.valueOf(atTop.get("message")))
             .as("the declared arguments, and neither of the names that arrived")
             .isEqualTo("dispatch_query takes these arguments: scope, selector, state, "
-                + "apparatus, bracket, address, page_size, after, sort, direction.");
+                + "apparatus, bracket, address, tag, page_size, after, sort, direction.");
         assertThat(String.valueOf(atTop.get("data"))).doesNotContain("status")
             .doesNotContain("holder");
 
@@ -203,7 +203,7 @@ class McpProjectionIT {
             .contains("state, apparatus, bracket, address");
         assertThat(dataOf(refusal)).as("the declared arguments, never the name or its value")
             .containsEntry("accepts", List.of("scope", "selector", "state", "apparatus",
-                "bracket", "address", "page_size", "after", "sort", "direction"))
+                "bracket", "address", "tag", "page_size", "after", "sort", "direction"))
             .containsEntry("attempted", "dispatch_query")
             .doesNotContainKey("offenders")
             .doesNotContainValue("self");

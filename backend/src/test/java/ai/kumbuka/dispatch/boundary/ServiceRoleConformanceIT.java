@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.boundary;
 
 import ai.kumbuka.dispatch.platform.PlatformFixture;
@@ -56,10 +63,12 @@ class ServiceRoleConformanceIT {
 
     /**
      * Everything the role may hold OUTSIDE its own schema, named object by
-     * object. One entry today: the published read contract.
+     * object. Two entries today: the published read contract, and the tag
+     * vocabulary of sprint/210 -- the view, never the table behind it.
      */
     private static final Set<String> PERMITTED_FOREIGN_OBJECTS = Set.of(
-        SubstrateDatabaseResource.PLATFORM_SCHEMA + "." + SubstrateDatabaseResource.DIRECTORY_VIEW);
+        SubstrateDatabaseResource.PLATFORM_SCHEMA + "." + SubstrateDatabaseResource.DIRECTORY_VIEW,
+        SubstrateDatabaseResource.PLATFORM_SCHEMA + "." + SubstrateDatabaseResource.TAG_VIEW);
 
     @BeforeAll
     static void grantDirectoryAccess() {
@@ -119,6 +128,14 @@ class ServiceRoleConformanceIT {
             .as("the role must actually hold SELECT on the read contract — a permitted "
                 + "entry that is not held would make the check pass by absence")
             .containsExactly("SELECT");
+        assertThat(grantsOn(SubstrateDatabaseResource.PLATFORM_SCHEMA,
+                SubstrateDatabaseResource.TAG_VIEW))
+            .as("and on the tag vocabulary's view")
+            .containsExactly("SELECT");
+        assertThat(grantsOn(SubstrateDatabaseResource.PLATFORM_SCHEMA, "tag"))
+            .as("and nothing on the tag table behind it: the vocabulary is read through the "
+                + "view alone")
+            .isEmpty();
     }
 
     /**

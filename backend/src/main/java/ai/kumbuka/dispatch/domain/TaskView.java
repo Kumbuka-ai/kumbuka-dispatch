@@ -53,6 +53,9 @@ import java.util.UUID;
  *                        into, when the caller may see its scope; absent otherwise
  * @param texts           the texts that exist, by type and suffix
  * @param next            the transitions open to the caller
+ * @param tags            the tokens of the tags the task carries, ascending, withdrawn
+ *                        ones included; absent where the call that answers did not
+ *                        read them -- every writing call but the two on tags
  */
 public record TaskView(
     UUID identity,
@@ -73,7 +76,8 @@ public record TaskView(
     String conflictToken,
     @Nullable String curatedIn,
     List<TextHead> texts,
-    List<TaskVerb> next) {
+    List<TaskVerb> next,
+    @Nullable List<String> tags) {
 
     /**
      * One text that exists, without its content.
@@ -96,6 +100,29 @@ public record TaskView(
     public TaskView {
         texts = List.copyOf(texts);
         next = List.copyOf(next);
+        tags = tags == null ? null : List.copyOf(tags);
+    }
+
+    /** A head whose tags were not read. */
+    @SuppressWarnings("java:S107") // the record's components, as the canonical constructor
+    public TaskView(UUID identity, ExchangeAddress address, TaskState state,
+                    @Nullable HoldReason holdReason, @Nullable Outcome outcome,
+                    @Nullable Boolean selfAccepted, HolderState holder,
+                    @Nullable Instant leaseExpiresAt, @Nullable Instant notBefore,
+                    @Nullable Map<String, Object> questionOptions, int lapseCount, String title,
+                    String apparatus, @Nullable Map<String, Object> dispatchMetadata,
+                    @Nullable Map<String, Object> returnMetadata, String conflictToken,
+                    @Nullable String curatedIn, List<TextHead> texts, List<TaskVerb> next) {
+        this(identity, address, state, holdReason, outcome, selfAccepted, holder, leaseExpiresAt,
+            notBefore, questionOptions, lapseCount, title, apparatus, dispatchMetadata,
+            returnMetadata, conflictToken, curatedIn, texts, next, null);
+    }
+
+    /** The same head, carrying the tokens of the tags the task carries. */
+    TaskView withTags(List<String> carried) {
+        return new TaskView(identity, address, state, holdReason, outcome, selfAccepted, holder,
+            leaseExpiresAt, notBefore, questionOptions, lapseCount, title, apparatus,
+            dispatchMetadata, returnMetadata, conflictToken, curatedIn, texts, next, carried);
     }
 
     /**
@@ -125,9 +152,10 @@ public record TaskView(
      * the lease — and the full head for a read or a listing, which adds the
      * title, the apparatus, both metadata, the technical address as {@code
      * identity}, who holds the task, and the texts that exist by type and
-     * suffix. The one mapping of this object type to the wire; an absent
-     * value is left out, and an instant stays an instant for the serialiser to
-     * write (C7.3).
+     * suffix, and {@code tags}, the tokens of the tags the task carries. A
+     * writing call on the tags answers lean with {@code tags} besides. The one
+     * mapping of this object type to the wire; an absent value is left out,
+     * and an instant stays an instant for the serialiser to write (C7.3).
      */
     public Map<String, Object> fields(boolean head) {
         Map<String, Object> fields = new LinkedHashMap<>();
@@ -138,6 +166,7 @@ public record TaskView(
         putIfPresent(fields, "not_before", notBefore);
         putIfPresent(fields, "lease_expires_at", leaseExpiresAt);
         if (!head) {
+            putIfPresent(fields, "tags", tags);
             return fields;
         }
         fields.put("title", title);
@@ -152,6 +181,7 @@ public record TaskView(
         putIfPresent(fields, "return_metadata", returnMetadata);
         putIfPresent(fields, "curated_in", curatedIn);
         fields.put("texts", texts.stream().map(TextHead::fields).toList());
+        fields.put("tags", tags == null ? List.of() : tags);
         return fields;
     }
 
