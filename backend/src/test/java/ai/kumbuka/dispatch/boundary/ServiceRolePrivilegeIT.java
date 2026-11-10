@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.boundary;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -108,6 +115,8 @@ class ServiceRolePrivilegeIT {
         "task", TASK_PRIVILEGES,
         "task_text", TASK_PRIVILEGES,
         "task_idempotency_key", TASK_PRIVILEGES,
+        // The tags a task carries (V24): DELETE is what detaching a tag is.
+        "task_tag", TASK_PRIVILEGES,
         HISTORY_TABLE, Set.of());
 
     /**

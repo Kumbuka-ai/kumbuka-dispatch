@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.boundary;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -57,10 +64,10 @@ class ForeignKeyTenantGuardIT {
                     + "tenant, because the key is checked with row-level security bypassed")
                 .isEmpty();
             assertThat(foreignKeyCount(c))
-                .as("the schema declares seven keys, three on the exchange store and four on "
-                    + "the task store; finding none would mean the check reads the wrong schema "
-                    + "and passes because of it")
-                .isEqualTo(7);
+                .as("the schema declares eight keys, three on the exchange store, four on "
+                    + "the task store and one from the tags of a task (V24); finding none would "
+                    + "mean the check reads the wrong schema and passes because of it")
+                .isEqualTo(8);
         }
     }
 

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.boundary;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -123,8 +130,10 @@ class MissingGrantProbeIT {
         // them here the granted half of this probe would fail on the FOREIGN
         // KEY rather than run — which would read as "the grant did not work"
         // and is the opposite of what the probe is measuring. The grant is
-        // still the only variable: both halves name the same tables.
-        String referencing = "dispatch.task_text, dispatch.task_idempotency_key";
+        // still the only variable: both halves name the same tables. The tags of
+        // V24 reference the task too.
+        String referencing = "dispatch.task_text, dispatch.task_idempotency_key, "
+            + "dispatch.task_tag";
         String role = SubstrateDatabaseResource.SERVICE_ROLE;
         String password = SubstrateDatabaseResource.SERVICE_PASSWORD;
 

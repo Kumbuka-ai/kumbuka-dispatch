@@ -198,7 +198,7 @@ public enum RefusalCode {
             case SCOPE_READ_ONLY -> SCOPE_READ_ONLY;
             case SCOPE_LOCKED -> SCOPE_LOCKED;
             case CLAIM_DURATION_NOT_POSITIVE, ADDENDUM_SUFFIX_EXHAUSTED, METADATA_REFUSED,
-                 FILTER_VALUE_REFUSED, CURATION_TARGET_SELF ->
+                 FILTER_VALUE_REFUSED, CURATION_TARGET_SELF, TAG_UNKNOWN, TAG_WITHDRAWN ->
                 ARGUMENT_INVALID;
             case IDEMPOTENCY_KEY_REUSED -> IDEMPOTENCY_KEY_REUSED;
             case FILTER_FIELD_UNKNOWN -> ARGUMENT_UNKNOWN;
@@ -356,6 +356,9 @@ public enum RefusalCode {
         INVALID_ADDENDA_EXHAUSTED(RefusalCode.ARGUMENT_INVALID, "invalidAddendaExhausted"),
         INVALID_ONCE(RefusalCode.ARGUMENT_INVALID, "invalidOnce"),
         INVALID_IDEMPOTENCY_KEY(RefusalCode.ARGUMENT_INVALID, "invalidIdempotencyKey"),
+        INVALID_TAG_UNKNOWN(RefusalCode.ARGUMENT_INVALID, "invalidTagUnknown"),
+        INVALID_TAG_WITHDRAWN(RefusalCode.ARGUMENT_INVALID, "invalidTagWithdrawn"),
+        INVALID_TAG_FILTER(RefusalCode.ARGUMENT_INVALID, "invalidTagFilter"),
         INVALID_BODY(RefusalCode.PAYLOAD_MALFORMED, "invalidBody"),
         HEADER_INVALID(RefusalCode.HEADER_INVALID, "headerInvalid"),
         INVALID_IN_REQUEST(RefusalCode.ADDRESS_MALFORMED, "invalidInRequest"),

@@ -57,7 +57,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The assistant surface: the twenty-six calls of TAR-0004 section 3 as MCP
+ * The assistant surface: the twenty-six calls of TAR-0004 section 3 and the
+ * two calls on the tags of a task as MCP
  * tools, over JSON-RPC 2.0 at {@code POST /mcp}, written by hand (C4.1).
  *
  * <p>The methods are {@code initialize}, {@code ping}, {@code tools/list} and

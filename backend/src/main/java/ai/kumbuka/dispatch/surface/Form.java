@@ -46,7 +46,10 @@ public enum Form {
     ADDENDUM_TARGET(RefusalCode.Message.INVALID_ADDENDUM_TARGET),
     ADDENDA_EXHAUSTED(RefusalCode.Message.INVALID_ADDENDA_EXHAUSTED),
     ONCE(RefusalCode.Message.INVALID_ONCE),
-    IDEMPOTENCY_KEY(RefusalCode.Message.INVALID_IDEMPOTENCY_KEY);
+    IDEMPOTENCY_KEY(RefusalCode.Message.INVALID_IDEMPOTENCY_KEY),
+    TAG_UNKNOWN(RefusalCode.Message.INVALID_TAG_UNKNOWN),
+    TAG_WITHDRAWN(RefusalCode.Message.INVALID_TAG_WITHDRAWN),
+    TAG_FILTER(RefusalCode.Message.INVALID_TAG_FILTER);
 
     private final RefusalCode.Message message;
 

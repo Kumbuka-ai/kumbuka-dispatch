@@ -20,7 +20,7 @@ import java.util.Optional;
 /**
  * The routes of the REST surface: one per call, written by hand.
  *
- * <p>The calls are the twenty-six of the declaration, under the same names
+ * <p>The calls are the twenty-eight of the declaration, under the same names
  * without the {@code dispatch_} prefix the assistant surface carries. The
  * routes are not generated from the declaration; a test holds the two
  * statements together: every declared call has exactly one route here, and no
@@ -69,7 +69,9 @@ public enum CustomMethod {
     WITHDRAW("withdraw", "POST", Depth.ITEM, true),
     ANNOTATE("annotate", "POST", Depth.ITEM, true),
     RELATE("relate", "POST", Depth.ITEM, true),
-    UNRELATE("unrelate", "POST", Depth.ITEM, true);
+    UNRELATE("unrelate", "POST", Depth.ITEM, true),
+    TAG_ATTACH("tag_attach", "POST", Depth.ITEM, true),
+    TAG_DETACH("tag_detach", "POST", Depth.ITEM, true);
 
     /** Where a route acts. */
     public enum Depth {

@@ -184,3 +184,16 @@ together.
 Corrected the same day by the operator's addendum: the stamp has three values, `true`, `false`
 and unknown, and unknown is absent on the wire as every member without a value is. `query` gets
 no filter on it here, because a fifth filter changes the description of `dispatch_query`.
+
+## The amendment of 2026-11-10: tags (sprint/210, tag system v1)
+
+From the commission of sprint/210 and the platform contract it names: the vocabulary of tags is
+the platform's, published per scope in `platform.tag_access`; the service holds which task carries
+which tag. Section 3.2a adds `dispatch_tag_attach` and `dispatch_tag_detach`, section 4 the field
+`tags` and the filter `tag`, and the description of `dispatch_query` changes with that fifth
+filter, which is the release of service and router together the amendment above waited for: the
+router builds its forms from the declaration (ADR-0039). The descriptions of the two calls and the
+messages `invalidTagUnknown`, `invalidTagWithdrawn` and `invalidTagFilter` were written with this
+surface and are the service's proposal. An unknown and a withdrawn tag are refused as
+`ARGUMENT_INVALID` naming `fields.tag`, because `NOT_FOUND` carries no `data` and the same bytes
+whatever its cause, and so cannot name the argument.

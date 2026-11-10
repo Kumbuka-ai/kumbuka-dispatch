@@ -64,6 +64,7 @@ public final class DomainRefusals {
     private static final String TEXT = "text";
     private static final String OPTION = "option";
     private static final String AFTER = "after";
+    private static final String TAG = "tag";
 
     private DomainRefusals() {
     }
@@ -250,6 +251,10 @@ public final class DomainRefusals {
             case CLAIM_DURATION_NOT_POSITIVE -> Refusal.claimDurationInvalid(call,
                 pathIn(verb, "duration", Argument.Placement.TOP));
             case FILTER_VALUE_REFUSED -> filterValue(verb, call, e);
+            case TAG_UNKNOWN -> Refusal.argumentInvalid(call,
+                pathIn(verb, TAG, Argument.Placement.FIELDS), Form.TAG_UNKNOWN);
+            case TAG_WITHDRAWN -> Refusal.argumentInvalid(call,
+                pathIn(verb, TAG, Argument.Placement.FIELDS), Form.TAG_WITHDRAWN);
             default -> Refusal.valueInvalid(call);
         };
     }
@@ -284,6 +289,9 @@ public final class DomainRefusals {
         }
         if (field.equals(TaskFilter.Field.ADDRESS.wireName())) {
             return Form.ADDRESS_FILTER;
+        }
+        if (field.equals(TaskFilter.Field.TAG.wireName())) {
+            return Form.TAG_FILTER;
         }
         return Form.VALUE_FILTER;
     }

@@ -32,7 +32,8 @@ import java.util.Objects;
  * its surface (ADR-0039); it serves {@link #asMap()}. Per call it carries the identity {@code
  * dispatch_<verb>}, the effect class by the router's name, the arguments with
  * their names, types, requiredness, defaults and closed sets of values with a
- * description each, the shape of the answer, the reasons a refusal may name,
+ * description each, the shape of the answer with the fields of the task it
+ * carries, the reasons a refusal may name,
  * and the texts the call addresses to a caller. Per reason it carries the
  * templates of its messages and its remedy. The whole carries a version.
  */
@@ -61,7 +62,10 @@ public final class SurfaceDeclaration {
     private SurfaceDeclaration() {
     }
 
-    /** The twenty-six calls, in the order of TAR-0004 section 3. */
+    /**
+     * The twenty-eight calls: the twenty-six in the order of TAR-0004 section
+     * 3, then the two on the tags of a task.
+     */
     public static List<ProcessVerb> calls() {
         return List.of(ProcessVerb.values());
     }
@@ -134,6 +138,11 @@ public final class SurfaceDeclaration {
             Map<String, Object> answer = new LinkedHashMap<>();
             answer.put("shape", verb.answerShape().name());
             answer.put("members", verb.answerShape().members());
+            if (!verb.answerFields().isEmpty()) {
+                // What the member fields of the task carries: tags among them
+                // on a read, a listing and the two calls on the tags.
+                answer.put("fields", verb.answerFields());
+            }
             call.put("answer", answer);
             call.put("refusals", verb.refusals().stream().map(Enum::name).toList());
             calls.add(call);

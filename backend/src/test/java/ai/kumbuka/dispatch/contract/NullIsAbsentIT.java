@@ -145,8 +145,8 @@ class NullIsAbsentIT {
         SurfaceFixture.open("listed", "code");
         Map<String, Object> plain = collection(SurfaceFixture.SCOPE);
         Map<String, Object> nulled = collection(SurfaceFixture.SCOPE);
-        for (String name : List.of("state", "apparatus", "bracket", "address", "page_size",
-                "after", "sort", "direction")) {
+        for (String name : List.of("state", "apparatus", "bracket", "address", "tag",
+                "page_size", "after", "sort", "direction")) {
             nulled.put(name, null);
         }
         Response withNulls = Mcp.call("dispatch_query", nulled);
@@ -248,6 +248,7 @@ class NullIsAbsentIT {
             case "fields.part" -> "dispatch";
             case "fields.curated_in" -> NOWHERE;
             case "fields.apparatus" -> "code";
+            case "tag", "fields.tag" -> "component:probe";
             default -> "a value";
         };
     }

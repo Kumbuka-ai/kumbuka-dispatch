@@ -1,8 +1,8 @@
 ---
 type: contract-copy
-title: "The dispatch service's verb surface: twenty-six calls, two sizes of answer, refusals that explain themselves"
+title: "The dispatch service's verb surface: twenty-eight calls, two sizes of answer, refusals that explain themselves"
 written: 2026-10-06
-amended: 2026-10-26
+amended: 2026-11-10
 sources:
   - "platform-specs aa42521, docs/architecture/targets/TAR-0004-the-dispatch-service-carries-commissioned-work-from-issue-to-acceptance.md, sections 3, 5, 6, 7"
   - "platform-specs aa42521, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3"
@@ -15,6 +15,7 @@ sources:
   - "platform-specs ff0a4ba, TAR-0004 sections 2 and 3 and concept section 2.5: the bracket rule (ROOT_UNSENT, ROOT_CLOSED, CHILDREN_PRESENT) and no addendum to the commission of a delivered task"
   - "platform-specs 37f4d6e, code-conventions/service-contract.md, contract round 3: attempted as a rule, the framework's 404 and 405 in the envelope (C3.3, C8.3), no transport location in offenders"
   - "platform-specs 4978ca9, TAR-0004 sections 2 and 3, DEC-0014, REQ-0035: recall from open to draft up to the first take-up and never on a root with a task under it, an addendum only to a task whose work runs, take-up by claim naming the task and claim_next retiring"
+  - "the commission of sprint/210 (tag system v1), 2026-11-10: tag_attach and tag_detach, the field tags, the filter tag, the platform contract platform.tag_access; the wording of the two calls and of the three refusal messages of a tag is the service's proposal"
 ---
 <!--
 Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
@@ -248,9 +249,9 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 > For "dispatch" and "return" the answer says how many addenda the text has.
 
 **`dispatch_query`**
-> Lists the tasks of one bracket kind in a scope, each with its head: its state, attributes and the
-> calls open to you. Narrow by state, apparatus, bracket or address, the four declared filters;
-> comma-separated values are alternatives.
+> Lists the tasks of one bracket kind in a scope, each with its head: its state, attributes, tags
+> and the calls open to you. Narrow by state, apparatus, bracket or address, where comma-separated
+> values are alternatives, and by tag, one token; the declared filters combine.
 >
 > One page per call, in address order or in the order sort names. While next_cursor is in the
 > answer, more follow: pass it as after, with the same other arguments, for the next page.
@@ -274,6 +275,30 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 > Removes the record of the object a closed task was curated into. Call as the commissioner, with
 > the conflict token of your last read. The task stays closed.
 
+### 3.2a Calls on the tags of a task (sprint/210, tag system v1)
+
+The vocabulary of tags is the platform's: a tag is declared in a scope there and read through
+`platform.tag_access`. The service holds which task carries which tag. A tag is no field of the
+task: attaching and detaching leave its state, its text and its conflict token as they are, in
+every state, and take no conflict token. Whoever may write in the scope attaches and detaches, in
+whatever part it takes in the task. The tag travels under `fields`, as `fields.tag`.
+
+**`dispatch_tag_attach`**
+> Attaches a tag of the task's scope to the task, in any state of the task. Call with the write
+> right in the scope, in whatever part you take in the task; a tag the task carries already stays
+> as it is. The platform declares the tags of a scope.
+>
+> The task keeps its state, its text and its conflict token. The answer lists every tag the task
+> carries; remove one with dispatch_tag_detach.
+
+**`dispatch_tag_detach`**
+> Detaches a tag from the task, in any state of the task, a withdrawn tag included. Call with the
+> write right in the scope, in whatever part you take in the task; a tag already absent from the
+> task leaves it as it is.
+>
+> The task keeps its state, its text and its conflict token. The answer lists every tag the task
+> carries afterwards.
+
 ### 3.3 The argument `apparatus` of `dispatch_claim_next` (concept section 3.5, word for word)
 
 > Which apparatus you draw for. Every task is addressed to an apparatus: the kind of executor it is
@@ -288,7 +313,11 @@ A writing call answers lean: `address`, `fields` with the state and its attribut
 `dispatch_claim` and `dispatch_claim_next` add `receipt`. `dispatch_read` and `dispatch_query`
 answer the full head: in addition `title`, `apparatus`, `identity` (the technical address),
 `holder` (`self`, `other` or `nobody`), `lapse_count`, the pending question's options, both
-metadata, `curated_in`, and `texts`, the texts that exist by type and suffix, never their content.
+metadata, `curated_in`, `texts`, the texts that exist by type and suffix, never their content, and
+`tags`, the tokens of the tags the task carries, ascending, withdrawn ones included, an empty list
+where it carries none. `dispatch_tag_attach` and `dispatch_tag_detach` answer lean with `tags`
+besides. `dispatch_query` narrowed by `tag` lists the tasks that carry it; a token the scope does
+not declare lists none and is no refusal.
 `dispatch_query` answers `{ "objects": [...], "next_cursor": "..." }`, one page; `next_cursor` is
 absent on the last page. It takes `page_size` (50 if omitted, a whole number from 1 to 200; any
 other value is refused as `PAGE_SIZE_REJECTED`), `after` (the
@@ -477,6 +506,9 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `invalidAddendaExhausted` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: that text already carries addenda a to z, and a further letter would reissue one that exists.` |
 | `invalidOnce` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it arrived twice: in the query or the body, and in the path or a header, and a call takes each argument once.` |
 | `invalidIdempotencyKey` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a key is 1 to 255 printable ASCII characters, from the space to the tilde.` |
+| `invalidTagUnknown` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a tag the scope of the task declares; the platform declares a tag before it is attached.` |
+| `invalidTagWithdrawn` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a tag the platform has withdrawn, and a withdrawn tag takes no further task; the tasks that carry it keep it.` |
+| `invalidTagFilter` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one tag token: lower case, digits, ':' and '-', a single value.` |
 | `invalidBody` | `PAYLOAD_MALFORMED` | `{call} carries a body that is no JSON object: a body is a JSON object of the call's arguments.` |
 | `headerInvalid` | `HEADER_INVALID` | `The header Kumbuka-Surface takes the one value assistant, once, or is left out.` |
 | `scopeReserved` | `ADDRESS_MALFORMED` | `The names declaration and whoami are the REST surface's own paths and are no scope; a scope is named otherwise.` |

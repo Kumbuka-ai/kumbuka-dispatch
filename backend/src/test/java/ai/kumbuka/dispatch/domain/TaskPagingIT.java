@@ -249,7 +249,7 @@ class TaskPagingIT {
         assertForeign(() -> tasks.query(SCOPE, OTHER_SELECTOR, TaskFilter.none(), next, C),
             "selector");
         assertForeign(() -> tasks.query(SCOPE, SELECTOR, TaskFilter.of(Map.of("state", "open")),
-            next, C), "state", "apparatus", "bracket", "address");
+            next, C), "state", "apparatus", "bracket", "address", "tag");
         assertForeign(() -> tasks.query(SCOPE, SELECTOR, TaskFilter.none(),
             new PageRequest(1, SortKey.CREATED_AT, SortKey.Direction.ASC, Optional.of(cursor)),
             C), "sort");
@@ -432,7 +432,7 @@ class TaskPagingIT {
     /**
      * A foreign cursor is refused naming what differs, by the declared
      * arguments of the listing that carry it: a filter that differs is named
-     * as the four filters, since its fingerprint does not say which.
+     * as the five filters, since its fingerprint does not say which.
      */
     private static void assertForeign(org.assertj.core.api.ThrowableAssert.ThrowingCallable call,
                                       String... differs) {

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -48,8 +55,8 @@ class SurfaceConformanceIT {
     }
 
     @Test
-    void the_specification_names_twenty_six_call_forms() {
-        assertThat(VerbSurfaceSpecification.of("call")).hasSize(26);
+    void the_specification_names_twenty_eight_call_forms() {
+        assertThat(VerbSurfaceSpecification.of("call")).hasSize(28);
     }
 
     private static boolean answeredBySurface(Response answer) {

@@ -95,4 +95,10 @@ public interface ToolDescriptions {
 
     @Message
     String unrelate();
+
+    @Message
+    String tagAttach();
+
+    @Message
+    String tagDetach();
 }

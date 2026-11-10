@@ -238,6 +238,13 @@ public interface RefusalMessages {
 
     @Message
     String invalidIdempotencyKey(VerbName call, ArgumentPath path);
+    String invalidTagUnknown(VerbName call, ArgumentPath path);
+
+    @Message
+    String invalidTagWithdrawn(VerbName call, ArgumentPath path);
+
+    @Message
+    String invalidTagFilter(VerbName call, ArgumentPath path);
 
     @Message
     String invalidBody(VerbName call);
