@@ -499,7 +499,7 @@ public class TaskRepository {
 
     /**
      * Deletes a draft: its texts first, then the task. Its idempotency
-     * records stay and let go of it (V24): a key outlives the draft it
+     * records stay and let go of it (V25): a key outlives the draft it
      * created, so that a repeat under it is refused rather than creating the
      * draft again (C10.4).
      *

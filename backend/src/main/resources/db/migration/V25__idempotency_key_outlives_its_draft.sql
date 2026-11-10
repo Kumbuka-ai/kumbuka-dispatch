@@ -5,7 +5,7 @@
 -- repository root for the full licence text.
 
 -- ===========================================================================
--- V24: an idempotency key outlives the draft it created (C10.4).
+-- V25: an idempotency key outlives the draft it created (C10.4).
 --
 -- A repeat under a key whose first result is gone is refused with
 -- IDEMPOTENCY_KEY_REUSED and never carried out a second time. Until now the
