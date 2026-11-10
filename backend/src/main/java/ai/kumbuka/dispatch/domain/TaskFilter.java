@@ -116,7 +116,7 @@ public record TaskFilter(
             values(raw, Field.APPARATUS),
             brackets(values(raw, Field.BRACKET)),
             addresses(values(raw, Field.ADDRESS)),
-            tag(raw.get(Field.TAG.wireName())));
+            tokenOf(raw.get(Field.TAG.wireName())));
     }
 
     /**
@@ -141,7 +141,7 @@ public record TaskFilter(
      * among them -- is refused; a token the scope does not declare is the
      * kernel's to answer, with an empty page.
      */
-    private static Optional<String> tag(@Nullable String value) {
+    private static Optional<String> tokenOf(@Nullable String value) {
         if (value == null) {
             return Optional.empty();
         }

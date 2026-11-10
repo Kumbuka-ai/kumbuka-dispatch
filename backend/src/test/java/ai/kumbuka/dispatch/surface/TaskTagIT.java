@@ -47,9 +47,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class TaskTagIT {
 
-    private static final String ATTACH = "dispatch_tag_attach";
-    private static final String DETACH = "dispatch_tag_detach";
-    private static final String TAGS = "tags";
+    private static final String ATTACH_CALL = "dispatch_tag_attach";
+    private static final String DETACH_CALL = "dispatch_tag_detach";
+    private static final String TAGS_FIELD = "tags";
 
     @Inject TestIdentityAssociation identity;
 
@@ -177,7 +177,7 @@ class TaskTagIT {
         String token = run + "-undeclared";
         String before = Writes.snapshot();
 
-        for (String call : List.of(ATTACH, DETACH)) {
+        for (String call : List.of(ATTACH_CALL, DETACH_CALL)) {
             Map<String, Object> refusal = Mcp.refusal(Mcp.call(call, arguments(task, token)));
             assertThat(refusal.get("reason")).as(call).isEqualTo("ARGUMENT_INVALID");
             assertThat(data(refusal)).as(call).containsEntry("offenders", List.of("fields.tag"));
@@ -216,7 +216,7 @@ class TaskTagIT {
         Mcp.answer(attach(task, tag));
         SurfaceFixture.asMutedConsole(identity);
 
-        for (String call : List.of(ATTACH, DETACH)) {
+        for (String call : List.of(ATTACH_CALL, DETACH_CALL)) {
             assertThat(Mcp.reason(Mcp.call(call, arguments(task, tag)))).as(call)
                 .isEqualTo("SCOPE_READ_ONLY");
         }
@@ -276,7 +276,7 @@ class TaskTagIT {
         assertThat(objects(query(Map.of("state", "open")))).as("without the filter, every row "
                 + "of a listing carries tags").allSatisfy(t -> assertThat(t.get("fields"))
             .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
-            .containsKey(TAGS));
+            .containsKey(TAGS_FIELD));
     }
 
     @Test
@@ -363,11 +363,11 @@ class TaskTagIT {
     }
 
     private static Response attach(String address, String token) {
-        return Mcp.call(ATTACH, arguments(address, token));
+        return Mcp.call(ATTACH_CALL, arguments(address, token));
     }
 
     private static Response detach(String address, String token) {
-        return Mcp.call(DETACH, arguments(address, token));
+        return Mcp.call(DETACH_CALL, arguments(address, token));
     }
 
     private static Response read(String address) {
@@ -390,7 +390,7 @@ class TaskTagIT {
 
     @SuppressWarnings("unchecked")
     private static List<String> tags(Map<String, Object> answer) {
-        return (List<String>) ((Map<String, Object>) answer.get("fields")).get(TAGS);
+        return (List<String>) ((Map<String, Object>) answer.get("fields")).get(TAGS_FIELD);
     }
 
     @SuppressWarnings("unchecked")
