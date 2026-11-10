@@ -99,7 +99,8 @@ public final class CallPayload {
     private static final String CURATED_IN = "curated_in";
     private static final String APPARATUS = "apparatus";
     private static final String OPTION = "option";
-    private static final String TAG = "tag";
+    /** The field a call on the tags names its tag by. */
+    private static final String TAG_FIELD = "tag";
 
     /** The filters of a listing, by the names the kernel and the declaration share. */
     static final List<String> FILTERS = TaskFilter.Field.wireNames();
@@ -362,7 +363,7 @@ public final class CallPayload {
      * declared by no scope, and is answered the same way.
      */
     public String tag() {
-        return requiredField(TAG);
+        return requiredField(TAG_FIELD);
     }
 
     private VerbSurface.Item item(ArgumentPath path, String raw) {
