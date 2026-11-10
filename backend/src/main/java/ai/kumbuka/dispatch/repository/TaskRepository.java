@@ -25,6 +25,7 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -229,14 +230,14 @@ public class TaskRepository {
      */
     @Transactional
     public List<Task> page(UUID scopeId, Selector selector, TaskFilter filter,
-                           Optional<UUID> tagged, PageRequest page,
+                           @Nullable UUID tagged, PageRequest page,
                            Optional<PageCursor.Position> after, Instant now) {
         KeysetClause keyset = KeysetClause.of(page);
         StringBuilder jpql = new StringBuilder("""
             SELECT t FROM Task t
             WHERE t.scopeId = :scope AND t.selector.id = :sel
             """);
-        if (tagged.isPresent()) {
+        if (tagged != null) {
             jpql.append("  AND t.id IN (SELECT x.taskId FROM TaskTag x WHERE x.tagId = :tag)\n");
         }
         appendApparatus(jpql, filter.apparatusPatterns().size(), "t.apparatus");
@@ -260,7 +261,9 @@ public class TaskRepository {
             .setParameter(P_SCOPE, scopeId)
             .setParameter(P_SELECTOR, selector.id)
             .setMaxResults(KeysetClause.rowsRead(page));
-        tagged.ifPresent(tag -> query.setParameter("tag", tag));
+        if (tagged != null) {
+            query.setParameter("tag", tagged);
+        }
         bindApparatus(query, filter.apparatusPatterns());
         if (!filter.brackets().isEmpty()) {
             query.setParameter("numbers", filter.brackets());

@@ -263,7 +263,7 @@ class TaskTagIT {
             .containsExactlyInAnyOrder(SurfaceFixture.address(open),
                 SurfaceFixture.address(closed))
             .doesNotContain(SurfaceFixture.address(untagged));
-        assertThat(tagged).as("each row carries its tags")
+        assertThat(tagged).as("each row carries its tags").hasSize(2)
             .allSatisfy(t -> assertThat(tags(t)).containsExactly(tag));
 
         assertThat(objects(query(Map.of("tag", tag, "state", "open"))))
@@ -273,10 +273,12 @@ class TaskTagIT {
             .extracting(t -> t.get("address"))
             .containsExactly(SurfaceFixture.address(closed));
 
-        assertThat(objects(query(Map.of("state", "open")))).as("without the filter, every row "
-                + "of a listing carries tags").allSatisfy(t -> assertThat(t.get("fields"))
-            .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
-            .containsKey(TAGS_FIELD));
+        assertThat(objects(query(Map.of("state", "open"))))
+            .as("without the filter, every row of a listing carries tags")
+            .isNotEmpty()
+            .allSatisfy(t -> assertThat(t.get("fields"))
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsKey(TAGS_FIELD));
     }
 
     @Test
@@ -393,7 +395,6 @@ class TaskTagIT {
         return (List<String>) ((Map<String, Object>) answer.get("fields")).get(TAGS_FIELD);
     }
 
-    @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> objects(Response listing) {
         return objects(Mcp.answer(listing));
     }

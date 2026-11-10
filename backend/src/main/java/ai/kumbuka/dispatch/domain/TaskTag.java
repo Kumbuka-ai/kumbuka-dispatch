@@ -61,7 +61,7 @@ public class TaskTag {
     public Instant attachedAt;
 
     /** The key of the relation: the task and the tag. */
-    public static class Key implements Serializable {
+    public static final class Key implements Serializable {
 
         private static final long serialVersionUID = 1L;
 

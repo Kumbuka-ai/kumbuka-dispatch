@@ -41,7 +41,7 @@ public record TaskFilter(
     List<String> apparatusPatterns,
     Set<Integer> brackets,
     Set<ExchangeAddress> addresses,
-    Optional<String> tag) {
+    @Nullable String tag) {
 
     /** The declared fields, by their names on the wire. */
     public enum Field {
@@ -89,7 +89,7 @@ public record TaskFilter(
     /** The four fields of concept section 5, not narrowed by a tag. */
     public TaskFilter(Set<TaskState> states, List<String> apparatusPatterns,
                       Set<Integer> brackets, Set<ExchangeAddress> addresses) {
-        this(states, apparatusPatterns, brackets, addresses, Optional.empty());
+        this(states, apparatusPatterns, brackets, addresses, null);
     }
 
     /** No narrowing: every task of the selector. */
@@ -133,23 +133,23 @@ public record TaskFilter(
             + ";bracket=" + String.join(",", brackets.stream().sorted().map(String::valueOf).toList())
             + ";address=" + String.join(",", addresses.stream().map(ExchangeAddress::toString)
                 .sorted().toList())
-            + tag.map(token -> ";tag=" + token).orElse("");
+            + (tag == null ? "" : ";tag=" + tag);
     }
 
     /**
-     * The one token a tag filter takes. A value that is no token -- a list
-     * among them -- is refused; a token the scope does not declare is the
-     * kernel's to answer, with an empty page.
+     * The one token a tag filter takes; absent where none is given. A value
+     * that is no token -- a list among them -- is refused; a token the scope
+     * does not declare is the kernel's to answer, with an empty page.
      */
-    private static Optional<String> tokenOf(@Nullable String value) {
+    private static @Nullable String tokenOf(@Nullable String value) {
         if (value == null) {
-            return Optional.empty();
+            return null;
         }
         String token = value.trim();
         if (!Tag.isToken(token)) {
             throw refused(Field.TAG, "a value that is no single tag token", 1, 0);
         }
-        return Optional.of(token);
+        return token;
     }
 
     private static List<String> values(Map<String, String> raw, Field field) {

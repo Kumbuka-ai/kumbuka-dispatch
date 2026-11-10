@@ -338,13 +338,14 @@ public class TaskService {
             .map(raw -> PageCursor.decode(raw).continuing(binding));
         Instant now = now();
 
-        Optional<UUID> tagged = Optional.empty();
-        if (filter.tag().isPresent()) {
-            Optional<Tag> tag = tags.find(scopeId, filter.tag().get());
+        @Nullable UUID tagged = null;
+        String token = filter.tag();
+        if (token != null) {
+            Optional<Tag> tag = tags.find(scopeId, token);
             if (tag.isEmpty()) {
                 return new Page(List.of(), Optional.empty());
             }
-            tagged = Optional.of(tag.get().id());
+            tagged = tag.get().id();
         }
         List<Task> read = tasks.page(scopeId, declared, filter, tagged, page, after, now);
         boolean more = read.size() > page.pageSize();
