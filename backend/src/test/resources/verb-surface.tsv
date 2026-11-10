@@ -26,7 +26,8 @@
 # ---------------------------------------------------------------------------
 # THE CALLS -- one route each, and no route without one
 # ---------------------------------------------------------------------------
-# Sixteen transitions and nine calls that are not transitions. A call that is
+# Seventeen transitions, nine calls that are not transitions, and the two calls
+# on the tags of a task, which are no transitions either. A call that is
 # not the plain read, write or delete of what its path names is a custom
 # method in colon notation; the colon is forced, because the id part may grow
 # segments and a trailing verb segment could not be told from one.
@@ -58,6 +59,10 @@ call	query	GET	/api/{scope}/{selector}	collection	none
 call	annotate	POST	/api/{scope}/{selector}/{id}:annotate	item	idempotency-key
 call	relate	POST	/api/{scope}/{selector}/{id}:relate	item	conflict-token
 call	unrelate	POST	/api/{scope}/{selector}/{id}:unrelate	item	conflict-token
+# The two calls on the tags of a task (sprint/210). A repeat is safe without a
+# proof: an attached tag is attached once, a detached one is gone.
+call	tag_attach	POST	/api/{scope}/{selector}/{id}:tag_attach	item	none
+call	tag_detach	POST	/api/{scope}/{selector}/{id}:tag_detach	item	none
 
 # ---------------------------------------------------------------------------
 # THE BINDINGS

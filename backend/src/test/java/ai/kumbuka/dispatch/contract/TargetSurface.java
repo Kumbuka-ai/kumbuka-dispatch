@@ -18,7 +18,9 @@ import java.util.Map;
  *
  * <p>Written by hand from {@code platform-specs}: the twenty-six calls from
  * TAR-0004 section 3, and what each takes from the table in section 3.2 of
- * {@code concept-dispatch-store-kernel-and-surface.md}. Never read from the
+ * {@code concept-dispatch-store-kernel-and-surface.md}; and from the
+ * commission of sprint/210, the two calls on the tags of a task and the
+ * filter {@code tag}. Never read from the
  * declaration: a test whose expectation comes from the thing it checks
  * asserts that one copy equals itself.
  *
@@ -47,8 +49,14 @@ public final class TargetSurface {
         "create", "update", "delete", "read", "read_text", "query", "annotate", "relate",
         "unrelate");
 
-    /** Every call on REST: the names of section 3. */
-    public static final List<String> REST = concat(TRANSITIONS, OTHERS);
+    /**
+     * The two calls on the tags of a task, from the commission of sprint/210
+     * (tag system v1): no transitions, and no calls of TAR-0004 section 3.
+     */
+    public static final List<String> TAGS = List.of("tag_attach", "tag_detach");
+
+    /** Every call on REST: the names of section 3, and the two on the tags. */
+    public static final List<String> REST = concat(concat(TRANSITIONS, OTHERS), TAGS);
 
     /** Every call on the assistant surface: {@code dispatch_<verb>}. */
     public static final List<String> MCP = REST.stream().map(v -> "dispatch_" + v).toList();
@@ -107,8 +115,9 @@ public final class TargetSurface {
         table.put("read_text", new Arguments(List.of("address", "part"), List.of()));
         // "filters": the names are the service's; the page is the pagination
         // frame's (see the class comment).
+        // The filter tag is the commission's of sprint/210: one token.
         table.put("query", new Arguments(
-            List.of("scope", "selector", "state", "apparatus", "bracket", "address",
+            List.of("scope", "selector", "state", "apparatus", "bracket", "address", "tag",
                 "page_size", "after", "sort", "direction"),
             List.of()));
         table.put("annotate", new Arguments(List.of("address", "idempotency_key"),
@@ -116,6 +125,10 @@ public final class TargetSurface {
         table.put("relate", new Arguments(List.of("address", "conflict_token"),
             List.of("curated_in")));
         table.put("unrelate", new Arguments(List.of("address", "conflict_token"), List.of()));
+        // The commission names address and tag; the tag is what the call
+        // writes, so it stands under fields, as curated_in does on relate.
+        table.put("tag_attach", new Arguments(List.of("address"), List.of("tag")));
+        table.put("tag_detach", new Arguments(List.of("address"), List.of("tag")));
         return Map.copyOf(table);
     }
 

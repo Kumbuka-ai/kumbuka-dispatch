@@ -219,15 +219,26 @@ public class TaskRepository {
      * the join and not a constant, and the planner sorted every task of the
      * selector for each page, with either index in place ({@code
      * TaskListingPlanIT}).
+     *
+     * <p><strong>The tag stands here by its id</strong>, which the caller
+     * resolved in the task's scope through the platform's vocabulary: the
+     * listing keeps the tasks that carry it, through the relation of V24.
+     *
+     * @param tagged the id of the tag the listed tasks carry; absent where the
+     *               listing is not narrowed by a tag
      */
     @Transactional
-    public List<Task> page(UUID scopeId, Selector selector, TaskFilter filter, PageRequest page,
+    public List<Task> page(UUID scopeId, Selector selector, TaskFilter filter,
+                           Optional<UUID> tagged, PageRequest page,
                            Optional<PageCursor.Position> after, Instant now) {
         KeysetClause keyset = KeysetClause.of(page);
         StringBuilder jpql = new StringBuilder("""
             SELECT t FROM Task t
             WHERE t.scopeId = :scope AND t.selector.id = :sel
             """);
+        if (tagged.isPresent()) {
+            jpql.append("  AND t.id IN (SELECT x.taskId FROM TaskTag x WHERE x.tagId = :tag)\n");
+        }
         appendApparatus(jpql, filter.apparatusPatterns().size(), "t.apparatus");
         if (!filter.brackets().isEmpty()) {
             jpql.append("  AND t.number IN :numbers\n");
@@ -249,6 +260,7 @@ public class TaskRepository {
             .setParameter(P_SCOPE, scopeId)
             .setParameter(P_SELECTOR, selector.id)
             .setMaxResults(KeysetClause.rowsRead(page));
+        tagged.ifPresent(tag -> query.setParameter("tag", tag));
         bindApparatus(query, filter.apparatusPatterns());
         if (!filter.brackets().isEmpty()) {
             query.setParameter("numbers", filter.brackets());

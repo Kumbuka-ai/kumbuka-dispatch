@@ -7,6 +7,7 @@
  */
 package ai.kumbuka.dispatch.domain;
 
+import ai.kumbuka.dispatch.repository.TagRepository;
 import ai.kumbuka.dispatch.repository.TaskRepository;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -57,7 +58,11 @@ public class TaskService {
     /** The last letter an addendum suffix may take; past it is refused, never wrapped. */
     private static final char LAST_SUFFIX = 'z';
 
+    /** The argument a refusal of a tag names. */
+    private static final String TAG = "tag";
+
     @Inject TaskRepository tasks;
+    @Inject TagRepository tags;
     @Inject SelectorRegistry selectors;
 
     private final Clock clock;
@@ -212,10 +217,76 @@ public class TaskService {
         return address;
     }
 
-    /** The head of one task: process, never text. Writes nothing. */
+    /** The head of one task: process and tags, never text. Writes nothing. */
     @Transactional
     public TaskView read(UUID scopeId, ExchangeAddress address, Actor caller) {
-        return view(findOrRefuse(scopeId, address), caller);
+        return tagged(findOrRefuse(scopeId, address), caller);
+    }
+
+    // ----------------------------------------------------------------------
+    // Tags (sprint/210): a relation of the task, never a field of it
+    // ----------------------------------------------------------------------
+
+    /**
+     * Attaches a tag of the task's scope to the task, in any state of the
+     * task; a tag the task already carries is attached already, and the call
+     * changes nothing.
+     *
+     * <p>The relation is no change of the task: no state, no text, no lease
+     * and no conflict token is read or written, so the task is neither locked
+     * nor touched, and the call takes no token. Whoever may write in the
+     * scope attaches, in whatever part it takes in the task; the scope's
+     * write right is checked where the scope is resolved.
+     *
+     * @throws DispatchException {@code TAG_UNKNOWN} for a token the task's
+     *                           scope does not declare, {@code TAG_WITHDRAWN}
+     *                           for one the platform withdrew
+     */
+    @Transactional
+    public TaskView tagAttach(UUID scopeId, ExchangeAddress address, String token, Actor caller) {
+        Task task = findOrRefuse(scopeId, address);
+        Tag tag = declaredTag(scopeId, token);
+        if (tag.withdrawn()) {
+            throw new DispatchException(DispatchException.Reason.TAG_WITHDRAWN,
+                "the tag is withdrawn in the scope of " + address + ", and a withdrawn tag "
+                    + "takes no further task; the tasks that carry it keep it.",
+                List.of(TAG));
+        }
+        tags.attach(task.id, tag.id(), caller.subject());
+        LOG.infof("tag_attach %s", address);
+        return tagged(task, caller);
+    }
+
+    /**
+     * Detaches a tag from the task, in any state of the task and whether or
+     * not the tag is withdrawn; a tag the task does not carry leaves nothing
+     * to do. Like {@link #tagAttach}, no change of the task.
+     *
+     * @throws DispatchException {@code TAG_UNKNOWN} for a token the task's
+     *                           scope does not declare
+     */
+    @Transactional
+    public TaskView tagDetach(UUID scopeId, ExchangeAddress address, String token, Actor caller) {
+        Task task = findOrRefuse(scopeId, address);
+        Tag tag = declaredTag(scopeId, token);
+        tags.detach(task.id, tag.id());
+        LOG.infof("tag_detach %s", address);
+        return tagged(task, caller);
+    }
+
+    /** The tag of a token in the scope, through the platform's vocabulary; refused where none is. */
+    private Tag declaredTag(UUID scopeId, String token) {
+        return tags.find(scopeId, token).orElseThrow(() -> new DispatchException(
+            DispatchException.Reason.TAG_UNKNOWN,
+            "the scope declares no tag of that token; a tag is declared in the platform "
+                + "before it is attached.",
+            List.of(TAG)));
+    }
+
+    /** The head of a task with the tokens of the tags it carries. */
+    private TaskView tagged(Task task, Actor caller) {
+        return view(task, caller).withTags(
+            tags.tokens(List.of(task.id)).getOrDefault(task.id, List.of()));
     }
 
     /**
@@ -248,8 +319,12 @@ public class TaskService {
      * are all in the one statement, so no path loads the tasks of a selector
      * to cut them afterwards. One more task than the page holds is read, and
      * its presence is what says that a next page exists. The texts of the page
-     * are read as type and suffix only, and the curation targets of the page in
-     * one statement.
+     * are read as type and suffix only, the curation targets of the page in
+     * one statement, and the tags of the page in one.
+     *
+     * <p>A tag filter is resolved in the scope through the platform's
+     * vocabulary first; a token the scope does not declare carries no task,
+     * and the answer is an empty page rather than a refusal.
      *
      * @throws DispatchException {@code CURSOR_MALFORMED} or {@code CURSOR_FOREIGN}
      *                           for a cursor that does not continue this listing
@@ -263,12 +338,21 @@ public class TaskService {
             .map(raw -> PageCursor.decode(raw).continuing(binding));
         Instant now = now();
 
-        List<Task> read = tasks.page(scopeId, declared, filter, page, after, now);
+        Optional<UUID> tagged = Optional.empty();
+        if (filter.tag().isPresent()) {
+            Optional<Tag> tag = tags.find(scopeId, filter.tag().get());
+            if (tag.isEmpty()) {
+                return new Page(List.of(), Optional.empty());
+            }
+            tagged = Optional.of(tag.get().id());
+        }
+        List<Task> read = tasks.page(scopeId, declared, filter, tagged, page, after, now);
         boolean more = read.size() > page.pageSize();
         List<Task> shown = more ? read.subList(0, page.pageSize()) : read;
 
-        Map<Long, List<TaskView.TextHead>> texts = tasks.textHeads(
-            shown.stream().map(t -> t.id).toList());
+        List<Long> ids = shown.stream().map(t -> t.id).toList();
+        Map<Long, List<TaskView.TextHead>> texts = tasks.textHeads(ids);
+        Map<Long, List<String>> carried = tags.tokens(ids);
         Map<Long, String> curated = tasks.completeAddresses(shown.stream()
             .flatMap(t -> t.curatedInId().stream()).distinct().toList());
         Set<Integer> occupied = tasks.bracketsWithChildren(scopeId, declared.id, shown.stream()
@@ -279,7 +363,8 @@ public class TaskService {
                 TaskSituation.Beside beside = TaskSituation.Beside.of(written,
                     t.isBracketRoot() && occupied.contains(t.number));
                 return TaskView.of(t, TaskSituation.of(t, now, List.of(), beside), caller,
-                    written, t.curatedInId().map(curated::get).orElse(null));
+                    written, t.curatedInId().map(curated::get).orElse(null))
+                    .withTags(carried.getOrDefault(t.id, List.of()));
             })
             .toList();
         Optional<String> next = more

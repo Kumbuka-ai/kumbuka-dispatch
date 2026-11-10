@@ -125,6 +125,10 @@ class RawSqlArchitectureTest {
             + "task FOR UPDATE SKIP LOCKED, which JPQL cannot write; the addresses of curation "
             + "targets join the platform's directory view; the idempotency key is serialised "
             + "under a transaction-bound advisory lock"),
+        "repository.TagRepository", new NativeUse(3, "reads the platform's subject-filtered "
+            + "tag vocabulary, a view no entity of this service maps, for one token and joined "
+            + "to the tags of a page; attaches a tag with ON CONFLICT DO NOTHING, which JPQL "
+            + "cannot write"),
         "tenancy.TenantDatabaseBinding", new NativeUse(1, "binds app.tenant_id for the "
             + "transaction with set_config: a session setting has no entity"),
         "tenancy.TenantMigrationCallback", new NativeUse(1, "binds app.tenant_id on the "

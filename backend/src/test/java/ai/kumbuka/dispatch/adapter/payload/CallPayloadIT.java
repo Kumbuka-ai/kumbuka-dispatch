@@ -254,7 +254,8 @@ class CallPayloadIT {
         assertThat(Wire.data(refused)).containsOnlyKeys("accepts");
         @SuppressWarnings("unchecked")
         List<String> accepts = (List<String>) Wire.data(refused).get("accepts");
-        assertThat(accepts).hasSize(26).contains("dispatch_claim", "dispatch_query");
+        assertThat(accepts).hasSize(28).contains("dispatch_claim", "dispatch_query",
+            "dispatch_tag_attach", "dispatch_tag_detach");
     }
 
     // ======================================================================

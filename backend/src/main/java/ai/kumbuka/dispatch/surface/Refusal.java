@@ -711,6 +711,9 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
             case ADDENDUM_TARGET -> refusals.invalidAddendumTarget(call, at);
             case ADDENDA_EXHAUSTED -> refusals.invalidAddendaExhausted(call, at);
             case ONCE -> refusals.invalidOnce(call, at);
+            case TAG_UNKNOWN -> refusals.invalidTagUnknown(call, at);
+            case TAG_WITHDRAWN -> refusals.invalidTagWithdrawn(call, at);
+            case TAG_FILTER -> refusals.invalidTagFilter(call, at);
         };
     }
 }

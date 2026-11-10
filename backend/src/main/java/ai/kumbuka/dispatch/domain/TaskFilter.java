@@ -7,6 +7,8 @@
  */
 package ai.kumbuka.dispatch.domain;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,25 +25,31 @@ import java.util.regex.Pattern;
  * within a field are comma-separated alternatives, separate fields are
  * conjunctive, an undeclared field is refused by name rather than ignored, and
  * a value a field cannot take is refused rather than matched against nothing.
- * Four fields (concept section 5): the effective state, apparatus patterns,
- * the bracket number, and a list of addresses.
+ * Five fields: the four of concept section 5 -- the effective state, apparatus
+ * patterns, the bracket number, and a list of addresses -- and the tag a task
+ * carries (sprint/210), which takes exactly one token and no list.
  *
  * <p>The state is the EFFECTIVE one. A task whose lease lapsed is listed as
  * {@code open}, whatever its row says, for the reason the filter of the old
  * kernel refuses to filter on the stored holder.
+ *
+ * @param tag the token of the tag the listed tasks carry; absent where the
+ *            listing is not narrowed by a tag
  */
 public record TaskFilter(
     Set<TaskState> states,
     List<String> apparatusPatterns,
     Set<Integer> brackets,
-    Set<ExchangeAddress> addresses) {
+    Set<ExchangeAddress> addresses,
+    Optional<String> tag) {
 
     /** The declared fields, by their names on the wire. */
     public enum Field {
         STATE("state"),
         APPARATUS("apparatus"),
         BRACKET("bracket"),
-        ADDRESS("address");
+        ADDRESS("address"),
+        TAG("tag");
 
         private final String wireName;
 
@@ -78,6 +86,12 @@ public record TaskFilter(
         addresses = Set.copyOf(addresses);
     }
 
+    /** The four fields of concept section 5, not narrowed by a tag. */
+    public TaskFilter(Set<TaskState> states, List<String> apparatusPatterns,
+                      Set<Integer> brackets, Set<ExchangeAddress> addresses) {
+        this(states, apparatusPatterns, brackets, addresses, Optional.empty());
+    }
+
     /** No narrowing: every task of the selector. */
     public static TaskFilter none() {
         return new TaskFilter(Set.of(), List.of(), Set.of(), Set.of());
@@ -101,20 +115,41 @@ public record TaskFilter(
             states(values(raw, Field.STATE)),
             values(raw, Field.APPARATUS),
             brackets(values(raw, Field.BRACKET)),
-            addresses(values(raw, Field.ADDRESS)));
+            addresses(values(raw, Field.ADDRESS)),
+            tag(raw.get(Field.TAG.wireName())));
     }
 
     /**
      * The filter in one canonical spelling: every field, its values sorted, so
      * two filters that admit the same tasks spell alike whatever order the
      * caller wrote the alternatives in. What a cursor's fingerprint is taken of.
+     *
+     * <p>The tag is spelled only where the listing is narrowed by one, so a
+     * cursor handed out before the tag filter existed continues its listing.
      */
     String canonical() {
         return "state=" + String.join(",", states.stream().map(TaskState::wireName).sorted().toList())
             + ";apparatus=" + String.join(",", apparatusPatterns.stream().sorted().distinct().toList())
             + ";bracket=" + String.join(",", brackets.stream().sorted().map(String::valueOf).toList())
             + ";address=" + String.join(",", addresses.stream().map(ExchangeAddress::toString)
-                .sorted().toList());
+                .sorted().toList())
+            + tag.map(token -> ";tag=" + token).orElse("");
+    }
+
+    /**
+     * The one token a tag filter takes. A value that is no token -- a list
+     * among them -- is refused; a token the scope does not declare is the
+     * kernel's to answer, with an empty page.
+     */
+    private static Optional<String> tag(@Nullable String value) {
+        if (value == null) {
+            return Optional.empty();
+        }
+        String token = value.trim();
+        if (!Tag.isToken(token)) {
+            throw refused(Field.TAG, "a value that is no single tag token", 1, 0);
+        }
+        return Optional.of(token);
     }
 
     private static List<String> values(Map<String, String> raw, Field field) {

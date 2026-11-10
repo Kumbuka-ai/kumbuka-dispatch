@@ -152,4 +152,13 @@ public interface ArgumentDescriptions {
 
     @Message
     String relateCuratedIn();
+
+    @Message
+    String queryTag();
+
+    @Message
+    String tagAttachTag();
+
+    @Message
+    String tagDetachTag();
 }
