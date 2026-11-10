@@ -160,7 +160,7 @@ class CallPayloadIT {
         assertThat(refused.code()).isEqualTo(RefusalCode.ARGUMENT_UNKNOWN);
         assertThat(Wire.data(refused)).containsEntry("attempted", "dispatch_query")
             .containsEntry("accepts", List.of("scope", "selector", "state", "apparatus",
-                "bracket", "address", "page_size", "after", "sort", "direction"))
+                "bracket", "address", "tag", "page_size", "after", "sort", "direction"))
             .doesNotContainKey("offenders");
         assertThat(refused.message() + Wire.data(refused))
             .as("neither the unknown names nor their values come back")

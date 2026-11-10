@@ -311,8 +311,9 @@ class TaskTagIT {
                 + tenantB + "', '" + SubstrateDatabaseResource.SCOPE_ID + "', '"
                 + SurfaceFixture.SELECTOR + "', 1000)",
             "INSERT INTO dispatch.task (tenant_id, scope_id, selector_id, number, sub, title, "
-                + "apparatus) SELECT '" + tenantB + "', '" + SubstrateDatabaseResource.SCOPE_ID
-                + "', s.id, " + numberSub[0] + ", " + numberSub[1] + ", 'tenant b', 'code' "
+                + "apparatus, updated_at) SELECT '" + tenantB + "', '"
+                + SubstrateDatabaseResource.SCOPE_ID + "', s.id, " + numberSub[0] + ", "
+                + numberSub[1] + ", 'tenant b', 'code', now() "
                 + "FROM dispatch.selector s WHERE s.tenant_id = '" + tenantB + "'",
             "INSERT INTO dispatch.task_tag (tenant_id, task_id, tag_id, attached_by) "
                 + "SELECT t.tenant_id, t.id, '" + foreignTag + "', 'tenant-b' "

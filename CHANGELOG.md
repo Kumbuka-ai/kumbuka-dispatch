@@ -58,9 +58,11 @@ GitHub release. Releases before 0.11.0 are described on the
 
 ### Upgrade and rollback
 
-- The platform must publish the view `platform.tag_access` and grant
-  `SELECT` on it to the service role before this release runs: every `read`
-  and `query` reads it (the parallel commission in `kumbuka-server`).
+- The calls on tags and the filter `tag` read the platform's view
+  `platform.tag_access`, which the service role needs `SELECT` on (the
+  parallel commission in `kumbuka-server`). `read` and `query` ask it only for
+  tasks that carry a tag, so before the platform publishes it everything but
+  tagging works as before.
 - Migration `V24` adds the table `dispatch.task_tag` (task, tag, who attached
   and when), its index, its tenant policy under FORCE row-level security and
   its grant. It changes no existing table, column, policy or grant. An image

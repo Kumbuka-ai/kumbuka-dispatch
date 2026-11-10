@@ -159,7 +159,7 @@ class RestSurfaceIT {
         assertThat(atTop.jsonPath().getString("message"))
             .as("the declared arguments, and neither of the names that arrived")
             .isEqualTo("query takes these arguments: scope, selector, state, apparatus, "
-                + "bracket, address, page_size, after, sort, direction.");
+                + "bracket, address, tag, page_size, after, sort, direction.");
         assertThat(atTop.asString()).doesNotContain("status").doesNotContain("holder");
 
         String before = Writes.snapshot();
@@ -264,7 +264,8 @@ class RestSurfaceIT {
                 .doesNotContain("\"" + earlier + "\"");
             assertThat(refused.jsonPath().getList("data.accepts", String.class)).as(earlier)
                 .as("the verbs a task's address carries (C3.3)")
-                .hasSize(23).contains("send", "recall", "accept").doesNotContain("create", "query");
+                .hasSize(25).contains("send", "recall", "accept", "tag_attach", "tag_detach")
+                .doesNotContain("create", "query");
         }
         assertThat(Writes.snapshot()).isEqualTo(before);
     }

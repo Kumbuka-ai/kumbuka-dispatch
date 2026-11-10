@@ -373,6 +373,10 @@ public class SubstrateDatabaseResource implements QuarkusTestResourceLifecycleMa
      * tests declare the tags they need.
      */
     private static void stageTagVocabulary(Statement s) throws SQLException {
+        // The platform reaches its own schema. Without it the reference from a
+        // tag to its scope, which PostgreSQL checks as the tag table's owner,
+        // refuses the delete of any scope a probe stages and removes again.
+        s.execute("GRANT USAGE ON SCHEMA " + PLATFORM_SCHEMA + " TO " + PLATFORM_ROLE);
         s.execute("""
             CREATE TABLE IF NOT EXISTS platform.tag (
                 id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),

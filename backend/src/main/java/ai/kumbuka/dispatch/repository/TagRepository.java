@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.repository;
 
 import ai.kumbuka.dispatch.domain.Tag;
+import ai.kumbuka.dispatch.domain.TaskTag;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -100,7 +101,13 @@ public class TagRepository {
     /**
      * The tokens of the tags several tasks carry, by task, in ascending order;
      * withdrawn tags included. A task that carries none is absent from the
-     * answer. One statement for a page of a listing.
+     * answer. Two statements for a page of a listing at most.
+     *
+     * <p>The relation is read first, from this service's own table; the
+     * vocabulary is asked only for the tags it names. A page none of whose
+     * tasks carries a tag therefore reads nothing of the platform's, and a
+     * read or a listing of untagged tasks stands also where the platform does
+     * not publish its vocabulary yet.
      *
      * <p>Sorted here rather than by the database, so the order is the order
      * of the characters and not the collation's, which may pass over the
@@ -111,19 +118,28 @@ public class TagRepository {
         if (taskIds.isEmpty()) {
             return Map.of();
         }
-        List<?> rows = em.createNativeQuery("""
-                SELECT r.task_id, a.token
-                FROM dispatch.task_tag r
-                JOIN platform.tag_access a ON a.tag_id = r.tag_id
-                WHERE r.task_id IN (:tasks)
-                """)
+        List<TaskTag> carried = em.createQuery(
+                "SELECT x FROM TaskTag x WHERE x.taskId IN :tasks", TaskTag.class)
             .setParameter("tasks", taskIds)
             .getResultList();
-        Map<Long, List<String>> tokens = new LinkedHashMap<>();
-        for (Object entry : rows) {
+        if (carried.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> named = new LinkedHashMap<>();
+        for (Object entry : em.createNativeQuery("""
+                SELECT tag_id, token FROM platform.tag_access WHERE tag_id IN (:tags)
+                """)
+            .setParameter("tags", carried.stream().map(x -> x.tagId).distinct().toList())
+            .getResultList()) {
             Object[] row = (Object[]) entry;
-            tokens.computeIfAbsent(((Number) row[0]).longValue(), id -> new ArrayList<>())
-                .add((String) row[1]);
+            named.put((UUID) row[0], (String) row[1]);
+        }
+        Map<Long, List<String>> tokens = new LinkedHashMap<>();
+        for (TaskTag relation : carried) {
+            String token = named.get(relation.tagId);
+            if (token != null) {
+                tokens.computeIfAbsent(relation.taskId, id -> new ArrayList<>()).add(token);
+            }
         }
         tokens.values().forEach(list -> list.sort(String::compareTo));
         return tokens;
