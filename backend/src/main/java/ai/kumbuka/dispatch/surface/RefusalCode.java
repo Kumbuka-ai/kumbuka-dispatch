@@ -355,6 +355,7 @@ public enum RefusalCode {
         INVALID_ADDENDUM_TARGET(RefusalCode.ARGUMENT_INVALID, "invalidAddendumTarget"),
         INVALID_ADDENDA_EXHAUSTED(RefusalCode.ARGUMENT_INVALID, "invalidAddendaExhausted"),
         INVALID_ONCE(RefusalCode.ARGUMENT_INVALID, "invalidOnce"),
+        INVALID_IDEMPOTENCY_KEY(RefusalCode.ARGUMENT_INVALID, "invalidIdempotencyKey"),
         INVALID_TAG_UNKNOWN(RefusalCode.ARGUMENT_INVALID, "invalidTagUnknown"),
         INVALID_TAG_WITHDRAWN(RefusalCode.ARGUMENT_INVALID, "invalidTagWithdrawn"),
         INVALID_TAG_FILTER(RefusalCode.ARGUMENT_INVALID, "invalidTagFilter"),

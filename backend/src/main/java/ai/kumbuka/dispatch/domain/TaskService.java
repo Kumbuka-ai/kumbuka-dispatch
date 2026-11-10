@@ -114,10 +114,10 @@ public class TaskService {
         String digest = IdempotencyService.digestOf(Arrays.asList(selector,
             parentNumber == null ? null : String.valueOf(parentNumber), draft.title(),
             draft.apparatus(), draft.text(), String.valueOf(draft.metadata())));
-        Optional<Task> repeat = firstAnswerFor(scopeId, caller, key, CREATE, digest)
-            .flatMap(id -> tasks.findById(scopeId, id));
+        Optional<Long> repeat = firstAnswerFor(scopeId, caller, key, CREATE, digest);
         if (repeat.isPresent()) {
-            return view(repeat.get(), caller);
+            return view(tasks.findById(scopeId, repeat.get()).orElseThrow(
+                TaskService::firstResultGone), caller);
         }
 
         Selector declared = selectors.requireDeclared(scopeId, selector);
@@ -601,10 +601,7 @@ public class TaskService {
      * nothing is taken.
      */
     private TaskClaim reissue(UUID scopeId, Long taskId, TaskVerb verb, TaskCall call) {
-        Task task = tasks.lockById(scopeId, taskId).orElseThrow(() -> new DispatchException(
-            DispatchException.Reason.NOT_FOUND,
-            "the task this key was spent on is no longer there, and a repeat under the key "
-                + "takes nothing up. Take a task up with a new key."));
+        Task task = tasks.lockById(scopeId, taskId).orElseThrow(TaskService::firstResultGone);
         TaskSituation s = situation(task);
         Actor caller = call.caller();
         if (s.state() != TaskState.ACTIVE || !s.heldBy(caller)) {
@@ -943,13 +940,15 @@ public class TaskService {
 
     /**
      * The task a repeat of a call answers with, if it is one; refuses the key
-     * spent on another call or other arguments, on the task's own ledger.
+     * spent on another call or other arguments, on the task's own ledger, and
+     * the repeat whose first result is gone (C10.4).
      *
      * <p>Takes the key's lock first ({@link TaskRepository#lockKeyUse}), and a
      * call under a key calls this before it locks anything else. A second call
      * under the same key that overlaps the first therefore waits here until
      * the first has committed, and then reads the first's entry as a repeat.
-     * Without a key nothing is locked.
+     * Without a key nothing is locked. A key older than {@link
+     * SpentTaskKey#REMEMBERED_FOR} counts as absent.
      */
     private Optional<Long> firstAnswerFor(UUID scopeId, Actor caller, IdempotencyKey key,
                                           String call, String digest) {
@@ -965,14 +964,36 @@ public class TaskService {
             throw new DispatchException(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED,
                 "the key was already spent on a different call in this scope");
         }
-        return Optional.of(held.get().taskId);
+        Long produced = held.get().taskId;
+        if (produced == null) {
+            throw firstResultGone();
+        }
+        return Optional.of(produced);
     }
 
+    /**
+     * The refusal of a repeat whose first result no longer stands: the draft
+     * it created was deleted. The call is never carried out a second time
+     * (C10.4).
+     */
+    private static DispatchException firstResultGone() {
+        return new DispatchException(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED,
+            "the task this key was spent on is no longer there, and a repeat under the key "
+                + "does nothing a second time. Make the call with a new key.");
+    }
+
+    /**
+     * Remembers the key a call was carried out under, and removes the
+     * caller's keys older than {@link SpentTaskKey#REMEMBERED_FOR}: expiry is
+     * lazy, on the caller's next key, with no background job (C10.4).
+     */
     private void remember(UUID scopeId, Actor caller, IdempotencyKey key, String call,
                           String digest, Task produced) {
         if (!(key instanceof IdempotencyKey.Given given)) {
             return;
         }
+        tasks.forgetExpiredKeys(caller.subject(), given.value(),
+            now().minus(SpentTaskKey.REMEMBERED_FOR));
         Optional<SpentTaskKey> held = tasks.lockKey(scopeId, caller.subject(), given.value());
         SpentTaskKey row = held.orElseGet(SpentTaskKey::new);
         row.scopeId = scopeId;

@@ -364,13 +364,8 @@ class CallBindingIT {
     @Test
     void an_unexpected_failure_gives_back_no_value_the_call_carried() {
         String marker = "zzecho7319";
-        Map<String, Object> arguments = new LinkedHashMap<>();
-        arguments.put("scope", "probe");
-        arguments.put("selector", "sprint");
-        arguments.put("fields", Map.of("title", marker, "apparatus", "code"));
-
         Refusal refused = UnexpectedFailures.refuse(
-            VerbName.of(ProcessVerb.CREATE, Surface.MCP), DomainRefusals.whereIn(arguments),
+            VerbName.of(ProcessVerb.CREATE, Surface.MCP),
             new IllegalStateException("broke on " + marker));
 
         assertThat(refused.code()).isEqualTo(RefusalCode.UNEXPECTED_FAILURE);

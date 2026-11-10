@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.TenantId;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -17,7 +18,9 @@ import java.util.UUID;
  * One idempotency key a caller has spent on a task call.
  *
  * <p>The key, the call it was spent on, a digest of that call's arguments and
- * the task it answered with. Remembered for {@link #REMEMBERED_FOR}.
+ * the task it answered with. Remembered for {@link #REMEMBERED_FOR}: the key
+ * outlives a draft it created, which is deleted, so that a repeat after the
+ * deletion is refused rather than carried out a second time (C10.4).
  */
 @Entity
 @Table(name = "task_idempotency_key", schema = "dispatch")
@@ -39,8 +42,9 @@ public class SpentTaskKey {
     @Column(name = "scope_id", nullable = false)
     public UUID scopeId;
 
-    @Column(name = "task_id", nullable = false)
-    public Long taskId;
+    /** The task the first call answered with; absent once that task, a draft, was deleted. */
+    @Column(name = "task_id")
+    public @Nullable Long taskId;
 
     @Column(name = "caller_subject", nullable = false)
     public String callerSubject;

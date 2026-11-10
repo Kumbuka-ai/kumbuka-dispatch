@@ -505,6 +505,7 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `invalidAddendumTarget` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a part the task carries a text of; the read of the task lists them under fields.texts.` |
 | `invalidAddendaExhausted` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: that text already carries addenda a to z, and a further letter would reissue one that exists.` |
 | `invalidOnce` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it arrived twice: in the query or the body, and in the path or a header, and a call takes each argument once.` |
+| `invalidIdempotencyKey` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a key is 1 to 255 printable ASCII characters, from the space to the tilde.` |
 | `invalidTagUnknown` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a tag the scope of the task declares; the platform declares a tag before it is attached.` |
 | `invalidTagWithdrawn` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names a tag the platform has withdrawn, and a withdrawn tag takes no further task; the tasks that carry it keep it.` |
 | `invalidTagFilter` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one tag token: lower case, digits, ':' and '-', a single value.` |

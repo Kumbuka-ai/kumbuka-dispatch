@@ -32,9 +32,13 @@ public sealed interface IdempotencyKey {
     /** The one instance of the absent case; it carries nothing to distinguish. */
     IdempotencyKey NONE = new NotGiven();
 
-    /** The key an argument carries, absent or present. */
+    /**
+     * The key an argument carries, absent or present. Its form, 1 to 255
+     * printable ASCII characters, the space among them, is checked where the
+     * call arrives (C10.4), so a key of spaces is a key.
+     */
     static IdempotencyKey of(@Nullable String value) {
-        return value == null || value.isBlank() ? NONE : new Given(value);
+        return value == null ? NONE : new Given(value);
     }
 
     /** Whether a key arrived at all. */

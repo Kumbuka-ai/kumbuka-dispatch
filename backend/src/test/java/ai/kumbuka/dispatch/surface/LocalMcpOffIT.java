@@ -77,7 +77,8 @@ class LocalMcpOffIT {
         assertThat(Arc.container().instance(McpAdapter.class).isAvailable())
             .as("the resource is not a bean of this build").isFalse();
         assertThat(Arc.container().instance(DeclarationGuard.class).isAvailable())
-            .as("nor is the start-up guard of the declaration").isFalse();
+            .as("the start-up guard of the declaration stays: REST serves the declaration "
+                + "in this build too (C5.1, C5.6)").isTrue();
         assertThat(Arc.container().instance(VerbSurface.class).isAvailable())
             .as("the verb surface both adapters call stays").isTrue();
     }

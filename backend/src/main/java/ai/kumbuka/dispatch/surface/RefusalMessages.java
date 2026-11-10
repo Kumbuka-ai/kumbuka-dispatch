@@ -237,6 +237,7 @@ public interface RefusalMessages {
     String invalidOnce(VerbName call, ArgumentPath path);
 
     @Message
+    String invalidIdempotencyKey(VerbName call, ArgumentPath path);
     String invalidTagUnknown(VerbName call, ArgumentPath path);
 
     @Message

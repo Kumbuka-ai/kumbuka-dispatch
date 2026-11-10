@@ -92,6 +92,8 @@ public final class CallPayload {
     private static final String DURATION = "duration";
     private static final String CONFIRMATION = "confirmation";
     private static final String KEY = "idempotency_key";
+    /** The longest idempotency key (C10.4). */
+    private static final int KEY_LENGTH_MAX = 255;
     private static final String REMARK = "remark";
     private static final String TEXT = "text";
     private static final String PART = "part";
@@ -145,6 +147,7 @@ public final class CallPayload {
 
         refuseUndeclared();
         refuseMistyped();
+        refuseKeyOutsideItsForm();
         refuseMissing();
     }
 
@@ -234,6 +237,23 @@ public final class CallPayload {
         Optional<Long> size = wholeOf(value);
         if (size.isPresent() && (size.get() < 1 || size.get() > Bound.PAGE_SIZE_MAX.value())) {
             throw refused(Refusal.pageSizeRejected(call, List.of(ArgumentPath.of(argument))));
+        }
+    }
+
+    /**
+     * Refuses an idempotency key outside its form: 1 to {@value #KEY_LENGTH_MAX}
+     * printable ASCII characters, the space to the tilde (C10.4). The refusal
+     * names the argument and never the key.
+     */
+    private void refuseKeyOutsideItsForm() {
+        Object value = top.get(KEY);
+        if (value == null) {
+            return;
+        }
+        String key = String.valueOf(value);
+        boolean printable = key.chars().allMatch(c -> c >= ' ' && c <= '~');
+        if (key.isEmpty() || key.length() > KEY_LENGTH_MAX || !printable) {
+            throw refused(Refusal.argumentInvalid(call, topPath(KEY), Form.IDEMPOTENCY_KEY));
         }
     }
 

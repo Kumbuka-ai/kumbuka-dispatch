@@ -186,8 +186,7 @@ public class McpAdapter {
         } catch (WebApplicationException framework) {
             throw framework;
         } catch (RuntimeException failure) {
-            return refusal(id, UnexpectedFailures.refuse(VerbName.of(verb, Surface.MCP),
-                DomainRefusals.whereIn(params.arguments()), failure));
+            return refusal(id, UnexpectedFailures.refuse(VerbName.of(verb, Surface.MCP), failure));
         }
     }
 
