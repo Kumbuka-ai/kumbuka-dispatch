@@ -84,7 +84,7 @@ class TaskRecallIT {
 
         TaskView changed = tasks.update(SCOPE, s.address(),
             new TaskService.Draft("the changed title", null, "the changed commission", null),
-            recalled.conflictToken(), C);
+            recalled.conflictToken(), C).answer();
         tasks.act(SCOPE, s.address(), TaskVerb.SEND,
             TaskCall.by(C).withConflictToken(changed.conflictToken()));
 
@@ -136,7 +136,7 @@ class TaskRecallIT {
         TaskStage.Staged root = stage.open(SELECTOR);
         TaskView child = tasks.create(SCOPE, SELECTOR, root.address().number(),
             new TaskService.Draft("a child", "code", "the child's commission", null), C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
         assertOccupied(root, "a draft child");
 
         tasks.act(SCOPE, child.address(), TaskVerb.SEND,
@@ -159,13 +159,13 @@ class TaskRecallIT {
         TaskStage.Staged root = stage.open(SELECTOR);
         TaskView child = tasks.create(SCOPE, SELECTOR, root.address().number(),
             new TaskService.Draft("a child", "code", "the child's commission", null), C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
         tasks.act(SCOPE, child.address(), TaskVerb.SEND,
             TaskCall.by(C).withConflictToken(child.conflictToken()));
         TaskView sent = tasks.read(SCOPE, child.address(), C);
 
         TaskView recalled = tasks.act(SCOPE, child.address(), TaskVerb.RECALL,
-            TaskCall.by(C).withConflictToken(sent.conflictToken()));
+            TaskCall.by(C).withConflictToken(sent.conflictToken())).answer();
         assertThat(recalled.state()).isEqualTo(TaskState.DRAFT);
         assertThat(tasks.read(SCOPE, root.address(), C).state()).isEqualTo(TaskState.OPEN);
     }
@@ -339,12 +339,12 @@ class TaskRecallIT {
 
     private TaskView recall(TaskStage.Staged s, Actor caller) {
         return tasks.act(SCOPE, s.address(), TaskVerb.RECALL,
-            TaskCall.by(caller).withConflictToken(stage.token(s)));
+            TaskCall.by(caller).withConflictToken(stage.token(s))).answer();
     }
 
     private TaskView note(TaskStage.Staged s, TextType part, Actor writer) {
         return tasks.annotate(SCOPE, s.address(), part, "an addendum", writer,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
     }
 
     private void assertFrozen(TaskStage.Staged s) {

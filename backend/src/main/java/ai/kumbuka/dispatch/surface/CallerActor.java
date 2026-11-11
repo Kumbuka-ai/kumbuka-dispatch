@@ -12,7 +12,6 @@ import ai.kumbuka.dispatch.domain.DispatchException;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
-import org.jboss.logging.Logger;
 
 import java.util.EnumSet;
 import java.util.Set;
@@ -40,26 +39,20 @@ import java.util.Set;
 @RequestScoped
 public class CallerActor {
 
-    /**
-     * The one refusal on this surface that is worth WARN, and the reason it
-     * is the exception.
-     *
-     * <p>Every other refusal here is a caller being told no, which is the
-     * surface working; those are DEBUG in {@link RefusalMapper}. This one is
-     * not about the call at all. A token that authenticated and carries no
-     * capacity is a <strong>realm misconfiguration</strong>: the
-     * roles are wrong, no caller can fix it, and nothing else will say so. The
-     * caller sees a 403 and falls silent, and the roles stay wrong.
-     *
-     * <p>The subject is not logged. Which token it was belongs to the audit
-     * log under its own rules; what the operator needs from this line is that
-     * the realm is handing out unusable tokens at all.
-     */
-    private static final Logger LOG = Logger.getLogger(CallerActor.class);
-
     @Inject SecurityIdentity identity;
 
     /**
+     * The actor of this request.
+     *
+     * <p>The one refusal on this surface that is worth WARN, and the reason
+     * it is the exception: every other refusal is a caller being told no,
+     * which is the surface working, and is DEBUG where it is caught. This one
+     * is not about the call at all. A token that authenticated and carries no
+     * capacity is a <strong>realm misconfiguration</strong>: the roles are
+     * wrong, no caller can fix it, and nothing else will say so. The subject
+     * is not logged; which token it was belongs to the audit log under its
+     * own rules.
+     *
      * @return the actor this request acts as
      * @throws DispatchException with {@code ACTOR_UNKNOWN} when the token
      *         carries no capacity
@@ -74,8 +67,8 @@ public class CallerActor {
         }
 
         if (capacities.isEmpty()) {
-            LOG.warnf("a token authenticated without a capacity: %s",
-                DispatchException.Reason.ACTOR_UNKNOWN);
+            PlatformLog.tokenWithoutCapacity(
+                PlatformLog.Reason.of(DispatchException.Reason.ACTOR_UNKNOWN));
             throw new DispatchException(DispatchException.Reason.ACTOR_UNKNOWN,
                 "this token carries neither '" + Actor.ROLE_EXECUTOR + "' nor '"
                     + Actor.ROLE_CONSOLE + "'. The capacity is not defaulted, because "

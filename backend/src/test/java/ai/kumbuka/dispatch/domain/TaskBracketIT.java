@@ -77,7 +77,7 @@ class TaskBracketIT {
 
         TaskView closed = tasks.act(SCOPE, root.address(), TaskVerb.WITHDRAW,
             TaskCall.by(C).withConflictToken(stage.token(root))
-                .withConfirmation(first.confirmation().orElseThrow()));
+                .withConfirmation(first.confirmation().orElseThrow())).answer();
         assertThat(closed.state()).isEqualTo(TaskState.CLOSED);
         TaskStage.Row child = TaskStage.row(running.identity());
         assertThat(child.state()).isEqualTo("closed");
@@ -131,7 +131,7 @@ class TaskBracketIT {
             TaskCall.by(C).withConflictToken(stage.token(c)));
 
         TaskView closed = tasks.act(SCOPE, root.address(), TaskVerb.WITHDRAW,
-            TaskCall.by(C).withConflictToken(stage.token(root)));
+            TaskCall.by(C).withConflictToken(stage.token(root))).answer();
         assertThat(closed.state()).isEqualTo(TaskState.CLOSED);
     }
 
@@ -147,7 +147,7 @@ class TaskBracketIT {
     private TaskStage.Staged child(TaskStage.Staged root) {
         TaskView v = tasks.create(SCOPE, SELECTOR, root.address().number(),
             new TaskService.Draft("a child", "code", "its commission", null), C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
         TaskStage.Staged child = new TaskStage.Staged(v.address(), v.identity(), SELECTOR, null);
         tasks.act(SCOPE, child.address(), TaskVerb.SEND,
             TaskCall.by(C).withConflictToken(stage.token(child)));

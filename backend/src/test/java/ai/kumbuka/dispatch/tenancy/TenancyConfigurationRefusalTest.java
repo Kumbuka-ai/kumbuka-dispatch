@@ -67,11 +67,13 @@ class TenancyConfigurationRefusalTest {
     /**
      * The refusal stands in a log line of its own: the log format carries no
      * exception (C13.1, C13.2), so the reason a start is refused reaches an
-     * operator's crash loop only through that line.
+     * operator's crash loop only through that line. It names the problem by
+     * its constant and carries no setting's value, under the category of
+     * {@link TenancyLog} (DEC-0051, C4).
      */
     @Test
     void the_refusal_stands_in_a_log_line_of_its_own() {
-        List<LogRecord> lines = LogLines.of(TenancyConfigurationGuard.class, () ->
+        List<LogRecord> lines = LogLines.of(TenancyLog.class, () ->
             TenancyConfigurationGuard.requireConfigured(shipped()));
 
         assertThat(lines)
@@ -81,8 +83,8 @@ class TenancyConfigurationRefusalTest {
             .satisfies(line -> {
                 assertThat(line.getLevel().intValue()).as("WARN, a configuration anomaly")
                     .isEqualTo(Level.WARNING.intValue());
-                assertThat(LogLines.text(line)).contains(TenancyConfigurationGuard.TENANT_KEY)
-                    .contains("DISPATCH_TENANT_ID");
+                assertThat(LogLines.text(line)).isEqualTo("start refused: "
+                    + TenancyLog.StartProblem.TENANT_NOT_SET);
                 assertThat(line.getThrown()).as("the line carries no exception").isNull();
             });
     }

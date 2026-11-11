@@ -141,13 +141,13 @@ class TaskLifecycleIT {
             switch (verb) {
                 case CLAIM -> tasks.claim(SCOPE, s.address(), call);
                 case CLAIM_NEXT -> {
-                    TaskClaim drawn = tasks.claimNext(SCOPE, s.selector(), List.of("code"), call);
+                    TaskClaim drawn = tasks.claimNext(SCOPE, s.selector(), List.of("code"), call).answer();
                     if (!drawn.task().address().equals(s.address())) {
                         return "drew " + drawn.task().address();
                     }
                 }
                 default -> {
-                    if (tasks.act(SCOPE, s.address(), verb, call).conflictToken().equals(before)) {
+                    if (tasks.act(SCOPE, s.address(), verb, call).answer().conflictToken().equals(before)) {
                         return "noop";
                     }
                 }

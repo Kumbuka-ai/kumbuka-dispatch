@@ -11,6 +11,7 @@ import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.domain.IdempotencyKey;
 import ai.kumbuka.dispatch.domain.SelectorRegistry;
+import ai.kumbuka.dispatch.domain.Task;
 import ai.kumbuka.dispatch.domain.TaskCall;
 import ai.kumbuka.dispatch.domain.TaskClaim;
 import ai.kumbuka.dispatch.domain.TaskFilter;
@@ -29,11 +30,11 @@ import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import org.jboss.logging.Logger;
 import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * The twenty-eight calls, each bound to the kernel in one transaction.
@@ -50,16 +51,17 @@ import java.util.UUID;
  * <p>What comes back is the kernel's {@link TaskView}, which has no component
  * that could carry a text, and the scope's slug the complete address is
  * rendered with. Only {@link #readText} answers a text.
+ *
+ * <p>The lines of a completed write are written here, through {@link
+ * PlatformLog}, and not in the kernel, which logs nothing (DEC-0051, C4): the
+ * call, the task by its technical address, the state it entered and the scope
+ * by its id. Never the complete address, whose scope name and selector are the
+ * caller's words. The kernel's {@link TaskService.Written} hands the written
+ * task back for that, and is absent where the call wrote nothing.
  */
 @ApplicationScoped
 @TenantBound
 public class VerbSurface {
-
-    /**
-     * Says call, address and scope id; never a title, a text, metadata, a
-     * token, a receipt or the actor. A guard enforces it over this tree.
-     */
-    private static final Logger LOG = Logger.getLogger(VerbSurface.class);
 
     @Inject TaskService tasks;
     @Inject ScopeDirectory scopes;
@@ -99,24 +101,45 @@ public class VerbSurface {
                          @Nullable Integer parentNumber,
                          TaskService.Draft draft, IdempotencyKey key) {
         UUID scopeId = resolve(actor, scope, Access.WRITE);
-        TaskView created = tasks.create(scopeId, selector, parentNumber, draft, actor, key);
-        LOG.infof("create %s in scope %s", created.address(), scopeId);
-        return new Result(scope, created);
+        TaskService.Written<TaskView> created =
+            tasks.create(scopeId, selector, parentNumber, draft, actor, key);
+        Task stored = created.stored();
+        if (stored != null) {
+            PlatformLog.TechnicalAddress entry = PlatformLog.TechnicalAddress.of(stored);
+            PlatformLog.created(entry, PlatformLog.Status.of(TaskState.DRAFT));
+            PlatformLog.createdInScope(entry, PlatformLog.ScopeId.of(scopeId));
+        }
+        return new Result(scope, created.answer());
     }
 
     @Transactional
     public Result update(Actor actor, Item at, TaskService.Draft changes,
                          @Nullable String conflictToken) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
-        return new Result(at.scope(),
-            tasks.update(scopeId, at.address(), changes, conflictToken, actor));
+        return new Result(at.scope(), logged(
+            tasks.update(scopeId, at.address(), changes, conflictToken, actor),
+            PlatformLog::updated));
     }
 
     /** Deletes a draft and answers the complete address it had. */
     @Transactional
     public String delete(Actor actor, Item at, @Nullable String conflictToken) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
-        return tasks.delete(scopeId, at.address(), conflictToken, actor).complete(at.scope());
+        return logged(tasks.delete(scopeId, at.address(), conflictToken, actor),
+            PlatformLog::deleted).complete(at.scope());
+    }
+
+    /**
+     * The answer of a write, after its INFO line (C13.3): the task by its
+     * technical address, for a write that wrote something.
+     */
+    private static <T> T logged(TaskService.Written<T> written,
+                                Consumer<PlatformLog.TechnicalAddress> line) {
+        Task stored = written.stored();
+        if (stored != null) {
+            line.accept(PlatformLog.TechnicalAddress.of(stored));
+        }
+        return written.answer();
     }
 
     @Transactional
@@ -137,8 +160,8 @@ public class VerbSurface {
                          PageRequest page) {
         UUID scopeId = resolve(actor, scope, Access.READ);
         Page answered = tasks.query(scopeId, selector, filter, page, actor);
-        LOG.debugf("query %s in scope %s: %d head(s)", selector, scopeId,
-            answered.tasks().size());
+        PlatformLog.queried(PlatformLog.ScopeId.of(scopeId),
+            PlatformLog.Count.of(answered.tasks()));
         return new Listing(scope, answered);
     }
 
@@ -162,8 +185,9 @@ public class VerbSurface {
             throw new SurfaceException(
                 Refusal.argumentInvalid(call, partPath, Form.ADDENDUM_TARGET));
         }
-        return new Result(at.scope(),
-            tasks.annotate(scopeId, at.address(), part, text, actor, key));
+        return new Result(at.scope(), logged(
+            tasks.annotate(scopeId, at.address(), part, text, actor, key),
+            PlatformLog::annotated));
     }
 
     /**
@@ -177,15 +201,16 @@ public class VerbSurface {
     public Result relate(Actor actor, Item at, Item target, @Nullable String conflictToken) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
         UUID targetScopeId = resolve(actor, target.scope(), Access.READ);
-        return new Result(at.scope(), tasks.relate(scopeId, at.address(), targetScopeId,
-            target.address(), conflictToken, actor));
+        return new Result(at.scope(), logged(tasks.relate(scopeId, at.address(), targetScopeId,
+            target.address(), conflictToken, actor), PlatformLog::related));
     }
 
     @Transactional
     public Result unrelate(Actor actor, Item at, @Nullable String conflictToken) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
-        return new Result(at.scope(),
-            tasks.unrelate(scopeId, at.address(), conflictToken, actor));
+        return new Result(at.scope(), logged(
+            tasks.unrelate(scopeId, at.address(), conflictToken, actor),
+            PlatformLog::unrelated));
     }
 
     /**
@@ -196,14 +221,16 @@ public class VerbSurface {
     @Transactional
     public Result tagAttach(Actor actor, Item at, String tag) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
-        return new Result(at.scope(), tasks.tagAttach(scopeId, at.address(), tag, actor));
+        return new Result(at.scope(), logged(tasks.tagAttach(scopeId, at.address(), tag, actor),
+            PlatformLog::tagAttached));
     }
 
     /** Detaches a tag from a task, under the scope's write right as above. */
     @Transactional
     public Result tagDetach(Actor actor, Item at, String tag) {
         UUID scopeId = resolve(actor, at.scope(), Access.WRITE);
-        return new Result(at.scope(), tasks.tagDetach(scopeId, at.address(), tag, actor));
+        return new Result(at.scope(), logged(tasks.tagDetach(scopeId, at.address(), tag, actor),
+            PlatformLog::tagDetached));
     }
 
     // ======================================================================
@@ -214,15 +241,26 @@ public class VerbSurface {
     @Transactional
     public Result act(Item at, TaskVerb verb, TaskCall call) {
         UUID scopeId = resolve(call.caller(), at.scope(), Access.WRITE);
-        TaskView after = tasks.act(scopeId, at.address(), verb, call);
-        LOG.infof("%s %s in scope %s", verb.wireName(), at.address(), scopeId);
-        return new Result(at.scope(), after);
+        TaskService.Written<TaskView> after = tasks.act(scopeId, at.address(), verb, call);
+        for (Task child : after.withdrawn()) {
+            PlatformLog.childWithdrawn(PlatformLog.TechnicalAddress.of(child),
+                PlatformLog.Status.of(TaskState.CLOSED));
+        }
+        Task stored = after.stored();
+        if (stored != null) {
+            PlatformLog.TechnicalAddress entry = PlatformLog.TechnicalAddress.of(stored);
+            VerbName named = callOf(verb);
+            PlatformLog.transitioned(named, entry, PlatformLog.Status.of(verb.target()));
+            PlatformLog.transitionedInScope(named, entry, PlatformLog.ScopeId.of(scopeId));
+        }
+        return new Result(at.scope(), after.answer());
     }
 
     @Transactional
     public Claimed claim(Item at, TaskCall call, IdempotencyKey key) {
         UUID scopeId = resolve(call.caller(), at.scope(), Access.WRITE);
-        TaskClaim claimed = tasks.claim(scopeId, at.address(), call, key);
+        TaskClaim claimed = taken(TaskVerb.CLAIM,
+            tasks.claim(scopeId, at.address(), call, key));
         return new Claimed(new Result(at.scope(), claimed.task()), claimed.receipt());
     }
 
@@ -230,9 +268,42 @@ public class VerbSurface {
     public Claimed claimNext(String scope, String selector, List<String> patterns,
                              TaskCall call, IdempotencyKey key) {
         UUID scopeId = resolve(call.caller(), scope, Access.WRITE);
-        TaskClaim claimed = tasks.claimNext(scopeId, selector, patterns, call, key);
-        LOG.infof("claim_next %s in scope %s", claimed.task().address(), scopeId);
+        TaskService.Written<TaskClaim> drawn =
+            tasks.claimNext(scopeId, selector, patterns, call, key);
+        TaskClaim claimed = taken(TaskVerb.CLAIM_NEXT, drawn);
+        Task stored = drawn.stored();
+        if (stored != null) {
+            PlatformLog.drawnInScope(PlatformLog.TechnicalAddress.of(stored),
+                PlatformLog.ScopeId.of(scopeId));
+        }
         return new Claimed(new Result(scope, claimed.task()), claimed.receipt());
+    }
+
+    /**
+     * The answer of a take-up, after its INFO line: the task it took up and
+     * the state it entered, or, for a repeat under the key, the receipt it
+     * reissued.
+     */
+    private static TaskClaim taken(TaskVerb verb, TaskService.Written<TaskClaim> written) {
+        Task stored = written.stored();
+        if (stored != null) {
+            PlatformLog.TechnicalAddress entry = PlatformLog.TechnicalAddress.of(stored);
+            if (written.reissued()) {
+                PlatformLog.receiptReissued(callOf(verb), entry);
+            } else {
+                PlatformLog.transitioned(callOf(verb), entry,
+                    PlatformLog.Status.of(TaskState.ACTIVE));
+            }
+        }
+        return written.answer();
+    }
+
+    /**
+     * The call a transition row is declared as, by the name TAR-0004 gives
+     * it: the REST name, which is the row's own.
+     */
+    private static VerbName callOf(TaskVerb verb) {
+        return VerbName.of(ProcessVerb.of(verb), Surface.REST);
     }
 
     // ======================================================================

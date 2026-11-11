@@ -109,7 +109,7 @@ class ConflictTokenIT {
         clock.set(T.plusSeconds(5));
 
         TaskView same = tasks.update(SCOPE, created.address(),
-            new TaskService.Draft("unchanged", null, null, null), created.conflictToken(), C);
+            new TaskService.Draft("unchanged", null, null, null), created.conflictToken(), C).answer();
 
         assertThat(same.conflictToken())
             .as("the title written is the title stored: nothing changed, neither does the token")
@@ -123,7 +123,7 @@ class ConflictTokenIT {
 
         TaskView changed = tasks.update(SCOPE, created.address(),
             new TaskService.Draft(null, null, "another commission", null),
-            created.conflictToken(), C);
+            created.conflictToken(), C).answer();
 
         assertThat(changed.conflictToken())
             .as("a draft's text is part of what its token fences; a writer holding the earlier "
@@ -137,12 +137,12 @@ class ConflictTokenIT {
 
     private TaskView draft(String title) {
         return tasks.create(SCOPE, SELECTOR, null,
-            new TaskService.Draft(title, "code", "the commission", null), C, IdempotencyKey.NONE);
+            new TaskService.Draft(title, "code", "the commission", null), C, IdempotencyKey.NONE).answer();
     }
 
     private TaskView rename(TaskView task, String title) {
         return tasks.update(SCOPE, task.address(), new TaskService.Draft(title, null, null, null),
-            task.conflictToken(), C);
+            task.conflictToken(), C).answer();
     }
 
     private TaskView read(TaskView task) {

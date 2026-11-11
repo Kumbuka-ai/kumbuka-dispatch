@@ -26,6 +26,7 @@ import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.CallerActor;
+import ai.kumbuka.dispatch.surface.PlatformLog;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Refusal;
 import ai.kumbuka.dispatch.surface.Surface;
@@ -48,7 +49,6 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import org.jboss.logging.Logger;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
@@ -91,8 +91,6 @@ import java.util.Optional;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public class McpAdapter {
-
-    private static final Logger LOG = Logger.getLogger(McpAdapter.class);
 
     /** The revision of the MCP protocol this adapter speaks. */
     private static final String PROTOCOL_VERSION = "2025-06-18";
@@ -176,10 +174,12 @@ public class McpAdapter {
             return result(id, content(Payloads.of(
                 CallBinding.make(verbs, Surface.MCP, actor, in, clock)), false));
         } catch (SurfaceException refused) {
-            LOG.debugf("refusal: %s", refused.refusal().code());
+            PlatformLog.refused(PlatformLog.Reason.of(refused.refusal().code()));
             return refusal(id, refused.refusal());
         } catch (DispatchException refused) {
-            LOG.debugf("refusal: %s", refused.reason());
+            // DEBUG by its code, and WARN where the scope refused (C13.3): the
+            // directory below logs nothing, so its line is written here.
+            PlatformLog.domainRefused(refused.reason());
             @Nullable Actor who = actor;
             return refusal(id, DomainRefusals.of(refused, Surface.MCP, who, verb,
                 params.arguments(), complete -> readQuietly(who, complete), clock));

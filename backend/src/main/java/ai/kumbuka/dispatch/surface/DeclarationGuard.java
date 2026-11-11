@@ -3,7 +3,6 @@ package ai.kumbuka.dispatch.surface;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
-import org.jboss.logging.Logger;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -44,13 +43,11 @@ import java.util.Set;
 @ApplicationScoped
 public class DeclarationGuard {
 
-    private static final Logger LOG = Logger.getLogger(DeclarationGuard.class);
-
     void onStart(@Observes StartupEvent event) {
         SurfaceDeclaration.requireServable();
         requireServable(SurfaceDeclaration.asMap());
-        LOG.infof("surface declaration served: %d calls, %d reasons",
-            SurfaceDeclaration.calls().size(), SurfaceDeclaration.reasons().size());
+        PlatformLog.declarationServed(PlatformLog.Count.of(SurfaceDeclaration.calls()),
+            PlatformLog.Count.of(SurfaceDeclaration.reasons()));
     }
 
     /**

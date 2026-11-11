@@ -138,7 +138,7 @@ class TaskLockedRowIT {
                 .isEqualTo(TaskState.OPEN);
             onItsOwnThread(() -> stage.lapse(stage.claimedBy(lapsed, K)));
 
-            drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H));
+            drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H)).answer();
         } finally {
             end();
         }
@@ -187,7 +187,7 @@ class TaskLockedRowIT {
     private TaskStage.Staged child(TaskStage.Staged root) {
         TaskView v = tasks.create(SCOPE, SELECTOR, root.address().number(),
             new TaskService.Draft("a child", "code", "its commission", null), C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
         TaskStage.Staged child = new TaskStage.Staged(v.address(), v.identity(), SELECTOR, null);
         tasks.act(SCOPE, child.address(), TaskVerb.SEND,
             TaskCall.by(C).withConflictToken(stage.token(child)));

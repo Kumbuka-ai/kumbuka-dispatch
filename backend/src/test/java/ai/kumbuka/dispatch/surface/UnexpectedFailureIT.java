@@ -77,7 +77,8 @@ class UnexpectedFailureIT {
             // Nothing to release.
         }
     };
-    private final Logger watched = Logger.getLogger(UnexpectedFailures.class.getName());
+    /** The category every line of the surface is written under (DEC-0051, C4). */
+    private final Logger watched = Logger.getLogger(PlatformLog.class.getName());
 
     @BeforeEach
     void failBelowTheAdapter() {

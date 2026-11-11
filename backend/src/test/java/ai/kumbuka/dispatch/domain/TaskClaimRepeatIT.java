@@ -61,10 +61,10 @@ class TaskClaimRepeatIT {
         IdempotencyKey key = IdempotencyKey.of("claim-once");
         TaskCall call = TaskCall.by(H).with(new TaskInput.Lease(Duration.ofMinutes(20)));
 
-        TaskClaim first = tasks.claim(SCOPE, open.address(), call, key);
+        TaskClaim first = tasks.claim(SCOPE, open.address(), call, key).answer();
         TaskStage.Row before = TaskStage.row(open.identity());
 
-        TaskClaim again = tasks.claim(SCOPE, open.address(), call, key);
+        TaskClaim again = tasks.claim(SCOPE, open.address(), call, key).answer();
         TaskStage.Row after = TaskStage.row(open.identity());
 
         assertThat(again.task().address()).isEqualTo(first.task().address());
@@ -83,7 +83,7 @@ class TaskClaimRepeatIT {
             .isEqualTo(DispatchException.Reason.RECEIPT_MISMATCH);
 
         TaskView renewed = tasks.act(SCOPE, open.address(), TaskVerb.RENEW,
-            TaskCall.by(H).withReceipt(again.receipt()));
+            TaskCall.by(H).withReceipt(again.receipt())).answer();
         assertThat(renewed.state()).as("the new one does").isEqualTo(TaskState.ACTIVE);
     }
 
@@ -93,9 +93,11 @@ class TaskClaimRepeatIT {
         TaskStage.Staged second = stage.open(SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("draw-once");
 
-        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), key);
+        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), key)
+            .answer();
         TaskStage.Row before = TaskStage.row(first.identity());
-        TaskClaim again = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), key);
+        TaskClaim again = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), key)
+            .answer();
 
         assertThat(drawn.task().address()).isEqualTo(first.address());
         assertThat(again.task().address()).as("the same task").isEqualTo(first.address());
@@ -112,7 +114,7 @@ class TaskClaimRepeatIT {
     void a_repeat_after_the_hold_ended_is_refused_and_takes_nothing() {
         TaskStage.Staged open = stage.open(SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("released");
-        TaskClaim first = tasks.claim(SCOPE, open.address(), TaskCall.by(H), key);
+        TaskClaim first = tasks.claim(SCOPE, open.address(), TaskCall.by(H), key).answer();
         tasks.act(SCOPE, open.address(), TaskVerb.RELEASE,
             TaskCall.by(H).withReceipt(first.receipt()));
         TaskStage.Row released = TaskStage.row(open.identity());
@@ -134,7 +136,7 @@ class TaskClaimRepeatIT {
     void a_repeat_after_the_lease_lapsed_names_the_lapse_and_takes_nothing() {
         TaskStage.Staged open = stage.open(SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("lapsed");
-        TaskClaim first = tasks.claim(SCOPE, open.address(), TaskCall.by(H), key);
+        TaskClaim first = tasks.claim(SCOPE, open.address(), TaskCall.by(H), key).answer();
         stage.lapse(new TaskStage.Staged(open.address(), open.identity(), SELECTOR,
             first.receipt()));
         TaskStage.Row before = TaskStage.row(open.identity());
@@ -213,7 +215,8 @@ class TaskClaimRepeatIT {
         TaskStage.Staged first = stage.open(SELECTOR);
         TaskStage.Staged second = stage.open(SELECTOR);
         IdempotencyKey given = IdempotencyKey.of(key);
-        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), given);
+        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), given)
+            .answer();
         assertThat(drawn.task().address()).isEqualTo(first.address());
         return new Drawn(given, new TaskStage.Staged(first.address(), first.identity(), SELECTOR,
             drawn.receipt()), second);
