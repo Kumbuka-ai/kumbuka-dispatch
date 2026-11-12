@@ -301,10 +301,10 @@ public final class PlatformLog {
      */
     public static final class Reason {
 
-        private final Enum<?> reason;
+        private final Enum<?> code;
 
-        private Reason(Enum<?> reason) {
-            this.reason = reason;
+        private Reason(Enum<?> code) {
+            this.code = code;
         }
 
         public static Reason of(DispatchException.Reason reason) {
@@ -317,7 +317,7 @@ public final class PlatformLog {
 
         @Override
         public String toString() {
-            return reason.name();
+            return code.name();
         }
     }
 
