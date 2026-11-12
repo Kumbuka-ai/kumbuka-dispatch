@@ -90,7 +90,7 @@ class TaskHoldingIT {
             .containsExactly(TaskVerb.WITHDRAW);
 
         TaskView closed = tasks.act(SCOPE, s.address(), TaskVerb.WITHDRAW,
-            TaskCall.by(C).withConflictToken(head.conflictToken()));
+            TaskCall.by(C).withConflictToken(head.conflictToken())).answer();
         assertThat(closed.state()).isEqualTo(TaskState.CLOSED);
         assertThat(closed.outcome()).isEqualTo(Outcome.WITHDRAWN);
         TaskStage.Row row = TaskStage.row(s.identity());
@@ -135,7 +135,7 @@ class TaskHoldingIT {
             .as("and the late answer was not written")
             .noneMatch(t -> t.startsWith("return"));
 
-        TaskClaim next = tasks.claim(SCOPE, s.address(), TaskCall.by(K));
+        TaskClaim next = tasks.claim(SCOPE, s.address(), TaskCall.by(K)).answer();
         TaskStage.Row taken = TaskStage.row(s.identity());
         assertThat(taken.receiptHash())
             .as("the row holds the receipt's hash and never the receipt")
@@ -162,13 +162,13 @@ class TaskHoldingIT {
     @Test
     void a_claim_without_a_duration_holds_thirty_minutes_and_a_stated_one_holds_as_stated() {
         TaskStage.Staged a = stage.open(SELECTOR);
-        TaskView standard = tasks.claim(SCOPE, a.address(), TaskCall.by(H)).task();
+        TaskView standard = tasks.claim(SCOPE, a.address(), TaskCall.by(H)).answer().task();
         assertThat(standard.leaseExpiresAt())
             .isCloseTo(Instant.now().plus(Duration.ofMinutes(30)), within(Duration.ofSeconds(30)));
 
         TaskStage.Staged b = stage.open(SELECTOR);
         TaskView week = tasks.claim(SCOPE, b.address(),
-            TaskCall.by(H).with(new TaskInput.Lease(Duration.ofDays(7)))).task();
+            TaskCall.by(H).with(new TaskInput.Lease(Duration.ofDays(7)))).answer().task();
         assertThat(week.leaseExpiresAt()).as("no upper bound")
             .isCloseTo(Instant.now().plus(Duration.ofDays(7)), within(Duration.ofSeconds(30)));
         assertThat(tasks.read(SCOPE, b.address(), K).leaseExpiresAt())
@@ -179,10 +179,10 @@ class TaskHoldingIT {
     void renew_extends_and_an_answer_restarts_thirty_minutes_whatever_the_claim_said() {
         TaskStage.Staged s = stage.open(SELECTOR);
         TaskClaim claim = tasks.claim(SCOPE, s.address(),
-            TaskCall.by(H).with(new TaskInput.Lease(Duration.ofHours(5))));
+            TaskCall.by(H).with(new TaskInput.Lease(Duration.ofHours(5)))).answer();
         TaskView renewed = tasks.act(SCOPE, s.address(), TaskVerb.RENEW,
             TaskCall.by(H).withReceipt(claim.receipt())
-                .with(new TaskInput.Lease(Duration.ofHours(9))));
+                .with(new TaskInput.Lease(Duration.ofHours(9)))).answer();
         assertThat(renewed.leaseExpiresAt())
             .isCloseTo(Instant.now().plus(Duration.ofHours(9)), within(Duration.ofSeconds(30)));
         assertThat(TaskStage.row(s.identity()).state()).isEqualTo("active");
@@ -264,7 +264,7 @@ class TaskHoldingIT {
             .as("the executor alone that delivered accepts nothing").isEqualTo("delivered");
 
         TaskView accepted = tasks.act(SCOPE, s.address(), TaskVerb.ACCEPT,
-            TaskCall.by(delivererWithBoth).withConflictToken(token));
+            TaskCall.by(delivererWithBoth).withConflictToken(token)).answer();
         assertThat(accepted.outcome()).isEqualTo(Outcome.ACCEPTED);
         assertThat(accepted.selfAccepted()).isTrue();
         TaskStage.Row row = TaskStage.row(s.identity());
@@ -280,7 +280,7 @@ class TaskHoldingIT {
         TaskStage.Staged s = stage.stage("delivered", SELECTOR);
 
         TaskView accepted = tasks.act(SCOPE, s.address(), TaskVerb.ACCEPT,
-            TaskCall.by(C).withConflictToken(stage.token(s)));
+            TaskCall.by(C).withConflictToken(stage.token(s))).answer();
 
         assertThat(accepted.outcome()).isEqualTo(Outcome.ACCEPTED);
         assertThat(accepted.selfAccepted()).isFalse();

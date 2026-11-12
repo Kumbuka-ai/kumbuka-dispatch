@@ -89,7 +89,7 @@ class LeaseExpiryIT {
         TaskStage.Staged lapsed = stage.lapse(stage.active(SELECTOR));
 
         TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"),
-            TaskCall.by(TaskStage.K));
+            TaskCall.by(TaskStage.K)).answer();
 
         assertThat(drawn.task().address()).isEqualTo(lapsed.address());
         TaskStage.Row row = TaskStage.row(lapsed.identity());

@@ -7,7 +7,6 @@
  */
 package ai.kumbuka.dispatch.surface;
 
-import org.jboss.logging.Logger;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -24,18 +23,20 @@ import java.util.UUID;
  * mint and the log line are one act, and nobody adding a throw site can
  * separate them.
  *
- * <p>The log line carries the reference, the call and the class names of the
- * exception chain — and never the exception object, its message or an address
+ * <h2>The failure's class names, never its message</h2>
+ *
+ * The log line carries the reference, the call and the class names of the
+ * exception chain -- and never the exception object, its message or an address
  * the call carried (DEC-0051, C13.2, C13.3, F-0383). A stack trace and an
  * exception's message carry whatever the failing code held, a caller's value
  * or a commission's text included, and a log shipper carries them out of the
  * container past a boundary built as a missing grant; an address is written by
  * the caller. The class names say what failed; the reference finds the line,
- * and the request id on it joins it to the call.
+ * and the request id on it joins it to the call. So the failure is never
+ * handed to the logger: {@link FailureCause} reads the class names off it, and
+ * is made here and nowhere else, as {@link FailureReference} is.
  */
 public final class UnexpectedFailures {
-
-    private static final Logger LOG = Logger.getLogger(UnexpectedFailures.class);
 
     /** How deep the chain of causes is followed: a cycle must not hang the log line. */
     private static final int CHAIN_LIMIT = 8;
@@ -46,29 +47,62 @@ public final class UnexpectedFailures {
     /**
      * Records the failure and answers the caller with its reference.
      *
-     * @param call  the call, or null for a request that reached no call
+     * @param call  the call, or null for a request that reached no call; the
+     *              call the declaration names, never a name a request carried
      * @param cause what went wrong, or null where the failure arrived as a
      *              typed refusal the surface cannot serve
      */
-    public static Refusal refuse(@Nullable VerbName call, Throwable cause) {
-        String named = call == null ? "this request" : call.toString();
-        String reference = UUID.randomUUID().toString();
-        String chain = classNames(cause);
-        LOG.errorf("unexpected failure on %s, reference %s, cause %s", named, reference, chain);
-        return Refusal.unexpected(call, reference);
+    public static Refusal refuse(@Nullable VerbName call, @Nullable Throwable cause) {
+        FailureReference reference = new FailureReference(UUID.randomUUID());
+        FailureCause chain = new FailureCause(cause);
+        if (call == null) {
+            PlatformLog.unexpectedFailureBeforeACall(reference, chain);
+        } else {
+            PlatformLog.unexpectedFailure(call, reference, chain);
+        }
+        return Refusal.unexpected(call, reference.toString());
     }
 
-    /** The class names of an exception and its causes, outermost first. */
-    static String classNames(Throwable cause) {
-        if (cause == null) {
-            return "none";
+    /** The reference a caller is told to report, minted for one failure. */
+    public static final class FailureReference {
+
+        private final UUID reference;
+
+        private FailureReference(UUID reference) {
+            this.reference = reference;
         }
-        List<String> names = new ArrayList<>();
-        Throwable at = cause;
-        while (at != null && names.size() < CHAIN_LIMIT) {
-            names.add(at.getClass().getName());
-            at = at.getCause() == at ? null : at.getCause();
+
+        @Override
+        public String toString() {
+            return reference.toString();
         }
-        return String.join(" <- ", names);
+    }
+
+    /**
+     * The class names of a failure and its causes, outermost first. Read off
+     * the chain by class and nothing else: no message, no stack frame.
+     */
+    public static final class FailureCause {
+
+        private final String chain;
+
+        private FailureCause(@Nullable Throwable failure) {
+            if (failure == null) {
+                this.chain = "none";
+                return;
+            }
+            List<String> names = new ArrayList<>();
+            Throwable at = failure;
+            while (at != null && names.size() < CHAIN_LIMIT) {
+                names.add(at.getClass().getName());
+                at = at.getCause() == at ? null : at.getCause();
+            }
+            this.chain = String.join(" <- ", names);
+        }
+
+        @Override
+        public String toString() {
+            return chain;
+        }
     }
 }

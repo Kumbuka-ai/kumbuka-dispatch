@@ -77,7 +77,7 @@ class ConcurrentWriteIT {
         try (AutoCloseable ignored = tenantContext.bind(tenant)) {
             draft = tasks.create(SCOPE, SELECTOR, null,
                 new TaskService.Draft("contested", "code", "the commission", null), C,
-                IdempotencyKey.NONE);
+                IdempotencyKey.NONE).answer();
         }
         String token = draft.conflictToken();
         ExchangeAddress address = draft.address();
@@ -93,7 +93,7 @@ class ConcurrentWriteIT {
 
                 secondWrite = second.submit(() -> onItsOwnThread(tenant, () ->
                     tasks.update(SCOPE, address,
-                        new TaskService.Draft("second", null, null, null), token, C)));
+                        new TaskService.Draft("second", null, null, null), token, C).answer()));
 
                 assertThat(LockWaits.waitsOn(holder, secondWrite))
                     .as("the second writer met the first one's lock; otherwise this case "

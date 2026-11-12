@@ -63,7 +63,7 @@ class TaskMetadataIT {
         metadata.put("pull-request", "17");
         TaskView created = tasks.create(SCOPE, SELECTOR, null,
             new TaskService.Draft("with metadata", "code", null, metadata), C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
 
         TaskView read = tasks.read(SCOPE, created.address(), C);
 

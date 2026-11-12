@@ -76,7 +76,7 @@ class TaskKeyOverlapIT {
         int before = TaskStage.nextNumber(tenant, SCOPE, SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("create-once");
         Callable<TaskView> create = () -> tasks.create(SCOPE, SELECTOR, null,
-            new TaskService.Draft("once", "code", null, null), C, key);
+            new TaskService.Draft("once", "code", null, null), C, key).answer();
 
         Overlap overlap = overlap(create, create);
 
@@ -98,7 +98,8 @@ class TaskKeyOverlapIT {
         TaskStage.Staged drawn = stage.open(SELECTOR);
         TaskStage.Staged other = stage.open(SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("draw-once");
-        Callable<TaskClaim> draw = () -> tasks.claimNext(SCOPE, SELECTOR, CODE, TaskCall.by(H), key);
+        Callable<TaskClaim> draw = () -> tasks.claimNext(SCOPE, SELECTOR, CODE, TaskCall.by(H), key)
+            .answer();
 
         Overlap overlap = overlap(draw, draw);
 
@@ -120,7 +121,8 @@ class TaskKeyOverlapIT {
             throws Exception {
         TaskStage.Staged open = stage.open(SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("claim-once");
-        Callable<TaskClaim> claim = () -> tasks.claim(SCOPE, open.address(), TaskCall.by(H), key);
+        Callable<TaskClaim> claim = () -> tasks.claim(SCOPE, open.address(), TaskCall.by(H), key)
+            .answer();
 
         Overlap overlap = overlap(claim, claim);
 
@@ -139,7 +141,7 @@ class TaskKeyOverlapIT {
         TaskStage.Staged open = stage.active(SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("annotate-once");
         Callable<TaskView> annotate = () -> tasks.annotate(SCOPE, open.address(),
-            TextType.DISPATCH, "one more thing", C, key);
+            TextType.DISPATCH, "one more thing", C, key).answer();
 
         Overlap overlap = overlap(annotate, annotate);
 
@@ -167,9 +169,9 @@ class TaskKeyOverlapIT {
         Actor plain = new Actor("x", Actor.Kind.EXECUTOR);
         Actor separated = new Actor("x\u001Fy", Actor.Kind.EXECUTOR);
         Callable<TaskClaim> first = () -> tasks.claim(SCOPE, one.address(), TaskCall.by(plain),
-            IdempotencyKey.of("y\u001Fz"));
+            IdempotencyKey.of("y\u001Fz")).answer();
         Callable<TaskClaim> second = () -> tasks.claim(SCOPE, two.address(),
-            TaskCall.by(separated), IdempotencyKey.of("z"));
+            TaskCall.by(separated), IdempotencyKey.of("z")).answer();
 
         Overlap overlap = overlap(first, second);
 

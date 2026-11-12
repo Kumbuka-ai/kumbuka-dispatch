@@ -5,7 +5,6 @@ import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import org.jboss.logging.Logger;
 
 import java.util.List;
 import java.util.Optional;
@@ -25,7 +24,10 @@ import java.util.UUID;
 @TenantBound
 public class SelectorRegistry {
 
-    private static final Logger LOG = Logger.getLogger(SelectorRegistry.class);
+    /*
+     * Logs nothing (DEC-0051, C4): a refusal here is a typed exception the
+     * surface logs by its code, and a selector is a name the caller wrote.
+     */
 
     @Inject SelectorRepository selectors;
 
@@ -40,7 +42,6 @@ public class SelectorRegistry {
      */
     @Transactional
     public Selector requireDeclared(UUID scopeId, String name) {
-        LOG.debugf("checking selector '%s'", name);
         Selector selector = find(scopeId, name).orElseThrow(() -> notDeclared(name));
         refuseIfWithdrawn(selector);
         return selector;
@@ -53,8 +54,6 @@ public class SelectorRegistry {
      */
     static void refuseIfWithdrawn(Selector selector) {
         if (Boolean.TRUE.equals(selector.withdrawn)) {
-            LOG.warnf("selector '%s' refused: %s", selector.name,
-                DispatchException.Reason.SELECTOR_WITHDRAWN);
             throw new DispatchException(DispatchException.Reason.SELECTOR_WITHDRAWN,
                 "selector '" + selector.name + "' is withdrawn. Addresses already issued under it "
                     + "remain readable; no new task is numbered under it.");
@@ -62,8 +61,6 @@ public class SelectorRegistry {
     }
 
     private static DispatchException notDeclared(String name) {
-        LOG.warnf("selector '%s' refused: %s", name,
-            DispatchException.Reason.SELECTOR_NOT_DECLARED);
         return new DispatchException(
         DispatchException.Reason.SELECTOR_NOT_DECLARED,
         "selector '" + name + "' is not declared in this scope. Bracket names are "
@@ -104,7 +101,6 @@ public class SelectorRegistry {
         }
         selector.withdrawn = Boolean.TRUE;
         selectors.flush();
-        LOG.infof("selector '%s' withdrawn", name);
         return selector;
     }
 

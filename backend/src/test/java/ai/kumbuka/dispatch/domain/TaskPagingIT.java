@@ -366,12 +366,12 @@ class TaskPagingIT {
     private TaskView root(String title) {
         return tasks.create(SCOPE, SELECTOR, null,
             new TaskService.Draft(title, "code", "the commission", null), C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
     }
 
     private TaskView child(TaskView root, String title) {
         return tasks.create(SCOPE, SELECTOR, root.address().number(),
-            new TaskService.Draft(title, "code", null, null), C, IdempotencyKey.NONE);
+            new TaskService.Draft(title, "code", null, null), C, IdempotencyKey.NONE).answer();
     }
 
     /** Every page of a listing from its first, as short addresses. */

@@ -9,9 +9,9 @@ package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.fixture.LogLines;
+import ai.kumbuka.dispatch.surface.PlatformLog;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Surface;
-import ai.kumbuka.dispatch.surface.UnexpectedFailures;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -31,6 +31,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * address the call carried: an address is written by the caller, its scope and
  * selector included, and C13.3 keeps even the canonical address of a completed
  * write out of the log.
+ *
+ * <p>The line is written under the category of {@code PlatformLog}, the one
+ * logger of the packages that serve a caller (DEC-0051, C4);
+ * {@code UnexpectedFailures} mints the reference and hands it there.
  */
 class UnexpectedFailureLogTest {
 
@@ -38,7 +42,7 @@ class UnexpectedFailureLogTest {
     void the_line_carries_neither_the_address_nor_the_message_nor_the_exception() {
         String scope = "zzscope7319";
         String marker = "zzmessage4417";
-        List<LogRecord> lines = LogLines.of(UnexpectedFailures.class, () ->
+        List<LogRecord> lines = LogLines.of(PlatformLog.class, () ->
             DomainRefusals.of(
                 new DispatchException(DispatchException.Reason.SESSION_NOT_BOUND, marker),
                 Surface.MCP, null, ProcessVerb.READ,

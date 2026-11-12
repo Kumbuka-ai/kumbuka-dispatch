@@ -52,11 +52,11 @@ class TenancyTemplateDriftTest {
         TEMPLATE.put("TenantBindingInterceptor",
             "85ff04214e5548d0de2087622385f0912d59641309e5b4288b7373f78801e448");
         TEMPLATE.put("TenantDatabaseBinding",
-            "d52ae6ff0f04b67029f74f789a599f24b1417e214dd3a5125e9b0172d3204662");
+            "f22ec03f9eeaa46ed08aa1d93f36d7873a1760a6c274b609ce6c9e4667214225");
         TEMPLATE.put("TenantMigrationCallback",
             "79e038ac4ce8afca7d1ddc720ba0d9b1de4b0a157f7b8e6b8c9ef07f97f44774");
         TEMPLATE.put("TenancyConfigurationGuard",
-            "ff70427db705c64022f3bcfee9f4f044ed8947678d15908302d8dca5ba5ad50b");
+            "fa35a603dd8a847bb8c7e0d857c222544e7ec6518ae6b46fdebc0ca153a94632");
         TEMPLATE.put("TenantRequestFilter",
             "dbbf93be5716f163e6324ebfdafb5f436d2b37dc0772cf68bfd9a49741c941bb");
     }

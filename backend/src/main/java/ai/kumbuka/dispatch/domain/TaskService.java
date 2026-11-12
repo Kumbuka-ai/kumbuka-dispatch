@@ -13,11 +13,11 @@ import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import org.jboss.logging.Logger;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -41,13 +41,13 @@ import java.util.UUID;
  *
  * <p>No answer of this class carries a text of a task except {@link
  * #readText}, which carries exactly one part.
+ *
+ * <p>Logs nothing (DEC-0051, C4). A write answers a {@link Written}, and the
+ * verb surface that called it writes the write's line from it.
  */
 @ApplicationScoped
 @TenantBound
 public class TaskService {
-
-    /** Says verb, address, state and reason; never a text, metadata or who called. */
-    private static final Logger LOG = Logger.getLogger(TaskService.class);
 
     /** The call names an idempotency key is spent on. */
     static final String CREATE = "dispatch_create";
@@ -103,9 +103,9 @@ public class TaskService {
      * commission} handles it today.
      */
     @Transactional
-    public TaskView create(UUID scopeId, String selector, @Nullable Integer parentNumber,
-                           Draft draft,
-                           Actor caller, IdempotencyKey key) {
+    public Written<TaskView> create(UUID scopeId, String selector, @Nullable Integer parentNumber,
+                                    Draft draft,
+                                    Actor caller, IdempotencyKey key) {
         requireCommissioner(caller, "create");
         String title = Objects.requireNonNull(draft.title(), "title");
         String apparatus = Objects.requireNonNull(draft.apparatus(), "apparatus");
@@ -116,8 +116,8 @@ public class TaskService {
             draft.apparatus(), draft.text(), String.valueOf(draft.metadata())));
         Optional<Long> repeat = firstAnswerFor(scopeId, caller, key, CREATE, digest);
         if (repeat.isPresent()) {
-            return view(tasks.findById(scopeId, repeat.get()).orElseThrow(
-                TaskService::firstResultGone), caller);
+            return Written.unchanged(view(tasks.findById(scopeId, repeat.get()).orElseThrow(
+                TaskService::firstResultGone), caller));
         }
 
         Selector declared = selectors.requireDeclared(scopeId, selector);
@@ -143,14 +143,12 @@ public class TaskService {
             insertText(task, TextType.DISPATCH, null, text, caller);
         }
         remember(scopeId, caller, key, CREATE, digest, task);
-
-        LOG.infof("create %s -> %s", task.address(), TaskState.DRAFT.wireName());
-        return view(task, caller);
+        return Written.of(view(task, caller), task);
     }
 
     /** Changes a draft's title, apparatus, text or metadata. Refused once sent. */
     @Transactional
-    public TaskView update(UUID scopeId, ExchangeAddress address, Draft changes,
+    public Written<TaskView> update(UUID scopeId, ExchangeAddress address, Draft changes,
                            @Nullable String conflictToken, Actor caller) {
         Task task = lockOrRefuse(scopeId, address);
         TaskSituation s = situation(task);
@@ -185,8 +183,7 @@ public class TaskService {
             task.changedBeside(now);
         }
         tasks.flush();
-        LOG.infof("update %s", task.address());
-        return view(task, caller);
+        return Written.of(view(task, caller), task);
     }
 
     /**
@@ -195,9 +192,9 @@ public class TaskService {
      * @return the address the draft had, which is the whole answer
      */
     @Transactional
-    public ExchangeAddress delete(UUID scopeId, ExchangeAddress address,
-                                  @Nullable String conflictToken,
-                                  Actor caller) {
+    public Written<ExchangeAddress> delete(UUID scopeId, ExchangeAddress address,
+                                           @Nullable String conflictToken,
+                                           Actor caller) {
         Task task = lockOrRefuse(scopeId, address);
         TaskSituation s = situation(task);
         requireDraft(s, "delete");
@@ -213,8 +210,7 @@ public class TaskService {
             }
         }
         tasks.delete(task);
-        LOG.infof("delete %s", address);
-        return address;
+        return Written.of(address, task);
     }
 
     /** The head of one task: process and tags, never text. Writes nothing. */
@@ -243,7 +239,8 @@ public class TaskService {
      *                           for one the platform withdrew
      */
     @Transactional
-    public TaskView tagAttach(UUID scopeId, ExchangeAddress address, String token, Actor caller) {
+    public Written<TaskView> tagAttach(UUID scopeId, ExchangeAddress address, String token,
+                                       Actor caller) {
         Task task = findOrRefuse(scopeId, address);
         Tag tag = declaredTag(scopeId, token);
         if (tag.withdrawn()) {
@@ -253,8 +250,7 @@ public class TaskService {
                 List.of(TAG));
         }
         tags.attach(task.id, tag.id(), caller.subject());
-        LOG.infof("tag_attach %s", address);
-        return tagged(task, caller);
+        return Written.of(tagged(task, caller), task);
     }
 
     /**
@@ -266,12 +262,12 @@ public class TaskService {
      *                           scope does not declare
      */
     @Transactional
-    public TaskView tagDetach(UUID scopeId, ExchangeAddress address, String token, Actor caller) {
+    public Written<TaskView> tagDetach(UUID scopeId, ExchangeAddress address, String token,
+                                       Actor caller) {
         Task task = findOrRefuse(scopeId, address);
         Tag tag = declaredTag(scopeId, token);
         tags.detach(task.id, tag.id());
-        LOG.infof("tag_detach %s", address);
-        return tagged(task, caller);
+        return Written.of(tagged(task, caller), task);
     }
 
     /** The tag of a token in the scope, through the platform's vocabulary; refused where none is. */
@@ -390,8 +386,8 @@ public class TaskService {
      * task: an addendum cannot be removed, so a duplicate would be permanent.
      */
     @Transactional
-    public TaskView annotate(UUID scopeId, ExchangeAddress address, TextType part, String text,
-                             Actor caller, IdempotencyKey key) {
+    public Written<TaskView> annotate(UUID scopeId, ExchangeAddress address, TextType part,
+                                      String text, Actor caller, IdempotencyKey key) {
         if (text == null || text.isBlank()) {
             throw new DispatchException(DispatchException.Reason.ADDENDUM_TEXT_MISSING,
                 "an addendum carries its text, and it arrives with this call or never.");
@@ -401,7 +397,7 @@ public class TaskService {
         boolean repeat = firstAnswerFor(scopeId, caller, key, ANNOTATE, digest).isPresent();
         Task task = lockOrRefuse(scopeId, address);
         if (repeat) {
-            return view(task, caller);
+            return Written.unchanged(view(task, caller));
         }
         TaskSituation s = situation(task);
         if (s.state() != TaskState.ACTIVE && s.state() != TaskState.ON_HOLD) {
@@ -419,8 +415,7 @@ public class TaskService {
         }
         insertText(task, part, nextSuffix(task, part, address), text, caller);
         remember(scopeId, caller, key, ANNOTATE, digest, task);
-        LOG.infof("annotate %s %s", address, part.wireName());
-        return view(task, caller);
+        return Written.of(view(task, caller), task);
     }
 
     /** What the commissioner does with a task an addendum does not reach, by its state. */
@@ -437,8 +432,9 @@ public class TaskService {
 
     /** Records the object a closed task was curated into: any task of the tenant. */
     @Transactional
-    public TaskView relate(UUID scopeId, ExchangeAddress address, UUID targetScopeId,
-                           ExchangeAddress target, @Nullable String conflictToken, Actor caller) {
+    public Written<TaskView> relate(UUID scopeId, ExchangeAddress address, UUID targetScopeId,
+                                    ExchangeAddress target, @Nullable String conflictToken,
+                                    Actor caller) {
         Task task = requireClosedForRelation(scopeId, address, conflictToken, caller);
         Task into = tasks.find(targetScopeId, target).orElseThrow(() -> new DispatchException(
             DispatchException.Reason.NOT_FOUND, "no task at " + target));
@@ -449,21 +445,19 @@ public class TaskService {
         task.curateIn(into.id);
         task.touch(caller.subject(), now());
         tasks.flush();
-        LOG.infof("relate %s", address);
-        return view(task, caller);
+        return Written.of(view(task, caller), task);
     }
 
     /** Removes the relation {@code curated_in} from a closed task. */
     @Transactional
-    public TaskView unrelate(UUID scopeId, ExchangeAddress address,
-                             @Nullable String conflictToken,
-                             Actor caller) {
+    public Written<TaskView> unrelate(UUID scopeId, ExchangeAddress address,
+                                      @Nullable String conflictToken,
+                                      Actor caller) {
         Task task = requireClosedForRelation(scopeId, address, conflictToken, caller);
         task.curateIn(null);
         task.touch(caller.subject(), now());
         tasks.flush();
-        LOG.infof("unrelate %s", address);
-        return view(task, caller);
+        return Written.of(view(task, caller), task);
     }
 
     // ======================================================================
@@ -487,7 +481,8 @@ public class TaskService {
      * transition on a child locks its own row only.
      */
     @Transactional
-    public TaskView act(UUID scopeId, ExchangeAddress address, TaskVerb verb, TaskCall call) {
+    public Written<TaskView> act(UUID scopeId, ExchangeAddress address, TaskVerb verb,
+                                 TaskCall call) {
         if (verb.holding() == TaskVerb.Holding.TAKE) {
             throw new IllegalArgumentException(verb.wireName() + " hands out a receipt; call "
                 + "claim or claimNext");
@@ -501,27 +496,24 @@ public class TaskService {
             : List.of();
         TaskSituation s = situation(task, now, children);
         if (Decision.of(verb, s, call) instanceof Decision.AlreadyThere) {
-            LOG.debugf("%s on %s: already %s", verb.wireName(), address,
-                Objects.requireNonNull(verb.outcome(), "a verb already there closes").wireName());
-            return view(task, call.caller());
+            return Written.unchanged(view(task, call.caller()));
         }
         TaskInput payload = decide(verb, s, call);
 
         String by = call.caller().subject();
-        if (!s.unfinishedChildren().isEmpty()) {
-            withdrawChildren(children, now, by);
-        }
+        List<Task> withdrawn = s.unfinishedChildren().isEmpty()
+            ? List.of()
+            : withdrawChildren(children, now, by);
         apply(task, verb, s, payload, now, by);
         tasks.flush();
         writeText(task, verb, payload, call.caller());
 
-        LOG.infof("%s %s -> %s", verb.wireName(), address, verb.target().wireName());
-        return view(task, call.caller());
+        return new Written<>(view(task, call.caller()), task, withdrawn, false);
     }
 
     /** Takes up the task at an address and mints its receipt. */
     @Transactional
-    public TaskClaim claim(UUID scopeId, ExchangeAddress address, TaskCall call) {
+    public Written<TaskClaim> claim(UUID scopeId, ExchangeAddress address, TaskCall call) {
         return claim(scopeId, address, call, IdempotencyKey.NONE);
     }
 
@@ -535,8 +527,8 @@ public class TaskService {
      * #reissue}.
      */
     @Transactional
-    public TaskClaim claim(UUID scopeId, ExchangeAddress address, TaskCall call,
-                           IdempotencyKey key) {
+    public Written<TaskClaim> claim(UUID scopeId, ExchangeAddress address, TaskCall call,
+                                    IdempotencyKey key) {
         String digest = IdempotencyService.digestOf(
             Arrays.asList(address.toString(), leaseOf(call)));
         Optional<Long> repeat = firstAnswerFor(scopeId, call.caller(), key, CLAIM, digest);
@@ -546,7 +538,7 @@ public class TaskService {
         Task task = lockOrRefuse(scopeId, address);
         TaskClaim claimed = take(task, TaskVerb.CLAIM, call);
         remember(scopeId, call.caller(), key, CLAIM, digest, task);
-        return claimed;
+        return Written.of(claimed, task);
     }
 
     /**
@@ -559,8 +551,8 @@ public class TaskService {
      * @throws DispatchException {@code NOTHING_TO_CLAIM} when nothing is drawable
      */
     @Transactional
-    public TaskClaim claimNext(UUID scopeId, String selector, List<String> apparatusPatterns,
-                               TaskCall call) {
+    public Written<TaskClaim> claimNext(UUID scopeId, String selector,
+                                        List<String> apparatusPatterns, TaskCall call) {
         return claimNext(scopeId, selector, apparatusPatterns, call, IdempotencyKey.NONE);
     }
 
@@ -570,8 +562,9 @@ public class TaskService {
      * that task with a new receipt and draws nothing: see {@link #reissue}.
      */
     @Transactional
-    public TaskClaim claimNext(UUID scopeId, String selector, List<String> apparatusPatterns,
-                               TaskCall call, IdempotencyKey key) {
+    public Written<TaskClaim> claimNext(UUID scopeId, String selector,
+                                        List<String> apparatusPatterns, TaskCall call,
+                                        IdempotencyKey key) {
         selectors.requireDeclared(scopeId, selector);
         String digest = IdempotencyService.digestOf(Arrays.asList(selector,
             String.join("\u001F", apparatusPatterns), leaseOf(call)));
@@ -588,7 +581,7 @@ public class TaskService {
                     + "this is an empty draw, not a missing address."));
         TaskClaim claimed = take(task, TaskVerb.CLAIM_NEXT, call);
         remember(scopeId, call.caller(), key, CLAIM_NEXT, digest, task);
-        return claimed;
+        return Written.of(claimed, task);
     }
 
     /**
@@ -601,7 +594,8 @@ public class TaskService {
      * lease, the repeat is refused with the reason the situation gives and
      * nothing is taken.
      */
-    private TaskClaim reissue(UUID scopeId, Long taskId, TaskVerb verb, TaskCall call) {
+    private Written<TaskClaim> reissue(UUID scopeId, Long taskId, TaskVerb verb,
+                                       TaskCall call) {
         Task task = tasks.lockById(scopeId, taskId).orElseThrow(TaskService::firstResultGone);
         TaskSituation s = situation(task);
         Actor caller = call.caller();
@@ -620,8 +614,7 @@ public class TaskService {
         task.reissue(receipt);
         task.touch(caller.subject(), now());
         tasks.flush();
-        LOG.infof("%s %s repeated: receipt reissued", verb.wireName(), task.address());
-        return new TaskClaim(view(task, caller), receipt);
+        return new Written<>(new TaskClaim(view(task, caller), receipt), task, List.of(), true);
     }
 
     /** The lease a claim asked for, as its digest records it: the duration or the default. */
@@ -645,8 +638,6 @@ public class TaskService {
         task.award(by, receipt, now.plus(lease.duration()), now);
         task.touch(by, now);
         tasks.flush();
-
-        LOG.infof("%s %s -> %s", verb.wireName(), task.address(), TaskState.ACTIVE.wireName());
         return new TaskClaim(view(task, call.caller()), receipt);
     }
 
@@ -657,8 +648,6 @@ public class TaskService {
             throw new IllegalStateException(verb.wireName() + " never closes a task");
         }
         if (decision instanceof Decision.Refused refused) {
-            LOG.debugf("%s on %s refused at %s: %s", verb.wireName(), s.address(),
-                refused.check(), refused.reason());
             throw refused.asException();
         }
         return verb.payloadOf(call);
@@ -719,18 +708,24 @@ public class TaskService {
         }
     }
 
-    /** Closes each unfinished child as withdrawn, before its root closes. */
-    private void withdrawChildren(List<Task> children, Instant now, String by) {
+    /**
+     * Closes each unfinished child as withdrawn, before its root closes.
+     *
+     * @return the children it closed, in the order of their address
+     */
+    private List<Task> withdrawChildren(List<Task> children, Instant now, String by) {
+        List<Task> withdrawn = new ArrayList<>();
         for (Task child : children) {
             if (TaskSituation.of(child, now, List.of(), TaskSituation.Beside.NOTHING).state()
                     != TaskState.CLOSED) {
                 child.enter(TaskState.CLOSED, null, Outcome.WITHDRAWN, now, by);
                 child.dropHolder();
                 child.touch(by, now);
-                LOG.infof("withdraw %s -> %s", child.address(), TaskState.CLOSED.wireName());
+                withdrawn.add(child);
             }
         }
         tasks.flush();
+        return withdrawn;
     }
 
     // ======================================================================
@@ -1006,6 +1001,45 @@ public class TaskService {
         row.firstSeenAt = now();
         if (held.isEmpty()) {
             tasks.insert(row);
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // What a write answers
+    // ----------------------------------------------------------------------
+
+    /**
+     * What a write answers, and the task it wrote, if it wrote one.
+     *
+     * <p>This class logs nothing (DEC-0051, C4). The INFO line of a completed
+     * write (C13.3) is written by the verb surface, which called the write,
+     * and it names the task by its technical address -- which only the entity
+     * carries. So the entity travels back beside the answer, inside the
+     * transaction the surface opened, and stays absent where nothing was
+     * written: a repeat under an idempotency key, a closing verb the task had
+     * already reached.
+     *
+     * @param answer    what the call answers its caller
+     * @param stored    the task the write laid down, changed, deleted, tagged
+     *                  or took up; absent where it wrote nothing
+     * @param withdrawn the children a closing verb on a bracket root closed
+     *                  along, before the root; empty on every other write
+     * @param reissued  whether the write was a repeated take-up under its key,
+     *                  which replaced the receipt and took nothing up again
+     */
+    public record Written<T>(T answer, @Nullable Task stored, List<Task> withdrawn,
+                             boolean reissued) {
+
+        public Written {
+            withdrawn = List.copyOf(withdrawn);
+        }
+
+        static <T> Written<T> of(T answer, Task stored) {
+            return new Written<>(answer, stored, List.of(), false);
+        }
+
+        static <T> Written<T> unchanged(T answer) {
+            return new Written<>(answer, null, List.of(), false);
         }
     }
 }

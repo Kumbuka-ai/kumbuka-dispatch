@@ -196,7 +196,7 @@ class TenantBindingEdgeCaseIT {
         try (AutoCloseable ignored = tenantContext.bind(tenant)) {
             var opened = tasks.create(scope, "sprint", null,
                 new TaskService.Draft("count-probe", "code", null, null), PROBE,
-                IdempotencyKey.NONE);
+                IdempotencyKey.NONE).answer();
             assertThat(tenantOf(opened.identity()))
                 .as("a write through the ORM carries the bound tenant without the caller "
                     + "supplying it — that is what the @TenantId filter is for")

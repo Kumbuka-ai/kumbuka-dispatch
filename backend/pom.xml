@@ -68,6 +68,7 @@
         <failsafe-plugin.version>3.5.0</failsafe-plugin.version>
         <testcontainers.version>1.20.4</testcontainers.version>
         <assertj.version>3.27.7</assertj.version>
+        <archunit.version>1.4.1</archunit.version>
 
         <!-- null inside the service: NullAway on every main source (C7.5). -->
         <compiler-plugin.version>3.14.1</compiler-plugin.version>
@@ -169,6 +170,15 @@
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- The compiled classes read for who holds or calls a logger
+             (LogFacadeAccessTest): every access a class makes, lambdas and
+             nested classes included, rather than a reading of its source. -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
         <!--

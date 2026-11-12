@@ -12,6 +12,7 @@ import ai.kumbuka.dispatch.adapter.payload.Payloads;
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.surface.AddressParser;
+import ai.kumbuka.dispatch.surface.PlatformLog;
 import ai.kumbuka.dispatch.surface.Refusal;
 import ai.kumbuka.dispatch.surface.RefusalCode;
 import ai.kumbuka.dispatch.surface.SurfaceException;
@@ -27,7 +28,6 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
-import org.jboss.logging.Logger;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
@@ -48,11 +48,9 @@ import java.util.Optional;
 @Provider
 public class RefusalMapper implements ExceptionMapper<SurfaceException> {
 
-    private static final Logger LOG = Logger.getLogger(RefusalMapper.class);
-
     @Override
     public Response toResponse(SurfaceException refused) {
-        LOG.debugf("refusal: %s", refused.refusal().code());
+        PlatformLog.refused(PlatformLog.Reason.of(refused.refusal().code()));
         return answer(refused.refusal(), refused.allow().orElse(null));
     }
 
@@ -81,7 +79,9 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
 
         @Override
         public Response toResponse(DispatchException e) {
-            LOG.debugf("refusal: %s", e.reason());
+            // DEBUG by its code, and WARN where the scope refused (C13.3): the
+            // directory below logs nothing, so its line is written here.
+            PlatformLog.domainRefused(e.reason());
             Optional<CallContext.Made> made = context.made();
             if (made.isEmpty()) {
                 return answer(RefusalCode.of(e.reason()) == RefusalCode.NOT_FOUND

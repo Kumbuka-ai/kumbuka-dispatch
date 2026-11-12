@@ -10,7 +10,6 @@ package ai.kumbuka.dispatch.surface;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
-import org.jboss.logging.Logger;
 
 import java.util.Arrays;
 import java.util.List;
@@ -29,11 +28,9 @@ import java.util.Map;
 @ApplicationScoped
 public class RefusalCatalogueGuard {
 
-    private static final Logger LOG = Logger.getLogger(RefusalCatalogueGuard.class);
-
     void onStart(@Observes StartupEvent event) {
         requireComplete(RefusalCode.catalogue());
-        LOG.infof("refusal catalogue complete: %d codes", RefusalCode.values().length);
+        PlatformLog.catalogueComplete(PlatformLog.Count.of(List.of(RefusalCode.values())));
     }
 
     /**

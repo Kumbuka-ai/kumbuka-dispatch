@@ -96,7 +96,7 @@ class TaskBracketLockIT {
                 int first = LockWaits.sessionOf(em);
                 creating = thread.submit(onItsOwn(() -> tasks.create(SCOPE, SELECTOR,
                     root.address().number(), new TaskService.Draft("late", "code", null, null),
-                    C, IdempotencyKey.NONE)));
+                    C, IdempotencyKey.NONE).answer()));
                 waited = LockWaits.waitsOn(first, creating);
             } finally {
                 QuarkusTransaction.commit();
@@ -169,11 +169,11 @@ class TaskBracketLockIT {
             boolean waited;
             try {
                 first = tasks.create(SCOPE, SELECTOR, null,
-                    new TaskService.Draft("first", "code", null, null), C, IdempotencyKey.NONE);
+                    new TaskService.Draft("first", "code", null, null), C, IdempotencyKey.NONE).answer();
                 int holder = LockWaits.sessionOf(em);
                 creating = thread.submit(onItsOwn(() -> tasks.create(SCOPE, SELECTOR, null,
                     new TaskService.Draft("second", "code", null, null), C,
-                    IdempotencyKey.NONE)));
+                    IdempotencyKey.NONE).answer()));
                 waited = LockWaits.waitsOn(holder, creating);
             } finally {
                 QuarkusTransaction.commit();
@@ -224,7 +224,7 @@ class TaskBracketLockIT {
     private TaskStage.Staged child(TaskStage.Staged root) {
         TaskView v = tasks.create(SCOPE, SELECTOR, root.address().number(),
             new TaskService.Draft("a child", "code", "its commission", null), C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
         TaskStage.Staged child = new TaskStage.Staged(v.address(), v.identity(), SELECTOR, null);
         tasks.act(SCOPE, child.address(), TaskVerb.SEND,
             TaskCall.by(C).withConflictToken(stage.token(child)));

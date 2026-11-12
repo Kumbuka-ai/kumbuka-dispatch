@@ -81,7 +81,7 @@ final class TaskStage {
     Staged draft(String selector) {
         TaskView v = tasks.create(scope, selector, null,
             new TaskService.Draft("a staged task", "code", "the commission", null), C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
         return new Staged(v.address(), v.identity(), selector, null);
     }
 
@@ -96,7 +96,7 @@ final class TaskStage {
     }
 
     Staged claimedBy(Staged s, Actor executor) {
-        TaskClaim claim = tasks.claim(scope, s.address(), TaskCall.by(executor));
+        TaskClaim claim = tasks.claim(scope, s.address(), TaskCall.by(executor)).answer();
         return new Staged(s.address(), s.identity(), s.selector(), claim.receipt());
     }
 

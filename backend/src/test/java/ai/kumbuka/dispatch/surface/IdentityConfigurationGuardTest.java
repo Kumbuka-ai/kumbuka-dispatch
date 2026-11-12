@@ -73,11 +73,13 @@ class IdentityConfigurationGuardTest {
     /**
      * The refusal stands in a log line of its own: the log format carries no
      * exception (C13.1, C13.2), so the reason a start is refused reaches an
-     * operator's crash loop only through that line.
+     * operator's crash loop only through that line. It names the problem by
+     * its constant and carries no setting's value, under the category of
+     * {@link PlatformLog} (DEC-0051, C4).
      */
     @Test
     void the_refusal_stands_in_a_log_line_of_its_own() {
-        List<LogRecord> lines = LogLines.of(IdentityConfigurationGuard.class, () ->
+        List<LogRecord> lines = LogLines.of(PlatformLog.class, () ->
             IdentityConfigurationGuard.verify(configOf(
                 IdentityConfigurationGuard.PRINCIPAL_CLAIM_KEY,
                 IdentityConfigurationGuard.EXPECTED_PRINCIPAL_CLAIM)));
@@ -89,8 +91,8 @@ class IdentityConfigurationGuardTest {
             .satisfies(line -> {
                 assertThat(line.getLevel().intValue()).as("WARN, a configuration anomaly")
                     .isEqualTo(Level.WARNING.intValue());
-                assertThat(LogLines.text(line)).contains(IdentityConfigurationGuard.AUDIENCE_KEY)
-                    .contains("DISPATCH_OIDC_AUDIENCE");
+                assertThat(LogLines.text(line)).isEqualTo("start refused: "
+                    + PlatformLog.StartProblem.AUDIENCE_NOT_SET);
                 assertThat(line.getThrown()).as("the line carries no exception").isNull();
             });
     }

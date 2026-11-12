@@ -6,7 +6,6 @@ import ai.kumbuka.dispatch.tenancy.TenantBound;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import org.jboss.logging.Logger;
 
 import java.util.List;
 import java.util.Optional;
@@ -44,10 +43,11 @@ import java.util.UUID;
 @TenantBound
 public class ScopeDirectory {
 
-    /** Bound by the same convention as every logger here: no title, no body, no
-     *  metadata text, no token, and no actor. A slug is a scope name and an
-     *  address; the subject that asked for it is the audit log's business. */
-    private static final Logger LOG = Logger.getLogger(ScopeDirectory.class);
+    /*
+     * Logs nothing (DEC-0051, C4). Each refusal below is a typed exception,
+     * and the surface that catches it writes its line, by its code: a slug is
+     * a scope name the caller wrote, and a line never carries one.
+     */
 
     /**
      * The one kind this service refuses, spelled as the platform publishes it.
@@ -80,8 +80,6 @@ public class ScopeDirectory {
         if (row.isEmpty()) {
             // Reached only with both settings bound, so this genuinely means
             // "no such scope for this subject" and not "nothing was bound".
-            LOG.warnf("scope '%s' unresolved: %s", slug,
-                DispatchException.Reason.SCOPE_UNRESOLVED);
             throw new DispatchException(DispatchException.Reason.SCOPE_UNRESOLVED,
                 "no scope '" + slug + "' is open to this subject. The directory answers "
                     + "for the bound subject only, and existence in its answer is the "
@@ -101,8 +99,6 @@ public class ScopeDirectory {
 
         requireServedKind(resolved);
         requireWritable(resolved, access);
-
-        LOG.debugf("resolved scope '%s'", slug);
         return resolved;
     }
 
@@ -126,8 +122,6 @@ public class ScopeDirectory {
      */
     private void requireServedKind(ScopeAccess scope) {
         if (KIND_PRIVATE.equals(scope.kind())) {
-            LOG.warnf("scope of kind '%s' refused: %s", scope.kind(),
-                DispatchException.Reason.SCOPE_KIND_UNSUPPORTED);
             throw new DispatchException(DispatchException.Reason.SCOPE_KIND_UNSUPPORTED,
                 "a private scope is not served by this service. Private scopes are "
                     + "per-tenant containers for memory content, and a task has no "
@@ -168,8 +162,6 @@ public class ScopeDirectory {
         }
 
         if (scope.locked()) {
-            LOG.warnf("write into a locked scope refused: %s",
-                DispatchException.Reason.SCOPE_LOCKED);
             throw new DispatchException(DispatchException.Reason.SCOPE_LOCKED,
                 "this scope is locked, so it refuses every write over a service channel "
                     + "whatever the caller's role. Reading it is unaffected. The lock is "
@@ -178,8 +170,6 @@ public class ScopeDirectory {
         }
 
         if (!scope.canWrite()) {
-            LOG.warnf("write without the write right refused: %s",
-                DispatchException.Reason.SCOPE_READ_ONLY);
             throw new DispatchException(DispatchException.Reason.SCOPE_READ_ONLY,
                 "this caller may read this scope but not write to it over a service "
                     + "channel. The write right is the platform's answer about the "
@@ -220,8 +210,6 @@ public class ScopeDirectory {
         Object subject = scopes.boundSubject();
 
         if (tenant == null || subject == null) {
-            LOG.warnf("directory call with unbound session: %s",
-                DispatchException.Reason.SESSION_NOT_BOUND);
             throw new DispatchException(DispatchException.Reason.SESSION_NOT_BOUND,
                 ("the session contract is not bound (app.tenant_id=%s, app.subject=%s), so "
                     + "the directory would return zero rows for every scope. That reads as "

@@ -77,7 +77,7 @@ class TaskTenancyIT {
 
             TaskView own = tasks.create(SCOPE, SELECTOR, null,
                 new TaskService.Draft("B's own", "code", "B's text", null), C,
-                IdempotencyKey.NONE);
+                IdempotencyKey.NONE).answer();
             assertThat(own.address())
                 .as("B numbers in its own selector: the same address as A's task")
                 .isEqualTo(sameAddress);

@@ -141,13 +141,13 @@ class TaskDrawIT {
         TaskStage.Staged lapsed = stage.lapse(stage.active(SELECTOR));
         TaskStage.Staged later = stage.open(SELECTOR);
 
-        TaskClaim first = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(K));
+        TaskClaim first = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(K)).answer();
         assertThat(first.task().address())
             .as("closed, held, deferred, parked and draft are passed over")
             .isEqualTo(lapsed.address());
         assertThat(TaskStage.row(lapsed.identity()).lapseCount()).isEqualTo(1);
 
-        TaskClaim second = tasks.claimNext(SCOPE, SELECTOR, List.of("co*"), TaskCall.by(K));
+        TaskClaim second = tasks.claimNext(SCOPE, SELECTOR, List.of("co*"), TaskCall.by(K)).answer();
         assertThat(second.task().address()).isEqualTo(later.address());
     }
 
@@ -155,11 +155,11 @@ class TaskDrawIT {
     void a_task_of_another_apparatus_is_not_drawn() {
         TaskView review = tasks.create(SCOPE, SELECTOR, null,
             new TaskService.Draft("for review", "review", null, null), TaskStage.C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
         tasks.act(SCOPE, review.address(), TaskVerb.SEND,
             TaskCall.by(TaskStage.C).withConflictToken(review.conflictToken()));
         TaskStage.Staged code = stage.open(SELECTOR);
-        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(K));
+        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(K)).answer();
         assertThat(drawn.task().address()).isEqualTo(code.address());
     }
 
@@ -172,7 +172,7 @@ class TaskDrawIT {
         TaskStage.Staged review = openFor("agent-review");
         TaskStage.Staged code = openFor("agent-code");
 
-        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("*-code"), TaskCall.by(K));
+        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("*-code"), TaskCall.by(K)).answer();
 
         assertThat(drawn.task().address())
             .as("'*-code' ends in '-code' and 'agent-review' does not, though it comes first")
@@ -185,7 +185,7 @@ class TaskDrawIT {
         TaskStage.Staged endsWithCode = openFor("agent-code");
         TaskStage.Staged codeInside = openFor("x-code-y");
 
-        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("*-code-*"), TaskCall.by(K));
+        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("*-code-*"), TaskCall.by(K)).answer();
 
         assertThat(drawn.task().address())
             .as("'*-code-*' needs '-code-' inside, and 'agent-code' only ends in '-code'")
@@ -221,7 +221,7 @@ class TaskDrawIT {
     private TaskStage.Staged openFor(String apparatus) {
         TaskView v = tasks.create(SCOPE, SELECTOR, null,
             new TaskService.Draft("for " + apparatus, apparatus, null, null), TaskStage.C,
-            IdempotencyKey.NONE);
+            IdempotencyKey.NONE).answer();
         tasks.act(SCOPE, v.address(), TaskVerb.SEND,
             TaskCall.by(TaskStage.C).withConflictToken(v.conflictToken()));
         return new TaskStage.Staged(v.address(), v.identity(), SELECTOR, null);
@@ -253,7 +253,7 @@ class TaskDrawIT {
             try (AutoCloseable ignored = tenantContext.bind(tenant)) {
                 together.await(30, TimeUnit.SECONDS);
                 TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"),
-                    TaskCall.by(executor));
+                    TaskCall.by(executor)).answer();
                 return new Drawn(true, drawn.task().address(), null);
             } catch (DispatchException e) {
                 return new Drawn(false, null, e.reason());
