@@ -51,7 +51,32 @@ class TaskTagCascadeIT {
         SurfaceFixture.asConsole(identity);
     }
 
+    // TEMPORARY RED PROBE, reverted in the next commit: the reference is
+    // replaced for the two methods below, and restored after each.
+    private static final String FK = "fk_task_tag_task_tenant";
+    private static final String DROP = "ALTER TABLE dispatch.task_tag DROP CONSTRAINT " + FK;
+    private static final String ADD = "ALTER TABLE dispatch.task_tag ADD CONSTRAINT " + FK
+        + " FOREIGN KEY (tenant_id, task_id) REFERENCES dispatch.task (tenant_id, id)"
+        + " ON UPDATE RESTRICT";
+
+    @org.junit.jupiter.api.AfterEach
+    void restore() {
+        PlatformFixture.run("ALTER TABLE dispatch.task_tag DROP CONSTRAINT IF EXISTS " + FK,
+            ADD.replace(" ON UPDATE RESTRICT", " ON DELETE CASCADE ON UPDATE RESTRICT"));
+    }
+
     @Test
+    void probe_without_on_delete_cascade() {
+        PlatformFixture.run(DROP, ADD);
+        deleting_a_tagged_draft_removes_its_tag_relations_and_leaves_those_of_other_tasks();
+    }
+
+    @Test
+    void probe_without_the_reference() {
+        PlatformFixture.run(DROP);
+        deleting_a_tagged_draft_removes_its_tag_relations_and_leaves_those_of_other_tasks();
+    }
+
     void deleting_a_tagged_draft_removes_its_tag_relations_and_leaves_those_of_other_tasks() {
         String token = "it" + UUID.randomUUID().toString().substring(0, 8) + "-component:cascade";
         PlatformFixture.run("INSERT INTO platform.tag (tenant_id, scope_id, token, created_by) "
