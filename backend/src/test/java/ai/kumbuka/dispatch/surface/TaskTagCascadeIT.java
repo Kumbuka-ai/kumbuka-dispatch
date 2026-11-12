@@ -62,6 +62,8 @@ class TaskTagCascadeIT {
     @org.junit.jupiter.api.AfterEach
     void restore() {
         PlatformFixture.run("ALTER TABLE dispatch.task_tag DROP CONSTRAINT IF EXISTS " + FK,
+            "DELETE FROM dispatch.task_tag x WHERE NOT EXISTS (SELECT 1 FROM dispatch.task t "
+                + "WHERE t.tenant_id = x.tenant_id AND t.id = x.task_id)",
             ADD.replace(" ON UPDATE RESTRICT", " ON DELETE CASCADE ON UPDATE RESTRICT"));
     }
 
