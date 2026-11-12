@@ -28,7 +28,7 @@ import java.util.UUID;
 
 /**
  * The kernel of the task lifecycle (TAR-0004, concept section 2): the
- * seventeen transitions and the nine calls that are not transitions.
+ * seventeen transitions and the eleven calls that are not transitions.
  *
  * <p>Every transition is one transaction: lock the row, compute the
  * {@link TaskSituation}, call {@link Decision#of}, set the attributes the
@@ -320,7 +320,8 @@ public class TaskService {
      * to cut them afterwards. One more task than the page holds is read, and
      * its presence is what says that a next page exists. The texts of the page
      * are read as type and suffix only, the curation targets of the page in
-     * one statement, and the tags of the page in one.
+     * one statement, and the tags of the page in two at most: the relation,
+     * and the vocabulary only where a task of the page carries a tag.
      *
      * <p>A tag filter is resolved in the scope through the platform's
      * vocabulary first; a token the scope does not declare carries no task,
