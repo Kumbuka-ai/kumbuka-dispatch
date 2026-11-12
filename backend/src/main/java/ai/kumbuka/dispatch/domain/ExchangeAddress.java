@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 /**
@@ -42,8 +49,8 @@ public record ExchangeAddress(String selector, int number, int sub) {
      * The complete address: {@code dispatch://<scope>/<selector>/<number>.<sub>}.
      *
      * <p><strong>The only form that leaves this service.</strong> {@link
-     * #toString()} renders the short form and is used for internal messages
-     * and log lines — never on the wire. The distinction is the whole of
+     * #toString()} renders the short form, which stays inside it — never on
+     * the wire and never in a log line. The distinction is the whole of
      * defect three: a caller that reads {@code satellite/26.2} out of an
      * answer and puts it into the next call is refused, and nothing in the
      * answer told it why.
@@ -55,12 +62,19 @@ public record ExchangeAddress(String selector, int number, int sub) {
     }
 
     /**
-     * The short form, for logs and internal messages.
+     * The short form, {@code <selector>/<number>.<sub>}, for use inside this
+     * service only.
      *
      * <p>Deliberately NOT the wire form. Every refusal message that names an
-     * address builds it with {@link #complete}; this one exists because a log
-     * line is read inside a deployment that already knows its own scope, and
-     * the scheme prefix on every line would be noise.
+     * address builds it with {@link #complete}. The short form is what the
+     * kernel has without a scope: it names the tasks in the offenders of a
+     * refusal, which the adapter reads back into complete addresses before
+     * answering; it spells an address in the canonical form of a filter, of
+     * which a cursor's fingerprint is taken; it enters the digest an
+     * idempotency key is checked against; and it names the task in the
+     * message of a {@link DispatchException}. No log line carries it: it
+     * holds the selector, a name the tenant chose, and a log line carries no
+     * value a caller or tenant chose.
      */
     @Override
     public String toString() {
