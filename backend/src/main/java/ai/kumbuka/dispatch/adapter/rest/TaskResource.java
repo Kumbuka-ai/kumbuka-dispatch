@@ -360,10 +360,12 @@ public class TaskResource {
 
     /**
      * The idempotency key the header carries, for a call that takes one. Sent
-     * twice it is a value the call cannot take; a blank one is no key.
+     * twice it is a value the call cannot take. A header sent empty is an
+     * empty key, never no key: read as absent it would let the call run
+     * without the idempotency its caller asked for, so it is handed on and
+     * {@link CallPayload} refuses it as outside the key's form (C10.4).
      */
-    private static Optional<String> key(VerbName call, ProcessVerb verb,
-                                                  List<String> header) {
+    static Optional<String> key(VerbName call, ProcessVerb verb, List<String> header) {
         Optional<Argument> declared = verb.argument(KEY_ARGUMENT, Argument.Placement.TOP);
         if (declared.isEmpty() || header.isEmpty()) {
             return Optional.empty();
@@ -373,8 +375,7 @@ public class TaskResource {
             throw new SurfaceException(Refusal.argumentInvalid(call, ArgumentPath.of(argument),
                 Form.ONCE));
         }
-        String key = header.get(0).trim();
-        return key.isEmpty() ? Optional.empty() : Optional.of(key);
+        return Optional.of(header.get(0).trim());
     }
 
     // ======================================================================

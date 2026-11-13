@@ -26,8 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Presence by simple name anywhere in the main tree, as the rule states it;
  * where each class lives is the business of the package and naming guards.
  *
- * <p>{@code KeysetClause} (C9.3) is not on the list: the contract names it
- * under its own rule, and the change that extracts it adds it here.
+ * <p>{@code KeysetClause} is on the list because C2.4 names it among the
+ * shared classes; C9.3 fixes where it lives and what it does.
  */
 class SharedClassNamesTest {
 

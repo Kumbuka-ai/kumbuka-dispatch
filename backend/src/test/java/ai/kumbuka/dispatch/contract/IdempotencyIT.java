@@ -318,6 +318,72 @@ class IdempotencyIT {
     }
 
     /**
+     * An empty key is a key outside its form, on every call that takes one and
+     * on both surfaces: the empty {@code Idempotency-Key} header on REST and
+     * the empty string as {@code idempotency_key} on MCP are each refused as
+     * {@code ARGUMENT_INVALID} naming {@code idempotency_key}, and the call is
+     * not carried out (C10.4). Read as no key, the call would run without the
+     * idempotency its caller asked for.
+     *
+     * <p>RED STATE, observed in the run that built the C10.4 key form: the
+     * empty header on REST was read as no key, and the create ran.
+     */
+    @Test
+    void an_empty_key_is_argument_invalid_on_both_surfaces_for_every_call_that_takes_one() {
+        String id = SurfaceFixture.open("keyed empty", "code");
+        String address = SurfaceFixture.address(id);
+        Map<String, Object> fields = Map.of("title", "an empty key", "apparatus", "code");
+        Map<String, Object> addendum = Map.of("part", "dispatch", "text", "an empty key");
+
+        String before = Writes.snapshot();
+        assertEmptyKeyRefused(given().contentType(ContentType.JSON).header(KEY, "")
+            .body(Map.of("fields", fields)).post(SurfaceFixture.collection()));
+        assertEmptyKeyRefused(Mcp.call("dispatch_create", Map.of("scope", SurfaceFixture.SCOPE,
+            "selector", SurfaceFixture.SELECTOR, "idempotency_key", "", "fields", fields)));
+        assertEmptyKeyRefused(given().contentType(ContentType.JSON).header(KEY, "")
+            .body(Map.of("fields", addendum)).post(SurfaceFixture.item(id) + ":annotate"));
+        assertEmptyKeyRefused(Mcp.call("dispatch_annotate", Map.of("address", address,
+            "idempotency_key", "", "fields", addendum)));
+
+        SurfaceFixture.asExecutor(identity);
+        assertEmptyKeyRefused(given().contentType(ContentType.JSON).header(KEY, "")
+            .post(SurfaceFixture.item(id) + ":claim"));
+        assertEmptyKeyRefused(Mcp.call("dispatch_claim", Map.of("address", address,
+            "idempotency_key", "")));
+        assertEmptyKeyRefused(given().contentType(ContentType.JSON).header(KEY, "")
+            .body(Map.of("apparatus", List.of("code")))
+            .post(SurfaceFixture.collection() + ":claim_next"));
+        assertEmptyKeyRefused(Mcp.call("dispatch_claim_next", Map.of("scope",
+            SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
+            "apparatus", List.of("code"), "idempotency_key", "")));
+
+        assertThat(Writes.snapshot()).as("no refused call was carried out").isEqualTo(before);
+        assertThat(Mcp.field(Mcp.answer(Mcp.call("dispatch_read",
+            Map.of("address", address))), "state")).as("the task was neither claimed nor drawn")
+            .isEqualTo("open");
+    }
+
+    /** {@code ARGUMENT_INVALID} naming the key and nothing else, on either surface. */
+    private static void assertEmptyKeyRefused(Response refused) {
+        boolean overMcp = refused.jsonPath().get("jsonrpc") != null;
+        String body = refused.asString();
+        if (overMcp) {
+            Map<String, Object> envelope = Mcp.refusal(refused);
+            assertThat(envelope.get("reason")).as(body).isEqualTo("ARGUMENT_INVALID");
+            assertThat(refused.jsonPath().getList("result.structuredContent.data.offenders",
+                String.class)).as(body).containsExactly("idempotency_key");
+            return;
+        }
+        assertThat(refused.statusCode()).as(body).isEqualTo(400);
+        assertThat(refused.jsonPath().getString("reason"))
+            .as("RED STATE, observed: the empty Idempotency-Key header was read as no key, "
+                + "and the call ran: %s", body)
+            .isEqualTo("ARGUMENT_INVALID");
+        assertThat(refused.jsonPath().getList("data.offenders", String.class)).as(body)
+            .containsExactly("idempotency_key");
+    }
+
+    /**
      * A key older than 24 hours counts as absent, and a caller's expired keys
      * are removed when that caller next writes a key, with no background job.
      * Another caller's expired key stays until that caller writes one.

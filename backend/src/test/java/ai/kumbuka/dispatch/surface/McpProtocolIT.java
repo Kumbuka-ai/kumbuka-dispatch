@@ -94,6 +94,23 @@ class McpProtocolIT {
             .isEqualTo(identities);
     }
 
+    /**
+     * No tool schema enumerates an argument's values and leaves out a declared
+     * one (C4.7): the check of {@code ToolSchemaProjectionTest}, which observes
+     * it red on planted omissions, run against what the service serves.
+     */
+    @Test
+    void every_enumeration_of_the_tool_list_carries_every_declared_value() {
+        List<Map<String, Object>> tools = Mcp.rpc("tools/list", Map.of())
+            .jsonPath().getList("result.tools");
+        Map<String, Object> declaration = given().get("/api/declaration").jsonPath().getMap("$");
+        assertThat(ai.kumbuka.dispatch.architecture.ToolSchemaProjectionTest
+                .omissions(declaration, tools))
+            .as("every value the declaration declares for an argument is accepted on the "
+                + "assistant surface (C4.7)")
+            .isEmpty();
+    }
+
     @Test
     void an_unknown_tool_is_invalid_params_naming_the_declared_tools_and_not_the_one_sent() {
         Response answer = Mcp.call("dispatch_" + MARKER, Map.of());

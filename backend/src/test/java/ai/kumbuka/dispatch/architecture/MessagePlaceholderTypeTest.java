@@ -28,9 +28,8 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * A placeholder of a text takes only the platform's vocabulary
- * (service-construction, "texts addressed to a caller", rule 2; DEC-0043
- * R18).
+ * A placeholder of a text takes only the platform's vocabulary, built only
+ * from the declaration (service contract C12.3; DEC-0043 R18).
  *
  * <p>Two checks, by reflection. Every parameter of every method of every
  * bundle interface has one of the types {@link ArgumentName}, {@link
