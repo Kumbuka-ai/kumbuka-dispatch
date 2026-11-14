@@ -1,0 +1,291 @@
+# Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Kumbuka and is licensed under the GNU Affero
+# General Public License v3.0 only. See the LICENSE file in the
+# repository root for the full licence text.
+#
+# The admission of the dispatch service, as it stands before its calls are
+# moved onto named permissions.
+#
+# THIS FILE IS THE EXPECTATION, and it records what the service DOES, not what
+# it should do: where the running service admits or refuses a cell otherwise
+# than its transition table would suggest, the cell is written as the service
+# decides it. AdmissionMatrixIT runs every row over the REST surface and
+# compares; nothing here is read from the service under test.
+#
+# Columns, tab-separated:
+#   call      every call of verb-surface.tsv, by its REST name
+#   roles     the realm roles of the caller: console (dispatch-console only),
+#             executor (dispatch-executor only), both, none
+#   relation  the caller's relation to the task the call concerns, the first
+#             that holds of: holder (holds it), commissioner (created it),
+#             candidate (the task is open and nobody holds it), bystander
+#             (otherwise); none where the call concerns no task (create
+#             without a parent, query, claim_next). For create with a parent,
+#             the relation to the parent.
+#   state     the state of the task when the call is made, with its hold
+#             reason where the call depends on it; for claim_next the state
+#             of the task drawn; none where the call concerns no task
+#   outcome   admitted or refused
+#   code      the code of the refusal as the wire carries it under `reason`;
+#             empty where the call is admitted
+#
+# How a cell is staged: the commissioner is the caller where the relation is
+# commissioner, another console identity otherwise; the holder is the caller
+# where the relation is holder, another executor otherwise. Every call
+# presents what its proof asks -- the holder's receipt, the current conflict
+# token, a valid payload -- so that the caller and not the request decides.
+#
+# A token carrying neither role is refused by the kernel as ACTOR_UNKNOWN,
+# which the wire carries as ROLE_INSUFFICIENT; a call a capacity does not
+# reach (the kernel's ACTOR_UNKNOWN at the relation) likewise. A holder's call
+# made by another is the kernel's CLAIM_REQUIRED, which the wire carries as
+# CLAIM_HELD where another holds the task and CLAIM_ABSENT where nobody does.
+
+call	roles	relation	state	outcome	code
+
+# ---------------------------------------------------------------------------
+# The transitions
+# ---------------------------------------------------------------------------
+
+send	console	commissioner	draft	admitted
+send	console	bystander	draft	admitted
+send	executor	bystander	draft	refused	ROLE_INSUFFICIENT
+send	both	commissioner	draft	admitted
+send	both	bystander	draft	admitted
+send	none	bystander	draft	refused	ROLE_INSUFFICIENT
+
+recall	console	commissioner	open	admitted
+recall	console	candidate	open	admitted
+recall	executor	candidate	open	refused	ROLE_INSUFFICIENT
+recall	both	commissioner	open	admitted
+recall	both	candidate	open	admitted
+recall	none	candidate	open	refused	ROLE_INSUFFICIENT
+
+claim	console	commissioner	open	refused	ROLE_INSUFFICIENT
+claim	console	candidate	open	refused	ROLE_INSUFFICIENT
+claim	executor	candidate	open	admitted
+claim	both	commissioner	open	admitted
+claim	both	candidate	open	admitted
+claim	none	candidate	open	refused	ROLE_INSUFFICIENT
+
+claim_next	console	none	open	refused	ROLE_INSUFFICIENT
+claim_next	executor	none	open	admitted
+claim_next	both	none	open	admitted
+claim_next	none	none	open	refused	ROLE_INSUFFICIENT
+
+release	console	commissioner	active	refused	CLAIM_HELD
+release	console	bystander	active	refused	CLAIM_HELD
+release	executor	holder	active	admitted
+release	executor	bystander	active	refused	CLAIM_HELD
+release	both	commissioner	active	refused	CLAIM_HELD
+release	both	holder	active	admitted
+release	both	bystander	active	refused	CLAIM_HELD
+release	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+defer	console	commissioner	active	refused	CLAIM_HELD
+defer	console	bystander	active	refused	CLAIM_HELD
+defer	executor	holder	active	admitted
+defer	executor	bystander	active	refused	CLAIM_HELD
+defer	both	commissioner	active	refused	CLAIM_HELD
+defer	both	holder	active	admitted
+defer	both	bystander	active	refused	CLAIM_HELD
+defer	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+renew	console	commissioner	active	refused	CLAIM_HELD
+renew	console	bystander	active	refused	CLAIM_HELD
+renew	executor	holder	active	admitted
+renew	executor	bystander	active	refused	CLAIM_HELD
+renew	both	commissioner	active	refused	CLAIM_HELD
+renew	both	holder	active	admitted
+renew	both	bystander	active	refused	CLAIM_HELD
+renew	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+ask	console	commissioner	active	refused	CLAIM_HELD
+ask	console	bystander	active	refused	CLAIM_HELD
+ask	executor	holder	active	admitted
+ask	executor	bystander	active	refused	CLAIM_HELD
+ask	both	commissioner	active	refused	CLAIM_HELD
+ask	both	holder	active	admitted
+ask	both	bystander	active	refused	CLAIM_HELD
+ask	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+answer	console	commissioner	on_hold (question)	admitted
+answer	console	bystander	on_hold (question)	admitted
+answer	executor	holder	on_hold (question)	refused	ROLE_INSUFFICIENT
+answer	executor	bystander	on_hold (question)	refused	ROLE_INSUFFICIENT
+answer	both	commissioner	on_hold (question)	admitted
+answer	both	holder	on_hold (question)	admitted
+answer	both	bystander	on_hold (question)	admitted
+answer	none	bystander	on_hold (question)	refused	ROLE_INSUFFICIENT
+
+hold	console	commissioner	active	refused	CLAIM_HELD
+hold	console	bystander	active	refused	CLAIM_HELD
+hold	executor	holder	active	admitted
+hold	executor	bystander	active	refused	CLAIM_HELD
+hold	both	commissioner	active	refused	CLAIM_HELD
+hold	both	holder	active	admitted
+hold	both	bystander	active	refused	CLAIM_HELD
+hold	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+resume	console	commissioner	on_hold (dependency)	refused	CLAIM_HELD
+resume	console	bystander	on_hold (dependency)	refused	CLAIM_HELD
+resume	executor	holder	on_hold (dependency)	admitted
+resume	executor	bystander	on_hold (dependency)	refused	CLAIM_HELD
+resume	both	commissioner	on_hold (dependency)	refused	CLAIM_HELD
+resume	both	holder	on_hold (dependency)	admitted
+resume	both	bystander	on_hold (dependency)	refused	CLAIM_HELD
+resume	none	bystander	on_hold (dependency)	refused	ROLE_INSUFFICIENT
+
+deliver	console	commissioner	active	refused	CLAIM_HELD
+deliver	console	bystander	active	refused	CLAIM_HELD
+deliver	executor	holder	active	admitted
+deliver	executor	bystander	active	refused	CLAIM_HELD
+deliver	both	commissioner	active	refused	CLAIM_HELD
+deliver	both	holder	active	admitted
+deliver	both	bystander	active	refused	CLAIM_HELD
+deliver	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+rework	console	commissioner	delivered	admitted
+rework	console	bystander	delivered	admitted
+rework	executor	holder	delivered	refused	ROLE_INSUFFICIENT
+rework	executor	bystander	delivered	refused	ROLE_INSUFFICIENT
+rework	both	commissioner	delivered	admitted
+rework	both	holder	delivered	admitted
+rework	both	bystander	delivered	admitted
+rework	none	bystander	delivered	refused	ROLE_INSUFFICIENT
+
+accept	console	commissioner	delivered	admitted
+accept	console	bystander	delivered	admitted
+accept	executor	holder	delivered	refused	ROLE_INSUFFICIENT
+accept	executor	bystander	delivered	refused	ROLE_INSUFFICIENT
+accept	both	commissioner	delivered	admitted
+accept	both	holder	delivered	admitted
+accept	both	bystander	delivered	admitted
+accept	none	bystander	delivered	refused	ROLE_INSUFFICIENT
+
+reject	console	commissioner	open	refused	ROLE_INSUFFICIENT
+reject	console	candidate	open	refused	ROLE_INSUFFICIENT
+reject	executor	candidate	open	admitted
+reject	both	commissioner	open	admitted
+reject	both	candidate	open	admitted
+reject	none	candidate	open	refused	ROLE_INSUFFICIENT
+
+fail	console	commissioner	active	refused	CLAIM_HELD
+fail	console	bystander	active	refused	CLAIM_HELD
+fail	executor	holder	active	admitted
+fail	executor	bystander	active	refused	CLAIM_HELD
+fail	both	commissioner	active	refused	CLAIM_HELD
+fail	both	holder	active	admitted
+fail	both	bystander	active	refused	CLAIM_HELD
+fail	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+withdraw	console	commissioner	active	admitted
+withdraw	console	bystander	active	admitted
+withdraw	executor	holder	active	refused	ROLE_INSUFFICIENT
+withdraw	executor	bystander	active	refused	ROLE_INSUFFICIENT
+withdraw	both	commissioner	active	admitted
+withdraw	both	holder	active	admitted
+withdraw	both	bystander	active	admitted
+withdraw	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+# ---------------------------------------------------------------------------
+# The calls that are not transitions
+# ---------------------------------------------------------------------------
+
+create	console	none	none	admitted
+create	executor	none	none	refused	ROLE_INSUFFICIENT
+create	both	none	none	admitted
+create	none	none	none	refused	ROLE_INSUFFICIENT
+create	console	commissioner	open	admitted
+create	console	candidate	open	admitted
+create	executor	candidate	open	refused	ROLE_INSUFFICIENT
+create	both	commissioner	open	admitted
+create	both	candidate	open	admitted
+create	none	candidate	open	refused	ROLE_INSUFFICIENT
+
+update	console	commissioner	draft	admitted
+update	console	bystander	draft	admitted
+update	executor	bystander	draft	refused	ROLE_INSUFFICIENT
+update	both	commissioner	draft	admitted
+update	both	bystander	draft	admitted
+update	none	bystander	draft	refused	ROLE_INSUFFICIENT
+
+delete	console	commissioner	draft	admitted
+delete	console	bystander	draft	admitted
+delete	executor	bystander	draft	refused	ROLE_INSUFFICIENT
+delete	both	commissioner	draft	admitted
+delete	both	bystander	draft	admitted
+delete	none	bystander	draft	refused	ROLE_INSUFFICIENT
+
+read	console	commissioner	active	admitted
+read	console	bystander	active	admitted
+read	executor	holder	active	admitted
+read	executor	bystander	active	admitted
+read	both	commissioner	active	admitted
+read	both	holder	active	admitted
+read	both	bystander	active	admitted
+read	none	bystander	active	refused	ROLE_INSUFFICIENT
+read	console	candidate	open	admitted
+read	executor	candidate	open	admitted
+read	both	candidate	open	admitted
+read	none	candidate	open	refused	ROLE_INSUFFICIENT
+
+read_text	console	commissioner	active	admitted
+read_text	console	bystander	active	admitted
+read_text	executor	holder	active	admitted
+read_text	executor	bystander	active	refused	CLAIM_HELD
+read_text	both	commissioner	active	admitted
+read_text	both	holder	active	admitted
+read_text	both	bystander	active	admitted
+read_text	none	bystander	active	refused	ROLE_INSUFFICIENT
+read_text	console	candidate	open	admitted
+read_text	executor	candidate	open	refused	CLAIM_ABSENT
+read_text	both	candidate	open	admitted
+read_text	none	candidate	open	refused	ROLE_INSUFFICIENT
+
+query	console	none	none	admitted
+query	executor	none	none	admitted
+query	both	none	none	admitted
+query	none	none	none	refused	ROLE_INSUFFICIENT
+
+annotate	console	commissioner	active	admitted
+annotate	console	bystander	active	refused	ROLE_INSUFFICIENT
+annotate	executor	holder	active	refused	ROLE_INSUFFICIENT
+annotate	executor	bystander	active	refused	ROLE_INSUFFICIENT
+annotate	both	commissioner	active	admitted
+annotate	both	holder	active	refused	ROLE_INSUFFICIENT
+annotate	both	bystander	active	refused	ROLE_INSUFFICIENT
+annotate	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+relate	console	commissioner	closed	admitted
+relate	console	bystander	closed	admitted
+relate	executor	bystander	closed	refused	ROLE_INSUFFICIENT
+relate	both	commissioner	closed	admitted
+relate	both	bystander	closed	admitted
+relate	none	bystander	closed	refused	ROLE_INSUFFICIENT
+
+unrelate	console	commissioner	closed	admitted
+unrelate	console	bystander	closed	admitted
+unrelate	executor	bystander	closed	refused	ROLE_INSUFFICIENT
+unrelate	both	commissioner	closed	admitted
+unrelate	both	bystander	closed	admitted
+unrelate	none	bystander	closed	refused	ROLE_INSUFFICIENT
+
+tag_attach	console	commissioner	active	admitted
+tag_attach	console	bystander	active	admitted
+tag_attach	executor	holder	active	admitted
+tag_attach	executor	bystander	active	admitted
+tag_attach	both	commissioner	active	admitted
+tag_attach	both	holder	active	admitted
+tag_attach	both	bystander	active	admitted
+tag_attach	none	bystander	active	refused	ROLE_INSUFFICIENT
+
+tag_detach	console	commissioner	active	admitted
+tag_detach	console	bystander	active	admitted
+tag_detach	executor	holder	active	admitted
+tag_detach	executor	bystander	active	admitted
+tag_detach	both	commissioner	active	admitted
+tag_detach	both	holder	active	admitted
+tag_detach	both	bystander	active	admitted
+tag_detach	none	bystander	active	refused	ROLE_INSUFFICIENT
