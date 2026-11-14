@@ -74,14 +74,14 @@ class RefusalCatalogueGuardTest {
     @Test
     void a_code_with_no_remedy_refuses_the_start() {
         Map<RefusalCode, RefusalCode.Declared> blanked = complete();
-        blanked.put(RefusalCode.DRAW_EMPTY, new RefusalCode.Declared(RefusalCode.DRAW_EMPTY,
-            RefusalCode.DRAW_EMPTY.messages(), " "));
+        blanked.put(RefusalCode.CLAIM_HELD, new RefusalCode.Declared(RefusalCode.CLAIM_HELD,
+            RefusalCode.CLAIM_HELD.messages(), " "));
 
         assertThatThrownBy(() -> RefusalCatalogueGuard.requireComplete(blanked))
             .as("RED STATE, observed: a code with a blank remedy refuses the start — a "
                 + "refusal nobody could act on is not a declared refusal")
             .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("DRAW_EMPTY");
+            .hasMessageContaining("CLAIM_HELD");
     }
 
     /** Every code with its messages and a remedy written here. */

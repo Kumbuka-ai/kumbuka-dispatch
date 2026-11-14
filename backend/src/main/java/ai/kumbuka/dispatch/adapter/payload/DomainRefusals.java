@@ -105,7 +105,6 @@ public final class DomainRefusals {
                 childrenIn(targetIn(verb, given).orElseThrow(() ->
                     new IllegalStateException("the kernel refused a root the call did not name")),
                     e));
-            case DRAW_EMPTY -> Refusal.nothingToTake(call, VerbName.of(ProcessVerb.QUERY, surface));
             case PAGE_SIZE_REJECTED -> Refusal.pageSizeRejected(call, e.offenders());
             case CURSOR_MALFORMED -> Refusal.cursorMalformed(call,
                 VerbName.of(ProcessVerb.QUERY, surface), e.offenders());

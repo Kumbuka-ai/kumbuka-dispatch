@@ -70,7 +70,4 @@ public interface NextStepTexts {
 
     @Message
     String readTheAnswer();
-
-    @Message
-    String listAfterAnEmptyDraw();
 }

@@ -72,9 +72,6 @@ public interface RefusalRemedies {
     String receiptWrong();
 
     @Message
-    String drawEmpty();
-
-    @Message
     String childrenUnfinished();
 
     @Message

@@ -105,9 +105,6 @@ public interface RefusalMessages {
     String deferralPending(VerbName call, VerbName read);
 
     @Message
-    String nothingToTake();
-
-    @Message
     String claimDurationInvalid(VerbName call);
 
     @Message

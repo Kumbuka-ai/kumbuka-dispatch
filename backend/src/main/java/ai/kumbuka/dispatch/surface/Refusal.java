@@ -437,13 +437,6 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
     // naming one would tell a task the caller may see from one it may not
     // ======================================================================
 
-    /** The draw found nothing in a collection that exists. */
-    public static Refusal nothingToTake(VerbName call, VerbName query) {
-        return of(Message.NOTHING_TO_TAKE, Texts.refusals().nothingToTake(),
-            Data.attempted(call).next(List.of(new NextList.Step(query,
-                Texts.next().listAfterAnEmptyDraw()))));
-    }
-
     /** A duration that is not a positive ISO-8601 duration. */
     public static Refusal claimDurationInvalid(VerbName call, ArgumentPath duration) {
         return of(Message.CLAIM_DURATION_INVALID, Texts.refusals().claimDurationInvalid(call),

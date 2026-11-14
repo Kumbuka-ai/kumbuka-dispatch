@@ -105,9 +105,6 @@ public enum RefusalCode {
     /** A receipt arrived, the caller's hold stands, and it is not that hold's receipt. */
     RECEIPT_WRONG(409),
 
-    /** The draw found nothing it could take. About a set, never an address. */
-    DRAW_EMPTY(409),
-
     /** The call would close a bracket root with unfinished children. */
     CHILDREN_UNFINISHED(409),
 
@@ -230,7 +227,6 @@ public enum RefusalCode {
             case CLAIM_ABSENT -> remedies.claimAbsent();
             case CLAIM_HELD -> remedies.claimHeld();
             case RECEIPT_WRONG -> remedies.receiptWrong();
-            case DRAW_EMPTY -> remedies.drawEmpty();
             case CHILDREN_UNFINISHED -> remedies.childrenUnfinished();
             case ROOT_UNSENT -> remedies.rootUnsent();
             case ROOT_CLOSED -> remedies.rootClosed();
@@ -311,7 +307,6 @@ public enum RefusalCode {
         OPTION_UNOFFERED(RefusalCode.OPTION_UNOFFERED, "optionUnoffered"),
         FREE_TEXT_UNOFFERED(RefusalCode.OPTION_UNOFFERED, "freeTextUnoffered"),
         DEFERRAL_PENDING(RefusalCode.DEFERRAL_PENDING, "deferralPending"),
-        NOTHING_TO_TAKE(RefusalCode.DRAW_EMPTY, "nothingToTake"),
         CLAIM_DURATION_INVALID(RefusalCode.ARGUMENT_INVALID, "claimDurationInvalid"),
         PAGE_SIZE_REJECTED(RefusalCode.PAGE_SIZE_REJECTED, "pageSizeRejected"),
         CURSOR_MALFORMED(RefusalCode.CURSOR_MALFORMED, "cursorMalformed"),

@@ -408,7 +408,6 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `VERB_NOT_CARRIED` | Send one of the calls in data.accepts, on the route the message names. |
 | `CLAIM_ABSENT` | Claim the task where it is open, then repeat the call with the new receipt. |
 | `CLAIM_HELD` | Wait until its holder gives the task back, or take up another task. |
-| `DRAW_EMPTY` | List the tasks with the query call. |
 | `SELECTOR_UNDECLARED` | Name a bracket kind the scope declares. |
 | `SELECTOR_WITHDRAWN` | Name a bracket kind the scope still offers. |
 | `CONFLICT_TOKEN_MISSING` | Read the task, then repeat the call with its conflict token. |
@@ -445,7 +444,6 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `optionUnoffered` | `OPTION_UNOFFERED` | `{call} names an option the question does not offer; data.offenders names the field, and the read of the task lists the options.` |
 | `freeTextUnoffered` | `OPTION_UNOFFERED` | `{call} answers in free text, and the question admits none; data.offenders names the field, and the read of the task lists the options.` |
 | `deferralPending` | `DEFERRAL_PENDING` | `{call} is not possible yet: the task is deferred, and {read} shows until when, in fields.not_before.` |
-| `nothingToTake` | `DRAW_EMPTY` | `Nothing that your patterns match can be taken up in this bracket kind right now: every such task is a draft, held, paused, delivered, closed or deferred.` |
 | `claimDurationInvalid` | `ARGUMENT_INVALID` | `duration is not valid for {call}: it is a positive ISO-8601 duration such as PT2H.` |
 | `pageSizeRejected` | `PAGE_SIZE_REJECTED` | `page_size is not valid for {call}: it is a whole number from 1 to {max}.` |
 | `cursorMalformed` | `CURSOR_MALFORMED` | `after is not a cursor {query} handed out: it is the next_cursor of the previous page.` |
