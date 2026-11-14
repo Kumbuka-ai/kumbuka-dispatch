@@ -112,10 +112,10 @@ class LocalMcpOffIT {
             .allMatch(call -> call.startsWith(ProcessVerb.PREFIX));
 
         Response refused = given().header("Kumbuka-Surface", "assistant")
-            .contentType(ContentType.JSON).body(Map.of("duration", "PT1H"))
-            .post(SurfaceFixture.item(id) + ":claim");
+            .contentType(ContentType.JSON).header("If-Match", read.header("ETag"))
+            .post(SurfaceFixture.item(id) + ":recall");
         assertThat(refused.jsonPath().getString("reason")).isEqualTo("TRANSITION_REFUSED");
-        assertThat(refused.jsonPath().getString("message")).contains("dispatch_claim");
+        assertThat(refused.jsonPath().getString("message")).contains("dispatch_recall");
         assertThat(refused.jsonPath().getList("data.next.call", String.class))
             .isNotEmpty().allMatch(call -> call.startsWith(ProcessVerb.PREFIX));
     }
