@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.adapter.rest;
 
 import ai.kumbuka.dispatch.adapter.payload.CallBinding;
 import ai.kumbuka.dispatch.adapter.payload.CallPayload;
+import ai.kumbuka.dispatch.adapter.payload.DeclaredCalls;
 import ai.kumbuka.dispatch.adapter.payload.Payloads;
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.surface.AddressParser;
@@ -61,7 +62,7 @@ import java.util.Optional;
  * Idempotency-Key} header (the idempotency key), the query and the body — the
  * same map the assistant surface hands over, closed against the same
  * declaration by the same {@link CallPayload}, read by the same {@link
- * CallBinding} and made through {@link TaskCalls}, which checks the one
+ * CallBinding} and made through {@link DeclaredCalls}, which checks the one
  * permission the call names: one call of the verb surface (C1.1). So a call
  * refuses an invented argument by name on both surfaces alike, whichever part
  * of the request it came in.
@@ -118,7 +119,7 @@ public class TaskResource {
     /** The one value {@link #SURFACE} takes: the assistant surface. */
     static final String ASSISTANT = "assistant";
 
-    @Inject TaskCalls calls;
+    @Inject DeclaredCalls calls;
     @Inject CallerActor caller;
     @Inject CallContext context;
     @Inject ObjectMapper json;

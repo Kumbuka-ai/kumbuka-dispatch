@@ -10,6 +10,7 @@ package ai.kumbuka.dispatch.adapter.mcp;
 import ai.kumbuka.dispatch.adapter.payload.CallBinding;
 import ai.kumbuka.dispatch.adapter.payload.CallPayload;
 import ai.kumbuka.dispatch.adapter.payload.CapabilitiesPayload;
+import ai.kumbuka.dispatch.adapter.payload.DeclaredCalls;
 import ai.kumbuka.dispatch.adapter.payload.DomainRefusals;
 import ai.kumbuka.dispatch.adapter.payload.EmptyPayload;
 import ai.kumbuka.dispatch.adapter.payload.InitializePayload;
@@ -68,7 +69,7 @@ import java.util.Optional;
  * 202. {@code tools/list} is the declaration's projection ({@link McpTools});
  * {@code tools/call} reads the tool's arguments into a {@link CallPayload},
  * reads the call through {@link CallBinding} and makes it through {@link
- * ToolCalls}, which checks the one permission the call names: one call of the
+ * DeclaredCalls}, which checks the one permission the call names: one call of the
  * verb surface, as the REST surface makes it.
  *
  * <h2>Two kinds of error, kept apart</h2>
@@ -113,7 +114,7 @@ public class McpAdapter {
     private static final int INVALID_PARAMS = -32602;
 
     @Inject VerbSurface verbs;
-    @Inject ToolCalls calls;
+    @Inject DeclaredCalls calls;
     @Inject CallerActor caller;
     @Inject ObjectMapper json;
     @Inject Clock clock;
@@ -200,7 +201,7 @@ public class McpAdapter {
 
     /**
      * A tool call the caller's permission does not reach, refused by the
-     * check at {@link ToolCalls} before the call was made: {@code
+     * check at {@link DeclaredCalls} before the call was made: {@code
      * ROLE_INSUFFICIENT}, answered after the call's scopes as every refusal
      * of the caller's part (C1.3), so a scope the caller may not see answers
      * {@code NOT_FOUND} and a task it cannot read likewise.

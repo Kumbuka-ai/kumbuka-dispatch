@@ -110,7 +110,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
 
     /**
      * A call the caller's permission does not reach, refused by the check
-     * at {@link TaskCalls} before the call was made: a refusal of the
+     * at {@code DeclaredCalls} before the call was made: a refusal of the
      * service in the platform's table, {@code ROLE_INSUFFICIENT}, and not
      * the security layer's bare 403. It is answered after the call's scopes,
      * as the check order wants every refusal of the caller's part (C1.3): a

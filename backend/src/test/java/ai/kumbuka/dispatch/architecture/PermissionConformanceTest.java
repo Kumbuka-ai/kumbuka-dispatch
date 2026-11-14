@@ -7,8 +7,7 @@
  */
 package ai.kumbuka.dispatch.architecture;
 
-import ai.kumbuka.dispatch.adapter.mcp.ToolCalls;
-import ai.kumbuka.dispatch.adapter.rest.TaskCalls;
+import ai.kumbuka.dispatch.adapter.payload.DeclaredCalls;
 import ai.kumbuka.dispatch.domain.DispatchPermission;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import io.quarkus.security.PermissionsAllowed;
@@ -41,9 +40,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ol>
  *   <li>every call the declaration carries names exactly the permissions of
  *       its row, and no call names none;</li>
- *   <li>each adapter has one method per call, it carries {@code
- *       @PermissionsAllowed} with exactly the permissions of the call's row,
- *       and no public method of it makes a call without the annotation;</li>
+ *   <li>the class both adapters make their calls through has one method per
+ *       call, it carries {@code @PermissionsAllowed} with exactly the
+ *       permissions of the call's row, and no public method of it makes a call
+ *       without the annotation;</li>
  *   <li>no other class of an adapter makes a prepared call, so no call reaches
  *       the verb surface past the methods that check it.</li>
  * </ol>
@@ -63,8 +63,8 @@ class PermissionConformanceTest {
         "annotate", "the catalogue names the permission the supplemented text was written "
             + "under: the commissioner's or the executor's");
 
-    /** The classes of the two adapters whose methods make the declared calls. */
-    static final List<Class<?>> GATES = List.of(TaskCalls.class, ToolCalls.class);
+    /** The class whose methods make the declared calls, for both adapters. */
+    static final List<Class<?>> GATES = List.of(DeclaredCalls.class);
 
     /** A prepared call being made: the one way a call reaches the verb surface. */
     private static final Pattern MAKES_A_CALL = Pattern.compile("\\.make\\s*\\(");
@@ -111,7 +111,7 @@ class PermissionConformanceTest {
             offences.addAll(gateOffences(gate, CATALOGUE));
         }
         assertThat(offences)
-            .as("each adapter makes a declared call in one method of its own, and the method "
+            .as("both adapters make a declared call in one method of its own, and the method "
                 + "carries @PermissionsAllowed with exactly the permission of the call")
             .isEmpty();
     }
@@ -170,7 +170,7 @@ class PermissionConformanceTest {
                 "PlantedCalls has no method for query");
 
         Map<String, String> sources = new LinkedHashMap<>();
-        sources.put("adapter.rest.TaskCalls", "Outcome send(Prepared call) { "
+        sources.put("adapter.payload.DeclaredCalls", "Outcome send(Prepared call) { "
             + "return call.make(verbs); }");
         sources.put("adapter.rest.TaskResource", "Response route() { "
             + "return respond(prepared.make(verbs)); }");
@@ -280,7 +280,7 @@ class PermissionConformanceTest {
                 SourceTree.code(file));
         }
         assertThat(sources).as("the gates must be found, or the check walks the wrong tree")
-            .containsKeys("adapter.rest.TaskCalls", "adapter.mcp.ToolCalls");
+            .containsKeys("adapter.payload.DeclaredCalls");
         return sources;
     }
 

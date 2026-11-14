@@ -7,69 +7,166 @@
  */
 package ai.kumbuka.dispatch.adapter.payload;
 
+import ai.kumbuka.dispatch.domain.DispatchPermission;
+import ai.kumbuka.dispatch.surface.VerbSurface;
+import io.quarkus.security.PermissionsAllowed;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+
 /**
- * The declared calls, one method each: what each adapter implements to make
- * them, and where each adapter checks the one permission a call names, with
- * {@code @PermissionsAllowed} on its implementation of the method.
+ * The declared calls, one method each, and the one permission each checks
+ * about its caller (DEC-0052): the method makes its call only for a caller
+ * holding it, and checks nothing else about the caller. Where a method names
+ * two, the caller holds either: {@code read_text} and {@code annotate}
+ * ({@code ProcessVerb#permissions}).
  *
  * <p>One method per call rather than one for all, because the permission is
- * the call's: a single method would check one for every call or none.
- * {@link CallBinding#through} picks the method of a prepared call; each
- * method makes the call it is named for, and nothing else.
+ * the call's: a single method would check one for every call or none. Both
+ * adapters make every call here, through {@link CallBinding#through}, once
+ * they have read it into a prepared call; it is the part of the adapter both
+ * surfaces share, as the form check is (C1.2, C27.1). A caller without the
+ * permission is refused before the call is made, and the adapter's edge
+ * answers it after the call's scopes, as every refusal of the caller's part.
  */
-public interface DeclaredCalls {
+@ApplicationScoped
+public class DeclaredCalls {
 
-    CallBinding.Outcome send(CallBinding.Prepared call);
+    @Inject VerbSurface verbs;
 
-    CallBinding.Outcome recall(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public CallBinding.Outcome send(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome claim(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public CallBinding.Outcome recall(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome release(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome claim(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome defer(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome release(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome renew(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome defer(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome ask(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome renew(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome answer(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome ask(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome hold(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_DECIDE)
+    public CallBinding.Outcome answer(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome resume(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome hold(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome deliver(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome resume(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome rework(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome deliver(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome accept(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_CONFIRM)
+    public CallBinding.Outcome rework(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome reject(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_CONFIRM)
+    public CallBinding.Outcome accept(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome fail(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome reject(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome withdraw(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public CallBinding.Outcome fail(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome create(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_WITHDRAW)
+    public CallBinding.Outcome withdraw(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome update(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public CallBinding.Outcome create(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome delete(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public CallBinding.Outcome update(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome read(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public CallBinding.Outcome delete(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome readText(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.INSTANCE_READ)
+    public CallBinding.Outcome read(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome query(CallBinding.Prepared call);
+    @PermissionsAllowed({DispatchPermission.Name.INSTANCE_READ_TEXT,
+        DispatchPermission.Name.INSTANCE_READ_TEXT_AS_HOLDER})
+    public CallBinding.Outcome readText(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome annotate(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.INSTANCE_READ)
+    public CallBinding.Outcome query(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome relate(CallBinding.Prepared call);
+    @PermissionsAllowed({DispatchPermission.Name.TASK_COMMISSION,
+        DispatchPermission.Name.TASK_EXECUTE})
+    public CallBinding.Outcome annotate(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome unrelate(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public CallBinding.Outcome relate(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome tagAttach(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public CallBinding.Outcome unrelate(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 
-    CallBinding.Outcome tagDetach(CallBinding.Prepared call);
+    @PermissionsAllowed(DispatchPermission.Name.TASK_TAG)
+    public CallBinding.Outcome tagAttach(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
+
+    @PermissionsAllowed(DispatchPermission.Name.TASK_TAG)
+    public CallBinding.Outcome tagDetach(CallBinding.Prepared call) {
+        return call.make(verbs);
+    }
 }
