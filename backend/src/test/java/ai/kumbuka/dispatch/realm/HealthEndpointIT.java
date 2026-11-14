@@ -42,6 +42,11 @@ class HealthEndpointIT {
     }
 
     @Test
+    void the_health_root_answers_without_a_token() {
+        given().when().get("/q/health").then().statusCode(200);
+    }
+
+    @Test
     void every_other_route_answers_the_challenge_without_a_token() {
         for (String path : List.of("/api/whoami", "/api/declaration", "/api/probe/sprint",
                 "/api/probe/sprint/1.0")) {

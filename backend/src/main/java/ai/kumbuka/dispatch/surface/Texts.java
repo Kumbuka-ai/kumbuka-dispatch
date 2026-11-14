@@ -13,8 +13,8 @@ import io.quarkus.qute.i18n.MessageBundles;
  * The one way to a text addressed to a caller: every bundle, by its kind.
  *
  * <p>Every text the surface addresses to a caller lives in a Qute
- * type-safe message bundle (service-construction, "texts addressed to a
- * caller"), one interface per kind of text, with the texts in {@code
+ * type-safe message bundle (service contract C12.1 to C12.5), one interface
+ * per kind of text, with the texts in {@code
  * src/main/resources/messages/}. One set of texts per component: there is
  * no variant per deployment, tenant or call, and no localized bundle.
  *

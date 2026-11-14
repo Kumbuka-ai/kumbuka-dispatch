@@ -27,8 +27,8 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * No text addressed to a caller lives in Java code (service-construction,
- * "texts addressed to a caller", rules 1 and 3).
+ * No text addressed to a caller lives in Java code (service contract C12.1
+ * and C12.4).
  *
  * <p>Three checks. Every {@code @Message} of a bundle interface carries no
  * value, so its text is in the bundle file and the build fails where the file

@@ -26,8 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Every text that tells a caller what to do is worded positively, as the act
- * to perform (DEC-0043 R21; service-construction, "texts addressed to a
- * caller", rule 4).
+ * to perform (service contract C12.5; DEC-0043 R21).
  *
  * <p>The lint reads the files of the instructing texts -- the remedies, the
  * steps of {@code next}, and the descriptions of the calls, the arguments and

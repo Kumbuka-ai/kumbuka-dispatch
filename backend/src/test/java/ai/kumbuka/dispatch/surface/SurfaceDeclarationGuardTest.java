@@ -26,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * {@code DeclarationConformanceIT}, and that every refusal code can be worded
  * in {@code RefusalCatalogueGuardTest}.
  *
- * <p>The fourth check is here because it was NOT here. The javadoc of {@code
+ * <p>Of the five checks, the one on a call with no arguments is here because
+ * it was NOT here. The javadoc of {@code
  * requireServable} said three checks ran and two did: "a call with no
  * arguments cannot be schema'd" was named and never implemented, which is a
  * comment asserting a guarantee no mechanism enforced. It is implemented now,
@@ -148,6 +149,16 @@ class SurfaceDeclarationGuardTest {
             .as("RED STATE, observed: a served argument without a description started")
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("address");
+    }
+
+    @Test
+    void a_document_with_a_call_with_no_arguments_refuses_the_start() {
+        assertThatThrownBy(() -> DeclarationGuard.requireServable(document(call("dispatch_read",
+            "Reads a task.", List.of(), List.of("NOT_FOUND")))))
+            .as("RED STATE, observed: a served call with an empty argument list started")
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("dispatch_read")
+            .hasMessageContaining("no arguments");
     }
 
     @Test

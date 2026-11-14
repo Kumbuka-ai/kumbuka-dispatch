@@ -221,13 +221,17 @@ public final class SurfaceDeclaration {
     /**
      * Refuses a declaration that cannot be served, at start-up.
      *
-     * <p>Four checks, each a way the surface would be broken in production
+     * <p>Five checks, each a way the surface would be broken in production
      * without anybody noticing until a caller hit it: a duplicate call name
-     * makes the tool list ambiguous; a call with no description is a call an
-     * assistant with no skill cannot use; a description over {@link
-     * #DESCRIPTION_BUDGET} is cut by a caller that does not read it whole; and
-     * an argument with no description leaves {@code ARGUMENT_MISSING} with
-     * nothing to say the value is. That every refusal code can be worded is
+     * makes the tool list ambiguous ({@link #requireDistinctNames}); a call
+     * with no description is a call an assistant with no skill cannot use
+     * ({@link #requireDescribed}); a description over {@link
+     * #DESCRIPTION_BUDGET} is cut by a caller that does not read it whole
+     * ({@link #requireWithinBudget}); an argument with no description leaves
+     * {@code ARGUMENT_MISSING} with nothing to say the value is; and a call
+     * with no arguments at all has an empty closed input schema, against which
+     * an undeclared argument cannot be told apart (both {@link
+     * #requireDescribedArguments}). That every refusal code can be worded is
      * {@link RefusalCatalogueGuard}'s, which runs whether or not the assistant
      * surface is built.
      */
