@@ -123,6 +123,22 @@ class McpProtocolIT {
         assertThat(answer.jsonPath().getMap("$")).doesNotContainKey("result");
     }
 
+    /**
+     * The draw left the surface: {@code dispatch_claim_next} is no tool of
+     * the list, and a call of it is an unknown tool, -32602, which a router
+     * still offering it hands back to its caller.
+     */
+    @Test
+    void the_draw_is_no_tool_and_a_call_of_it_is_an_unknown_tool() {
+        assertThat(Mcp.rpc("tools/list", Map.of()).jsonPath()
+                .getList("result.tools.name", String.class))
+            .doesNotContain("dispatch_claim_next");
+        Response answer = Mcp.call("dispatch_claim_next", Map.of("scope", "probe",
+            "selector", "sprint", "apparatus", List.of("code")));
+        assertThat(answer.jsonPath().getInt("error.code")).isEqualTo(-32602);
+        assertThat(answer.jsonPath().getMap("$")).doesNotContainKey("result");
+    }
+
     @Test
     void an_unknown_method_is_method_not_found_and_names_nothing_sent() {
         Response answer = Mcp.rpc("tools/" + MARKER, Map.of());

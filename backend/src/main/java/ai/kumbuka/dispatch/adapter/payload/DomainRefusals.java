@@ -105,7 +105,6 @@ public final class DomainRefusals {
                 childrenIn(targetIn(verb, given).orElseThrow(() ->
                     new IllegalStateException("the kernel refused a root the call did not name")),
                     e));
-            case DRAW_EMPTY -> Refusal.nothingToTake(call, VerbName.of(ProcessVerb.QUERY, surface));
             case PAGE_SIZE_REJECTED -> Refusal.pageSizeRejected(call, e.offenders());
             case CURSOR_MALFORMED -> Refusal.cursorMalformed(call,
                 VerbName.of(ProcessVerb.QUERY, surface), e.offenders());
@@ -124,6 +123,21 @@ public final class DomainRefusals {
                     true);
             default -> about(new Context(surface, actor, verb, call, given, read, clock), e, code);
         };
+    }
+
+    /**
+     * A call the caller's permission does not reach, refused at the adapter
+     * before it was made: worded as the kernel's refusal of the caller's part
+     * is, {@code ROLE_INSUFFICIENT} with the part the call belongs to and the
+     * calls open to the caller, and {@code NOT_FOUND} where the task cannot be
+     * read. The edge resolves the call's scopes before it asks for this, so the
+     * refusal stands where the check order puts it (C1.3).
+     */
+    public static Refusal ofPermission(Surface surface, Actor actor, ProcessVerb verb,
+                                       Map<String, Object> given, Reader read, Clock clock) {
+        return of(new DispatchException(DispatchException.Reason.ACTOR_UNKNOWN,
+                verb.call() + " checks a permission the caller does not hold."),
+            surface, actor, verb, given, read, clock);
     }
 
     /**

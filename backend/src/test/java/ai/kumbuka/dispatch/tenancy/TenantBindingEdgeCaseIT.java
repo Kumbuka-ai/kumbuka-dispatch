@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.tenancy;
 
 import ai.kumbuka.dispatch.domain.DomainFixture;
@@ -50,9 +57,9 @@ class TenantBindingEdgeCaseIT {
     // which shares its simple name. Without it here the injection point
     // matches by type and is rejected for want of a matching qualifier.
     @Inject @PersistenceUnitExtension HibernateTenantResolver hibernateResolver;
-    /** A console actor: these probes are about tenancy, not about capacity. */
-    static final ai.kumbuka.dispatch.domain.Actor PROBE =
-        new ai.kumbuka.dispatch.domain.Actor("probe", ai.kumbuka.dispatch.domain.Actor.Kind.CONSOLE);
+    /** A console actor: these probes are about tenancy, not about permissions. */
+    static final ai.kumbuka.dispatch.domain.Actor PROBE = new ai.kumbuka.dispatch.domain.Actor(
+        "probe", ai.kumbuka.dispatch.domain.PermissionFixture.CONSOLE);
 
     @Inject TaskService tasks;
 

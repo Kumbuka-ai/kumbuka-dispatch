@@ -27,9 +27,6 @@ public interface NextStepTexts {
     String claim();
 
     @Message
-    String claimNext();
-
-    @Message
     String release();
 
     @Message
@@ -73,7 +70,4 @@ public interface NextStepTexts {
 
     @Message
     String readTheAnswer();
-
-    @Message
-    String listAfterAnEmptyDraw();
 }

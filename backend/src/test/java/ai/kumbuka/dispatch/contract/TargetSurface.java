@@ -16,8 +16,9 @@ import java.util.Map;
 /**
  * The surface the target and the concept document fix, as fixed values.
  *
- * <p>Written by hand from {@code platform-specs}: the twenty-six calls from
- * TAR-0004 section 3, and what each takes from the table in section 3.2 of
+ * <p>Written by hand from {@code platform-specs}: the calls from TAR-0004
+ * section 3 but the draw, which REA-0010 takes off the surface, and what each
+ * takes from the table in section 3.2 of
  * {@code concept-dispatch-store-kernel-and-surface.md}; and from the
  * commission of sprint/210, the two calls on the tags of a task and the
  * filter {@code tag}. Never read from the
@@ -39,9 +40,13 @@ public final class TargetSurface {
     private TargetSurface() {
     }
 
-    /** The seventeen transitions of TAR-0004 section 3, in its order. */
+    /**
+     * The transitions of TAR-0004 section 3, in its order, but the draw:
+     * {@code claim_next} left the surface in the second step of the dispatch
+     * wave of REA-0010, and a task is taken up by its address.
+     */
     public static final List<String> TRANSITIONS = List.of(
-        "send", "recall", "claim", "claim_next", "release", "defer", "renew", "ask", "answer",
+        "send", "recall", "claim", "release", "defer", "renew", "ask", "answer",
         "hold", "resume", "deliver", "rework", "accept", "reject", "fail", "withdraw");
 
     /** The nine calls that are not transitions, TAR-0004 section 3, in its order. */
@@ -84,9 +89,6 @@ public final class TargetSurface {
         table.put("recall", new Arguments(List.of("address", "conflict_token"), List.of()));
         table.put("claim", new Arguments(
             List.of("address", "duration", "idempotency_key"), List.of()));
-        table.put("claim_next", new Arguments(
-            List.of("scope", "selector", "apparatus", "duration", "idempotency_key"),
-            List.of()));
         table.put("release", new Arguments(List.of("address", "receipt"), List.of("remark")));
         table.put("defer", new Arguments(List.of("address", "receipt"),
             List.of("not_before", "remark")));
@@ -135,10 +137,6 @@ public final class TargetSurface {
     /** The arguments {@code remark} is mandatory on (concept section 3.2). */
     public static final List<String> REMARK_REQUIRED = List.of("fail", "reject", "rework");
 
-    /** Mandatory on {@code claim_next} (concept section 3.2). */
-    public static final List<String> CLAIM_NEXT_REQUIRED = List.of("scope", "selector",
-        "apparatus");
-
     /**
      * Concept section 3.5, worded positively under DEC-0043 R21 (the concept
      * follows this wording). The line breaks of the document's code blocks are
@@ -154,29 +152,7 @@ public final class TargetSurface {
             + "Your hold lasts 30 minutes, or the duration you state; extend it with "
             + "dispatch_renew.";
 
-    /**
-     * Concept section 3.5, with the call marked as retiring: take-up has one
-     * verb, claim naming a task (TAR-0004 section 3, platform-specs 4978ca9),
-     * and the draw stays served while its callers move.
-     */
-    public static final String CLAIM_NEXT_DESCRIPTION =
-        "Retiring: take up a task by its address with dispatch_claim; this call stays served "
-            + "while callers move. Takes up the next open task addressed to you, chosen by the "
-            + "service. Moves the task from open to active (intermediate). Call as an executor "
-            + "with scope, selector and apparatus.\n\n"
-            + "Returns the address, a receipt and the end of your hold. Keep the receipt: "
-            + "every later call on this task needs it.\n\n"
-            + "The task's text comes from dispatch_read_text, part \"dispatch\": read it next, "
-            + "before you start working.";
-
-    public static final String APPARATUS_ARGUMENT =
-        "Which apparatus you draw for. Every task is addressed to an apparatus: the kind of "
-            + "executor it is meant for, such as \"code\" or \"review\". Give one or more "
-            + "patterns, matched as alternatives. \"*\" stands for any run of characters, so "
-            + "\"agent-*\" matches \"agent-backend\". Case-sensitive. A pattern of only \"*\" "
-            + "is refused. dispatch_query lists open tasks with their apparatus.";
-
-    /** The sentence about the text, the same in both descriptions. */
+    /** The sentence about the text in the description of a take-up. */
     public static final String THE_TEXT_SENTENCE =
         "The task's text comes from dispatch_read_text, part \"dispatch\": read it next, "
             + "before you start working.";

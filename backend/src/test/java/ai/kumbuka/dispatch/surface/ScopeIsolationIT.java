@@ -18,7 +18,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 import static io.restassured.RestAssured.given;
@@ -187,20 +186,13 @@ class ScopeIsolationIT {
     /**
      * The muted member: may read this scope, may not write to it.
      *
-     * <p>Three write forms are probed on REST, and the middle one is
-     * {@code claim_next}: it is the one write this surface permits on a
-     * truncated address, so it is the form a write check written only for
-     * complete addresses would miss entirely.
+     * <p>Two write forms are probed on REST: on the collection and on a task.
      */
     @Test
     void a_caller_without_the_write_right_is_refused_on_both_rest_forms_and_still_reads() {
         SurfaceFixture.asMutedConsole(identity);
 
         Response collectionWrite = restCollectionWrite(SurfaceFixture.SCOPE);
-        Response truncatedWrite = given().contentType(ContentType.JSON)
-            .body(Map.of("duration", "PT1H", "apparatus", List.of("code")))
-            .post("/api/" + SurfaceFixture.SCOPE + "/" + SurfaceFixture.SELECTOR
-                + ":claim_next");
         Response itemWrite = restItemWrite(SurfaceFixture.SCOPE);
 
         assertThat(collectionWrite.statusCode())
@@ -219,9 +211,6 @@ class ScopeIsolationIT {
         assertSameRestRefusalBarTheCall(collectionWrite, itemWrite,
             "the write right is the platform's answer about the membership and does not "
                 + "depend on how the caller spelled the address");
-        assertSameRestRefusalBarTheCall(collectionWrite, truncatedWrite,
-            "claim_next writes on a truncated address, which is the form a check written "
-                + "for complete addresses alone would let through");
 
         given().get("/api/" + SurfaceFixture.SCOPE + "/" + SurfaceFixture.SELECTOR)
             .then()

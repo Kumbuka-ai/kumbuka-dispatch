@@ -63,7 +63,7 @@ public final class SurfaceDeclaration {
     }
 
     /**
-     * The twenty-eight calls: the twenty-six in the order of TAR-0004 section
+     * The twenty-seven calls: the twenty-five in the order of TAR-0004 section
      * 3, then the two on the tags of a task.
      */
     public static List<ProcessVerb> calls() {

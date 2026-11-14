@@ -105,9 +105,6 @@ public interface RefusalMessages {
     String deferralPending(VerbName call, VerbName read);
 
     @Message
-    String nothingToTake();
-
-    @Message
     String claimDurationInvalid(VerbName call);
 
     @Message
@@ -175,9 +172,6 @@ public interface RefusalMessages {
 
     @Message
     String invalidApparatusPattern(VerbName call, ArgumentPath path);
-
-    @Message
-    String invalidApparatusUnbounded(VerbName call, ArgumentPath path);
 
     @Message
     String invalidStateFilter(VerbName call, ArgumentPath path);

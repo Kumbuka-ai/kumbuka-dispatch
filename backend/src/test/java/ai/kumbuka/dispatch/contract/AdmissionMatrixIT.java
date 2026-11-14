@@ -39,10 +39,12 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The admission of today's service, recorded before its calls are moved onto
- * named permissions: for every call of the surface, every combination of the
- * two realm roles and every relation of the caller to the task, whether the
- * call is admitted, and if not, with which code.
+ * The admission of the service, recorded before its calls were moved onto
+ * named permissions and held since: for every call of the surface, every
+ * combination of the two realm roles and every relation of the caller to the
+ * task, whether the call is admitted, and if not, with which code. The roles
+ * reach the service as a token carries them, and the service's interim
+ * source turns them into permissions ({@link SurfaceFixture}).
  *
  * <p>The expectation is {@code admission-matrix.tsv} in the test tree, written
  * cell by cell and never read from the service: it records what the service
@@ -129,12 +131,11 @@ class AdmissionMatrixIT {
      * @param id        the task's {@code <number>.<sub>}; absent where the call concerns none
      * @param receipt   the holder's receipt; absent where nobody holds the task
      * @param token     the task's conflict token; absent with the task
-     * @param apparatus the apparatus a draw names; absent on every other call
      * @param target    the task a relation is curated into; absent on every other call
      * @param tag       the declared tag a call on the tags names; absent on every other call
      */
     record Staged(@Nullable String id, @Nullable String receipt, @Nullable String token,
-                  @Nullable String apparatus, @Nullable String target, @Nullable String tag) {
+                  @Nullable String target, @Nullable String tag) {
     }
 
     // =======================================================================
@@ -189,7 +190,7 @@ class AdmissionMatrixIT {
             .containsExactly(
                 "claim | console | candidate | open: expected admitted, observed refused "
                     + "ROLE_INSUFFICIENT",
-                "release | console | commissioner | active: expected refused "
+                "release | executor | bystander | active: expected refused "
                     + "ROLE_INSUFFICIENT, observed refused CLAIM_HELD");
     }
 
@@ -312,14 +313,8 @@ class AdmissionMatrixIT {
      * another console identity and another executor otherwise.
      */
     private Staged staged(Cell cell) {
-        if (cell.call().equals("claim_next")) {
-            String apparatus = unique();
-            SurfaceFixture.asOtherConsole(identity);
-            sent(created(apparatus));
-            return new Staged(null, null, null, apparatus, null, null);
-        }
         if (cell.state().equals("none")) {
-            return new Staged(null, null, null, null, null, null);
+            return new Staged(null, null, null, null, null);
         }
 
         Runnable commissioner = cell.relation().equals("commissioner")
@@ -364,7 +359,7 @@ class AdmissionMatrixIT {
                     .post(SurfaceFixture.item(id) + ":tag_attach"));
             }
         }
-        return new Staged(id, receipt, token(id), null, target, tag);
+        return new Staged(id, receipt, token(id), target, tag);
     }
 
     /** Moves an active task on to the state named, as its holder. */
@@ -396,8 +391,6 @@ class AdmissionMatrixIT {
             case "send", "recall", "accept", "withdraw", "unrelate" ->
                 given().header(IF_MATCH, at.token()).post(item + ":" + call);
             case "claim" -> given().post(item + ":claim");
-            case "claim_next" -> json(Map.of("apparatus", List.of(at.apparatus())))
-                .post(collection + ":claim_next");
             case "release", "renew", "resume" ->
                 json(Map.of(RECEIPT, at.receipt())).post(item + ":" + call);
             case "defer" -> json(withReceipt(at.receipt(), Map.of("not_before",

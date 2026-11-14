@@ -31,7 +31,7 @@ class IdempotencyKeyHeaderTest {
     @Test
     void an_empty_header_is_an_empty_key_on_every_call_that_takes_one() {
         for (ProcessVerb verb : List.of(ProcessVerb.CREATE, ProcessVerb.ANNOTATE,
-                ProcessVerb.CLAIM, ProcessVerb.CLAIM_NEXT)) {
+                ProcessVerb.CLAIM)) {
             for (String sent : List.of("", " ")) {
                 assertThat(TaskResource.key(VerbName.of(verb, Surface.REST), verb, List.of(sent)))
                     .as("RED STATE, observed: the empty Idempotency-Key header on %s was read "

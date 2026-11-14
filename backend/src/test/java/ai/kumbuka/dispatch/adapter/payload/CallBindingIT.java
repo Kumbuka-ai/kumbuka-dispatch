@@ -13,6 +13,7 @@ import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.domain.HolderState;
 import ai.kumbuka.dispatch.domain.IdempotencyKey;
+import ai.kumbuka.dispatch.domain.PermissionFixture;
 import ai.kumbuka.dispatch.domain.TaskCall;
 import ai.kumbuka.dispatch.domain.TaskState;
 import ai.kumbuka.dispatch.domain.TaskVerb;
@@ -69,8 +70,8 @@ import static org.mockito.Mockito.when;
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class CallBindingIT {
 
-    private static final Actor C = new Actor("commissioner", Actor.Kind.CONSOLE);
-    private static final Actor H = new Actor("holder", Actor.Kind.EXECUTOR);
+    private static final Actor C = new Actor("commissioner", PermissionFixture.CONSOLE);
+    private static final Actor H = new Actor("holder", PermissionFixture.EXECUTOR);
     private static final String ADDRESS = "dispatch://probe/sprint/7.0";
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-16T09:00:00Z"),
         ZoneOffset.UTC);
@@ -386,8 +387,8 @@ class CallBindingIT {
     private Object made(Surface surface, Actor actor, ProcessVerb verb,
                         Map<String, Object> arguments, DomainRefusals.Reader read) {
         try {
-            return CallBinding.make(verbs, surface, actor,
-                new CallPayload(verb, surface, arguments), CLOCK);
+            return CallBinding.prepare(surface, actor,
+                new CallPayload(verb, surface, arguments), CLOCK).make(verbs);
         } catch (SurfaceException refused) {
             return refused.refusal();
         } catch (DispatchException refused) {

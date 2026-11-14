@@ -4,8 +4,12 @@
 # General Public License v3.0 only. See the LICENSE file in the
 # repository root for the full licence text.
 #
-# The admission of the dispatch service, as it stands before its calls are
-# moved onto named permissions.
+# The admission of the dispatch service. Recorded before its calls were moved
+# onto named permissions, and kept since: the move left every cell admitted or
+# refused as it was; claim_next left the surface with its four rows, and a
+# console identity's holder call (release, defer, renew, ask, hold, resume,
+# deliver, fail) is refused for the permission it lacks, ROLE_INSUFFICIENT,
+# where it was refused for the hold, CLAIM_HELD.
 #
 # THIS FILE IS THE EXPECTATION, and it records what the service DOES, not what
 # it should do: where the running service admits or refuses a cell otherwise
@@ -21,11 +25,11 @@
 #             that holds of: holder (holds it), commissioner (created it),
 #             candidate (the task is open and nobody holds it), bystander
 #             (otherwise); none where the call concerns no task (create
-#             without a parent, query, claim_next). For create with a parent,
-#             the relation to the parent.
+#             without a parent, query). For create with a parent, the
+#             relation to the parent.
 #   state     the state of the task when the call is made, with its hold
-#             reason where the call depends on it; for claim_next the state
-#             of the task drawn; none where the call concerns no task
+#             reason where the call depends on it; none where the call
+#             concerns no task
 #   outcome   admitted or refused
 #   code      the code of the refusal as the wire carries it under `reason`;
 #             empty where the call is admitted
@@ -36,11 +40,12 @@
 # presents what its proof asks -- the holder's receipt, the current conflict
 # token, a valid payload -- so that the caller and not the request decides.
 #
-# A token carrying neither role is refused by the kernel as ACTOR_UNKNOWN,
-# which the wire carries as ROLE_INSUFFICIENT; a call a capacity does not
-# reach (the kernel's ACTOR_UNKNOWN at the relation) likewise. A holder's call
-# made by another is the kernel's CLAIM_REQUIRED, which the wire carries as
-# CLAIM_HELD where another holds the task and CLAIM_ABSENT where nobody does.
+# A token carrying neither role holds no permission of the service and is
+# refused as ACTOR_UNKNOWN, which the wire carries as ROLE_INSUFFICIENT; a call
+# whose permission the caller does not hold likewise. A holder's call made by
+# another that holds the permission is the kernel's CLAIM_REQUIRED, which the
+# wire carries as CLAIM_HELD where another holds the task and CLAIM_ABSENT
+# where nobody does.
 
 call	roles	relation	state	outcome	code
 
@@ -69,13 +74,8 @@ claim	both	commissioner	open	admitted
 claim	both	candidate	open	admitted
 claim	none	candidate	open	refused	ROLE_INSUFFICIENT
 
-claim_next	console	none	open	refused	ROLE_INSUFFICIENT
-claim_next	executor	none	open	admitted
-claim_next	both	none	open	admitted
-claim_next	none	none	open	refused	ROLE_INSUFFICIENT
-
-release	console	commissioner	active	refused	CLAIM_HELD
-release	console	bystander	active	refused	CLAIM_HELD
+release	console	commissioner	active	refused	ROLE_INSUFFICIENT
+release	console	bystander	active	refused	ROLE_INSUFFICIENT
 release	executor	holder	active	admitted
 release	executor	bystander	active	refused	CLAIM_HELD
 release	both	commissioner	active	refused	CLAIM_HELD
@@ -83,8 +83,8 @@ release	both	holder	active	admitted
 release	both	bystander	active	refused	CLAIM_HELD
 release	none	bystander	active	refused	ROLE_INSUFFICIENT
 
-defer	console	commissioner	active	refused	CLAIM_HELD
-defer	console	bystander	active	refused	CLAIM_HELD
+defer	console	commissioner	active	refused	ROLE_INSUFFICIENT
+defer	console	bystander	active	refused	ROLE_INSUFFICIENT
 defer	executor	holder	active	admitted
 defer	executor	bystander	active	refused	CLAIM_HELD
 defer	both	commissioner	active	refused	CLAIM_HELD
@@ -92,8 +92,8 @@ defer	both	holder	active	admitted
 defer	both	bystander	active	refused	CLAIM_HELD
 defer	none	bystander	active	refused	ROLE_INSUFFICIENT
 
-renew	console	commissioner	active	refused	CLAIM_HELD
-renew	console	bystander	active	refused	CLAIM_HELD
+renew	console	commissioner	active	refused	ROLE_INSUFFICIENT
+renew	console	bystander	active	refused	ROLE_INSUFFICIENT
 renew	executor	holder	active	admitted
 renew	executor	bystander	active	refused	CLAIM_HELD
 renew	both	commissioner	active	refused	CLAIM_HELD
@@ -101,8 +101,8 @@ renew	both	holder	active	admitted
 renew	both	bystander	active	refused	CLAIM_HELD
 renew	none	bystander	active	refused	ROLE_INSUFFICIENT
 
-ask	console	commissioner	active	refused	CLAIM_HELD
-ask	console	bystander	active	refused	CLAIM_HELD
+ask	console	commissioner	active	refused	ROLE_INSUFFICIENT
+ask	console	bystander	active	refused	ROLE_INSUFFICIENT
 ask	executor	holder	active	admitted
 ask	executor	bystander	active	refused	CLAIM_HELD
 ask	both	commissioner	active	refused	CLAIM_HELD
@@ -119,8 +119,8 @@ answer	both	holder	on_hold (question)	admitted
 answer	both	bystander	on_hold (question)	admitted
 answer	none	bystander	on_hold (question)	refused	ROLE_INSUFFICIENT
 
-hold	console	commissioner	active	refused	CLAIM_HELD
-hold	console	bystander	active	refused	CLAIM_HELD
+hold	console	commissioner	active	refused	ROLE_INSUFFICIENT
+hold	console	bystander	active	refused	ROLE_INSUFFICIENT
 hold	executor	holder	active	admitted
 hold	executor	bystander	active	refused	CLAIM_HELD
 hold	both	commissioner	active	refused	CLAIM_HELD
@@ -128,8 +128,8 @@ hold	both	holder	active	admitted
 hold	both	bystander	active	refused	CLAIM_HELD
 hold	none	bystander	active	refused	ROLE_INSUFFICIENT
 
-resume	console	commissioner	on_hold (dependency)	refused	CLAIM_HELD
-resume	console	bystander	on_hold (dependency)	refused	CLAIM_HELD
+resume	console	commissioner	on_hold (dependency)	refused	ROLE_INSUFFICIENT
+resume	console	bystander	on_hold (dependency)	refused	ROLE_INSUFFICIENT
 resume	executor	holder	on_hold (dependency)	admitted
 resume	executor	bystander	on_hold (dependency)	refused	CLAIM_HELD
 resume	both	commissioner	on_hold (dependency)	refused	CLAIM_HELD
@@ -137,8 +137,8 @@ resume	both	holder	on_hold (dependency)	admitted
 resume	both	bystander	on_hold (dependency)	refused	CLAIM_HELD
 resume	none	bystander	on_hold (dependency)	refused	ROLE_INSUFFICIENT
 
-deliver	console	commissioner	active	refused	CLAIM_HELD
-deliver	console	bystander	active	refused	CLAIM_HELD
+deliver	console	commissioner	active	refused	ROLE_INSUFFICIENT
+deliver	console	bystander	active	refused	ROLE_INSUFFICIENT
 deliver	executor	holder	active	admitted
 deliver	executor	bystander	active	refused	CLAIM_HELD
 deliver	both	commissioner	active	refused	CLAIM_HELD
@@ -171,8 +171,8 @@ reject	both	commissioner	open	admitted
 reject	both	candidate	open	admitted
 reject	none	candidate	open	refused	ROLE_INSUFFICIENT
 
-fail	console	commissioner	active	refused	CLAIM_HELD
-fail	console	bystander	active	refused	CLAIM_HELD
+fail	console	commissioner	active	refused	ROLE_INSUFFICIENT
+fail	console	bystander	active	refused	ROLE_INSUFFICIENT
 fail	executor	holder	active	admitted
 fail	executor	bystander	active	refused	CLAIM_HELD
 fail	both	commissioner	active	refused	CLAIM_HELD

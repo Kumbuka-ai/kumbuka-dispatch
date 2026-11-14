@@ -114,7 +114,7 @@ public class DispatchException extends RuntimeException {
         SESSION_NOT_BOUND,
         /** No task at that address. */
         NOT_FOUND,
-        /** The caller has no subject, or no capacity the core can act on. */
+        /** The caller has no subject, or does not hold the permission the call checks. */
         ACTOR_UNKNOWN,
         /**
          * The executing apparatus called the ratification verb.
@@ -198,15 +198,6 @@ public class DispatchException extends RuntimeException {
          * so the only answer that cannot lose a write is a refusal.
          */
         IDEMPOTENCY_KEY_REUSED,
-
-        /**
-         * A draw from a set found nothing it could take.
-         *
-         * <p>Distinct from NOT_FOUND, which is about an address. This one says
-         * the address was fine and the set is empty of anything claimable
-         * right now — a caller retries the first and waits on the second.
-         */
-        NOTHING_TO_CLAIM,
 
         /**
          * An update arrived with no field set to write.

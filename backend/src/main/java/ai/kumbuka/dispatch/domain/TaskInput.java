@@ -38,7 +38,7 @@ public sealed interface TaskInput {
     /** The one instance of {@link Nothing}. */
     TaskInput NONE = new Nothing();
 
-    /** {@code claim}, {@code claim_next}, {@code renew}, {@code resume}: the lease's length. */
+    /** {@code claim}, {@code renew}, {@code resume}: the lease's length. */
     record Lease(Duration duration) implements TaskInput {
 
         public Lease {

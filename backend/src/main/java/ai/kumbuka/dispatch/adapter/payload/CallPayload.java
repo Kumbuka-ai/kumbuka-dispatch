@@ -473,7 +473,7 @@ public final class CallPayload {
     private TaskInput payloadOf(TaskVerb transition, Clock clock) {
         return switch (transition) {
             case SEND, RECALL, ACCEPT -> TaskInput.NONE;
-            case CLAIM, CLAIM_NEXT, RENEW, RESUME -> lease(clock);
+            case CLAIM, RENEW, RESUME -> lease(clock);
             case RELEASE, WITHDRAW -> new TaskInput.Remark(field(REMARK).orElse(null));
             case REJECT, FAIL, REWORK -> new TaskInput.RequiredRemark(requiredField(REMARK));
             case DEFER -> new TaskInput.Deferral(instant("not_before"),
@@ -559,28 +559,8 @@ public final class CallPayload {
     }
 
     // ======================================================================
-    // What a draw and a listing name
+    // What a listing names
     // ======================================================================
-
-    /**
-     * The apparatus patterns a draw names: each well formed, and none that is
-     * nothing but wildcards, which would narrow nothing.
-     */
-    public List<String> apparatusPatterns() {
-        List<String> patterns = list(APPARATUS, Argument.Placement.TOP);
-        Argument apparatus = declared(APPARATUS, Argument.Placement.TOP);
-        int malformed = ApparatusPatterns.firstMalformedAt(patterns);
-        if (malformed >= 0) {
-            throw refused(Refusal.argumentInvalid(call, position(apparatus, patterns, malformed),
-                Form.APPARATUS_PATTERN));
-        }
-        int unbounded = ApparatusPatterns.firstUnboundedAt(patterns);
-        if (unbounded >= 0) {
-            throw refused(Refusal.argumentInvalid(call, position(apparatus, patterns, unbounded),
-                Form.APPARATUS_UNBOUNDED));
-        }
-        return patterns;
-    }
 
     /**
      * The filter of a listing, as the kernel reads it: addresses in their

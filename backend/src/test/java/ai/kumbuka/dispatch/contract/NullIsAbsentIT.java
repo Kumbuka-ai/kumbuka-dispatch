@@ -213,19 +213,19 @@ class NullIsAbsentIT {
         TargetSurface.Arguments declared = TargetSurface.ARGUMENTS.get(verb);
         Map<String, Object> call = new LinkedHashMap<>();
         for (String name : declared.top()) {
-            call.put(name, valueFor(verb, name));
+            call.put(name, valueFor(name));
         }
         if (!declared.fields().isEmpty()) {
             Map<String, Object> fields = new LinkedHashMap<>();
             for (String name : declared.fields()) {
-                fields.put(name, valueFor(verb, "fields." + name));
+                fields.put(name, valueFor("fields." + name));
             }
             call.put("fields", fields);
         }
         return call;
     }
 
-    private static Object valueFor(String verb, String name) {
+    private static Object valueFor(String name) {
         return switch (name) {
             case "scope" -> NO_SCOPE;
             case "selector" -> SurfaceFixture.SELECTOR;
@@ -233,7 +233,7 @@ class NullIsAbsentIT {
             case "parent" -> NOWHERE;
             case "conflict_token", "receipt", "confirmation", "idempotency_key", "after" -> "x";
             case "duration" -> "PT1H";
-            case "apparatus" -> "claim_next".equals(verb) ? List.of("code") : "code";
+            case "apparatus" -> "code";
             case "part" -> "dispatch";
             case "page_size" -> 10;
             case "sort" -> "id";
@@ -274,8 +274,7 @@ class NullIsAbsentIT {
     private static Response rest(String verb, Map<String, Object> call) {
         Map<String, Object> body = new LinkedHashMap<>(call);
         String path;
-        if (body.containsKey("address") && !List.of("create", "claim_next", "query")
-                .contains(verb)) {
+        if (body.containsKey("address") && !List.of("create", "query").contains(verb)) {
             String address = String.valueOf(body.remove("address"));
             path = "/api/" + address.substring("dispatch://".length());
         } else {

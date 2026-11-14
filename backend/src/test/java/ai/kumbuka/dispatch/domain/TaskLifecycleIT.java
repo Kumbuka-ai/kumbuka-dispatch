@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -70,7 +77,6 @@ class TaskLifecycleIT {
     private UUID tenant;
     private AutoCloseable binding;
     private TaskStage stage;
-    private int selectors;
 
     @BeforeEach
     void freshTenant() {
@@ -99,36 +105,28 @@ class TaskLifecycleIT {
 
                 for (TaskVerb verb : TaskVerb.values()) {
                     attempts++;
-                    String selector = verb == TaskVerb.CLAIM_NEXT ? freshSelector() : "sprint";
-                    String outcome = attempt(verb, stage.stage(situation, selector), caller);
+                    String outcome = attempt(verb, stage.stage(situation, "sprint"), caller);
                     String where = verb.wireName() + " in " + situation + " by "
                         + caller.subject();
                     if (open.contains(verb) && !"ok".equals(outcome)) {
                         wrong.add(where + " is listed as open and was refused: " + outcome);
                     }
-                    if (!open.contains(verb) && !refusedForStateOrEntitlement(verb, outcome)
+                    if (!open.contains(verb) && !refusedForStateOrEntitlement(outcome)
                             && !("noop".equals(outcome) && situation.equals("closed"))) {
                         wrong.add(where + " is not listed and ended: " + outcome);
                     }
                 }
             }
         }
-        assertThat(attempts).isEqualTo(11 * 3 * 17);
+        assertThat(attempts).isEqualTo(11 * 3 * 16);
         assertThat(wrong)
             .as("next must be the list of calls that succeed: one that fails is a list that "
                 + "misleads, and one that succeeds unlisted is a call nobody was told of")
             .isEmpty();
     }
 
-    /**
-     * A refusal of the state or the entitlement. A draw that finds nothing
-     * drawable is the state statement of a set: {@code claim_next} names no
-     * task, so where the one task is not open there is nothing to draw.
-     */
-    private static boolean refusedForStateOrEntitlement(TaskVerb verb, String outcome) {
-        if (verb == TaskVerb.CLAIM_NEXT && outcome.equals("NOTHING_TO_CLAIM")) {
-            return true;
-        }
+    /** A refusal of the state or the entitlement. */
+    private static boolean refusedForStateOrEntitlement(String outcome) {
         return STATE_OR_ENTITLEMENT.stream().anyMatch(r -> r.name().equals(outcome));
     }
 
@@ -140,12 +138,6 @@ class TaskLifecycleIT {
         try {
             switch (verb) {
                 case CLAIM -> tasks.claim(SCOPE, s.address(), call);
-                case CLAIM_NEXT -> {
-                    TaskClaim drawn = tasks.claimNext(SCOPE, s.selector(), List.of("code"), call).answer();
-                    if (!drawn.task().address().equals(s.address())) {
-                        return "drew " + drawn.task().address();
-                    }
-                }
                 default -> {
                     if (tasks.act(SCOPE, s.address(), verb, call).answer().conflictToken().equals(before)) {
                         return "noop";
@@ -162,12 +154,5 @@ class TaskLifecycleIT {
         return verb == TaskVerb.DEFER
             ? new TaskInput.Deferral(Instant.now().plusSeconds(3600), null)
             : TransitionMatrixTest.validPayload(verb);
-    }
-
-    /** A selector of its own, so a draw can only find the one task staged under it. */
-    private String freshSelector() {
-        String name = "draw-" + (++selectors);
-        DomainFixture.declareSelector(tenant, SCOPE, name);
-        return name;
     }
 }

@@ -7,6 +7,7 @@
  */
 package ai.kumbuka.dispatch.adapter.rest;
 
+import ai.kumbuka.dispatch.adapter.payload.CallBinding;
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Surface;
@@ -39,12 +40,19 @@ public class CallContext {
     /** Who calls; absent until the caller was made, and where the token carried no capacity. */
     private @Nullable Actor actor;
 
+    /** The call as it was read for making; absent until it was read in full. */
+    private CallBinding.@Nullable Prepared prepared;
+
     void call(Surface on, ProcessVerb call, Map<String, Object> arguments) {
         this.made = new Made(on, call, arguments);
     }
 
     void caller(@Nullable Actor who) {
         this.actor = who;
+    }
+
+    void prepared(CallBinding.Prepared call) {
+        this.prepared = call;
     }
 
     /** The call the request became; empty where it became none. */
@@ -55,5 +63,10 @@ public class CallContext {
     /** Who calls; empty where the token carried no usable capacity. */
     Optional<Actor> actor() {
         return Optional.ofNullable(actor);
+    }
+
+    /** The call as it was read for making; empty where it was not read in full. */
+    Optional<CallBinding.Prepared> prepared() {
+        return Optional.ofNullable(prepared);
     }
 }

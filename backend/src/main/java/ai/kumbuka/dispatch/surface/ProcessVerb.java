@@ -7,6 +7,7 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.domain.DispatchPermission;
 import ai.kumbuka.dispatch.domain.TaskVerb;
 import org.jspecify.annotations.Nullable;
 
@@ -17,10 +18,12 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * The twenty-eight calls of the verb surface: the seventeen transitions and the
+ * The twenty-seven calls of the verb surface: the sixteen transitions and the
  * nine calls that are not transitions (TAR-0004 section 3), with the arguments
  * of concept section 3.2 and the descriptions of section 3.5, and the two calls
- * on the tags of a task (sprint/210), which are no transitions either.
+ * on the tags of a task (sprint/210), which are no transitions either. The
+ * draw of concept section 3.5 left the surface: a task is taken up by its
+ * address, with {@code claim}.
  *
  * <p><strong>This is the single source of the surface.</strong> The MCP tool
  * list, the input schemas, the closure of every call's arguments at both
@@ -32,20 +35,28 @@ import java.util.function.Supplier;
  * <p>A transition names its row of {@link TaskVerb}, which decides it. The
  * nine others name none; the kernel's call of the same name decides them.
  *
+ * <h2>Permissions</h2>
+ *
+ * Every call names the permission it checks about its caller, and checks
+ * nothing else about the caller ({@link #permissions}). A transition names
+ * its row's; the others are named here. Two calls name two, of which the
+ * caller holds one: {@code read_text}, read by whoever reads every text or by
+ * the holder alone, and {@code annotate}, made under the permission the
+ * supplemented text was written under.
+ *
  * <h2>Descriptions</h2>
  *
  * Each is at most {@link SurfaceDeclaration#DESCRIPTION_BUDGET} characters,
- * and what explains one argument stands at that argument. The descriptions of
- * {@code dispatch_claim} and {@code dispatch_claim_next} follow concept section
- * 3.5, worded positively (DEC-0043 R21): the sentence about the text is the
- * same in both. Every text is in {@code messages/tool.properties}, {@code
+ * and what explains one argument stands at that argument. The description of
+ * {@code dispatch_claim} follows concept section 3.5, worded positively
+ * (DEC-0043 R21). Every text is in {@code messages/tool.properties}, {@code
  * argument.properties} and {@code value.properties}; this enum holds the
  * references to them and no text.
  */
 public enum ProcessVerb {
 
     // ======================================================================
-    // The seventeen transitions, in the order of TAR-0004 section 3
+    // The sixteen transitions, in the order of TAR-0004 section 3
     // ======================================================================
 
     SEND("send", TaskVerb.SEND, Participation.COMMISSIONER, () -> Texts.tools().send(),
@@ -58,14 +69,6 @@ public enum ProcessVerb {
     CLAIM("claim", TaskVerb.CLAIM, Participation.CANDIDATE, () -> Texts.tools().claim(),
         List.of(address(), duration(),
             idempotencyKey(() -> Texts.arguments().claimIdempotencyKey()))),
-
-    CLAIM_NEXT("claim_next", TaskVerb.CLAIM_NEXT, Participation.CANDIDATE,
-        () -> Texts.tools().claimNext(),
-        List.of(scope(), selector(),
-            Argument.topList(Shared.APPARATUS, ApparatusPatterns.CHARACTER_RULE,
-                () -> Texts.arguments().claimNextApparatus()),
-            duration(),
-            idempotencyKey(() -> Texts.arguments().claimNextIdempotencyKey()))),
 
     RELEASE("release", TaskVerb.RELEASE, Participation.HOLDER, () -> Texts.tools().release(),
         List.of(address(), receipt(), remark(false))),
@@ -343,6 +346,29 @@ public enum ProcessVerb {
     }
 
     /**
+     * The permission this call checks about its caller, and nothing else
+     * about the caller: one, or for {@code read_text} and {@code annotate}
+     * the two of which the caller holds either (see the class comment).
+     * A transition names its row's.
+     */
+    public List<DispatchPermission> permissions() {
+        if (transition != null) {
+            return List.of(transition.permission());
+        }
+        return switch (this) {
+            case CREATE, UPDATE, DELETE, RELATE, UNRELATE ->
+                List.of(DispatchPermission.TASK_COMMISSION);
+            case TAG_ATTACH, TAG_DETACH -> List.of(DispatchPermission.TASK_TAG);
+            case READ, QUERY -> List.of(DispatchPermission.INSTANCE_READ);
+            case READ_TEXT -> List.of(DispatchPermission.INSTANCE_READ_TEXT,
+                DispatchPermission.INSTANCE_READ_TEXT_AS_HOLDER);
+            case ANNOTATE -> List.of(DispatchPermission.TASK_COMMISSION,
+                DispatchPermission.TASK_EXECUTE);
+            default -> throw new IllegalStateException(call() + " is a transition");
+        };
+    }
+
+    /**
      * The part that makes this call; empty where it depends on the task:
      * reading is open to whoever may see a task, an addendum to whoever wrote
      * the text it supplements.
@@ -435,7 +461,6 @@ public enum ProcessVerb {
             case READ -> EffectClass.ITEM_READ;
             case READ_TEXT -> EffectClass.ITEM_READ_CALL;
             case QUERY -> EffectClass.COLLECTION_READ;
-            case CLAIM_NEXT -> EffectClass.COLLECTION_COMPOUND;
             default -> EffectClass.ITEM_TRANSITION;
         };
     }
@@ -444,7 +469,7 @@ public enum ProcessVerb {
     public AnswerShape answerShape() {
         return switch (this) {
             case CREATE -> AnswerShape.TASK_LEAN_CREATED;
-            case CLAIM, CLAIM_NEXT -> AnswerShape.CLAIM_RECEIPT;
+            case CLAIM -> AnswerShape.CLAIM_RECEIPT;
             case READ -> AnswerShape.TASK_HEAD;
             case QUERY -> AnswerShape.TASK_LISTING;
             case READ_TEXT -> AnswerShape.TASK_TEXT;
@@ -495,8 +520,7 @@ public enum ProcessVerb {
             codes.add(RefusalCode.SCOPE_READ_ONLY);
             codes.add(RefusalCode.SCOPE_LOCKED);
         }
-        if (this != READ && this != READ_TEXT && this != QUERY && this != CLAIM_NEXT
-                && !onTags()) {
+        if (this != READ && this != READ_TEXT && this != QUERY && !onTags()) {
             codes.add(RefusalCode.TRANSITION_REFUSED);
         }
         if (argument(Shared.RECEIPT, Argument.Placement.TOP).isPresent() || this == READ_TEXT) {
@@ -528,9 +552,6 @@ public enum ProcessVerb {
         }
         if (this == DELETE) {
             codes.add(RefusalCode.CHILDREN_PRESENT);
-        }
-        if (this == CLAIM_NEXT) {
-            codes.add(RefusalCode.DRAW_EMPTY);
         }
         if (this == QUERY) {
             codes.add(RefusalCode.PAGE_SIZE_REJECTED);

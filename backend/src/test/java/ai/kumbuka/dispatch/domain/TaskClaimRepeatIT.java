@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -10,7 +17,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.UUID;
 
 import static ai.kumbuka.dispatch.domain.TaskStage.H;
@@ -22,8 +28,8 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
  *
  * <p>The repeat answers the same task with a new receipt; the earlier receipt
  * stops matching, because the service keeps only the hash and replaces it.
- * Nothing else moves: state, holder, lease end and lapse count stay, and a
- * repeated draw draws nothing. Where the caller no longer holds the task, the
+ * Nothing else moves: state, holder, lease end and lapse count stay. Where the
+ * caller no longer holds the task, the
  * repeat is refused with the reason the situation gives and takes nothing.
  *
  * <p>Red probe, observed: with {@code Task.reissue} not called, the earlier
@@ -88,29 +94,6 @@ class TaskClaimRepeatIT {
     }
 
     @Test
-    void a_repeated_draw_draws_nothing_second() {
-        TaskStage.Staged first = stage.open(SELECTOR);
-        TaskStage.Staged second = stage.open(SELECTOR);
-        IdempotencyKey key = IdempotencyKey.of("draw-once");
-
-        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), key)
-            .answer();
-        TaskStage.Row before = TaskStage.row(first.identity());
-        TaskClaim again = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), key)
-            .answer();
-
-        assertThat(drawn.task().address()).isEqualTo(first.address());
-        assertThat(again.task().address()).as("the same task").isEqualTo(first.address());
-        assertThat(again.receipt()).isNotEqualTo(drawn.receipt());
-        assertThat(TaskStage.row(second.identity()).state())
-            .as("no second task is held").isEqualTo("open");
-        assertThat(TaskStage.row(second.identity()).holder()).isNull();
-        TaskStage.Row after = TaskStage.row(first.identity());
-        assertThat(after.leaseExpiresAt()).isEqualTo(before.leaseExpiresAt());
-        assertThat(after.lapseCount()).isEqualTo(before.lapseCount());
-    }
-
-    @Test
     void a_repeat_after_the_hold_ended_is_refused_and_takes_nothing() {
         TaskStage.Staged open = stage.open(SELECTOR);
         IdempotencyKey key = IdempotencyKey.of("released");
@@ -153,35 +136,6 @@ class TaskClaimRepeatIT {
     }
 
     @Test
-    void a_repeated_draw_after_the_lease_lapsed_is_refused_and_draws_and_writes_nothing() {
-        Drawn drawn = drawWithKey("draw-lapsed");
-        stage.lapse(drawn.first());
-
-        assertRepeatRefused(drawn, DispatchException.Reason.LEASE_LAPSED);
-    }
-
-    @Test
-    void a_repeated_draw_after_another_executor_took_the_task_is_refused_and_writes_nothing() {
-        Drawn drawn = drawWithKey("draw-taken");
-        stage.lapse(drawn.first());
-        tasks.claim(SCOPE, drawn.first().address(), TaskCall.by(TaskStage.K));
-
-        assertRepeatRefused(drawn, DispatchException.Reason.TRANSITION_NOT_PERMITTED);
-    }
-
-    @Test
-    void a_repeated_draw_after_the_task_closed_is_refused_and_draws_and_writes_nothing() {
-        Drawn drawn = drawWithKey("draw-closed");
-        TaskStage.Staged first = drawn.first();
-        tasks.act(SCOPE, first.address(), TaskVerb.DELIVER, TaskCall.by(H)
-            .withReceipt(first.receipt()).with(new TaskInput.Delivery("done", null)));
-        tasks.act(SCOPE, first.address(), TaskVerb.ACCEPT,
-            TaskCall.by(TaskStage.C).withConflictToken(stage.token(first)));
-
-        assertRepeatRefused(drawn, DispatchException.Reason.TRANSITION_NOT_PERMITTED);
-    }
-
-    @Test
     void the_same_key_on_another_call_or_other_arguments_is_refused() {
         TaskStage.Staged one = stage.open(SELECTOR);
         TaskStage.Staged other = stage.open(SELECTOR);
@@ -199,42 +153,8 @@ class TaskClaimRepeatIT {
         assertThat(otherLease.reason()).isEqualTo(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED);
 
         DispatchException otherCall = catchThrowableOfType(DispatchException.class, () ->
-            tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), key));
+            tasks.annotate(SCOPE, one.address(), TextType.DISPATCH, "one more thing", H, key));
         assertThat(otherCall.reason()).isEqualTo(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED);
-        assertThat(TaskStage.row(other.identity()).state()).isEqualTo("open");
-
-    }
-
-    // -----------------------------------------------------------------------
-
-    /** A draw under a key, with a second drawable task behind the one it took. */
-    private record Drawn(IdempotencyKey key, TaskStage.Staged first, TaskStage.Staged second) {
-    }
-
-    private Drawn drawWithKey(String key) {
-        TaskStage.Staged first = stage.open(SELECTOR);
-        TaskStage.Staged second = stage.open(SELECTOR);
-        IdempotencyKey given = IdempotencyKey.of(key);
-        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), given)
-            .answer();
-        assertThat(drawn.task().address()).isEqualTo(first.address());
-        return new Drawn(given, new TaskStage.Staged(first.address(), first.identity(), SELECTOR,
-            drawn.receipt()), second);
-    }
-
-    /** The repeat is refused with {@code reason}, draws nothing and writes nothing. */
-    private void assertRepeatRefused(Drawn drawn, DispatchException.Reason reason) {
-        TaskStage.Row first = TaskStage.row(drawn.first().identity());
-        TaskStage.Row second = TaskStage.row(drawn.second().identity());
-
-        DispatchException refused = catchThrowableOfType(DispatchException.class, () ->
-            tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H), drawn.key()));
-
-        assertThat(refused).as("the repeat is refused").isNotNull();
-        assertThat(refused.reason()).isEqualTo(reason);
-        assertThat(TaskStage.row(drawn.second().identity()))
-            .as("nothing is drawn in its place").isEqualTo(second);
-        assertThat(TaskStage.row(drawn.first().identity()))
-            .as("and the task the key drew is not written").isEqualTo(first);
+        assertThat(TaskStage.texts(one.identity())).noneMatch(t -> t.contains("one more thing"));
     }
 }

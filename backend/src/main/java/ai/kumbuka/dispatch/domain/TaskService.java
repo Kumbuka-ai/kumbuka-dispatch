@@ -28,7 +28,7 @@ import java.util.UUID;
 
 /**
  * The kernel of the task lifecycle (TAR-0004, concept section 2): the
- * seventeen transitions and the eleven calls that are not transitions.
+ * sixteen transitions and the eleven calls that are not transitions.
  *
  * <p>Every transition is one transaction: lock the row, compute the
  * {@link TaskSituation}, call {@link Decision#of}, set the attributes the
@@ -53,7 +53,6 @@ public class TaskService {
     static final String CREATE = "dispatch_create";
     static final String ANNOTATE = "dispatch_annotate";
     static final String CLAIM = "dispatch_claim";
-    static final String CLAIM_NEXT = "dispatch_claim_next";
 
     /** The last letter an addendum suffix may take; past it is refused, never wrapped. */
     private static final char LAST_SUFFIX = 'z';
@@ -288,15 +287,16 @@ public class TaskService {
     /**
      * One part of a task's text.
      *
-     * <p>The commissioner reads every part in every state; an executor reads
-     * only a task it holds (TAR-0004 section 6). Writes nothing.
+     * <p>A caller holding {@code instance.read-text} reads every part in every
+     * state; one that reads a text only as its holder reads only a task it
+     * holds (TAR-0004 section 6). Writes nothing.
      */
     @Transactional
     public TaskTextView readText(UUID scopeId, ExchangeAddress address, TextPart part,
                                  Actor caller) {
         Task task = findOrRefuse(scopeId, address);
         TaskSituation s = situation(task);
-        if (!caller.isConsole() && !s.heldBy(caller)) {
+        if (!caller.holds(DispatchPermission.INSTANCE_READ_TEXT) && !s.heldBy(caller)) {
             throw new DispatchException(s.formerHolder(caller)
                 ? DispatchException.Reason.LEASE_LAPSED
                 : DispatchException.Reason.CLAIM_REQUIRED,
@@ -485,7 +485,7 @@ public class TaskService {
                                  TaskCall call) {
         if (verb.holding() == TaskVerb.Holding.TAKE) {
             throw new IllegalArgumentException(verb.wireName() + " hands out a receipt; call "
-                + "claim or claimNext");
+                + "claim");
         }
         Task task = lockOrRefuse(scopeId, address);
         Instant now = now();
@@ -538,49 +538,6 @@ public class TaskService {
         Task task = lockOrRefuse(scopeId, address);
         TaskClaim claimed = take(task, TaskVerb.CLAIM, call);
         remember(scopeId, call.caller(), key, CLAIM, digest, task);
-        return Written.of(claimed, task);
-    }
-
-    /**
-     * Takes up the next drawable task of a selector whose apparatus matches
-     * one of the patterns, and mints its receipt.
-     *
-     * <p>The draw locks with {@code SKIP LOCKED}, so two concurrent draws never
-     * take the same task; the drawn row is then decided like any other.
-     *
-     * @throws DispatchException {@code NOTHING_TO_CLAIM} when nothing is drawable
-     */
-    @Transactional
-    public Written<TaskClaim> claimNext(UUID scopeId, String selector,
-                                        List<String> apparatusPatterns, TaskCall call) {
-        return claimNext(scopeId, selector, apparatusPatterns, call, IdempotencyKey.NONE);
-    }
-
-    /**
-     * The draw under an idempotency key. A repeat with the same key and the
-     * same arguments while the caller still holds the task it drew answers
-     * that task with a new receipt and draws nothing: see {@link #reissue}.
-     */
-    @Transactional
-    public Written<TaskClaim> claimNext(UUID scopeId, String selector,
-                                        List<String> apparatusPatterns, TaskCall call,
-                                        IdempotencyKey key) {
-        selectors.requireDeclared(scopeId, selector);
-        String digest = IdempotencyService.digestOf(Arrays.asList(selector,
-            String.join("\u001F", apparatusPatterns), leaseOf(call)));
-        Optional<Long> repeat = firstAnswerFor(scopeId, call.caller(), key, CLAIM_NEXT, digest);
-        if (repeat.isPresent()) {
-            return reissue(scopeId, repeat.get(), TaskVerb.CLAIM_NEXT, call);
-        }
-        Task task = tasks.lockNextDrawable(scopeId, selector, apparatusPatterns, now(),
-                TaskSituation.LAPSES_TO_PARK - 1)
-            .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOTHING_TO_CLAIM,
-                "nothing in '" + selector + "' addressed to " + apparatusPatterns
-                    + " is drawable: every task there those patterns match is a draft, "
-                    + "held, paused, delivered, closed or deferred. The selector exists; "
-                    + "this is an empty draw, not a missing address."));
-        TaskClaim claimed = take(task, TaskVerb.CLAIM_NEXT, call);
-        remember(scopeId, call.caller(), key, CLAIM_NEXT, digest, task);
         return Written.of(claimed, task);
     }
 
@@ -806,11 +763,15 @@ public class TaskService {
         }
     }
 
+    /**
+     * Refuses a caller without {@code task.commission}: the one permission
+     * create, update, delete, relate and unrelate check.
+     */
     private static void requireCommissioner(Actor caller, String call) {
-        if (!caller.isConsole()) {
+        if (!caller.holds(DispatchPermission.TASK_COMMISSION)) {
             throw new DispatchException(DispatchException.Reason.ACTOR_UNKNOWN,
-                call + " is the commissioner's, and the caller does not hold the "
-                    + "commissioning capacity.");
+                call + " is the commissioner's, and the caller does not hold "
+                    + DispatchPermission.TASK_COMMISSION.wireName() + ".");
         }
     }
 

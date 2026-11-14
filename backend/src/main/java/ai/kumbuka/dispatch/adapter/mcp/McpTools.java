@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The twenty-eight tools of the assistant surface, generated from the
+ * The twenty-seven tools of the assistant surface, generated from the
  * declaration (C4.2, ADR-0039).
  *
  * <p><strong>Generated, not written.</strong> Names, descriptions and schemas
@@ -46,7 +46,7 @@ public final class McpTools {
     private McpTools() {
     }
 
-    /** The twenty-eight, in the order of the declaration. */
+    /** The twenty-seven, in the order of the declaration. */
     public static List<ToolPayload> declared() {
         return Arrays.stream(ProcessVerb.values())
             .map(verb -> new ToolPayload(verb.call(), verb.description(), schemaOf(verb)))

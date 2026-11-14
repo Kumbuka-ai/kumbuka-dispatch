@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
+import ai.kumbuka.dispatch.domain.DispatchPermission;
 import ai.kumbuka.dispatch.domain.HolderState;
 import ai.kumbuka.dispatch.domain.TaskState;
 import ai.kumbuka.dispatch.domain.TaskView;
@@ -23,12 +24,13 @@ import java.util.Locale;
  * table; this is the same relation named for a caller who is told which part
  * it has, in a refusal that says the call belongs to another.
  *
- * <p>An identity holding both capacities takes the part the task gives it: the
- * holder where it holds the task, the commissioner everywhere else.
+ * <p>An identity that holds {@code task.commission} and holds the task takes
+ * the part the task gives it: the holder where it holds the task, the
+ * commissioner everywhere else.
  */
 public enum Participation {
 
-    /** Holds the commissioning capacity and may see the task. */
+    /** Holds {@code task.commission} and may see the task. */
     COMMISSIONER,
 
     /** Holds the task: through a running lease, or paused or delivered. */
@@ -45,7 +47,7 @@ public enum Participation {
         if (view.holder() == HolderState.SELF) {
             return HOLDER;
         }
-        if (caller.isConsole()) {
+        if (caller.holds(DispatchPermission.TASK_COMMISSION)) {
             return COMMISSIONER;
         }
         return view.state() == TaskState.OPEN ? CANDIDATE : BYSTANDER;

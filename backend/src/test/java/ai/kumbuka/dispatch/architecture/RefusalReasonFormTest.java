@@ -36,14 +36,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * loaded from the same enum that switch is over, so a reason cannot be added
  * anywhere this does not see it.
  *
- * <h2>The grandfathered two</h2>
+ * <h2>The grandfathered one</h2>
  *
- * Two existing reasons break the form. They are not corrected here and the
+ * One existing reason breaks the form. It is not corrected here and the
  * omission is deliberate: a reason name travels in the refusal payload, which
  * is the published contract, and renaming one is a contract change that is not
- * a run's to make. They sit in {@link #GRANDFATHERED} with what is wrong with
- * each, so the rule binds every reason added from now on while the two stay
- * visible as debts rather than as silence.
+ * a run's to make. It sits in {@link #GRANDFATHERED} with what is wrong with
+ * it, so the rule binds every reason added from now on while it stays visible
+ * as a debt rather than as silence. The second, {@code NOTHING_TO_CLAIM}, left
+ * with the draw that raised it.
  *
  * <p>Runs as a plain unit test: it reads enum constants and needs no database.
  */
@@ -70,9 +71,7 @@ class RefusalReasonFormTest {
      */
     private static final Map<String, String> GRANDFATHERED = new LinkedHashMap<>(Map.of(
         "NOT_FOUND",
-        "leads with the negation and names no subject",
-        "NOTHING_TO_CLAIM",
-        "leads with a quantifier where the subject belongs"));
+        "leads with the negation and names no subject"));
 
     @Test
     void every_refusal_reason_names_a_subject_and_a_state() {
@@ -80,8 +79,8 @@ class RefusalReasonFormTest {
             .as("a refusal reason is read by a caller deciding what to do next, and the "
                 + "subject is the half that tells them where to look. Spell it "
                 + "<SUBJECT>_<STATE>, name the subject, and do not lead with the "
-                + "negation. Two existing reasons break this and are listed in "
-                + "GRANDFATHERED with the reason they are not being renamed here — a "
+                + "negation. One existing reason breaks this and is listed in "
+                + "GRANDFATHERED with the reason it is not being renamed here — a "
                 + "reason name is part of the published refusal payload")
             .isEmpty();
     }
@@ -124,6 +123,12 @@ class RefusalReasonFormTest {
                 + "the name the sibling service carries and the one the reasoning "
                 + "document calls the difference that is not cosmetic")
             .containsExactly("CONFLICT");
+
+        assertThat(malformedIgnoringExemptions(List.of("NOTHING_TO_CLAIM")))
+            .as("RED STATE, observed: a reason that leads with a quantifier where the "
+                + "subject belongs. NOTHING_TO_CLAIM was a reason of this service until "
+                + "the draw left the surface, and stays the planted case of its kind")
+            .containsExactly("NOTHING_TO_CLAIM");
     }
 
     /**

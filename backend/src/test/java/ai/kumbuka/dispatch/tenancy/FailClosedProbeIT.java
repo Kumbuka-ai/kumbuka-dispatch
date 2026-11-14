@@ -64,9 +64,9 @@ class FailClosedProbeIT {
         tenantB = UUID.randomUUID();
     }
 
-    /** A console actor: these probes are about tenancy, not about capacity. */
-    static final ai.kumbuka.dispatch.domain.Actor PROBE =
-        new ai.kumbuka.dispatch.domain.Actor("probe", ai.kumbuka.dispatch.domain.Actor.Kind.CONSOLE);
+    /** A console actor: these probes are about tenancy, not about permissions. */
+    static final ai.kumbuka.dispatch.domain.Actor PROBE = new ai.kumbuka.dispatch.domain.Actor(
+        "probe", ai.kumbuka.dispatch.domain.PermissionFixture.CONSOLE);
 
     @Inject TaskService tasks;
     @Inject TenantContext tenantContext;

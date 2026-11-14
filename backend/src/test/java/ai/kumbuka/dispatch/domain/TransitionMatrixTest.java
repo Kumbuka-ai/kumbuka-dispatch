@@ -47,10 +47,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <h2>The callers</h2>
  *
- * C, the commissioner (the commissioning capacity). H, the executor that holds
+ * C, the commissioner (the console's permissions). H, the executor that holds
  * or held the task; where nobody has held it, an executor like any other. K,
  * another executor, a candidate that never held it. D, the identity of H
- * holding both capacities (TAR-0004 section 3): the person who works alone. It
+ * holding both sets of permissions (TAR-0004 section 3): the person who works alone. It
  * takes whichever part a call asks for, so its column is C's in the rows of
  * the commissioner and H's in every other, and in particular it accepts the
  * answer it delivered.
@@ -67,7 +67,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * refused at the condition, the hold reason ({@code TRANSITION_NOT_PERMITTED}).
  * {@code CF} refused at the condition, the first take-up froze the content
  * ({@code CONTENT_FROZEN}).
- * {@code RA} refused at the relation, the capacity ({@code ACTOR_UNKNOWN}).
+ * {@code RA} refused at the relation, the row's permission ({@code ACTOR_UNKNOWN}).
  * {@code RC} refused at the relation, not the holder ({@code CLAIM_REQUIRED}).
  * {@code RL} refused at the relation, the former holder ({@code LEASE_LAPSED}).
  *
@@ -80,10 +80,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class TransitionMatrixTest {
 
-    static final Actor C = new Actor("commissioner", Actor.Kind.CONSOLE);
-    static final Actor H = new Actor("executor-h", Actor.Kind.EXECUTOR);
-    static final Actor K = new Actor("executor-k", Actor.Kind.EXECUTOR);
-    static final Actor D = new Actor("executor-h", Actor.Kind.EXECUTOR, Actor.Kind.CONSOLE);
+    static final Actor C = new Actor("commissioner", PermissionFixture.CONSOLE);
+    static final Actor H = new Actor("executor-h", PermissionFixture.EXECUTOR);
+    static final Actor K = new Actor("executor-k", PermissionFixture.EXECUTOR);
+    static final Actor D = new Actor("executor-h", PermissionFixture.BOTH);
 
     static final String RECEIPT = "receipt-of-h";
     static final String TOKEN = "2026-10-06T08:00:00.000001Z";
@@ -124,17 +124,6 @@ class TransitionMatrixTest {
             claim      | parked    | S  | S  | S  | S
             claim      | delivered | S  | S  | S  | S
             claim      | closed    | S  | S  | S  | S
-            claim_next | draft     | S  | S  | S  | S
-            claim_next | open      | RA | ok | ok | ok
-            claim_next | deferred  | CD | CD | CD | CD
-            claim_next | active    | S  | S  | S  | S
-            claim_next | lapsed    | RA | ok | ok | ok
-            claim_next | asked     | S  | S  | S  | S
-            claim_next | waiting   | S  | S  | S  | S
-            claim_next | blocked   | S  | S  | S  | S
-            claim_next | parked    | S  | S  | S  | S
-            claim_next | delivered | S  | S  | S  | S
-            claim_next | closed    | S  | S  | S  | S
             release    | draft     | S  | S  | S  | S
             release    | open      | S  | S  | S  | S
             release    | deferred  | S  | S  | S  | S
@@ -308,8 +297,8 @@ class TransitionMatrixTest {
             }
         }
         assertThat(cells)
-            .as("seventeen verbs, eleven situations, four callers")
-            .isEqualTo(17 * 11 * 4);
+            .as("sixteen verbs, eleven situations, four callers")
+            .isEqualTo(16 * 11 * 4);
         assertThat(wrong)
             .as("a cell where the kernel decides other than TAR-0004 sections 3 and 5 "
                 + "prescribe, or where the list of open calls disagrees with the decision")
@@ -377,7 +366,7 @@ class TransitionMatrixTest {
 
     static TaskInput validPayload(TaskVerb verb) {
         return switch (verb) {
-            case SEND, RECALL, CLAIM, CLAIM_NEXT, RELEASE, RENEW, RESUME, ACCEPT, WITHDRAW ->
+            case SEND, RECALL, CLAIM, RELEASE, RENEW, RESUME, ACCEPT, WITHDRAW ->
                 TaskInput.NONE;
             case DEFER -> new TaskInput.Deferral(NOW.plusSeconds(3600), null);
             case ASK -> new TaskInput.Question("which one?", List.of("yes", "no"), true);
