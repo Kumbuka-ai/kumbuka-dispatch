@@ -21,7 +21,6 @@ import ai.kumbuka.dispatch.surface.Refusal;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.SurfaceException;
 import ai.kumbuka.dispatch.surface.VerbName;
-import ai.kumbuka.dispatch.surface.VerbSurface;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,7 +52,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The REST surface: the twenty-eight calls of the declaration on the routes of
+ * The REST surface: the twenty-seven calls of the declaration on the routes of
  * {@link CustomMethod}, and nothing else.
  *
  * <p>A request becomes a call: its name from the route, its arguments from
@@ -61,10 +60,11 @@ import java.util.Optional;
  * task), the {@code If-Match} header (the conflict token), the {@code
  * Idempotency-Key} header (the idempotency key), the query and the body — the
  * same map the assistant surface hands over, closed against the same
- * declaration by the same {@link CallPayload} and made by the same {@link
- * CallBinding}: one call of the verb surface (C1.1). So a call refuses an
- * invented argument by name on both surfaces alike, whichever part of the
- * request it came in.
+ * declaration by the same {@link CallPayload}, read by the same {@link
+ * CallBinding} and made through {@link TaskCalls}, which checks the one
+ * permission the call names: one call of the verb surface (C1.1). So a call
+ * refuses an invented argument by name on both surfaces alike, whichever part
+ * of the request it came in.
  *
  * <p>The idempotency key travels in its header on this surface and nowhere
  * else (C10.4): a request that carries {@code idempotency_key} in its query
@@ -118,7 +118,7 @@ public class TaskResource {
     /** The one value {@link #SURFACE} takes: the assistant surface. */
     static final String ASSISTANT = "assistant";
 
-    @Inject VerbSurface verbs;
+    @Inject TaskCalls calls;
     @Inject CallerActor caller;
     @Inject CallContext context;
     @Inject ObjectMapper json;
@@ -266,7 +266,9 @@ public class TaskResource {
         CallPayload in = new CallPayload(route.verb(), surface, arguments);
         Actor actor = caller.current();
         context.caller(actor);
-        return respond(route, CallBinding.make(verbs, surface, actor, in, clock));
+        CallBinding.Prepared call = CallBinding.prepare(surface, actor, in, clock);
+        context.prepared(call);
+        return respond(route, CallBinding.through(calls, call));
     }
 
     /**

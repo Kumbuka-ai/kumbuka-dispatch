@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The calls that take an idempotency key, on the surface: {@code create},
- * {@code claim}, {@code claim_next} and {@code annotate} (C10.4).
+ * {@code claim} and {@code annotate} (C10.4).
  *
  * <p>The key travels as the transport of each surface carries it: on MCP the
  * top-level argument {@code idempotency_key}, on REST the header {@code
@@ -38,8 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>A repeated create creates nothing and answers the first task. A
  * repeated claim answers the same task with a new receipt, with which the next
- * write succeeds, while the earlier receipt is refused; a repeated draw draws
- * nothing second (on the wire). A
+ * write succeeds, while the earlier receipt is refused. A
  * repeated addendum attaches nothing second and answers the task, on both
  * surfaces: an addendum cannot be removed, so a duplicate would be permanent.
  *
@@ -132,23 +131,6 @@ class IdempotencyIT {
             .isEqualTo("IDEMPOTENCY_KEY_REUSED");
     }
 
-    @Test
-    void a_repeated_draw_draws_nothing_second() {
-        SurfaceFixture.open("drawn once", "idem");
-        String other = SurfaceFixture.address(SurfaceFixture.open("left open", "idem"));
-        SurfaceFixture.asExecutor(identity);
-        Map<String, Object> draw = Map.of("scope", SurfaceFixture.SCOPE,
-            "selector", SurfaceFixture.SELECTOR, "apparatus", List.of("idem"),
-            "idempotency_key", "draw-once");
-
-        Map<String, Object> first = Mcp.answer(Mcp.call("dispatch_claim_next", draw));
-        Map<String, Object> again = Mcp.answer(Mcp.call("dispatch_claim_next", draw));
-
-        assertThat(again.get("address")).isEqualTo(first.get("address"));
-        assertThat(Mcp.field(Mcp.answer(Mcp.call("dispatch_read",
-            Map.of("address", other))), "state")).isEqualTo("open");
-    }
-
     // =======================================================================
     // REST: the header, and nowhere else
     // =======================================================================
@@ -171,10 +153,8 @@ class IdempotencyIT {
     }
 
     @Test
-    void a_repeated_claim_and_draw_over_rest_under_the_header_take_nothing_second() {
+    void a_repeated_claim_over_rest_under_the_header_takes_nothing_second() {
         String id = SurfaceFixture.open("claimed twice over rest", "code");
-        SurfaceFixture.open("drawn once over rest", "rest-idem");
-        String other = SurfaceFixture.address(SurfaceFixture.open("left open", "rest-idem"));
         SurfaceFixture.asExecutor(identity);
 
         Response first = given().contentType(ContentType.JSON).header(KEY, "rest-claim-once")
@@ -187,16 +167,6 @@ class IdempotencyIT {
         assertThat(again.jsonPath().getString("fields.lease_expires_at"))
             .as("the hold is not taken again: its end stays")
             .isEqualTo(first.jsonPath().getString("fields.lease_expires_at"));
-
-        Map<String, Object> draw = Map.of("apparatus", List.of("rest-idem"));
-        Response drawn = given().contentType(ContentType.JSON).header(KEY, "rest-draw-once")
-            .body(draw).post(SurfaceFixture.collection() + ":claim_next");
-        Response redrawn = given().contentType(ContentType.JSON).header(KEY, "rest-draw-once")
-            .body(draw).post(SurfaceFixture.collection() + ":claim_next");
-        assertThat(redrawn.jsonPath().getString("address"))
-            .isEqualTo(drawn.jsonPath().getString("address"));
-        assertThat(Mcp.field(Mcp.answer(Mcp.call("dispatch_read",
-            Map.of("address", other))), "state")).isEqualTo("open");
     }
 
     @Test
@@ -350,16 +320,10 @@ class IdempotencyIT {
             .post(SurfaceFixture.item(id) + ":claim"));
         assertEmptyKeyRefused(Mcp.call("dispatch_claim", Map.of("address", address,
             "idempotency_key", "")));
-        assertEmptyKeyRefused(given().contentType(ContentType.JSON).header(KEY, "")
-            .body(Map.of("apparatus", List.of("code")))
-            .post(SurfaceFixture.collection() + ":claim_next"));
-        assertEmptyKeyRefused(Mcp.call("dispatch_claim_next", Map.of("scope",
-            SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-            "apparatus", List.of("code"), "idempotency_key", "")));
 
         assertThat(Writes.snapshot()).as("no refused call was carried out").isEqualTo(before);
         assertThat(Mcp.field(Mcp.answer(Mcp.call("dispatch_read",
-            Map.of("address", address))), "state")).as("the task was neither claimed nor drawn")
+            Map.of("address", address))), "state")).as("the task was not claimed")
             .isEqualTo("open");
     }
 

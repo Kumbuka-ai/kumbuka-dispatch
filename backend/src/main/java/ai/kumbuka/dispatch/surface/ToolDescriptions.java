@@ -28,9 +28,6 @@ public interface ToolDescriptions {
     String claim();
 
     @Message
-    String claimNext();
-
-    @Message
     String release();
 
     @Message

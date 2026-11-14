@@ -40,6 +40,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.arc.properties.IfBuildProperty;
 import io.quarkus.security.Authenticated;
+import io.quarkus.security.ForbiddenException;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
@@ -54,19 +55,21 @@ import org.jspecify.annotations.Nullable;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The assistant surface: the twenty-six calls of TAR-0004 section 3 and the
+ * The assistant surface: the twenty-five calls of TAR-0004 section 3 and the
  * two calls on the tags of a task as MCP
  * tools, over JSON-RPC 2.0 at {@code POST /mcp}, written by hand (C4.1).
  *
  * <p>The methods are {@code initialize}, {@code ping}, {@code tools/list} and
  * {@code tools/call}; a notification takes no answer and is acknowledged with
  * 202. {@code tools/list} is the declaration's projection ({@link McpTools});
- * {@code tools/call} reads the tool's arguments into a {@link CallPayload} and
- * makes the call through {@link CallBinding}: one call of the verb surface,
- * as the REST surface makes it.
+ * {@code tools/call} reads the tool's arguments into a {@link CallPayload},
+ * reads the call through {@link CallBinding} and makes it through {@link
+ * ToolCalls}, which checks the one permission the call names: one call of the
+ * verb surface, as the REST surface makes it.
  *
  * <h2>Two kinds of error, kept apart</h2>
  *
@@ -110,6 +113,7 @@ public class McpAdapter {
     private static final int INVALID_PARAMS = -32602;
 
     @Inject VerbSurface verbs;
+    @Inject ToolCalls calls;
     @Inject CallerActor caller;
     @Inject ObjectMapper json;
     @Inject Clock clock;
@@ -168,11 +172,15 @@ public class McpAdapter {
         }
         ProcessVerb verb = named.get();
         @Nullable Actor actor = null;
+        CallBinding.@Nullable Prepared prepared = null;
         try {
             CallPayload in = new CallPayload(verb, Surface.MCP, params.arguments());
             actor = caller.current();
-            return result(id, content(Payloads.of(
-                CallBinding.make(verbs, Surface.MCP, actor, in, clock)), false));
+            prepared = CallBinding.prepare(Surface.MCP, actor, in, clock);
+            return result(id, content(Payloads.of(CallBinding.through(calls, prepared)), false));
+        } catch (ForbiddenException notPermitted) {
+            return refusal(id, notPermitted(Objects.requireNonNull(actor),
+                Objects.requireNonNull(prepared), verb, params.arguments()));
         } catch (SurfaceException refused) {
             PlatformLog.refused(PlatformLog.Reason.of(refused.refusal().code()));
             return refusal(id, refused.refusal());
@@ -188,6 +196,30 @@ public class McpAdapter {
         } catch (RuntimeException failure) {
             return refusal(id, UnexpectedFailures.refuse(VerbName.of(verb, Surface.MCP), failure));
         }
+    }
+
+    /**
+     * A tool call the caller's permission does not reach, refused by the
+     * check at {@link ToolCalls} before the call was made: {@code
+     * ROLE_INSUFFICIENT}, answered after the call's scopes as every refusal
+     * of the caller's part (C1.3), so a scope the caller may not see answers
+     * {@code NOT_FOUND} and a task it cannot read likewise.
+     */
+    private Refusal notPermitted(Actor actor, CallBinding.Prepared prepared, ProcessVerb verb,
+                                 Map<String, Object> given) {
+        try {
+            prepared.resolveScopes(verbs);
+        } catch (SurfaceException refused) {
+            PlatformLog.refused(PlatformLog.Reason.of(refused.refusal().code()));
+            return refused.refusal();
+        } catch (DispatchException refused) {
+            PlatformLog.domainRefused(refused.reason());
+            return DomainRefusals.of(refused, Surface.MCP, actor, verb, given,
+                complete -> readQuietly(actor, complete), clock);
+        }
+        PlatformLog.domainRefused(DispatchException.Reason.ACTOR_UNKNOWN);
+        return DomainRefusals.ofPermission(Surface.MCP, actor, verb, given,
+            complete -> readQuietly(actor, complete), clock);
     }
 
     /**

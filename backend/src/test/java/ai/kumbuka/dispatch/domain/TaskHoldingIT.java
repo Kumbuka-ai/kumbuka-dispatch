@@ -237,8 +237,6 @@ class TaskHoldingIT {
 
         assertRefused(() -> tasks.claim(SCOPE, s.address(), TaskCall.by(K)),
             DispatchException.Reason.DEFERRAL_PENDING);
-        assertRefused(() -> tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(K)),
-            DispatchException.Reason.NOTHING_TO_CLAIM);
 
         PlatformFixture.run("UPDATE dispatch.task SET not_before = now() - interval '1 second' "
             + "WHERE uuid = '" + s.identity() + "'");
@@ -254,7 +252,7 @@ class TaskHoldingIT {
     @Test
     void the_identity_that_delivered_accepts_holding_both_capacities_and_the_row_is_marked() {
         TaskStage.Staged s = stage.stage("delivered", SELECTOR);
-        Actor delivererWithBoth = new Actor(H.subject(), Actor.Kind.EXECUTOR, Actor.Kind.CONSOLE);
+        Actor delivererWithBoth = new Actor(H.subject(), PermissionFixture.BOTH);
         String token = stage.token(s);
 
         assertRefused(() -> tasks.act(SCOPE, s.address(), TaskVerb.ACCEPT,

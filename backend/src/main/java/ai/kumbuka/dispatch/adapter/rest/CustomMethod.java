@@ -20,7 +20,7 @@ import java.util.Optional;
 /**
  * The routes of the REST surface: one per call, written by hand.
  *
- * <p>The calls are the twenty-eight of the declaration, under the same names
+ * <p>The calls are the twenty-seven of the declaration, under the same names
  * without the {@code dispatch_} prefix the assistant surface carries. The
  * routes are not generated from the declaration; a test holds the two
  * statements together: every declared call has exactly one route here, and no
@@ -44,7 +44,6 @@ public enum CustomMethod {
 
     CREATE("create", "POST", Depth.COLLECTION, false),
     QUERY("query", "GET", Depth.COLLECTION, false),
-    CLAIM_NEXT("claim_next", "POST", Depth.COLLECTION, true),
 
     READ("read", "GET", Depth.ITEM, false),
     READ_TEXT("read_text", "GET", Depth.ITEM, true),

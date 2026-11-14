@@ -111,10 +111,6 @@ public final class PlatformLog {
         LOG.infof("%s %s repeated: receipt reissued", call, entry);
     }
 
-    public static void drawnInScope(TechnicalAddress entry, ScopeId scope) {
-        LOG.infof("claim_next %s in scope %s", entry, scope);
-    }
-
     /** A listing, by the scope and how many heads it answered; never by its selector. */
     public static void queried(ScopeId scope, Count heads) {
         LOG.debugf("query in scope %s: %s head(s)", scope, heads);

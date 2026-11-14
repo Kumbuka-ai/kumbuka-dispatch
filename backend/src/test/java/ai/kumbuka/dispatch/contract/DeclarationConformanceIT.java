@@ -50,10 +50,10 @@ class DeclarationConformanceIT {
     // =======================================================================
 
     @Test
-    void the_declaration_carries_the_twenty_six_calls_of_the_target() {
+    void the_declaration_carries_the_calls_of_the_target() {
         assertThat(ProcessVerb.names(Surface.REST))
-            .as("TAR-0004 section 3: seventeen transitions and nine further calls, the two "
-                + "calls on the tags of sprint/210, and no other")
+            .as("TAR-0004 section 3 but the draw: sixteen transitions and nine further calls, "
+                + "the two calls on the tags of sprint/210, and no other")
             .containsExactlyInAnyOrderElementsOf(TargetSurface.REST);
         assertThat(ProcessVerb.names(Surface.MCP))
             .as("on the assistant surface each is named dispatch_<verb>")
@@ -64,7 +64,7 @@ class DeclarationConformanceIT {
     }
 
     @Test
-    void the_seventeen_transitions_are_the_transitions_and_the_nine_are_not() {
+    void the_sixteen_transitions_are_the_transitions_and_the_nine_are_not() {
         assertThat(Arrays.stream(ProcessVerb.values()).filter(ProcessVerb::isTransition)
                 .map(ProcessVerb::verb).toList())
             .containsExactlyInAnyOrderElementsOf(TargetSurface.TRANSITIONS);
@@ -115,10 +115,6 @@ class DeclarationConformanceIT {
             assertThat(call.argument("date", Argument.Placement.FIELDS))
                 .as("create takes no date, and nothing else does: %s", call.call()).isEmpty();
         }
-        for (String name : TargetSurface.CLAIM_NEXT_REQUIRED) {
-            assertThat(ProcessVerb.CLAIM_NEXT.declared(name, Argument.Placement.TOP).required())
-                .as("%s is mandatory on claim_next", name).isTrue();
-        }
     }
 
     // =======================================================================
@@ -150,15 +146,8 @@ class DeclarationConformanceIT {
     @Test
     void the_texts_of_concept_section_3_5_stand_word_for_word() {
         assertThat(ProcessVerb.CLAIM.description()).isEqualTo(TargetSurface.CLAIM_DESCRIPTION);
-        assertThat(ProcessVerb.CLAIM_NEXT.description())
-            .isEqualTo(TargetSurface.CLAIM_NEXT_DESCRIPTION);
-        assertThat(ProcessVerb.CLAIM_NEXT.declared("apparatus", Argument.Placement.TOP)
-                .description())
-            .isEqualTo(TargetSurface.APPARATUS_ARGUMENT);
         assertThat(ProcessVerb.CLAIM.description())
-            .as("the sentence about the text is the same in both descriptions")
-            .contains(TargetSurface.THE_TEXT_SENTENCE);
-        assertThat(ProcessVerb.CLAIM_NEXT.description())
+            .as("the sentence about the text")
             .contains(TargetSurface.THE_TEXT_SENTENCE);
     }
 
@@ -173,9 +162,6 @@ class DeclarationConformanceIT {
                 .as("%s carries the description the contract copy writes", call.call())
                 .isEqualTo(described.get(call.call()));
         }
-        assertThat(Contract.collapsed(ProcessVerb.CLAIM_NEXT
-                .declared("apparatus", Argument.Placement.TOP).description()))
-            .isEqualTo(Contract.quotedUnder("### 3.3"));
     }
 
     // =======================================================================
@@ -225,7 +211,7 @@ class DeclarationConformanceIT {
     @Test
     void the_declaration_is_servable() {
         SurfaceDeclaration.requireServable();
-        assertThat(SurfaceDeclaration.calls()).hasSize(28);
+        assertThat(SurfaceDeclaration.calls()).hasSize(27);
     }
 
     /**

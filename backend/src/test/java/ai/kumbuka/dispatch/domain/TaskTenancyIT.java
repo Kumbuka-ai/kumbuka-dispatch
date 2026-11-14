@@ -14,7 +14,6 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,10 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Runs against the substrate database, whose runtime connection is the
  * service role with its enumerated grants and no BYPASSRLS. The two tenants
  * share the scope id and the selector name, so every address of one tenant
- * also exists in the other: nothing but the tenant keeps them apart. The draw
- * is the sharpest case: it is native SQL, which the ORM's tenant filter does
- * not reach, so only the row policy of {@code task} stands between it and the
- * other tenant's open task.
+ * also exists in the other: nothing but the tenant keeps them apart.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -69,8 +65,6 @@ class TaskTenancyIT {
             assertRefused(() -> tasks.act(SCOPE, sameAddress, TaskVerb.WITHDRAW,
                     TaskCall.by(C).withConflictToken("any")),
                 DispatchException.Reason.NOT_FOUND);
-            assertRefused(() -> tasks.claimNext(SCOPE, SELECTOR, List.of("*e"), TaskCall.by(K)),
-                DispatchException.Reason.NOTHING_TO_CLAIM);
             assertThat(tasks.query(SCOPE, SELECTOR,
                     TaskFilter.of(Map.of("address", "sprint/1.0")), TaskStage.page(10), C).tasks())
                 .as("a listing of B shows nothing of A").isEmpty();

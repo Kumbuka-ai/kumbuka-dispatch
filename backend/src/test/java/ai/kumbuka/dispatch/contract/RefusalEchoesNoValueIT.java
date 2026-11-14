@@ -193,12 +193,8 @@ class RefusalEchoesNoValueIT {
         SurfaceFixture.asExecutor(identity);
         mcp(RefusalCode.ROLE_INSUFFICIENT, "dispatch_withdraw", Map.of("address", open,
             "conflict_token", MARKER));
-        mcp(RefusalCode.DRAW_EMPTY, "dispatch_claim_next", with(collection,
-            "apparatus", List.of(MARKER)));
         mcp(RefusalCode.ARGUMENT_INVALID, "dispatch_claim", Map.of("address", open,
             "duration", MARKER));
-        mcp(RefusalCode.ARGUMENT_INVALID, "dispatch_claim_next", with(collection,
-            "apparatus", List.of(MARKER + "_")));
         String receipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
             Map.of("address", open))).get("receipt"));
         mcp(RefusalCode.RECEIPT_WRONG, "dispatch_renew", Map.of("address", open,
@@ -320,8 +316,6 @@ class RefusalEchoesNoValueIT {
             "selector", SurfaceFixture.SELECTOR)));
         answers.add(refused("dispatch_query", Map.of("scope", SurfaceFixture.SCOPE,
             "selector", MARKER)));
-        answers.add(refused("dispatch_claim_next", Map.of("scope", SurfaceFixture.SCOPE,
-            "selector", MARKER, "apparatus", List.of("code"))));
         answers.add(refused("dispatch_read", Map.of("address",
             "dispatch://" + SurfaceFixture.SCOPE + "/" + MARKER + "/1.0")));
         answers.add(refused("dispatch_read", Map.of("address",
@@ -347,10 +341,6 @@ class RefusalEchoesNoValueIT {
             "conflict_token", token(open), "fields", Map.of("remark", List.of(MARKER)))));
 
         SurfaceFixture.asExecutor(identity);
-        answers.add(refused("dispatch_claim_next", with(collection, "apparatus",
-            List.of("code", "review", MARKER + "%"))));
-        answers.add(refused("dispatch_claim_next", with(collection, "apparatus",
-            List.of("code", "*"))));
         answers.add(refused("dispatch_claim", Map.of("address", open, "duration", MARKER)));
         String receipt = String.valueOf(Mcp.answer(Mcp.call("dispatch_claim",
             Map.of("address", open, "idempotency_key", MARKER))).get("receipt"));

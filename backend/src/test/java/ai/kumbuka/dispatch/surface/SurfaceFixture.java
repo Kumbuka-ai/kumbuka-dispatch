@@ -7,7 +7,6 @@
  */
 package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.platform.PlatformFixture;
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.security.runtime.QuarkusPrincipal;
@@ -117,34 +116,40 @@ public final class SurfaceFixture {
         }
     }
 
+    /** The realm role of a console identity, as the realm names it. */
+    public static final String CONSOLE_ROLE = "dispatch-console";
+
+    /** The realm role of an executor, as the realm names it. */
+    public static final String EXECUTOR_ROLE = "dispatch-executor";
+
     /** Calls as a human-facing console identity. */
     public static void asConsole(TestIdentityAssociation identity) {
-        as(identity, CONSOLE, Actor.ROLE_CONSOLE);
+        as(identity, CONSOLE, CONSOLE_ROLE);
     }
 
     /** Calls as a second console identity, for the rules that are per caller. */
     public static void asOtherConsole(TestIdentityAssociation identity) {
-        as(identity, OTHER_CONSOLE, Actor.ROLE_CONSOLE);
+        as(identity, OTHER_CONSOLE, CONSOLE_ROLE);
     }
 
     /** Calls as the executing apparatus. */
     public static void asExecutor(TestIdentityAssociation identity) {
-        as(identity, EXECUTOR, Actor.ROLE_EXECUTOR);
+        as(identity, EXECUTOR, EXECUTOR_ROLE);
     }
 
     /** Calls as a second executor, which is how "only the holder" is observable. */
     public static void asOtherExecutor(TestIdentityAssociation identity) {
-        as(identity, OTHER_EXECUTOR, Actor.ROLE_EXECUTOR);
+        as(identity, OTHER_EXECUTOR, EXECUTOR_ROLE);
     }
 
-    /** Calls as the identity holding both capacities. */
+    /** Calls as the identity holding both roles. */
     public static void asBoth(TestIdentityAssociation identity) {
-        as(identity, BOTH, Actor.ROLE_CONSOLE, Actor.ROLE_EXECUTOR);
+        as(identity, BOTH, CONSOLE_ROLE, EXECUTOR_ROLE);
     }
 
     /** Calls as a console identity whose membership is muted. */
     public static void asMutedConsole(TestIdentityAssociation identity) {
-        as(identity, MUTED, Actor.ROLE_CONSOLE);
+        as(identity, MUTED, CONSOLE_ROLE);
     }
 
     /**
@@ -175,20 +180,24 @@ public final class SurfaceFixture {
         }
     }
 
-    /** Calls as an authenticated token carrying neither capacity. */
+    /** Calls as an authenticated token carrying neither role. */
     public static void asCapacitylessToken(TestIdentityAssociation identity) {
-        identity.setTestIdentity(QuarkusSecurityIdentity.builder()
-            .setPrincipal(new QuarkusPrincipal(CONSOLE))
-            .build());
+        as(identity, CONSOLE);
     }
 
+    /**
+     * Calls as a token of {@code subject} carrying the realm roles named, and
+     * the permissions the service's interim source hands such a token: the
+     * test identity takes the path a token takes, roles in, permissions out,
+     * so the probes see the admission a caller with those roles meets.
+     */
     private static void as(TestIdentityAssociation identity, String subject, String... roles) {
         var builder = QuarkusSecurityIdentity.builder()
             .setPrincipal(new QuarkusPrincipal(subject));
         for (String role : roles) {
             builder.addRole(role);
         }
-        identity.setTestIdentity(builder.build());
+        identity.setTestIdentity(InterimRolePermissions.withPermissions(builder.build()));
     }
 
     /** The item URI of an exchange, as this surface exposes it. */

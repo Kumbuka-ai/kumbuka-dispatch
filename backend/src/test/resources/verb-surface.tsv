@@ -7,7 +7,7 @@
 # The REST surface of the dispatch service.
 #
 # THIS FILE IS THE EXPECTATION. It is written by hand from TAR-0004 section 3
-# (the twenty-six calls, on MCP and REST under the same names) and from the
+# (its calls, on MCP and REST under the same names, but the draw) and from the
 # concept document's section 3 (what each call takes), in the path form of the
 # adapter this surface replaced. It is deliberately NOT derived from the built
 # code: a probe that reads its expectation out of the thing it probes checks
@@ -26,8 +26,9 @@
 # ---------------------------------------------------------------------------
 # THE CALLS -- one route each, and no route without one
 # ---------------------------------------------------------------------------
-# Seventeen transitions, nine calls that are not transitions, and the two calls
-# on the tags of a task, which are no transitions either. A call that is
+# Sixteen transitions, nine calls that are not transitions, and the two calls
+# on the tags of a task, which are no transitions either. The draw,
+# claim_next, left the surface: a task is taken up by its address. A call that is
 # not the plain read, write or delete of what its path names is a custom
 # method in colon notation; the colon is forced, because the id part may grow
 # segments and a trailing verb segment could not be told from one.
@@ -36,7 +37,6 @@ class	verb	method	path	depth	repeat
 call	send	POST	/api/{scope}/{selector}/{id}:send	item	conflict-token
 call	recall	POST	/api/{scope}/{selector}/{id}:recall	item	conflict-token
 call	claim	POST	/api/{scope}/{selector}/{id}:claim	item	idempotency-key
-call	claim_next	POST	/api/{scope}/{selector}:claim_next	collection	idempotency-key
 call	release	POST	/api/{scope}/{selector}/{id}:release	item	receipt
 call	defer	POST	/api/{scope}/{selector}/{id}:defer	item	receipt
 call	renew	POST	/api/{scope}/{selector}/{id}:renew	item	receipt

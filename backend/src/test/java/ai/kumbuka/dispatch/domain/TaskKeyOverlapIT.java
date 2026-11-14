@@ -17,7 +17,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
@@ -35,12 +34,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * answered what the first produced, as a repeat after the commit does, and
  * last that the second did wait.
  *
- * <p>Red probes, observed before the key lock existed: the overlapping
+ * <p>Red probe, observed before the key lock existed: the overlapping
  * creation waited at the selector, then created a second root and pointed the
- * key at it; the overlapping draw stepped over the first's task, drew the
- * other one and failed on the unique key of {@code task_idempotency_key}.
- * The claim and the addendum were not run before the key lock and carry no
- * observed red state of their own.
+ * key at it. The claim and the addendum were not run before the key lock and
+ * carry no observed red state of their own.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -48,7 +45,6 @@ class TaskKeyOverlapIT {
 
     static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
     static final String SELECTOR = "sprint";
-    static final List<String> CODE = List.of("code");
 
     @Inject TaskService tasks;
     @Inject EntityManager em;
@@ -89,30 +85,6 @@ class TaskKeyOverlapIT {
         assertThat(tasksUnder()).isEqualTo(1);
         assertThat(keyPointsAt("create-once")).as("the key names the one root")
             .isEqualTo(TaskStage.row(first.identity()).id());
-        assertThat(overlap.waited()).as("the second waited on the first").isTrue();
-    }
-
-    @Test
-    void an_overlapping_draw_under_one_key_answers_the_first_task_with_a_new_receipt()
-            throws Exception {
-        TaskStage.Staged drawn = stage.open(SELECTOR);
-        TaskStage.Staged other = stage.open(SELECTOR);
-        IdempotencyKey key = IdempotencyKey.of("draw-once");
-        Callable<TaskClaim> draw = () -> tasks.claimNext(SCOPE, SELECTOR, CODE, TaskCall.by(H), key)
-            .answer();
-
-        Overlap overlap = overlap(draw, draw);
-
-        assertThat(overlap.second()).as("the second call answered, and was not refused")
-            .isInstanceOf(TaskClaim.class);
-        TaskClaim first = (TaskClaim) overlap.first();
-        TaskClaim second = (TaskClaim) overlap.second();
-        assertThat(first.task().address()).isEqualTo(drawn.address());
-        assertThat(second.task().address()).isEqualTo(drawn.address());
-        assertThat(second.receipt()).as("a new receipt").isNotEqualTo(first.receipt());
-        assertThat(TaskStage.row(other.identity()).state()).as("the other task was not drawn")
-            .isEqualTo("open");
-        assertThat(TaskStage.row(other.identity()).holder()).isNull();
         assertThat(overlap.waited()).as("the second waited on the first").isTrue();
     }
 
@@ -166,8 +138,8 @@ class TaskKeyOverlapIT {
     void keys_that_join_alike_across_a_unit_separator_take_two_locks() throws Exception {
         TaskStage.Staged one = stage.open(SELECTOR);
         TaskStage.Staged two = stage.open(SELECTOR);
-        Actor plain = new Actor("x", Actor.Kind.EXECUTOR);
-        Actor separated = new Actor("x\u001Fy", Actor.Kind.EXECUTOR);
+        Actor plain = new Actor("x", PermissionFixture.EXECUTOR);
+        Actor separated = new Actor("x\u001Fy", PermissionFixture.EXECUTOR);
         Callable<TaskClaim> first = () -> tasks.claim(SCOPE, one.address(), TaskCall.by(plain),
             IdempotencyKey.of("y\u001Fz")).answer();
         Callable<TaskClaim> second = () -> tasks.claim(SCOPE, two.address(),

@@ -693,7 +693,6 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
             case PARENT_ELSEWHERE -> refusals.invalidParentElsewhere(call, at);
             case PARENT_NOT_A_ROOT -> refusals.invalidParentNotARoot(call, at);
             case APPARATUS_PATTERN -> refusals.invalidApparatusPattern(call, at);
-            case APPARATUS_UNBOUNDED -> refusals.invalidApparatusUnbounded(call, at);
             case STATE_FILTER -> refusals.invalidStateFilter(call, at);
             case BRACKET_FILTER -> refusals.invalidBracketFilter(call, at);
             case ADDRESS_FILTER -> refusals.invalidAddressFilter(call, at);

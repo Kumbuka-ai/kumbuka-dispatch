@@ -34,8 +34,8 @@ import java.util.Set;
  * the service, and the difference is the router's to take up: {@code create}
  * meets the state of a closed parent, {@code annotate} the state of a draft,
  * {@code read_text} an executor that holds the task not, and {@code query}
- * the refusals of its page; {@code claim_next} meets no state, since it
- * draws only open tasks.
+ * the refusals of its page. The draw, {@code claim_next}, left the surface
+ * (REA-0010, step 2), and the transcript with it.
  */
 @CounterProbe
 public final class DeclarationTranscript {
@@ -89,10 +89,6 @@ public final class DeclarationTranscript {
         put(calls, "claim", "ITEM_TRANSITION", "CLAIM_RECEIPT",
             reasons(WRITE, "TRANSITION_REFUSED",
                 "DEFERRAL_PENDING", "IDEMPOTENCY_KEY_REUSED"), address, duration, key);
-        put(calls, "claim_next", "COLLECTION_COMPOUND", "CLAIM_RECEIPT",
-            reasons(WRITE, "DRAW_EMPTY",
-                "IDEMPOTENCY_KEY_REUSED"),
-            scope, selector, "apparatus:array:TOP:required", duration, key);
         put(calls, "release", "ITEM_TRANSITION", "TASK_LEAN",
             holder("TRANSITION_REFUSED"), address, receipt, remark);
         put(calls, "defer", "ITEM_TRANSITION", "TASK_LEAN",

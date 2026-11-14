@@ -1,8 +1,8 @@
 ---
 type: contract-copy
-title: "The dispatch service's verb surface: twenty-eight calls, two sizes of answer, refusals that explain themselves"
+title: "The dispatch service's verb surface: twenty-seven calls, two sizes of answer, refusals that explain themselves"
 written: 2026-10-06
-amended: 2026-11-10
+amended: 2026-11-14
 sources:
   - "platform-specs aa42521, docs/architecture/targets/TAR-0004-the-dispatch-service-carries-commissioned-work-from-issue-to-acceptance.md, sections 3, 5, 6, 7"
   - "platform-specs aa42521, docs/concepts/concept-dispatch-store-kernel-and-surface.md, section 3"
@@ -16,6 +16,7 @@ sources:
   - "platform-specs 37f4d6e, code-conventions/service-contract.md, contract round 3: attempted as a rule, the framework's 404 and 405 in the envelope (C3.3, C8.3), no transport location in offenders"
   - "platform-specs 4978ca9, TAR-0004 sections 2 and 3, DEC-0014, REQ-0035: recall from open to draft up to the first take-up and never on a root with a task under it, an addendum only to a task whose work runs, take-up by claim naming the task and claim_next retiring"
   - "the commission of sprint/210 (tag system v1), 2026-11-10: tag_attach and tag_detach, the field tags, the filter tag, the platform contract platform.tag_access; the wording of the two calls and of the three refusal messages of a tag is the service's proposal"
+  - "REA-0010 S2 as of 2026-11-12 (platform-specs, ratified): claim_next leaves the surface, with its description, its argument apparatus and the message of an unbounded pattern"
 ---
 <!--
 Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
@@ -109,17 +110,6 @@ scope and selector or the address, the `If-Match` header the conflict token, and
 > working.
 >
 > Your hold lasts 30 minutes, or the duration you state; extend it with dispatch_renew.
-
-**`dispatch_claim_next`** (concept section 3.5, worded positively under DEC-0043 R21)
-> Retiring: take up a task by its address with dispatch_claim; this call stays served while callers
-> move. Takes up the next open task addressed to you, chosen by the service. Moves the task from
-> open to active (intermediate). Call as an executor with scope, selector and apparatus.
->
-> Returns the address, a receipt and the end of your hold. Keep the receipt: every later call on
-> this task needs it.
->
-> The task's text comes from dispatch_read_text, part "dispatch": read it next, before you start
-> working.
 
 **`dispatch_release`**
 > Gives a task you hold back: it is open again for any executor. Moves the task from active to open
@@ -299,18 +289,11 @@ whatever part it takes in the task. The tag travels under `fields`, as `fields.t
 > The task keeps its state, its text and its conflict token. The answer lists every tag the task
 > carries afterwards.
 
-### 3.3 The argument `apparatus` of `dispatch_claim_next` (concept section 3.5, word for word)
-
-> Which apparatus you draw for. Every task is addressed to an apparatus: the kind of executor it is
-> meant for, such as "code" or "review". Give one or more patterns, matched as alternatives. "*"
-> stands for any run of characters, so "agent-*" matches "agent-backend". Case-sensitive. A
-> pattern of only "*" is refused. dispatch_query lists open tasks with their apparatus.
-
 ## 4. Answers
 
 A writing call answers lean: `address`, `fields` with the state and its attributes (`hold_reason`,
 `outcome`, `self_accepted`, `not_before`) and, for the holder, `lease_expires_at`; `conflict_token`; `next`.
-`dispatch_claim` and `dispatch_claim_next` add `receipt`. `dispatch_read` and `dispatch_query`
+`dispatch_claim` adds `receipt`. `dispatch_read` and `dispatch_query`
 answer the full head: in addition `title`, `apparatus`, `identity` (the technical address),
 `holder` (`self`, `other` or `nobody`), `lapse_count`, the pending question's options, both
 metadata, `curated_in`, `texts`, the texts that exist by type and suffix, never their content, and
@@ -487,7 +470,6 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `invalidParentElsewhere` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names another scope or bracket kind than the call does, and a child is created in its root's bracket.` |
 | `invalidParentNotARoot` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a parent is a bracket root, the <number>.0 of its bracket.` |
 | `invalidApparatusPattern` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*', and '*' is the only wildcard; the underscore and the percent sign carry a meaning of their own in the comparison and are excluded.` |
-| `invalidApparatusUnbounded` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a pattern of nothing but '*' matches every apparatus, which is the blind draw the argument exists to refuse.` |
 | `invalidStateFilter` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one or more of draft, open, active, on_hold, delivered and closed, comma-separated.` |
 | `invalidBracketFilter` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one or more bracket numbers, comma-separated.` |
 | `invalidAddressFilter` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is one or more complete task addresses, comma-separated.` |

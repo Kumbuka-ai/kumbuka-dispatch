@@ -7,6 +7,7 @@
  */
 package ai.kumbuka.dispatch.adapter.rest;
 
+import ai.kumbuka.dispatch.adapter.payload.CallBinding;
 import ai.kumbuka.dispatch.adapter.payload.DomainRefusals;
 import ai.kumbuka.dispatch.adapter.payload.Payloads;
 import ai.kumbuka.dispatch.domain.Actor;
@@ -19,6 +20,7 @@ import ai.kumbuka.dispatch.surface.SurfaceException;
 import ai.kumbuka.dispatch.surface.UnexpectedFailures;
 import ai.kumbuka.dispatch.surface.VerbName;
 import ai.kumbuka.dispatch.surface.VerbSurface;
+import io.quarkus.security.ForbiddenException;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Context;
@@ -41,7 +43,9 @@ import java.util.Optional;
  *
  * <p>One mapper per type, nested here: the surface's refusals, which arrive
  * worded; the domain's, which are worded here against the call the request
- * became; and everything else, which is ours and answered as {@code
+ * became; a call the caller's permission does not reach, worded as the
+ * domain's refusal of the caller's part; and everything else, which is ours
+ * and answered as {@code
  * UNEXPECTED_FAILURE} with a reference (C8.3). The status of a refusal is its
  * code's, from the catalogue.
  */
@@ -100,17 +104,76 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
          * at the edge.
          */
         private Optional<VerbSurface.Result> readQuietly(String complete) {
+            return RefusalMapper.readQuietly(verbs, context, complete);
+        }
+    }
+
+    /**
+     * A call the caller's permission does not reach, refused by the check
+     * at {@link TaskCalls} before the call was made: a refusal of the
+     * service in the platform's table, {@code ROLE_INSUFFICIENT}, and not
+     * the security layer's bare 403. It is answered after the call's scopes,
+     * as the check order wants every refusal of the caller's part (C1.3): a
+     * scope the caller may not see answers {@code NOT_FOUND}, a locked one
+     * {@code SCOPE_LOCKED}, and the task the call names is read again for
+     * the calls open to the caller, or answers {@code NOT_FOUND} where it
+     * cannot be read. A 403 outside a call is the security layer's and goes
+     * back as it is.
+     */
+    @Provider
+    public static class NotPermitted implements ExceptionMapper<ForbiddenException> {
+
+        @Inject CallContext context;
+        @Inject VerbSurface verbs;
+        @Inject Clock clock;
+
+        @Override
+        public Response toResponse(ForbiddenException e) {
+            Optional<CallContext.Made> made = context.made();
             Optional<Actor> actor = context.actor();
-            if (actor.isEmpty()) {
-                return Optional.empty();
+            Optional<CallBinding.Prepared> prepared = context.prepared();
+            if (made.isEmpty() || actor.isEmpty() || prepared.isEmpty()) {
+                return Response.status(Response.Status.FORBIDDEN).build();
             }
+            CallContext.Made call = made.get();
             try {
-                AddressParser.Parts parts = AddressParser.uri(complete);
-                return Optional.of(verbs.read(actor.get(), new VerbSurface.Item(
-                    parts.scope(), AddressParser.item(parts.selector(), parts.id()))));
-            } catch (DispatchException | SurfaceException unreadable) {
-                return Optional.empty();
+                prepared.get().resolveScopes(verbs);
+            } catch (SurfaceException refused) {
+                PlatformLog.refused(PlatformLog.Reason.of(refused.refusal().code()));
+                return answer(refused.refusal(), refused.allow().orElse(null));
+            } catch (DispatchException refused) {
+                PlatformLog.domainRefused(refused.reason());
+                return answer(DomainRefusals.of(refused, call.surface(), actor.get(),
+                    call.verb(), call.given(), this::readQuietly, clock), null);
             }
+            PlatformLog.domainRefused(DispatchException.Reason.ACTOR_UNKNOWN);
+            return answer(DomainRefusals.ofPermission(call.surface(), actor.get(), call.verb(),
+                call.given(), this::readQuietly, clock), null);
+        }
+
+        private Optional<VerbSurface.Result> readQuietly(String complete) {
+            return RefusalMapper.readQuietly(verbs, context, complete);
+        }
+    }
+
+    /**
+     * The task at a complete address, read in a transaction of its own after
+     * the refused one rolled back; empty where the caller may not read it,
+     * which is itself a refusal and the reason this read lives at the edge.
+     */
+    private static Optional<VerbSurface.Result> readQuietly(VerbSurface verbs,
+                                                            CallContext context,
+                                                            String complete) {
+        Optional<Actor> actor = context.actor();
+        if (actor.isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            AddressParser.Parts parts = AddressParser.uri(complete);
+            return Optional.of(verbs.read(actor.get(), new VerbSurface.Item(
+                parts.scope(), AddressParser.item(parts.selector(), parts.id()))));
+        } catch (DispatchException | SurfaceException unreadable) {
+            return Optional.empty();
         }
     }
 

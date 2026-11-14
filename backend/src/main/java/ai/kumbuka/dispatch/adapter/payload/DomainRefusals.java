@@ -127,6 +127,21 @@ public final class DomainRefusals {
     }
 
     /**
+     * A call the caller's permission does not reach, refused at the adapter
+     * before it was made: worded as the kernel's refusal of the caller's part
+     * is, {@code ROLE_INSUFFICIENT} with the part the call belongs to and the
+     * calls open to the caller, and {@code NOT_FOUND} where the task cannot be
+     * read. The edge resolves the call's scopes before it asks for this, so the
+     * refusal stands where the check order puts it (C1.3).
+     */
+    public static Refusal ofPermission(Surface surface, Actor actor, ProcessVerb verb,
+                                       Map<String, Object> given, Reader read, Clock clock) {
+        return of(new DispatchException(DispatchException.Reason.ACTOR_UNKNOWN,
+                verb.call() + " checks a permission the caller does not hold."),
+            surface, actor, verb, given, read, clock);
+    }
+
+    /**
      * The call a kernel refusal is worded against, and how its task is read again.
      *
      * @param actor the caller; absent where the token carried no usable capacity
