@@ -62,13 +62,14 @@ class SharedCodeTableTest {
 
     /** The codes of the table this service has no occasion for, and why. */
     static final Map<String, String> NOT_CARRIED = Map.of(
-        "ADDRESS_TRUNCATED", "a collection takes create, query and the draw; every other "
+        "ADDRESS_TRUNCATED", "a collection takes create and query; every other "
             + "call on it is a verb not carried there (VERB_NOT_CARRIED)",
         "VALUE_UNDECLARED", "no argument takes a value from a scope's vocabulary; every "
             + "fixed set is declared, and a value outside it is ARGUMENT_INVALID",
         "PREDICATE_UNKNOWN", "the filters are declared arguments, so an undeclared one is "
             + "ARGUMENT_UNKNOWN",
-        "ALREADY_EXISTS", "the service allocates every address it creates");
+        "ALREADY_EXISTS", "the service allocates every address it creates",
+        "DRAW_EMPTY", "no call draws from a collection since claim_next left the surface");
 
     /** The codes this service declares beyond the table, with their statuses. */
     static final Map<String, Integer> SERVICE_CODES = Map.of(
@@ -165,7 +166,7 @@ class SharedCodeTableTest {
         planted.putAll(SERVICE_CODES);
         planted.put("RECEIPT_WRONG", 403);
         planted.put("NOTHING_TO_TAKE", 409);
-        planted.remove("DRAW_EMPTY");
+        planted.remove("CLAIM_HELD");
         planted.remove("CLAIM_ABSENT");
         planted.put("LEASE_LAPSED", 409);
         planted.put("ROLE_INSUFFICIENT", 409);
@@ -178,7 +179,7 @@ class SharedCodeTableTest {
             .containsExactlyInAnyOrder(
                 "RECEIPT_WRONG answers 403; the table says 409",
                 "ROLE_INSUFFICIENT answers 409; the table says 403",
-                "DRAW_EMPTY is in the table and not carried, and NOT_CARRIED does not say why",
+                "CLAIM_HELD is in the table and not carried, and NOT_CARRIED does not say why",
                 "CLAIM_ABSENT is in the table and not carried, and NOT_CARRIED does not say why",
                 "NOTHING_TO_TAKE is neither in the table nor declared as a code of the service",
                 "LEASE_LAPSED is neither in the table nor declared as a code of the service",

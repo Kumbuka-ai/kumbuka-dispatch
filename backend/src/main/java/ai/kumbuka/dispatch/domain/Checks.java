@@ -88,18 +88,23 @@ final class Checks {
         return Optional.empty();
     }
 
-    /** Check 3: the caller's relation to the task. */
+    /**
+     * Check 3: the caller's relation to the task. A commissioner's or a
+     * candidate's call asks for the row's permission and nothing else about
+     * the caller; a holder's call asks for the hold.
+     */
     static Optional<Refused> relation(TaskVerb verb, TaskSituation s, Actor caller) {
         return switch (verb.relation()) {
-            case COMMISSIONER -> caller.isConsole()
+            case COMMISSIONER -> caller.holds(verb.permission())
                 ? Optional.empty()
                 : refuse(Check.RELATION, Reason.ACTOR_UNKNOWN, verb.wireName() + " is the "
-                    + "commissioner's call, and the caller does not hold the commissioning "
-                    + "capacity.");
-            case CANDIDATE -> caller.isExecutor()
+                    + "commissioner's call, and the caller does not hold "
+                    + verb.permission().wireName() + ".");
+            case CANDIDATE -> caller.holds(verb.permission())
                 ? Optional.empty()
                 : refuse(Check.RELATION, Reason.ACTOR_UNKNOWN, verb.wireName() + " is an "
-                    + "executor's call, and the caller does not hold the executing capacity.");
+                    + "executor's call, and the caller does not hold "
+                    + verb.permission().wireName() + ".");
             case HOLDER -> holder(verb, s, caller);
         };
     }

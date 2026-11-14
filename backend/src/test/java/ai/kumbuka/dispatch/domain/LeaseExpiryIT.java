@@ -16,7 +16,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -88,7 +87,7 @@ class LeaseExpiryIT {
     void the_lapse_becomes_a_write_only_when_a_take_up_decides_on_it() {
         TaskStage.Staged lapsed = stage.lapse(stage.active(SELECTOR));
 
-        TaskClaim drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"),
+        TaskClaim drawn = tasks.claim(SCOPE, lapsed.address(),
             TaskCall.by(TaskStage.K)).answer();
 
         assertThat(drawn.task().address()).isEqualTo(lapsed.address());

@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
+import ai.kumbuka.dispatch.domain.DispatchPermission;
 import ai.kumbuka.dispatch.domain.HoldReason;
 import ai.kumbuka.dispatch.domain.HolderState;
 import ai.kumbuka.dispatch.domain.TaskState;
@@ -30,8 +31,8 @@ import java.util.Optional;
  * them on the caller's surface and adds one call the table cannot list,
  * because it is not a transition: {@code read_text}, first, at the two points
  * of the main course where the text is what the caller needs next (concept
- * section 3.4) — for the holder right after a claim, and for the commissioner
- * of a delivered task, before it accepts.
+ * section 3.4) — for the holder right after a claim, and for a caller that
+ * reads every text, on a delivered task, before it accepts.
  */
 public final class NextList {
 
@@ -73,7 +74,8 @@ public final class NextList {
         if (afterClaim && view.holder() == HolderState.SELF) {
             steps.add(new Step(VerbName.of(ProcessVerb.READ_TEXT, surface),
                 Texts.next().readTheCommission()));
-        } else if (caller.isConsole() && view.state() == TaskState.DELIVERED) {
+        } else if (caller.holds(DispatchPermission.INSTANCE_READ_TEXT)
+                && view.state() == TaskState.DELIVERED) {
             steps.add(new Step(VerbName.of(ProcessVerb.READ_TEXT, surface),
                 Texts.next().readTheAnswer()));
         }
@@ -126,7 +128,6 @@ public final class NextList {
             case SEND -> next.send();
             case RECALL -> next.recall();
             case CLAIM -> next.claim();
-            case CLAIM_NEXT -> next.claimNext();
             case RELEASE -> next.release();
             case DEFER -> next.defer();
             case RENEW -> next.renew();

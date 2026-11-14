@@ -177,9 +177,6 @@ public interface RefusalMessages {
     String invalidApparatusPattern(VerbName call, ArgumentPath path);
 
     @Message
-    String invalidApparatusUnbounded(VerbName call, ArgumentPath path);
-
-    @Message
     String invalidStateFilter(VerbName call, ArgumentPath path);
 
     @Message

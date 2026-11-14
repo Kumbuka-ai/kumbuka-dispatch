@@ -14,7 +14,6 @@ import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -59,9 +58,8 @@ class RemedyIsAnInstructionIT {
 
     /**
      * The sentence of every step a {@code next} list can carry: one per
-     * transition, the first entry after a claim, the first entry for the
-     * commissioner of a delivered task, and the step of a draw that found
-     * nothing.
+     * transition, the first entry after a claim, and the first entry for the
+     * commissioner of a delivered task.
      */
     @Test
     void every_step_of_next_is_described_as_the_act_it_takes() {
@@ -71,11 +69,6 @@ class RemedyIsAnInstructionIT {
         }
         sentences.put("read_text after a claim", Texts.next().readTheCommission());
         sentences.put("read_text for the commissioner", Texts.next().readTheAnswer());
-        List<NextList.Step> drawn = Refusal.nothingToTake(
-            VerbName.of(ProcessVerb.CLAIM_NEXT, Surface.MCP),
-            VerbName.of(ProcessVerb.QUERY, Surface.MCP)).data().next();
-        drawn.forEach(step -> sentences.put(step.call() + " after an empty draw",
-            step.does()));
 
         Map<String, String> negated = new LinkedHashMap<>();
         sentences.forEach((step, sentence) -> {
@@ -83,7 +76,7 @@ class RemedyIsAnInstructionIT {
                 negated.put(step, sentence);
             }
         });
-        assertThat(sentences).hasSize(TaskVerb.values().length + 3);
+        assertThat(sentences).hasSize(TaskVerb.values().length + 2);
         assertThat(negated).as("steps of next described by what they do not do").isEmpty();
     }
 }

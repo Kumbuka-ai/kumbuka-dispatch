@@ -52,16 +52,10 @@ public interface ArgumentDescriptions {
     String claimIdempotencyKey();
 
     @Message
-    String claimNextIdempotencyKey();
-
-    @Message
     String createIdempotencyKey();
 
     @Message
     String annotateIdempotencyKey();
-
-    @Message
-    String claimNextApparatus();
 
     @Message
     String deferNotBefore();

@@ -9,30 +9,38 @@ package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchException;
+import ai.kumbuka.dispatch.domain.DispatchPermission;
+import io.quarkus.security.StringPermission;
 import io.quarkus.security.runtime.QuarkusPrincipal;
 import io.quarkus.security.runtime.QuarkusSecurityIdentity;
+import io.smallrye.mutiny.Uni;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * How the capacities are derived from a token, and what is refused rather
- * than defaulted.
+ * How the actor is derived from the identity: its subject, and the
+ * permissions of this service the identity holds, whoever handed them to it;
+ * and what is refused rather than defaulted.
  *
- * <p>The two guarantees hanging off the capacity are permissions rather than
- * conveniences, so every way of arriving without a clear one has to be a
- * refusal. A default here would decide one of them by omission — and the
- * omission would be invisible, because the caller would simply be treated as
- * whichever capacity the default named.
+ * <p>The identities here hold permissions directly, as the platform's
+ * resolver will hand them over, and carry no role: the actor reads no role.
+ * A default would decide a permission by omission, and the omission would be
+ * invisible.
  */
 class CallerActorTest {
 
     @Test
-    void an_executor_role_yields_the_executing_capacity_and_the_tokens_subject() {
-        Actor actor = actorFor("an-agent", Actor.ROLE_EXECUTOR);
+    void the_actor_holds_the_permissions_the_identity_holds_and_the_tokens_subject() {
+        Actor actor = actorFor("an-agent", List.of("dispatch.task.execute",
+            "dispatch.instance.read", "dispatch.instance.read-text-as-holder"));
 
-        assertThat(actor.capacities()).containsExactly(Actor.Kind.EXECUTOR);
+        assertThat(actor.permissions()).containsExactlyInAnyOrder(
+            DispatchPermission.TASK_EXECUTE, DispatchPermission.INSTANCE_READ,
+            DispatchPermission.INSTANCE_READ_TEXT_AS_HOLDER);
         assertThat(actor.subject())
             .as("authorship is derived from the token's stable subject and never accepted "
                 + "from a caller, so a surface that read it from a body would let one "
@@ -41,43 +49,48 @@ class CallerActorTest {
     }
 
     @Test
-    void a_console_role_yields_the_console_capacity() {
-        assertThat(actorFor("an-operator", Actor.ROLE_CONSOLE).capacities())
-            .containsExactly(Actor.Kind.CONSOLE);
+    void a_permission_outside_the_catalogue_is_not_carried() {
+        Actor actor = actorFor("an-operator", List.of("dispatch.task.commission",
+            "worklist.item.write"));
+
+        assertThat(actor.permissions()).containsExactly(DispatchPermission.TASK_COMMISSION);
     }
 
     @Test
-    void a_token_carrying_neither_capacity_is_refused_rather_than_defaulted() {
-        assertThatThrownBy(() -> actorFor("a-stranger"))
+    void an_identity_holding_no_permission_of_the_service_is_refused_rather_than_defaulted() {
+        assertThatThrownBy(() -> actorFor("a-stranger", List.of()))
             .isInstanceOf(DispatchException.class)
             .extracting(e -> ((DispatchException) e).reason())
             .isEqualTo(DispatchException.Reason.ACTOR_UNKNOWN);
     }
 
     /**
-     * Both roles yield both capacities (TAR-0004 section 3, REQ-0034).
-     *
-     * <p>The two are capacities granted to an identity, not kinds of caller:
-     * the person who works alone, or through assistants under the person's own
-     * login, holds both and takes whichever part a call asks for. Four-eyes
-     * comes from granting one without the other, not from refusing the token
-     * that carries both.
+     * A realm role is no permission: an identity that carries the console's
+     * role and holds no permission is refused, because the actor reads the
+     * permissions and never a role (DEC-0052).
      */
     @Test
-    void a_token_carrying_both_roles_yields_both_capacities() {
-        Actor actor = actorFor("a-person-alone", Actor.ROLE_EXECUTOR, Actor.ROLE_CONSOLE);
+    void a_role_without_a_permission_is_no_permission() {
+        var identity = QuarkusSecurityIdentity.builder()
+            .setPrincipal(new QuarkusPrincipal("a-role-only"))
+            .addRole("dispatch-console")
+            .addPermissionChecker(required -> Uni.createFrom().item(false));
+        CallerActor caller = new CallerActor();
+        caller.identity = identity.build();
 
-        assertThat(actor.isExecutor()).as("the executing capacity").isTrue();
-        assertThat(actor.isConsole()).as("the commissioning capacity").isTrue();
-        assertThat(actor.subject()).isEqualTo("a-person-alone");
+        assertThatThrownBy(caller::current)
+            .isInstanceOf(DispatchException.class)
+            .extracting(e -> ((DispatchException) e).reason())
+            .isEqualTo(DispatchException.Reason.ACTOR_UNKNOWN);
     }
 
-    private static Actor actorFor(String subject, String... roles) {
+    /** An identity of {@code subject} holding exactly the permissions named. */
+    private static Actor actorFor(String subject, List<String> held) {
+        List<StringPermission> permissions = held.stream().map(StringPermission::new).toList();
         var identity = QuarkusSecurityIdentity.builder()
-            .setPrincipal(new QuarkusPrincipal(subject));
-        for (String role : roles) {
-            identity.addRole(role);
-        }
+            .setPrincipal(new QuarkusPrincipal(subject))
+            .addPermissionChecker(required -> Uni.createFrom().item(
+                permissions.stream().anyMatch(p -> p.implies(required))));
 
         CallerActor caller = new CallerActor();
         caller.identity = identity.build();

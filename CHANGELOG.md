@@ -17,6 +17,29 @@ GitHub release. Releases before 0.11.0 are described on the
 
 ### Callers
 
+- **`claim_next` left the surface.** `dispatch_claim_next` is no tool of
+  `tools/list` any more, and a call of it is an unknown tool (-32602); `POST
+  …/{selector}:claim_next` is a verb not carried (`VERB_NOT_CARRIED` 405).
+  Take a task up by its address with `claim`. The service no longer answers
+  `DRAW_EMPTY`, and the argument message `invalidApparatusUnbounded` is gone
+  with the draw. The declaration changes with it, and so does its version.
+- **Every call checks one named permission.** `send`, `recall`, `create`,
+  `update`, `delete`, `relate` and `unrelate` check `dispatch.task.commission`;
+  `claim`, `release`, `defer`, `renew`, `ask`, `hold`, `resume`, `deliver`,
+  `fail` and `reject` check `dispatch.task.execute`; `answer`
+  `dispatch.task.decide`; `rework` and `accept` `dispatch.task.confirm`;
+  `withdraw` `dispatch.task.withdraw`; `tag_attach` and `tag_detach`
+  `dispatch.task.tag`; `read` and `query` `dispatch.instance.read`;
+  `read_text` `dispatch.instance.read-text`, or
+  `dispatch.instance.read-text-as-holder` for the holder; `annotate` the
+  permission the supplemented text was written under. The permissions come
+  from the realm roles `dispatch-console` and `dispatch-executor` as before,
+  so whoever was admitted is admitted and whoever was refused is refused. One
+  code changes on the wire: a holder's call (`release`, `defer`, `renew`,
+  `ask`, `hold`, `resume`, `deliver`, `fail`) by an identity holding only the
+  console's role is refused as `ROLE_INSUFFICIENT` 403, where it was
+  `CLAIM_HELD` 409.
+
 - **New call `recall`** (`dispatch_recall`, `POST …/{id}:recall` with
   `If-Match`). The commissioner takes an open task back to draft as long as
   no executor has ever taken it up, changes it with `update` and sends it

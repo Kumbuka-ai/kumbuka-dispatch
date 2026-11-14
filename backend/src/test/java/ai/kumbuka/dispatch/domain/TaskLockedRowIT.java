@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -11,7 +18,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -36,9 +42,8 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
  * timing.
  *
  * <p>Red probe, observed: with the refresh under the lock taken out of {@code
- * TaskRepository}, the first case lets K take over a task H holds, the
- * second overwrites an accepted child as withdrawn, and the third counts one
- * lapse where two were recorded.
+ * TaskRepository}, the first case lets K take over a task H holds, and the
+ * second overwrites an accepted child as withdrawn.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -124,32 +129,6 @@ class TaskLockedRowIT {
             .as("the closing of the root read the child under its lock and found it accepted")
             .isEqualTo("accepted");
         assertThat(TaskStage.row(root.identity()).state()).isEqualTo("closed");
-    }
-
-    @Test
-    void a_draw_after_an_unlocked_read_counts_the_lapse_another_transaction_counted()
-            throws Exception {
-        TaskStage.Staged lapsed = stage.lapse(stage.active(SELECTOR));
-
-        TaskClaim drawn;
-        QuarkusTransaction.begin();
-        try {
-            assertThat(tasks.read(SCOPE, lapsed.address(), C).state())
-                .isEqualTo(TaskState.OPEN);
-            onItsOwnThread(() -> stage.lapse(stage.claimedBy(lapsed, K)));
-
-            drawn = tasks.claimNext(SCOPE, SELECTOR, List.of("code"), TaskCall.by(H)).answer();
-        } finally {
-            end();
-        }
-
-        assertThat(drawn.task().address()).isEqualTo(lapsed.address());
-        TaskStage.Row row = TaskStage.row(lapsed.identity());
-        assertThat(row.lapseCount())
-            .as("the draw counted its lapse on top of the one K's claim counted, not on "
-                + "the count read before")
-            .isEqualTo(2);
-        assertThat(row.holder()).isEqualTo(H.subject());
     }
 
     // -----------------------------------------------------------------------

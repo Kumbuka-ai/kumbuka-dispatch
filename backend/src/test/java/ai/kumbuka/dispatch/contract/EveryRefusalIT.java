@@ -270,14 +270,22 @@ class EveryRefusalIT {
                 + "this task in another part.");
     }
 
+    /**
+     * A take-up by a caller without {@code task.execute} is refused by the
+     * permission its call names, before the call is made, and told as the
+     * caller's part: {@code ROLE_INSUFFICIENT} with the executor's part and
+     * the calls open to the caller, never {@code NOT_FOUND} on a task the
+     * caller sees.
+     */
     @Test
-    void a_draw_by_a_commissioner_is_refused_for_the_part_and_not_as_not_found() {
-        SurfaceFixture.open("drawable", "code");
-        Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_claim_next", Map.of(
-            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-            "apparatus", List.of("code"))));
+    void a_claim_by_a_commissioner_is_refused_for_the_part_and_not_as_not_found() {
+        String address = SurfaceFixture.address(SurfaceFixture.open("claimable", "code"));
+        Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_claim",
+            Map.of("address", address)));
         assertThat(refusal.get("reason")).isEqualTo("ROLE_INSUFFICIENT");
-        assertThat(String.valueOf(refusal.get("message"))).contains("an executor");
+        assertThat(String.valueOf(refusal.get("message"))).isEqualTo(
+            "dispatch_claim is an executor's call, and you take part here in another part.");
+        assertThat(String.valueOf(data(refusal).get("next"))).contains("dispatch_withdraw");
     }
 
     @Test
@@ -374,16 +382,6 @@ class EveryRefusalIT {
     }
 
     @Test
-    void a_draw_that_finds_nothing_is_nothing_to_take() {
-        SurfaceFixture.asExecutor(identity);
-        Map<String, Object> refusal = Mcp.refusal(Mcp.call("dispatch_claim_next", Map.of(
-            "scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-            "apparatus", List.of("nobody-is-this"))));
-        assertThat(refusal.get("reason")).isEqualTo("DRAW_EMPTY");
-        assertThat(String.valueOf(data(refusal).get("next"))).contains("dispatch_query");
-    }
-
-    @Test
     void a_duration_that_is_no_lease_is_refused() {
         String address = SurfaceFixture.address(SurfaceFixture.open("leased", "code"));
         SurfaceFixture.asExecutor(identity);
@@ -448,7 +446,7 @@ class EveryRefusalIT {
         assertThat(refused.header("Allow")).isEqualTo("POST, GET");
         assertThat(refused.jsonPath().getList("data.accepts", String.class))
             .as("the verbs this address carries (C3.3)")
-            .containsExactly("create", "query", "claim_next");
+            .containsExactly("create", "query");
     }
 
     @Test

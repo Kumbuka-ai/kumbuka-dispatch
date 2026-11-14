@@ -187,7 +187,6 @@ public enum RefusalCode {
             case CHILDREN_PRESENT -> CHILDREN_PRESENT;
             case ANSWER_NOT_AN_OPTION -> OPTION_UNOFFERED;
             case DEFERRAL_PENDING -> DEFERRAL_PENDING;
-            case NOTHING_TO_CLAIM -> DRAW_EMPTY;
             case PAGE_SIZE_REJECTED -> PAGE_SIZE_REJECTED;
             case CURSOR_MALFORMED -> CURSOR_MALFORMED;
             case CURSOR_FOREIGN -> CURSOR_FOREIGN;
@@ -337,7 +336,6 @@ public enum RefusalCode {
         INVALID_PARENT_ELSEWHERE(RefusalCode.ARGUMENT_INVALID, "invalidParentElsewhere"),
         INVALID_PARENT_NOT_A_ROOT(RefusalCode.ARGUMENT_INVALID, "invalidParentNotARoot"),
         INVALID_APPARATUS_PATTERN(RefusalCode.ARGUMENT_INVALID, "invalidApparatusPattern"),
-        INVALID_APPARATUS_UNBOUNDED(RefusalCode.ARGUMENT_INVALID, "invalidApparatusUnbounded"),
         INVALID_STATE_FILTER(RefusalCode.ARGUMENT_INVALID, "invalidStateFilter"),
         INVALID_BRACKET_FILTER(RefusalCode.ARGUMENT_INVALID, "invalidBracketFilter"),
         INVALID_ADDRESS_FILTER(RefusalCode.ARGUMENT_INVALID, "invalidAddressFilter"),

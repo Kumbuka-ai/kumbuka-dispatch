@@ -23,7 +23,8 @@ import static ai.kumbuka.dispatch.domain.TaskState.OPEN;
  * The transitions of a task: one row per verb (TAR-0004 section 3, concept
  * section 2.2).
  *
- * <p>Each row is data and nothing else: the effective states it applies in,
+ * <p>Each row is data and nothing else: the one permission it checks about
+ * its caller, the effective states it applies in,
  * the condition on an attribute, the caller's relation to the task, the proof
  * it needs, the payload it takes, the state it moves
  * to with the attributes it sets, what happens to holder, lease and count, the
@@ -37,103 +38,97 @@ import static ai.kumbuka.dispatch.domain.TaskState.OPEN;
  */
 public enum TaskVerb {
 
-    SEND("send",
+    SEND("send", DispatchPermission.TASK_COMMISSION,
         when(EnumSet.of(DRAFT), Condition.NONE, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Nothing.class, TaskInput.NONE),
         moves(OPEN, null, null, Holding.NONE, null)),
 
-    RECALL("recall",
+    RECALL("recall", DispatchPermission.TASK_COMMISSION,
         when(EnumSet.of(OPEN), Condition.NEVER_TAKEN_UP, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Nothing.class, TaskInput.NONE),
         moves(DRAFT, null, null, Holding.NONE, null)),
 
-    CLAIM("claim",
+    CLAIM("claim", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE,
             Proof.NONE),
         takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
         moves(ACTIVE, null, null, Holding.TAKE, null)),
 
-    CLAIM_NEXT("claim_next",
-        when(EnumSet.of(OPEN), Condition.DRAWABLE, Relation.CANDIDATE,
-            Proof.NONE),
-        takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
-        moves(ACTIVE, null, null, Holding.TAKE, null)),
-
-    RELEASE("release",
+    RELEASE("release", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Remark.class, new TaskInput.Remark(null)),
         moves(OPEN, null, null, Holding.DROP, TextType.REMARK)),
 
-    DEFER("defer",
+    DEFER("defer", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Deferral.class, null),
         moves(OPEN, null, null, Holding.DROP, TextType.REMARK)),
 
-    RENEW("renew",
+    RENEW("renew", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
         moves(ACTIVE, null, null, Holding.LEASE, null)),
 
-    ASK("ask",
+    ASK("ask", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Question.class, null),
         moves(ON_HOLD, HoldReason.QUESTION, null, Holding.PAUSE, TextType.QUESTION)),
 
-    ANSWER("answer",
+    ANSWER("answer", DispatchPermission.TASK_DECIDE,
         when(EnumSet.of(ON_HOLD), Condition.QUESTION_PENDING, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Reply.class, null),
         moves(ACTIVE, null, null, Holding.RESTART, TextType.ANSWER)),
 
-    HOLD("hold",
+    HOLD("hold", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Pause.class, null),
         moves(ON_HOLD, null, null, Holding.PAUSE, TextType.REMARK)),
 
-    RESUME("resume",
+    RESUME("resume", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(ON_HOLD), Condition.PAUSED_BY_HOLDER, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Lease.class, TaskInput.Lease.standard()),
         moves(ACTIVE, null, null, Holding.LEASE, null)),
 
-    DELIVER("deliver",
+    DELIVER("deliver", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(ACTIVE), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.Delivery.class, null),
         moves(DELIVERED, null, null, Holding.PAUSE, TextType.RETURN)),
 
-    REWORK("rework",
+    REWORK("rework", DispatchPermission.TASK_CONFIRM,
         when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.RequiredRemark.class, null),
         moves(ACTIVE, null, null, Holding.RESTART, TextType.REMARK)),
 
-    ACCEPT("accept",
+    ACCEPT("accept", DispatchPermission.TASK_CONFIRM,
         when(EnumSet.of(DELIVERED), Condition.NONE, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Nothing.class, TaskInput.NONE),
         moves(CLOSED, null, Outcome.ACCEPTED, Holding.DROP, null)),
 
-    REJECT("reject",
+    REJECT("reject", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(OPEN), Condition.NONE, Relation.CANDIDATE,
             Proof.NONE),
         takes(TaskInput.RequiredRemark.class, null),
         moves(CLOSED, null, Outcome.REJECTED, Holding.DROP, TextType.REMARK)),
 
-    FAIL("fail",
+    FAIL("fail", DispatchPermission.TASK_EXECUTE,
         when(EnumSet.of(ACTIVE, ON_HOLD), Condition.NONE, Relation.HOLDER,
             Proof.RECEIPT),
         takes(TaskInput.RequiredRemark.class, null),
         moves(CLOSED, null, Outcome.FAILED, Holding.DROP, TextType.REMARK)),
 
-    WITHDRAW("withdraw",
+    WITHDRAW("withdraw", DispatchPermission.TASK_WITHDRAW,
         when(EnumSet.of(OPEN, ACTIVE, ON_HOLD, DELIVERED), Condition.NONE, Relation.COMMISSIONER,
             Proof.CONFLICT_TOKEN),
         takes(TaskInput.Remark.class, new TaskInput.Remark(null)),
@@ -157,11 +152,11 @@ public enum TaskVerb {
 
     /** The relation the caller must have to the task (check 3). */
     public enum Relation {
-        /** Holds the commissioning capacity and may see the task. */
+        /** Holds the row's permission and may see the task. */
         COMMISSIONER,
         /** Holds the task through a running lease, or holds it paused or delivered. */
         HOLDER,
-        /** An executor that could take the task up. */
+        /** Holds the row's permission and could take the task up. */
         CANDIDATE
     }
 
@@ -231,12 +226,15 @@ public enum TaskVerb {
     }
 
     private final String wireName;
+    private final DispatchPermission permission;
     private final When when;
     private final Takes takes;
     private final Moves moves;
 
-    TaskVerb(String wireName, When when, Takes takes, Moves moves) {
+    TaskVerb(String wireName, DispatchPermission permission, When when, Takes takes,
+             Moves moves) {
         this.wireName = wireName;
+        this.permission = permission;
         this.when = when;
         this.takes = takes;
         this.moves = moves;
@@ -245,6 +243,11 @@ public enum TaskVerb {
     /** The verb as the surface names it, without the {@code dispatch_} prefix. */
     public String wireName() {
         return wireName;
+    }
+
+    /** The one permission a call of this row checks about its caller. */
+    public DispatchPermission permission() {
+        return permission;
     }
 
     /** The effective states the row applies in (check 1). */

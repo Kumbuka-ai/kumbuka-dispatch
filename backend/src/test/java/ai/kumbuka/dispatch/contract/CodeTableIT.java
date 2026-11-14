@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>The rows the move to the table changed are each raised here: a missing
  * conflict token is {@code CONFLICT_TOKEN_MISSING} 428, an undeclared bracket
- * kind {@code SELECTOR_UNDECLARED} 422, an empty draw {@code DRAW_EMPTY} 409,
+ * kind {@code SELECTOR_UNDECLARED} 422,
  * a verb not carried at an address {@code VERB_NOT_CARRIED} 405 with {@code
  * Allow} and {@code data.accepts}, a wrong receipt {@code RECEIPT_WRONG} 409,
  * a holder's call by a caller who holds nothing {@code CLAIM_HELD} or {@code
@@ -113,18 +113,6 @@ class CodeTableIT {
     }
 
     @Test
-    void a_draw_that_finds_nothing_is_draw_empty_409() {
-        SurfaceFixture.asExecutor(identity);
-        restRow(given().contentType(ContentType.JSON)
-                .body(Map.of("apparatus", List.of("nothing-draws-this")))
-                .post(SurfaceFixture.collection() + ":claim_next"),
-            "DRAW_EMPTY", 409, DRAW_EMPTY_ROW, "attempted", "next");
-        mcpRow(Mcp.call("dispatch_claim_next", Map.of("scope", SurfaceFixture.SCOPE,
-                "selector", SurfaceFixture.SELECTOR, "apparatus", List.of("nothing-draws-this"))),
-            "DRAW_EMPTY", DRAW_EMPTY_ROW, "attempted", "next");
-    }
-
-    @Test
     void a_verb_not_carried_at_an_address_is_verb_not_carried_405_with_allow() {
         String id = SurfaceFixture.open("routed", "code");
         Response unknown = rest(given().contentType(ContentType.JSON)
@@ -135,7 +123,13 @@ class CodeTableIT {
             "attempted", "accepts");
         assertThat(elsewhere.header("Allow")).isEqualTo("POST, GET");
         assertThat(elsewhere.jsonPath().getList("data.accepts", String.class))
-            .containsExactly("create", "query", "claim_next");
+            .containsExactly("create", "query");
+        Response draw = rest(given().contentType(ContentType.JSON)
+            .post(SurfaceFixture.collection() + ":claim_next"), "VERB_NOT_CARRIED", 405,
+            "accepts");
+        assertThat(draw.jsonPath().getList("data.accepts", String.class))
+            .as("the draw left the surface: its route is a verb this service does not carry")
+            .containsExactly("create", "query");
     }
 
     @Test
@@ -421,7 +415,6 @@ class CodeTableIT {
      */
     private static final List<String> CLAIM_ABSENT_ROW = List.of("state", "next");
     private static final List<String> RECEIPT_WRONG_ROW = List.of("state", "next");
-    private static final List<String> DRAW_EMPTY_ROW = List.of("next");
     private static final List<String> TRANSITION_REFUSED_ROW =
         List.of("state", "next", "waiting_for");
     private static final List<String> ROLE_INSUFFICIENT_ROW = List.of("next");

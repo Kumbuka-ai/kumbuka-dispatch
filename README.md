@@ -27,7 +27,7 @@ outright, a sent task keeps its text and takes addenda. A child is created only
 under a root that was sent and is not closed, and a draft root is deleted only
 while no task stands under it.
 
-Two surfaces carry the same twenty-five calls, closed against one declaration:
+Two surfaces carry the same twenty-seven calls, closed against one declaration:
 
 - **REST** under `/api`: `/api/{scope}/{selector}` for a collection,
   `/api/{scope}/{selector}/{number}.{sub}` for a task, a call that is no plain
@@ -43,7 +43,7 @@ What travels with a call:
   the service from its own clock. REST hands it out as `ETag` and takes it as
   `If-Match`; MCP as `conflict_token`. A stale one is refused with the task as
   it now stands.
-- **An idempotency key** on `create`, `annotate`, `claim` and `claim_next`:
+- **An idempotency key** on `create`, `annotate` and `claim`:
   on REST the header `Idempotency-Key` and nowhere else, on MCP the argument
   `idempotency_key`. A repeat within 24 hours answers the first call.
 - **A request id**: `Kumbuka-Request-Id` is taken where it is a UUID and
@@ -53,12 +53,21 @@ What travels with a call:
   `NOT_FOUND` says the same for an absent task, an invisible scope and an
   address no route serves.
 
-Who calls is read from the token: the commissioning capacity is the realm
-role `dispatch-console`, the executing one `dispatch-executor`. They are
-capacities of an identity, not kinds of caller: an identity may hold both, and
-takes whichever part a call asks for. A token with neither is refused. An
-identity holding the executing capacity alone never accepts, its own answer or
-any other; an identity holding both may accept its own. Every acceptance is
+Every call checks one named permission of the caller, `dispatch.<object>.<act>`,
+and nothing else about it: `task.commission` for the commissioner's calls,
+`task.execute` for the executor's, `task.decide` for `answer`, `task.confirm`
+for `rework` and `accept`, `task.withdraw`, `task.tag`, `instance.read` for
+`read` and `query`; `read_text` takes `instance.read-text`, or
+`instance.read-text-as-holder` for the holder alone, and `annotate` the
+permission the supplemented text was written under. A caller without it is
+refused with `ROLE_INSUFFICIENT`, after the scope and the task are resolved as
+for every refusal. Until the platform hands the permissions to the identity,
+the service reads them off the two realm roles of the token, in one place:
+`dispatch-console` stands for the commissioning, deciding, confirming and
+reading permissions, `dispatch-executor` for executing, tagging and reading
+as the holder, and both roles for the union. A token with neither is refused.
+An identity holding the executor's permissions alone never accepts, its own
+answer or any other; an identity holding both may accept its own. Every acceptance is
 stamped `self_accepted` -- `true` where the identity that delivered accepted,
 `false` where another did -- which `read` and `query` answer and nothing
 changes; on a task accepted before the stamp existed it is unknown and absent.

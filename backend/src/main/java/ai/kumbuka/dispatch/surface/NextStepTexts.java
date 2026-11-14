@@ -27,9 +27,6 @@ public interface NextStepTexts {
     String claim();
 
     @Message
-    String claimNext();
-
-    @Message
     String release();
 
     @Message

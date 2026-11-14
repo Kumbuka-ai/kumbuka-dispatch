@@ -79,8 +79,6 @@ class CheckOrderConformanceIT {
         Map<String, Map<String, Object>> asExecutor = new LinkedHashMap<>();
         asExecutor.put("dispatch_renew", Map.of("address", ADDRESS, "receipt", "not-the-holder"));
         asExecutor.put("dispatch_accept", Map.of("address", ADDRESS, "conflict_token", "t"));
-        asExecutor.put("dispatch_claim_next", Map.of("scope", INVISIBLE,
-            "selector", "undeclared-kind", "apparatus", List.of("code")));
         assertNotFound(asExecutor);
     }
 

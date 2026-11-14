@@ -11,12 +11,11 @@
 #
 #   claim by a console identity on an open task: the service refuses it, the
 #   row says admitted (a wrong outcome).
-#   release by the console identity that commissioned an active task: the
-#   service refuses it as CLAIM_HELD, the row says ROLE_INSUFFICIENT (a wrong
-#   code).
+#   release by an executor that does not hold the active task: the service
+#   refuses it as CLAIM_HELD, the row says ROLE_INSUFFICIENT (a wrong code).
 #   claim by an executor on an open task: written right, never reported.
 
 call	roles	relation	state	outcome	code
 claim	executor	candidate	open	admitted
 claim	console	candidate	open	admitted
-release	console	commissioner	active	refused	ROLE_INSUFFICIENT
+release	executor	bystander	active	refused	ROLE_INSUFFICIENT

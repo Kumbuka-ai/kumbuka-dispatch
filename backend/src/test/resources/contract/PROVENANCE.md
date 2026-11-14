@@ -197,3 +197,12 @@ messages `invalidTagUnknown`, `invalidTagWithdrawn` and `invalidTagFilter` were 
 surface and are the service's proposal. An unknown and a withdrawn tag are refused as
 `ARGUMENT_INVALID` naming `fields.tag`, because `NOT_FOUND` carries no `data` and the same bytes
 whatever its cause, and so cannot name the argument.
+
+## The amendment of 2026-11-14: the draw leaves the surface (REA-0010 S2)
+
+From REA-0010 S2 as of 2026-11-12 (platform-specs, ratified): `dispatch_claim_next` leaves the
+surface, which the amendment of 4978ca9 announced by marking it retiring. Section 3.1 loses its
+description, section 3.3, the argument `apparatus` of the draw, goes with it, and the message
+`invalidApparatusUnbounded`, which only the draw raised, leaves the table of messages. The reason
+`DRAW_EMPTY` and its message `nothingToTake` stay in the table as long as the service declares
+the code; the platform's code table keeps the code whatever the service answers.

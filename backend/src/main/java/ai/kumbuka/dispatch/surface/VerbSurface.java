@@ -37,7 +37,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * The twenty-eight calls, each bound to the kernel in one transaction.
+ * The twenty-seven calls, each bound to the kernel in one transaction.
  *
  * <p>Both surfaces reach the kernel through here and through nothing else
  * (C1.1): the adapter reads the call, checks its form against the declaration
@@ -264,21 +264,6 @@ public class VerbSurface {
         return new Claimed(new Result(at.scope(), claimed.task()), claimed.receipt());
     }
 
-    @Transactional
-    public Claimed claimNext(String scope, String selector, List<String> patterns,
-                             TaskCall call, IdempotencyKey key) {
-        UUID scopeId = resolve(call.caller(), scope, Access.WRITE);
-        TaskService.Written<TaskClaim> drawn =
-            tasks.claimNext(scopeId, selector, patterns, call, key);
-        TaskClaim claimed = taken(TaskVerb.CLAIM_NEXT, drawn);
-        Task stored = drawn.stored();
-        if (stored != null) {
-            PlatformLog.drawnInScope(PlatformLog.TechnicalAddress.of(stored),
-                PlatformLog.ScopeId.of(scopeId));
-        }
-        return new Claimed(new Result(scope, claimed.task()), claimed.receipt());
-    }
-
     /**
      * The answer of a take-up, after its INFO line: the task it took up and
      * the state it entered, or, for a repeat under the key, the receipt it
@@ -318,6 +303,22 @@ public class VerbSurface {
     public List<String> declaredSelectors(Actor actor, String scope) {
         UUID scopeId = resolve(actor, scope, Access.READ);
         return selectors.declared(scopeId).stream().map(s -> s.name).toList();
+    }
+
+    /**
+     * Resolves a scope a call names, with the access the call takes in it,
+     * and makes no call: for a call its caller's permission does not reach.
+     * The permission is checked at the adapter, before this surface is
+     * called; the refusal is answered after the scope as every other one
+     * (C1.3), so a scope the caller may not see still answers {@code
+     * NOT_FOUND}, a locked one {@code SCOPE_LOCKED}, and one it may only read
+     * {@code SCOPE_READ_ONLY} for a write.
+     *
+     * @param writes whether the call writes in the scope or only reads it
+     */
+    @Transactional
+    public void resolveScope(Actor actor, String scope, boolean writes) {
+        resolve(actor, scope, writes ? Access.WRITE : Access.READ);
     }
 
     /**
