@@ -11,6 +11,8 @@ import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -81,36 +83,20 @@ class StoreLineRoleProbeIT {
         }
     }
 
-    @Test
-    void a_migrator_carrying_superuser_is_refused_with_kd001_and_leaves_no_table()
+    /**
+     * A migrator carrying SUPERUSER, and one carrying BYPASSRLS, each on an
+     * empty database of its own: either attribute exempts the owner of every
+     * relation from every policy, and the line refuses to build under it.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {SUPERUSER_MIGRATOR, BYPASS_MIGRATOR})
+    void an_exempt_migrator_is_refused_with_kd001_and_leaves_no_table(String migrator)
             throws SQLException {
-        String url = harness.freshDatabase("store_super", SUPERUSER_MIGRATOR);
+        String url = harness.freshDatabase(migrator + "_db", migrator);
 
-        assertThatThrownBy(() -> harness.migrateLine(url, SUPERUSER_MIGRATOR, PASSWORD,
+        assertThatThrownBy(() -> harness.migrateLine(url, migrator, PASSWORD,
                 "classpath:db/store", new TenantMigrationCallback()))
-            .as("a superuser migrator owns every relation and is exempt from every policy; "
-                + "the line refuses to build under it")
-            .isInstanceOf(FlywayException.class)
-            .satisfies(thrown -> assertThat(sqlStateOf(thrown))
-                .as("and it is the migrator check that refuses").isEqualTo(MIGRATOR_REFUSAL));
-
-        try (Connection c = harness.adminConnection(url)) {
-            assertThat(tables(c))
-                .as("nothing of the line stands afterwards; only the history table Flyway "
-                    + "creates before it migrates remains")
-                .containsExactly(HISTORY);
-        }
-    }
-
-    @Test
-    void a_migrator_carrying_bypassrls_is_refused_with_kd001_and_leaves_no_table()
-            throws SQLException {
-        String url = harness.freshDatabase("store_bypass", BYPASS_MIGRATOR);
-
-        assertThatThrownBy(() -> harness.migrateLine(url, BYPASS_MIGRATOR, PASSWORD,
-                "classpath:db/store", new TenantMigrationCallback()))
-            .as("a migrator carrying BYPASSRLS is exempt from every policy; the line refuses "
-                + "to build under it")
+            .as("the line refuses to build under %s", migrator)
             .isInstanceOf(FlywayException.class)
             .satisfies(thrown -> assertThat(sqlStateOf(thrown))
                 .as("and it is the migrator check that refuses").isEqualTo(MIGRATOR_REFUSAL));
