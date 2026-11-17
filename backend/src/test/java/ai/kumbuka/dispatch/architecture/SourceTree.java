@@ -149,8 +149,23 @@ final class SourceTree {
      * too, last, so a guard can refuse it rather than never see it.
      */
     static List<Path> migrations() {
-        Path direct = Paths.get("src", "main", "resources", "db", "migration");
-        Path fromRepoRoot = Paths.get("backend", "src", "main", "resources", "db", "migration");
+        return migrationsOf("migration");
+    }
+
+    /**
+     * Every migration file of the store line under {@code db/store}, in the
+     * same order. The line stands beside the service's own until the service
+     * is rebuilt against it, and is read on its own: its versions start again
+     * at 1 and are never sorted among those of {@link #migrations()}.
+     */
+    static List<Path> storeMigrations() {
+        return migrationsOf("store");
+    }
+
+    /** Every migration file of the line in the directory named under {@code db}. */
+    private static List<Path> migrationsOf(String line) {
+        Path direct = Paths.get("src", "main", "resources", "db", line);
+        Path fromRepoRoot = Paths.get("backend", "src", "main", "resources", "db", line);
         Path dir = Files.isDirectory(direct) ? direct : fromRepoRoot;
         assertThat(Files.isDirectory(dir))
             .as("migration directory %s must exist — run from the module directory", dir)
