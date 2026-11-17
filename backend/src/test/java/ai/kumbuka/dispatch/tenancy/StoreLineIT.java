@@ -460,8 +460,8 @@ class StoreLineIT {
     // Reading.
     // -----------------------------------------------------------------------
 
-    /** The ids of one chain from selector to act, in one tenant and scope. */
-    private record Chain(long selector, long version, long instance, long task, long act) {
+    /** The ids the cases read of one chain from selector to act, in one tenant and scope. */
+    private record Chain(long instance, long task, long act) {
     }
 
     private static Chain insertChain(Connection c, UUID tenant, UUID scope, String name)
@@ -482,7 +482,7 @@ class StoreLineIT {
             + "(tenant_id, scope_id, instance_id, sequence, task_id, kind, actor_subject, at, "
             + "to_state) VALUES (?, ?, ?, 1, ?, 'send', 'probe-subject', now(), 'open') "
             + "RETURNING id", tenant, scope, instance, task);
-        return new Chain(selector, version, instance, task, act);
+        return new Chain(instance, task, act);
     }
 
     private static long insertReturningId(Connection c, String sql, Object... args)
