@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.tenancy;
 
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -124,6 +131,30 @@ final class MigrationHarness implements AutoCloseable {
             flyway = flyway.target(org.flywaydb.core.api.MigrationVersion.fromVersion(target));
         }
         flyway.load().migrate();
+    }
+
+    /**
+     * Runs one migration line other than the service's own: the files at the
+     * location named, with exactly the callbacks the caller names.
+     *
+     * <p>A second line stands beside {@code db/migration} until the service
+     * is rebuilt against it, and is applied to a database of its own. It
+     * carries no placeholder, so none is set: one it did carry would fail
+     * here unresolved rather than be filled silently.
+     *
+     * @param location the Flyway location of the line, e.g. {@code classpath:db/store}
+     */
+    void migrateLine(String url, String migrator, String password, String location,
+                     Callback... callbacks) {
+        Flyway.configure()
+            .dataSource(url, migrator, password)
+            .schemas("dispatch")
+            .defaultSchema("dispatch")
+            .createSchemas(true)
+            .locations(location)
+            .callbacks(callbacks)
+            .load()
+            .migrate();
     }
 
     /** Runs statements as the migrating role, for staging a pre-upgrade state. */

@@ -93,6 +93,19 @@ class MigrationNamingTest {
     }
 
     @Test
+    void every_store_migration_file_has_the_versioned_form() {
+        assertThat(SourceTree.storeMigrations())
+            .as("the store line holds its migrations under db/store; an empty line is a walk "
+                + "that found nothing, not a clean one")
+            .isNotEmpty();
+        assertThat(SourceTree.storeMigrations().stream().map(p -> p.getFileName().toString())
+                .filter(name -> !FILE.matcher(name).matches()).toList())
+            .as("the store line is read by Flyway as the service's own is (C18.1). Name it "
+                + "V<n>__<snake_case>.sql")
+            .isEmpty();
+    }
+
+    @Test
     void a_step_between_two_versions_stands_between_them() {
         assertThat(SourceTree.migrations().stream()
                 .map(p -> p.getFileName().toString().replaceFirst("__.*", ""))
@@ -132,6 +145,25 @@ class MigrationNamingTest {
                 .noneMatch(o -> o.startsWith(applied + ":"))).sorted().toList())
             .as("a name listed as applied against the rule that the migrations no longer give "
                 + "is a list gone stale")
+            .isEmpty();
+    }
+
+    /**
+     * The same rule over the store line. No name there was ever applied
+     * against it, so {@link #APPLIED} admits nothing here: it lists names of
+     * the service's own line, and its versions are not those of this one.
+     */
+    @Test
+    void every_index_and_constraint_of_the_store_line_is_named_after_its_table() {
+        Map<String, String> migrations = new LinkedHashMap<>();
+        for (Path migration : SourceTree.storeMigrations()) {
+            migrations.put(migration.getFileName().toString(), SourceTree.text(migration));
+        }
+        assertThat(migrations).as("the store line must have migrations to read").isNotEmpty();
+        assertThat(offences(migrations))
+            .as("a name says which table it belongs to and what it is, so a refusal of the "
+                + "database names its table (C18.3). Name it idx_, uq_, ck_ or fk_, then the "
+                + "table, then what it holds")
             .isEmpty();
     }
 
