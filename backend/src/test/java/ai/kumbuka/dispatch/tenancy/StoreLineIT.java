@@ -573,29 +573,32 @@ class StoreLineIT {
     private static List<String> tenancyDefects(Connection c, List<String> tables, String[] form)
             throws SQLException {
         List<String> defects = new ArrayList<>();
-        for (String table : tables) {
-            for (String column : List.of("tenant_id", "scope_id")) {
-                try (PreparedStatement st = c.prepareStatement("""
-                        SELECT data_type, is_nullable FROM information_schema.columns
-                        WHERE table_schema = 'dispatch' AND table_name = ? AND column_name = ?
-                        """)) {
-                    st.setString(1, table);
-                    st.setString(2, column);
-                    try (ResultSet rs = st.executeQuery()) {
+        try (PreparedStatement columnOf = c.prepareStatement("""
+                 SELECT data_type, is_nullable FROM information_schema.columns
+                 WHERE table_schema = 'dispatch' AND table_name = ? AND column_name = ?
+                 """);
+             PreparedStatement securityOf = c.prepareStatement("""
+                 SELECT cl.relrowsecurity, cl.relforcerowsecurity FROM pg_class cl
+                 JOIN pg_namespace n ON n.oid = cl.relnamespace
+                 WHERE n.nspname = 'dispatch' AND cl.relname = ?
+                 """);
+             PreparedStatement policiesOf = c.prepareStatement("""
+                 SELECT policyname, permissive, cmd, qual, with_check FROM pg_policies
+                 WHERE schemaname = 'dispatch' AND tablename = ?
+                 """)) {
+            for (String table : tables) {
+                for (String column : List.of("tenant_id", "scope_id")) {
+                    columnOf.setString(1, table);
+                    columnOf.setString(2, column);
+                    try (ResultSet rs = columnOf.executeQuery()) {
                         if (!rs.next() || !"uuid".equals(rs.getString(1))
                                 || !"NO".equals(rs.getString(2))) {
                             defects.add(table + ": " + column + " is not a UUID NOT NULL column");
                         }
                     }
                 }
-            }
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT cl.relrowsecurity, cl.relforcerowsecurity FROM pg_class cl
-                    JOIN pg_namespace n ON n.oid = cl.relnamespace
-                    WHERE n.nspname = 'dispatch' AND cl.relname = ?
-                    """)) {
-                st.setString(1, table);
-                try (ResultSet rs = st.executeQuery()) {
+                securityOf.setString(1, table);
+                try (ResultSet rs = securityOf.executeQuery()) {
                     rs.next();
                     if (!rs.getBoolean(1)) {
                         defects.add(table + ": row-level security not enabled");
@@ -603,29 +606,24 @@ class StoreLineIT {
                         defects.add(table + ": row-level security not forced");
                     }
                 }
-            }
-            Map<String, String[]> policies = new LinkedHashMap<>();
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT policyname, permissive, cmd, qual, with_check FROM pg_policies
-                    WHERE schemaname = 'dispatch' AND tablename = ?
-                    """)) {
-                st.setString(1, table);
-                try (ResultSet rs = st.executeQuery()) {
+                Map<String, String[]> policies = new LinkedHashMap<>();
+                policiesOf.setString(1, table);
+                try (ResultSet rs = policiesOf.executeQuery()) {
                     while (rs.next()) {
                         policies.put(rs.getString(1), new String[] {rs.getString(2),
                             rs.getString(3), rs.getString(4), rs.getString(5)});
                     }
                 }
-            }
-            String name = table + "_tenant_isolation";
-            String[] policy = policies.get(name);
-            if (policies.size() != 1 || policy == null) {
-                defects.add(table + ": policy " + name + " is not its one policy: "
-                    + policies.keySet());
-            } else if (!"PERMISSIVE".equals(policy[0]) || !"ALL".equals(policy[1])
-                    || !form[0].equals(policy[2]) || !form[1].equals(policy[3])) {
-                defects.add(table + ": policy " + name + " is not in the form of the order: "
-                    + String.join(" | ", policy));
+                String name = table + "_tenant_isolation";
+                String[] policy = policies.get(name);
+                if (policies.size() != 1 || policy == null) {
+                    defects.add(table + ": policy " + name + " is not its one policy: "
+                        + policies.keySet());
+                } else if (!"PERMISSIVE".equals(policy[0]) || !"ALL".equals(policy[1])
+                        || !form[0].equals(policy[2]) || !form[1].equals(policy[3])) {
+                    defects.add(table + ": policy " + name + " is not in the form of the order: "
+                        + String.join(" | ", policy));
+                }
             }
         }
         return defects;
