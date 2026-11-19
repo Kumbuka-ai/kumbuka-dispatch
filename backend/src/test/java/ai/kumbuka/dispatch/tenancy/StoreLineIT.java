@@ -11,6 +11,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -18,7 +19,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.sql.Statement;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +55,7 @@ class StoreLineIT {
 
     private static final String HISTORY = "flyway_schema_history";
 
-    /** The thirty tables the line builds, as the orders name them: 24 in V1, 6 in V2. */
+    /** The thirty-five tables the line builds, as the orders name them: 24 in V1, 6 in V2, 5 in V3. */
     private static final Set<String> TABLES = new TreeSet<>(List.of(
         "selector", "definition_version", "definition_act", "definition_tag", "activity",
         "outcome_label",
@@ -61,7 +64,8 @@ class StoreLineIT {
         "question", "question_option", "answer", "delivery", "delivery_criterion",
         "instance_return", "external_reference", "idempotency_key",
         "free_fields", "content",
-        "draft", "draft_criterion", "draft_free_fields", "draft_text"));
+        "draft", "draft_criterion", "draft_free_fields", "draft_text",
+        "enumeration", "enumeration_value", "control_field", "contract_field", "field_value"));
 
     /** The tables of the draft workspace, the only ones besides task the runtime role deletes from. */
     private static final Set<String> DRAFT_WORKSPACE =
@@ -70,9 +74,11 @@ class StoreLineIT {
     /**
      * The foreign keys the orders name, per table: in V1 7 in the definition,
      * 9 on instance, task and act, 30 on the payloads; in V2 1 on free_fields,
-     * 5 on content and 8 in the draft workspace.
+     * 5 on content and 8 in the draft workspace; in V3 1 on enumeration, 1 on
+     * enumeration_value, 2 on control_field, 3 on contract_field and 4 on
+     * field_value.
      */
-    private static final int FOREIGN_KEYS = 60;
+    private static final int FOREIGN_KEYS = 71;
 
     /** The only JSON columns of the schema, both JSONB, as the order names them. */
     private static final List<String> JSON_DOCUMENTS =
@@ -81,8 +87,35 @@ class StoreLineIT {
     /** What {@link #refusal} answers for a statement that ran. */
     private static final String NOT_REFUSED = "not refused: the statement ran";
 
-    /** The tables the isolation is observed on: two of V1, a content and a draft table of V2. */
-    private static final List<String> ISOLATED = List.of("task", "act", "content", "draft_text");
+    /**
+     * The tables the isolation is observed on: two of V1, a content and a
+     * draft table of V2, the field and the value table of V3.
+     */
+    private static final List<String> ISOLATED =
+        List.of("task", "act", "content", "draft_text", "control_field", "field_value");
+
+    /** A control field, without RETURNING so that {@link #refusal} can run it. */
+    private static final String CONTROL_FIELD = "INSERT INTO dispatch.control_field "
+        + "(tenant_id, scope_id, definition_version_id, name, type, enumeration_id) "
+        + "VALUES (?, ?, ?, ?, ?, ?)";
+
+    /** A field value, with every value column; the arguments come from {@link #fieldValue}. */
+    private static final String FIELD_VALUE = "INSERT INTO dispatch.field_value "
+        + "(tenant_id, scope_id, act_id, control_field_id, value_type, enumeration_id, "
+        + "boolean_value, number_value, date_value, text_value, choice_value_id) "
+        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    /** A line of a contract, without RETURNING. */
+    private static final String CONTRACT_FIELD = "INSERT INTO dispatch.contract_field "
+        + "(tenant_id, scope_id, definition_version_id, activity_id, control_field_id, required) "
+        + "VALUES (?, ?, ?, ?, ?, true)";
+
+    /** The five value columns of a field value, in the order of {@link #FIELD_VALUE}. */
+    private static final List<String> VALUE_COLUMNS = List.of(
+        "boolean_value", "number_value", "date_value", "text_value", "choice_value_id");
+
+    /** The five types of the platform's catalogue, as the order names them. */
+    private static final List<String> TYPES = List.of("boolean", "number", "date", "text", "choice");
 
     /** The policy predicate of every table, as the order writes it. */
     private static final String PREDICATE =
@@ -135,20 +168,20 @@ class StoreLineIT {
     // -----------------------------------------------------------------------
 
     @Test
-    void the_line_builds_the_thirty_tables_on_an_empty_database_and_writes_no_row()
+    void the_line_builds_the_thirty_five_tables_on_an_empty_database_and_writes_no_row()
             throws SQLException {
         try (Connection c = harness.adminConnection(url)) {
             assertThat(scalar(c, "SELECT string_agg(version, ',' ORDER BY installed_rank) FROM "
                     + "dispatch." + HISTORY + " WHERE success AND version IS NOT NULL"))
-                .as("the line's two migrations are recorded as applied, V1 before V2")
-                .isEqualTo("1,2");
+                .as("the line's three migrations are recorded as applied, V1, V2, V3 in order")
+                .isEqualTo("1,2,3");
         }
         Map<String, Long> expected = new TreeMap<>();
         TABLES.forEach(table -> expected.put(table, 0L));
         Map<String, Long> withoutHistory = new TreeMap<>(ROWS_AFTER_MIGRATION);
         withoutHistory.remove(HISTORY);
         assertThat(withoutHistory)
-            .as("the schema holds exactly the thirty tables of the orders, and none of them "
+            .as("the schema holds exactly the thirty-five tables of the orders, and none of them "
                 + "a row: selectors are declared later by a migration of the installation")
             .isEqualTo(expected);
         assertThat(ROWS_AFTER_MIGRATION.get(HISTORY))
@@ -191,7 +224,7 @@ class StoreLineIT {
                     JOIN pg_namespace n ON n.oid = k.connamespace
                     WHERE n.nspname = 'dispatch' AND k.contype = 'f'
                     """))
-                .as("the orders name sixty keys; a different count is a key missing or one "
+                .as("the orders name seventy-one keys; a different count is a key missing or one "
                     + "the orders do not name")
                 .isEqualTo(String.valueOf(FOREIGN_KEYS));
         }
@@ -250,7 +283,7 @@ class StoreLineIT {
     // -----------------------------------------------------------------------
 
     @Test
-    void under_the_service_role_a_tenant_reads_no_task_act_content_or_draft_text_of_another()
+    void under_the_service_role_a_tenant_reads_no_row_of_another_in_the_tables_observed()
             throws SQLException {
         UUID a = UUID.randomUUID();
         UUID b = UUID.randomUUID();
@@ -275,7 +308,7 @@ class StoreLineIT {
     }
 
     /**
-     * The red state of the isolation, on task, act, content and draft_text:
+     * The red state of the isolation, on every table of {@link #ISOLATED}:
      * without the policy in force the runtime role reads the foreign row, and
      * without FORCE so does the owner. Each removal is made in a transaction
      * and rolled back, so it is observed on every build and undone with it.
@@ -578,6 +611,233 @@ class StoreLineIT {
     }
 
     // -----------------------------------------------------------------------
+    // Control fields and their values.
+    // -----------------------------------------------------------------------
+
+    @Test
+    void the_service_role_can_neither_change_nor_delete_a_control_field_or_a_field_value()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Work work = insertChainAndWork(c, tenant, UUID.randomUUID(), "field-privileges");
+
+            assertThat(refusal(c, "UPDATE dispatch.control_field SET name = name WHERE id = ?",
+                    work.controlField()))
+                .as("a control field is never changed: the runtime role holds no UPDATE on "
+                    + "control_field")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "DELETE FROM dispatch.control_field WHERE id = ?",
+                    work.controlField()))
+                .as("nor DELETE")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "UPDATE dispatch.field_value SET text_value = text_value "
+                    + "WHERE id = ?", work.fieldValue()))
+                .as("a field value is never changed: the runtime role holds no UPDATE on "
+                    + "field_value")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "DELETE FROM dispatch.field_value WHERE id = ?",
+                    work.fieldValue()))
+                .as("nor DELETE")
+                .isEqualTo("42501");
+            c.rollback();
+        }
+    }
+
+    /**
+     * Each check refuses its row with 23514, and the same row is taken once
+     * the check is dropped: the red state, observed in a savepoint on every
+     * build and rolled back with it.
+     */
+    @Test
+    void the_checks_of_control_fields_and_field_values_refuse_and_without_them_the_row_is_taken()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = harness.adminConnection(url)) {
+            c.setAutoCommit(false);
+            Schema schema = insertSchema(c, tenant, scope, "field-checks");
+            Target number = schema.target("number");
+            long version = schema.chain().version();
+
+            assertThat(withAndWithoutCheck(c, "field_value", "ck_field_value_one_value",
+                    FIELD_VALUE, fieldValue(number, "number",
+                        Map.of("number_value", 1, "text_value", "probe"))))
+                .as("a field value with two value columns set is refused; RED STATE, observed: "
+                    + "without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "field_value", "ck_field_value_typed_value",
+                    FIELD_VALUE, fieldValue(number, "number", Map.of("text_value", "probe"))))
+                .as("a number whose set column is text_value is refused; RED STATE, observed: "
+                    + "without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "field_value", "ck_field_value_text_value",
+                    FIELD_VALUE, fieldValue(schema.target("text"), "text",
+                        Map.of("text_value", "x".repeat(4097)))))
+                .as("a text of 4097 characters is refused; RED STATE, observed: without the "
+                    + "check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "control_field", "ck_control_field_enumeration",
+                    CONTROL_FIELD, tenant, scope, version, "unbound_choice", "choice", null))
+                .as("a control field of the type choice without an enumeration is refused; "
+                    + "RED STATE, observed: without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "control_field", "ck_control_field_name",
+                    CONTROL_FIELD, tenant, scope, version, "Status", "text", null))
+                .as("a field name with a capital letter is refused, since it is later an "
+                    + "identifier in expressions; RED STATE, observed: without the check it is "
+                    + "taken")
+                .containsExactly("23514", NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void a_field_value_takes_only_the_type_and_the_enumeration_of_its_field()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Schema schema = insertSchema(c, tenant, scope, "field-pairing");
+            Map<String, Object> text = Map.of("text_value", "probe");
+            Target choice = schema.target("choice");
+
+            assertThat(refusal(c, FIELD_VALUE,
+                    fieldValue(schema.target("number"), "text", text)))
+                .as("a text value on a number field is refused by the key that carries the "
+                    + "type of the field")
+                .isEqualTo("23503");
+            assertThat(refusal(c, FIELD_VALUE, fieldValue(schema.target("text"), "text", text)))
+                .as("while the same text value on a text field is taken, so the refusal above "
+                    + "is the pairing and not the row")
+                .isEqualTo(NOT_REFUSED);
+
+            assertThat(refusal(c, FIELD_VALUE,
+                    choiceValue(choice, schema.enumeration(), schema.otherEnumerationValue())))
+                .as("a choice naming a value of another enumeration than its field's is "
+                    + "refused by the key to the values of the enumeration")
+                .isEqualTo("23503");
+            assertThat(refusal(c, FIELD_VALUE,
+                    choiceValue(choice, schema.otherEnumeration(), schema.otherEnumerationValue())))
+                .as("and so is one that names the other enumeration as well, by the key that "
+                    + "carries the enumeration of the field")
+                .isEqualTo("23503");
+            assertThat(refusal(c, FIELD_VALUE,
+                    choiceValue(choice, schema.enumeration(), schema.enumerationValue())))
+                .as("while a choice of a value of its field's own enumeration is taken, so the "
+                    + "refusals above are the pairing and not the row")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void a_control_field_and_a_contract_field_take_only_what_belongs_to_their_version()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Schema schema = insertSchema(c, tenant, scope, "version-pairing");
+            long version = schema.chain().version();
+            long otherVersion = insertReturningId(c, "INSERT INTO dispatch.definition_version "
+                + "(tenant_id, scope_id, selector_id, version, verdict_required, outcome_required, "
+                + "state) VALUES (?, ?, ?, 2, false, false, 'draft') RETURNING id",
+                tenant, scope, schema.chain().selector());
+            long foreignEnumeration = insertReturningId(c, "INSERT INTO dispatch.enumeration "
+                + "(tenant_id, scope_id, definition_version_id, name) "
+                + "VALUES (?, ?, ?, 'status') RETURNING id", tenant, scope, otherVersion);
+            long foreignField = insertReturningId(c, CONTROL_FIELD + " RETURNING id",
+                tenant, scope, otherVersion, "note", "text", null);
+            long activity = insertReturningId(c, "INSERT INTO dispatch.activity "
+                + "(tenant_id, scope_id, definition_version_id, name, verdict_required, "
+                + "outcome_required, criteria_required, input_kind, may_ask, starts_excluded) "
+                + "VALUES (?, ?, ?, 'review', false, false, false, 'none', false, false) "
+                + "RETURNING id", tenant, scope, version);
+
+            assertThat(refusal(c, CONTROL_FIELD, tenant, scope, version, "stage", "choice",
+                    foreignEnumeration))
+                .as("a control field taking an enumeration of another version is refused by "
+                    + "the key that carries the version")
+                .isEqualTo("23503");
+            assertThat(refusal(c, CONTROL_FIELD, tenant, scope, version, "stage", "choice",
+                    schema.enumeration()))
+                .as("while the same field with an enumeration of its own version is taken, so "
+                    + "the refusal above is the pairing and not the row")
+                .isEqualTo(NOT_REFUSED);
+
+            assertThat(refusal(c, CONTRACT_FIELD, tenant, scope, version, activity, foreignField))
+                .as("a result contract of an activity naming a field of another version is "
+                    + "refused by the key that carries the version")
+                .isEqualTo("23503");
+            assertThat(refusal(c, CONTRACT_FIELD, tenant, scope, version, activity,
+                    schema.fields().get("text")))
+                .as("while the same line naming a field of the activity's own version is taken, "
+                    + "so the refusal above is the pairing and not the row")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void a_value_of_each_type_is_taken_the_four_plain_ones_without_an_enumeration()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Schema schema = insertSchema(c, tenant, scope, "field-types");
+            Map<String, Map<String, Object>> plain = new LinkedHashMap<>();
+            plain.put("boolean", Map.of("boolean_value", true));
+            plain.put("number", Map.of("number_value", new BigDecimal("42.5")));
+            plain.put("date", Map.of("date_value", LocalDate.of(2026, 11, 19)));
+            plain.put("text", Map.of("text_value", "probe"));
+
+            for (Map.Entry<String, Map<String, Object>> value : plain.entrySet()) {
+                assertThat(refusal(c, FIELD_VALUE,
+                        fieldValue(schema.target(value.getKey()), value.getKey(), value.getValue())))
+                    .as("a %s value without an enumeration is taken: the keys over the "
+                        + "enumeration are not checked where it is empty", value.getKey())
+                    .isEqualTo(NOT_REFUSED);
+            }
+            assertThat(refusal(c, FIELD_VALUE, choiceValue(schema.target("choice"),
+                    schema.enumeration(), schema.enumerationValue())))
+                .as("and a choice of a value of its own enumeration is taken")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void an_act_writes_a_field_once_and_a_later_act_writes_it_anew() throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Schema schema = insertSchema(c, tenant, scope, "field-once");
+            Chain chain = schema.chain();
+            Target first = schema.target("text");
+            Map<String, Object> text = Map.of("text_value", "probe");
+            executed(c, FIELD_VALUE, fieldValue(first, "text", text));
+            long later = insertReturningId(c, "INSERT INTO dispatch.act "
+                + "(tenant_id, scope_id, instance_id, sequence, task_id, kind, actor_subject, at, "
+                + "to_state) VALUES (?, ?, ?, 2, ?, 'deliver', 'probe-subject', now(), "
+                + "'delivered') RETURNING id", tenant, scope, chain.instance(), chain.task());
+
+            assertThat(refusal(c, FIELD_VALUE, fieldValue(first, "text", text)))
+                .as("a second value of the same field at the same act is refused")
+                .isEqualTo("23505");
+            assertThat(refusal(c, FIELD_VALUE, fieldValue(
+                    new Target(tenant, scope, later, first.field()), "text", text)))
+                .as("while the same value at a later act is taken: a later act writes a new "
+                    + "value of the field")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // JSON only in the two documents of free fields.
     // -----------------------------------------------------------------------
 
@@ -618,7 +878,8 @@ class StoreLineIT {
     // -----------------------------------------------------------------------
 
     /** The ids the cases read of one chain from selector to act, in one tenant and scope. */
-    private record Chain(long instance, long task, long act) {
+    private record Chain(UUID tenant, UUID scope, long selector, long version, long instance,
+                         long task, long act) {
     }
 
     private static Chain insertChain(Connection c, UUID tenant, UUID scope, String name)
@@ -639,15 +900,17 @@ class StoreLineIT {
             + "(tenant_id, scope_id, instance_id, sequence, task_id, kind, actor_subject, at, "
             + "to_state) VALUES (?, ?, ?, 1, ?, 'send', 'probe-subject', now(), 'open') "
             + "RETURNING id", tenant, scope, instance, task);
-        return new Chain(instance, task, act);
+        return new Chain(tenant, scope, selector, version, instance, task, act);
     }
 
     /**
-     * The ids the cases read of what V2 hangs on one chain: a content row and
-     * a document of free fields on its act, a draft of its task and the
-     * draft's commission text.
+     * The ids the cases read of what V2 and V3 hang on one chain: a content
+     * row and a document of free fields on its act, a draft of its task and
+     * the draft's commission text, a text field of its version and a value of
+     * that field on its act.
      */
-    private record Work(Chain chain, long content, long freeFields, long draft, long draftText) {
+    private record Work(Chain chain, long content, long freeFields, long draft, long draftText,
+                        long controlField, long fieldValue) {
     }
 
     private static Work insertChainAndWork(Connection c, UUID tenant, UUID scope, String name)
@@ -668,7 +931,73 @@ class StoreLineIT {
             + "(tenant_id, scope_id, draft_id, kind, media_type, body) "
             + "VALUES (?, ?, ?, 'commission', 'text/plain', 'probe') RETURNING id",
             tenant, scope, draft);
-        return new Work(chain, content, freeFields, draft, draftText);
+        long controlField = insertReturningId(c, CONTROL_FIELD + " RETURNING id",
+            tenant, scope, chain.version(), "probe_field", "text", null);
+        long fieldValue = insertReturningId(c, FIELD_VALUE + " RETURNING id",
+            fieldValue(new Target(tenant, scope, chain.act(), controlField), "text",
+                Map.of("text_value", "probe")));
+        return new Work(chain, content, freeFields, draft, draftText, controlField, fieldValue);
+    }
+
+    /**
+     * The ids the cases read of the schema V3 declares on one chain's version:
+     * an enumeration with one value, another enumeration with one value, and
+     * one control field per type, the choice field on the first enumeration.
+     */
+    private record Schema(Chain chain, long enumeration, long enumerationValue,
+                          long otherEnumeration, long otherEnumerationValue,
+                          Map<String, Long> fields) {
+
+        /** Where a value of the field of that type is written: the chain's act. */
+        Target target(String type) {
+            return new Target(chain.tenant(), chain.scope(), chain.act(), fields.get(type));
+        }
+    }
+
+    private static Schema insertSchema(Connection c, UUID tenant, UUID scope, String name)
+            throws SQLException {
+        Chain chain = insertChain(c, tenant, scope, name);
+        String enumeration = "INSERT INTO dispatch.enumeration "
+            + "(tenant_id, scope_id, definition_version_id, name) VALUES (?, ?, ?, ?) RETURNING id";
+        String value = "INSERT INTO dispatch.enumeration_value "
+            + "(tenant_id, scope_id, enumeration_id, value, ordinal) VALUES (?, ?, ?, ?, 1) "
+            + "RETURNING id";
+        long status = insertReturningId(c, enumeration, tenant, scope, chain.version(), "status");
+        long open = insertReturningId(c, value, tenant, scope, status, "open");
+        long priority = insertReturningId(c, enumeration, tenant, scope, chain.version(),
+            "priority");
+        long high = insertReturningId(c, value, tenant, scope, priority, "high");
+        Map<String, Long> fields = new LinkedHashMap<>();
+        for (String type : TYPES) {
+            fields.put(type, insertReturningId(c, CONTROL_FIELD + " RETURNING id", tenant, scope,
+                chain.version(), type + "_field", type,
+                "choice".equals(type) ? status : null));
+        }
+        return new Schema(chain, status, open, priority, high, fields);
+    }
+
+    /** The act and the control field a field value is written for, in one tenant and scope. */
+    private record Target(UUID tenant, UUID scope, long act, long field) {
+    }
+
+    /**
+     * The arguments of {@link #FIELD_VALUE} for a value of a type other than
+     * choice: no enumeration, and the value columns named set, every other
+     * one empty.
+     */
+    private static Object[] fieldValue(Target target, String valueType,
+                                       Map<String, Object> set) {
+        List<Object> args = new ArrayList<>(Arrays.asList(
+            target.tenant(), target.scope(), target.act(), target.field(), valueType, null));
+        VALUE_COLUMNS.forEach(column -> args.add(set.get(column)));
+        return args.toArray();
+    }
+
+    /** The arguments of {@link #FIELD_VALUE} for a choice of an enumeration and a value. */
+    private static Object[] choiceValue(Target target, long enumeration, long value) {
+        Object[] args = fieldValue(target, "choice", Map.of("choice_value_id", value));
+        args[5] = enumeration; // enumeration_id, after the four keys and value_type
+        return args;
     }
 
     private static long insertReturningId(Connection c, String sql, Object... args)
