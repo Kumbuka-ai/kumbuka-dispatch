@@ -32,11 +32,12 @@
 -- with a NULL column is not checked, so the two keys over enumeration_id bind
 -- a choice and leave every other type alone.
 --
--- What the store does not check and the service does: that the field of a
--- value belongs to the version the instance of the act is bound to; that a
--- value hangs only on an act of the kind start or deliver; that a field name
--- does not shadow the name of a system field. Without triggers and without
--- the version on the act the store cannot.
+-- What the store does not check: that the field of a value belongs to the
+-- version the instance of the act is bound to; that a value hangs only on an
+-- act of the kind start or deliver; that a field name does not shadow the
+-- name of a system field. Without triggers and without the version on the act
+-- the store cannot. These three checks are assigned to the service, which has
+-- to make them when it is rebuilt against this line (REA-0010 S5).
 -- ===========================================================================
 
 -- ===========================================================================
