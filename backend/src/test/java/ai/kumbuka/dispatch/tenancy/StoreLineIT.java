@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>The line stands beside {@code db/migration} and the service does not
  * read it yet, so nothing else in the suite reaches it: what is asserted about
  * it is asserted here. Every expectation is written in this class, from the
- * order that specified the line; none is read from the migration.
+ * orders that specified the line; none is read from the migrations.
  *
  * <p>Every case that writes does so in a transaction it rolls back, so the
  * database stays as the migration left it.
@@ -52,20 +52,37 @@ class StoreLineIT {
 
     private static final String HISTORY = "flyway_schema_history";
 
-    /** The twenty-four tables the line builds, as the order names them. */
+    /** The thirty tables the line builds, as the orders name them: 24 in V1, 6 in V2. */
     private static final Set<String> TABLES = new TreeSet<>(List.of(
         "selector", "definition_version", "definition_act", "definition_tag", "activity",
         "outcome_label",
         "instance", "task", "act",
         "commission", "commission_criterion", "holding", "receipt", "lease", "deferral", "hold",
         "question", "question_option", "answer", "delivery", "delivery_criterion",
-        "instance_return", "external_reference", "idempotency_key"));
+        "instance_return", "external_reference", "idempotency_key",
+        "free_fields", "content",
+        "draft", "draft_criterion", "draft_free_fields", "draft_text"));
+
+    /** The tables of the draft workspace, the only ones besides task the runtime role deletes from. */
+    private static final Set<String> DRAFT_WORKSPACE =
+        Set.of("draft", "draft_criterion", "draft_free_fields", "draft_text");
 
     /**
-     * The foreign keys the order names, per table: 7 in the definition, 9 on
-     * instance, task and act, 30 on the payloads.
+     * The foreign keys the orders name, per table: in V1 7 in the definition,
+     * 9 on instance, task and act, 30 on the payloads; in V2 1 on free_fields,
+     * 5 on content and 8 in the draft workspace.
      */
-    private static final int FOREIGN_KEYS = 46;
+    private static final int FOREIGN_KEYS = 60;
+
+    /** The only JSON columns of the schema, both JSONB, as the order names them. */
+    private static final List<String> JSON_DOCUMENTS =
+        List.of("draft_free_fields.document jsonb", "free_fields.document jsonb");
+
+    /** What {@link #refusal} answers for a statement that ran. */
+    private static final String NOT_REFUSED = "not refused: the statement ran";
+
+    /** The tables the isolation is observed on: two of V1, a content and a draft table of V2. */
+    private static final List<String> ISOLATED = List.of("task", "act", "content", "draft_text");
 
     /** The policy predicate of every table, as the order writes it. */
     private static final String PREDICATE =
@@ -79,7 +96,11 @@ class StoreLineIT {
         "task", Set.of("title", "activity_id", "concerns_task_id", "state", "hold_reason",
             "resolution", "not_before", "parked"),
         "holding", Set.of("ended_by_act_id"),
-        "external_reference", Set.of("ended_by_act_id"));
+        "external_reference", Set.of("ended_by_act_id"),
+        "draft", Set.of("title", "activity_id", "concerns_task_id", "bound_task_id"),
+        "draft_criterion", Set.of("identifier", "ordinal"),
+        "draft_free_fields", Set.of("document"),
+        "draft_text", Set.of("media_type", "body"));
 
     private static MigrationHarness harness;
     private static String url;
@@ -114,20 +135,20 @@ class StoreLineIT {
     // -----------------------------------------------------------------------
 
     @Test
-    void the_line_builds_the_twenty_four_tables_on_an_empty_database_and_writes_no_row()
+    void the_line_builds_the_thirty_tables_on_an_empty_database_and_writes_no_row()
             throws SQLException {
         try (Connection c = harness.adminConnection(url)) {
-            assertThat(scalar(c, "SELECT count(*) FROM dispatch." + HISTORY
-                    + " WHERE success AND version = '1'"))
-                .as("the line's single migration is recorded as applied")
-                .isEqualTo("1");
+            assertThat(scalar(c, "SELECT string_agg(version, ',' ORDER BY installed_rank) FROM "
+                    + "dispatch." + HISTORY + " WHERE success AND version IS NOT NULL"))
+                .as("the line's two migrations are recorded as applied, V1 before V2")
+                .isEqualTo("1,2");
         }
         Map<String, Long> expected = new TreeMap<>();
         TABLES.forEach(table -> expected.put(table, 0L));
         Map<String, Long> withoutHistory = new TreeMap<>(ROWS_AFTER_MIGRATION);
         withoutHistory.remove(HISTORY);
         assertThat(withoutHistory)
-            .as("the schema holds exactly the twenty-four tables of the order, and none of them "
+            .as("the schema holds exactly the thirty tables of the orders, and none of them "
                 + "a row: selectors are declared later by a migration of the installation")
             .isEqualTo(expected);
         assertThat(ROWS_AFTER_MIGRATION.get(HISTORY))
@@ -170,8 +191,8 @@ class StoreLineIT {
                     JOIN pg_namespace n ON n.oid = k.connamespace
                     WHERE n.nspname = 'dispatch' AND k.contype = 'f'
                     """))
-                .as("the order names forty-six keys; a different count is a key missing or one "
-                    + "the order does not name")
+                .as("the orders name sixty keys; a different count is a key missing or one "
+                    + "the orders do not name")
                 .isEqualTo(String.valueOf(FOREIGN_KEYS));
         }
     }
@@ -229,18 +250,18 @@ class StoreLineIT {
     // -----------------------------------------------------------------------
 
     @Test
-    void under_the_service_role_a_tenant_reads_no_task_and_no_act_of_another()
+    void under_the_service_role_a_tenant_reads_no_task_act_content_or_draft_text_of_another()
             throws SQLException {
         UUID a = UUID.randomUUID();
         UUID b = UUID.randomUUID();
         try (Connection c = service()) {
             bind(c, a);
-            insertChain(c, a, UUID.randomUUID(), "a");
+            insertChainAndWork(c, a, UUID.randomUUID(), "a");
             bind(c, b);
-            insertChain(c, b, UUID.randomUUID(), "b");
+            insertChainAndWork(c, b, UUID.randomUUID(), "b");
 
             bind(c, a);
-            for (String table : List.of("task", "act")) {
+            for (String table : ISOLATED) {
                 assertThat(countOf(c, table, b))
                     .as("bound to tenant A, the service role reads no %s of tenant B", table)
                     .isZero();
@@ -254,10 +275,10 @@ class StoreLineIT {
     }
 
     /**
-     * The red state of the isolation, on act and on task: without the policy
-     * in force the runtime role reads the foreign row, and without FORCE so
-     * does the owner. Each removal is made in a transaction and rolled back,
-     * so it is observed on every build and undone with it.
+     * The red state of the isolation, on task, act, content and draft_text:
+     * without the policy in force the runtime role reads the foreign row, and
+     * without FORCE so does the owner. Each removal is made in a transaction
+     * and rolled back, so it is observed on every build and undone with it.
      */
     @Test
     void without_the_policy_or_without_force_the_foreign_row_appears() throws SQLException {
@@ -265,10 +286,10 @@ class StoreLineIT {
         UUID b = UUID.randomUUID();
         try (Connection c = harness.adminConnection(url)) {
             c.setAutoCommit(false);
-            insertChain(c, a, UUID.randomUUID(), "a");
-            insertChain(c, b, UUID.randomUUID(), "b");
+            insertChainAndWork(c, a, UUID.randomUUID(), "a");
+            insertChainAndWork(c, b, UUID.randomUUID(), "b");
 
-            for (String table : List.of("task", "act")) {
+            for (String table : ISOLATED) {
                 assertThat(foreignRowsAs(c, SERVICE_ROLE, table, a, b))
                     .as("green: the runtime role bound to A reads no %s of B", table).isZero();
                 assertThat(foreignRowsAs(c, MIGRATOR, table, a, b))
@@ -333,6 +354,44 @@ class StoreLineIT {
     }
 
     @Test
+    void the_service_role_can_neither_change_nor_delete_content_or_free_fields_but_a_draft_text()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Work work = insertChainAndWork(c, tenant, UUID.randomUUID(), "content-privileges");
+
+            assertThat(refusal(c, "UPDATE dispatch.content SET body = body WHERE id = ?",
+                    work.content()))
+                .as("content is never changed: the runtime role holds no UPDATE on content")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "DELETE FROM dispatch.content WHERE id = ?", work.content()))
+                .as("nor DELETE")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "UPDATE dispatch.free_fields SET document = document WHERE id = ?",
+                    work.freeFields()))
+                .as("free fields are never changed: no UPDATE on free_fields")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "DELETE FROM dispatch.free_fields WHERE id = ?",
+                    work.freeFields()))
+                .as("nor DELETE")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "UPDATE dispatch.draft_text SET draft_id = draft_id WHERE id = ?",
+                    work.draftText()))
+                .as("draft_id is not among the columns of draft_text the runtime role may update")
+                .isEqualTo("42501");
+
+            assertThat(executed(c, "UPDATE dispatch.draft_text SET body = 'changed' WHERE id = ?",
+                    work.draftText()))
+                .as("while the body of a draft text is changed").isEqualTo(1);
+            assertThat(executed(c, "DELETE FROM dispatch.draft_text WHERE id = ?",
+                    work.draftText()))
+                .as("and a draft text is deleted").isEqualTo(1);
+            c.rollback();
+        }
+    }
+
+    @Test
     void the_service_role_holds_exactly_the_privileges_of_the_order() throws SQLException {
         Map<String, Set<String>> tablePrivileges = new TreeMap<>();
         Map<String, Set<String>> updatable = new TreeMap<>();
@@ -375,10 +434,11 @@ class StoreLineIT {
         Map<String, Set<String>> expectedTables = new TreeMap<>();
         TABLES.forEach(t -> expectedTables.put(t, new TreeSet<>(Set.of("SELECT", "INSERT"))));
         expectedTables.get("task").add("DELETE");
+        DRAFT_WORKSPACE.forEach(t -> expectedTables.get(t).add("DELETE"));
         assertThat(tablePrivileges)
-            .as("SELECT and INSERT on every table, DELETE on task alone, nothing on the history "
-                + "of the migration tool, and never UPDATE, TRUNCATE, REFERENCES or TRIGGER on "
-                + "a whole table")
+            .as("SELECT and INSERT on every table, DELETE on task and the four tables of the "
+                + "draft workspace alone, nothing on the history of the migration tool, and never "
+                + "UPDATE, TRUNCATE, REFERENCES or TRIGGER on a whole table")
             .isEqualTo(expectedTables);
 
         Map<String, Set<String>> expectedColumns = new TreeMap<>();
@@ -432,27 +492,124 @@ class StoreLineIT {
     }
 
     // -----------------------------------------------------------------------
-    // No JSON.
+    // Checks and keys of content, free fields and the draft workspace.
+    // -----------------------------------------------------------------------
+
+    /**
+     * Each check refuses its row with 23514, and the same row is taken once
+     * the check is dropped: the red state, observed in a savepoint on every
+     * build and rolled back with it.
+     */
+    @Test
+    void the_checks_of_free_fields_and_content_refuse_and_without_them_the_row_is_taken()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = harness.adminConnection(url)) {
+            c.setAutoCommit(false);
+            Chain chain = insertChain(c, tenant, scope, "checks");
+            long supplemented = insertReturningId(c, "INSERT INTO dispatch.content "
+                + "(tenant_id, scope_id, act_id, kind, media_type, body) "
+                + "VALUES (?, ?, ?, 'remark', 'text/plain', 'probe') RETURNING id",
+                tenant, scope, chain.act());
+            String content = "INSERT INTO dispatch.content (tenant_id, scope_id, act_id, kind, "
+                + "supplements_content_id, supplements_act_id, media_type, body) "
+                + "VALUES (?, ?, ?, ?, ?, ?, 'text/plain', 'probe')";
+
+            assertThat(withAndWithoutCheck(c, "free_fields", "ck_free_fields_document",
+                    "INSERT INTO dispatch.free_fields (tenant_id, scope_id, act_id, document) "
+                        + "VALUES (?, ?, ?, '[\"no\", \"object\"]'::jsonb)",
+                    tenant, scope, chain.act()))
+                .as("a document of free fields that is no JSON object is refused; RED STATE, "
+                    + "observed: without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "content", "ck_content_criterion", content,
+                    tenant, scope, chain.act(), "criterion", null, null))
+                .as("a criterion text without its criterion is refused; RED STATE, observed: "
+                    + "without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "content", "ck_content_supplements", content,
+                    tenant, scope, chain.act(), "addendum", null, null))
+                .as("an addendum that supplements nothing is refused; RED STATE, observed: "
+                    + "without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "content", "ck_content_supplements", content,
+                    tenant, scope, chain.act(), "addendum", supplemented, chain.act()))
+                .as("an addendum that supplements a content row and an act at once is refused; "
+                    + "RED STATE, observed: without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void a_criterion_text_of_a_draft_hangs_only_on_a_criterion_of_the_same_draft()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Work work = insertChainAndWork(c, tenant, scope, "draft-criterion");
+            long otherTask = insertReturningId(c, "INSERT INTO dispatch.task "
+                + "(tenant_id, scope_id, instance_id, sub) VALUES (?, ?, ?, 2) RETURNING id",
+                tenant, scope, work.chain().instance());
+            long otherDraft = insertReturningId(c, "INSERT INTO dispatch.draft "
+                + "(tenant_id, scope_id, task_id) VALUES (?, ?, ?) RETURNING id",
+                tenant, scope, otherTask);
+            String criterion = "INSERT INTO dispatch.draft_criterion "
+                + "(tenant_id, scope_id, draft_id, identifier, ordinal) "
+                + "VALUES (?, ?, ?, 'C1', 1) RETURNING id";
+            long foreignCriterion = insertReturningId(c, criterion, tenant, scope, otherDraft);
+            long ownCriterion = insertReturningId(c, criterion, tenant, scope, work.draft());
+            String text = "INSERT INTO dispatch.draft_text "
+                + "(tenant_id, scope_id, draft_id, kind, draft_criterion_id, media_type, body) "
+                + "VALUES (?, ?, ?, 'criterion', ?, 'text/plain', 'probe')";
+
+            assertThat(refusal(c, text, tenant, scope, work.draft(), foreignCriterion))
+                .as("a criterion text of one draft on a criterion of another is refused by the "
+                    + "key that carries the draft")
+                .isEqualTo("23503");
+            assertThat(refusal(c, text, tenant, scope, work.draft(), ownCriterion))
+                .as("while the same text on a criterion of its own draft is taken, so the "
+                    + "refusal above is the pairing and not the row")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // JSON only in the two documents of free fields.
     // -----------------------------------------------------------------------
 
     @Test
-    void no_column_of_the_schema_is_json_or_jsonb() throws SQLException {
+    void the_only_json_columns_are_the_two_jsonb_documents_of_free_fields() throws SQLException {
         try (Connection c = harness.adminConnection(url)) {
             assertThat(scalar(c, "SELECT count(*) FROM information_schema.columns "
                     + "WHERE table_schema = 'dispatch'"))
                 .as("the check must have columns to read").isNotEqualTo("0");
-            assertThat(jsonColumns(c))
-                .as("the control carries no JSON: every value has a column of its own")
+            assertThat(jsonDefects(c))
+                .as("no json column, and jsonb exactly for free_fields.document and "
+                    + "draft_free_fields.document: the control carries no JSON")
                 .isEmpty();
 
             c.setAutoCommit(false);
+            Savepoint planted = c.setSavepoint();
             exec(c, "ALTER TABLE dispatch.act ADD COLUMN planted_payload JSONB");
             exec(c, "ALTER TABLE dispatch.task ADD COLUMN planted_metadata JSON");
-            List<String> planted = jsonColumns(c);
+            List<String> added = jsonDefects(c);
+            c.rollback(planted);
+            exec(c, "ALTER TABLE dispatch.draft_free_fields DROP COLUMN document");
+            List<String> dropped = jsonDefects(c);
             c.rollback();
-            assertThat(planted)
-                .as("RED STATE, observed: a jsonb and a json column are both reported")
-                .containsExactly("act.planted_payload jsonb", "task.planted_metadata json");
+
+            assertThat(added)
+                .as("RED STATE, observed: a third jsonb column and a json column are both "
+                    + "reported")
+                .containsExactly("not admitted: act.planted_payload jsonb",
+                    "not admitted: task.planted_metadata json");
+            assertThat(dropped)
+                .as("RED STATE, observed: one of the two documents missing is reported")
+                .containsExactly("missing: draft_free_fields.document jsonb");
         }
     }
 
@@ -483,6 +640,35 @@ class StoreLineIT {
             + "to_state) VALUES (?, ?, ?, 1, ?, 'send', 'probe-subject', now(), 'open') "
             + "RETURNING id", tenant, scope, instance, task);
         return new Chain(instance, task, act);
+    }
+
+    /**
+     * The ids the cases read of what V2 hangs on one chain: a content row and
+     * a document of free fields on its act, a draft of its task and the
+     * draft's commission text.
+     */
+    private record Work(Chain chain, long content, long freeFields, long draft, long draftText) {
+    }
+
+    private static Work insertChainAndWork(Connection c, UUID tenant, UUID scope, String name)
+            throws SQLException {
+        Chain chain = insertChain(c, tenant, scope, name);
+        long content = insertReturningId(c, "INSERT INTO dispatch.content "
+            + "(tenant_id, scope_id, act_id, kind, media_type, body) "
+            + "VALUES (?, ?, ?, 'commission', 'text/plain', 'probe') RETURNING id",
+            tenant, scope, chain.act());
+        long freeFields = insertReturningId(c, "INSERT INTO dispatch.free_fields "
+            + "(tenant_id, scope_id, act_id, document) "
+            + "VALUES (?, ?, ?, '{\"probe\": true}'::jsonb) RETURNING id",
+            tenant, scope, chain.act());
+        long draft = insertReturningId(c, "INSERT INTO dispatch.draft "
+            + "(tenant_id, scope_id, task_id) VALUES (?, ?, ?) RETURNING id",
+            tenant, scope, chain.task());
+        long draftText = insertReturningId(c, "INSERT INTO dispatch.draft_text "
+            + "(tenant_id, scope_id, draft_id, kind, media_type, body) "
+            + "VALUES (?, ?, ?, 'commission', 'text/plain', 'probe') RETURNING id",
+            tenant, scope, draft);
+        return new Work(chain, content, freeFields, draft, draftText);
     }
 
     private static long insertReturningId(Connection c, String sql, Object... args)
@@ -537,17 +723,42 @@ class StoreLineIT {
      * Runs a statement and answers the SQLSTATE it was refused with; a
      * statement that ran is answered as such, never folded into a pass.
      */
-    private static String refusal(Connection c, String sql, long id) throws SQLException {
+    private static String refusal(Connection c, String sql, Object... args) throws SQLException {
         Savepoint before = c.setSavepoint();
-        try (PreparedStatement st = c.prepareStatement(sql)) {
-            st.setLong(1, id);
-            st.executeUpdate();
+        try {
+            executed(c, sql, args);
             c.rollback(before);
-            return "not refused: the statement ran";
+            return NOT_REFUSED;
         } catch (SQLException refused) {
             c.rollback(before);
             return refused.getSQLState();
         }
+    }
+
+    /** Runs a statement and answers the number of rows it changed. */
+    private static int executed(Connection c, String sql, Object... args) throws SQLException {
+        try (PreparedStatement st = c.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                st.setObject(i + 1, args[i]);
+            }
+            return st.executeUpdate();
+        }
+    }
+
+    /**
+     * Runs a statement with the check named in force and once more with it
+     * dropped, inside the caller's transaction, and answers both outcomes as
+     * {@link #refusal} does. The drop is rolled back before this returns.
+     */
+    private static List<String> withAndWithoutCheck(Connection c, String table, String check,
+                                                    String sql, Object... args)
+            throws SQLException {
+        String inForce = refusal(c, sql, args);
+        Savepoint dropped = c.setSavepoint();
+        exec(c, "ALTER TABLE dispatch." + table + " DROP CONSTRAINT " + check);
+        String without = refusal(c, sql, args);
+        c.rollback(dropped);
+        return List.of(inForce, without);
     }
 
     /**
@@ -676,6 +887,20 @@ class StoreLineIT {
             }
         }
         return found;
+    }
+
+    /**
+     * Every json or jsonb column of the schema other than the two documents,
+     * and every one of the two documents that is not there as jsonb.
+     */
+    private static List<String> jsonDefects(Connection c) throws SQLException {
+        List<String> found = jsonColumns(c);
+        List<String> defects = new ArrayList<>();
+        found.stream().filter(column -> !JSON_DOCUMENTS.contains(column))
+            .forEach(column -> defects.add("not admitted: " + column));
+        JSON_DOCUMENTS.stream().filter(column -> !found.contains(column))
+            .forEach(column -> defects.add("missing: " + column));
+        return defects;
     }
 
     private static List<String> baseTables(Connection c) throws SQLException {
