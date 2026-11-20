@@ -78,5 +78,5 @@ wave that builds the process rules is built on the same branch.
 The first assessment against the catalogue is `assessments/2026-11-20-assessment.md`; what the
 operator decided on it, and therefore what V4 holds, is `assessments/2026-11-20-decisions.md`. The
 model and the diagrams carry V4; the chapters describe V1 to V3 and close with what V4 changes. Until
-V4 is built, `reconcile.py` reports the difference: 18 reports, each a row of the decisions page. The
+V4 is built, `reconcile.py` reports the difference: 17 reports, each a row of the decisions page. The
 target model of the next wave is still to be written.
