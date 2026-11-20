@@ -16,7 +16,7 @@ The binding statements live in the architecture corpus (`Kumbuka-ai/platform-spe
 | DEC-0055 | a process definition belongs to the dispatch service alone; the criteria contract with the worklist |
 | DEC-0056 | the gate evaluates only what a definition declares; the kinds of data |
 | DEC-0057 | the one cut-over to the new store |
-| ADR-0042 | tenant and scope in every key |
+| ADR-0042 | tenant and scope on every row, in a unique key of every table and in every foreign key |
 
 This area explains and measures. Where it states a rule, it names the node the rule comes from. Where
 it finds that the store and a node disagree, that is a finding, reported and resolved in the node or in
@@ -43,10 +43,12 @@ conceptual and logical levels, and the check that the three agree, are built up 
 | `method/evaluation-catalogue.md` | the criteria the model is assessed against, the scale, the knock-out rule, the weights |
 | `method/maturity.md` | the maturity levels 0 to 3 and what each requires |
 | `method/measurement.md` | how the physical criteria are measured: dataset, volume, queries, recording |
+| `method/format.md` | which format carries which level, and why |
 | `model/` | the model on the conceptual and logical level, and the physical level derived from the SQL |
 | `groups/` | one chapter per group of tables: purpose, invariants, questions answered, cut, rejected alternative |
 | `diagrams/` | one diagram per group and an overview |
 | `assessments/` | dated results of an assessment, each grade with its evidence |
+| `../../scripts/data-model/` | catalogue checks, reconciliation, the DBML view |
 
 ## State
 

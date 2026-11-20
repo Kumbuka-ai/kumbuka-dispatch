@@ -51,8 +51,11 @@ the plans of the write paths.
 
 ## Catalogue checks
 
-- **P1** -- a query over `pg_class`, `pg_attribute` and `pg_policy`: every table of the schema has the
-  columns `tenant_id` and `scope_id`, row-level security enabled and forced, and at least one policy.
+- **P1** -- queries over the system catalogue (`pg_class`, `pg_attribute`, `pg_constraint`,
+  `pg_policy`): every table of the schema has the columns `tenant_id` and `scope_id`; every table has a
+  unique constraint whose columns are exactly (`tenant_id`, `scope_id`, `id`); every foreign key's
+  columns begin with `tenant_id`, `scope_id` and reference a unique key that begins with them; row-level
+  security is enabled and forced; and at least one policy exists on the table.
 - **P2** -- a query over `information_schema.role_table_grants`: no role other than the service role
   has a grant on a table that holds content.
 - **P3** -- per invariant named in `../model/`, the constraint that keeps it, looked up in
@@ -72,4 +75,5 @@ dataset.
 
 ## State
 
-2026-11-20: the method is written; the scripts it names are written with the model.
+2026-11-20: `catalogue-checks.sql` (P1, L5 grants), `reconcile.py` (R1) and `generate-dbml.sh` exist;
+the dataset generator and the hot-path files are written with the assessment.

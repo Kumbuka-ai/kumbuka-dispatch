@@ -1,0 +1,172 @@
+id: https://kumbuka.ai/model/dispatch/definition
+name: dispatch_definition
+title: Dispatch data model - group "definition"
+description: >-
+  The tables that declare a process: selectors, definition versions, their acts and tags,
+  activities and outcome labels. Physical level: store line V1 (and V4 for the seed mark).
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+
+classes:
+  Selector:
+    is_a: TenantScoped
+    description: >-
+      A kind of instance a scope declares (sprint, satellite, orga), under which its instances are
+      numbered. The address of an instance is scope, selector and number.
+    attributes:
+      name:
+        required: true
+        description: The name of the selector, unique in its scope.
+        in_subset: [system]
+      next_number:
+        range: integer
+        required: true
+        minimum_value: 1
+        description: The number the next instance of this selector receives; never reissued.
+        in_subset: [system]
+    unique_keys:
+      selector_name:
+        unique_key_slots: [tenant, scope, name]
+    annotations:
+      table: selector
+      source: "TAR-0004 2.2"
+      mutable: "next_number only, by the start of an instance"
+
+  DefinitionVersion:
+    is_a: TenantScoped
+    description: >-
+      A numbered version of the process a selector declares: its activities, outcome labels, schema
+      of control fields, contracts and, from wave 3, its rules. An instance is bound to the version in
+      force at its start and keeps it.
+    attributes:
+      selector:
+        range: Selector
+        required: true
+        description: The selector whose process this version declares.
+        in_subset: [system]
+      version:
+        range: integer
+        required: true
+        minimum_value: 1
+        description: The number of the version under its selector, counted from 1 and never reissued.
+        in_subset: [system]
+      state:
+        range: DefinitionVersionState
+        required: true
+        description: Where the version stands in its lifecycle.
+        in_subset: [system]
+      verdict_required:
+        range: boolean
+        required: true
+        description: Whether the return of an instance must carry a verdict.
+        in_subset: [system]
+      outcome_required:
+        range: boolean
+        required: true
+        description: Whether the return of an instance must carry an outcome.
+        in_subset: [system]
+      seed:
+        range: boolean
+        required: true
+        description: Marks a version written by the copy of the bracket store, not by define (REA-0010 S4, V4).
+        in_subset: [system]
+    unique_keys:
+      version_per_selector:
+        unique_key_slots: [tenant, scope, selector, version]
+    rules:
+      - description: "At most one active version per selector (partial unique index uq_definition_version_active WHERE state = 'active')."
+    annotations:
+      table: definition_version
+      source: "TAR-0004 2.2, DEC-0055"
+      mutable: "state only, by define and activate"
+
+  DefinitionAct:
+    is_a: TenantScoped
+    description: An act that defines or activates a definition version. The trace of a definition; appended and never changed.
+    attributes:
+      definition_version: {range: DefinitionVersion, required: true, description: "The definition version this row belongs to.", in_subset: [system]}
+      sequence: {range: integer, required: true, minimum_value: 1, description: "The position of the act in the trace of its definition version; the sequence orders the acts, not the time.", in_subset: [system]}
+      kind: {range: DefinitionActKind, required: true, description: "What the act did.", in_subset: [system]}
+      actor_subject: {required: true, description: "The delegated identity that acted, or the base identity on the console.", in_subset: [system]}
+      actor_owner_subject: {description: The owner behind the delegated identity., in_subset: [system]}
+      permission: {description: The permission the act was admitted under., in_subset: [system]}
+      path: {range: Path, description: "The way the act came by.", in_subset: [system]}
+      authentication_level: {description: Only on the console path., in_subset: [system]}
+      at: {range: datetime, required: true, description: "When the act was written, with time zone.", in_subset: [system]}
+    unique_keys:
+      sequence_per_version:
+        unique_key_slots: [tenant, scope, definition_version, sequence]
+    rules:
+      - description: "authentication_level is set only when path is console (ck_definition_act_authentication_level)."
+    annotations:
+      table: definition_act
+      source: "TAR-0004 B5"
+      mutable: "never (no UPDATE grant)"
+
+  DefinitionTag:
+    is_a: TenantScoped
+    description: A tag of the platform's catalogue a definition version carries; held as a value, never resolved.
+    attributes:
+      definition_version: {range: DefinitionVersion, required: true, description: "The definition version this row belongs to.", in_subset: [system]}
+      tag_id: {range: uuidtype, required: true, description: "The identifier of the tag in the platform catalogue; a value, never resolved by the service.", in_subset: [system]}
+    unique_keys:
+      tag_per_version:
+        unique_key_slots: [tenant, scope, definition_version, tag_id]
+    annotations:
+      table: definition_tag
+      source: "DEC-0055/C5"
+
+  Activity:
+    is_a: TenantScoped
+    description: >-
+      A kind of work a definition version declares, named after its object and verb, never after the
+      kind of executor. It says what a task of it requires in its return and takes as input.
+    attributes:
+      definition_version: {range: DefinitionVersion, required: true, description: "The definition version this row belongs to.", in_subset: [system]}
+      name: {required: true, in_subset: [system]}
+      verdict_required: {range: boolean, required: true, in_subset: [system]}
+      outcome_required: {range: boolean, required: true, in_subset: [system]}
+      criteria_required: {range: boolean, required: true, description: "Whether the return must name a status for every acceptance criterion of the commission.", in_subset: [system]}
+      input_kind: {range: InputKind, required: true, description: "What a task of this activity takes as input.", in_subset: [system]}
+      bound_activity: {range: Activity, description: "The activity whose return a task of this one takes as input.", in_subset: [system]}
+      may_ask: {range: boolean, required: true, description: Whether its executor may ask questions., in_subset: [system]}
+      starts_excluded: {range: boolean, required: true, description: Whether it is excluded until an include rule includes it., in_subset: [system]}
+      handbook_address: {description: "The address of its handbook in the documents service; never read by the platform.", in_subset: [system]}
+    unique_keys:
+      name_per_version:
+        unique_key_slots: [tenant, scope, definition_version, name]
+    rules:
+      - preconditions:
+          slot_conditions:
+            input_kind: {equals_string: bound}
+        postconditions:
+          slot_conditions:
+            bound_activity: {required: true}
+        description: "input_kind = bound if and only if bound_activity is set (ck_activity_bound)."
+    annotations:
+      table: activity
+      source: "TAR-0004 2.2"
+      mutable: "never"
+
+  OutcomeLabel:
+    is_a: TenantScoped
+    description: >-
+      A label of the closed set of outcomes, declared either for one activity (the outcome of its
+      tasks) or for the whole version (the outcome of its instances).
+    attributes:
+      activity: {range: Activity, description: "The activity whose tasks may take this outcome; empty when the label belongs to the version.", in_subset: [system]}
+      definition_version: {range: DefinitionVersion, description: "The version whose instances may take this outcome; empty when the label belongs to an activity.", in_subset: [system]}
+      label: {required: true, description: "The outcome, unique per owner.", in_subset: [system]}
+      ordinal: {range: integer, required: true, description: "The order in which the labels are shown.", in_subset: [system]}
+    rules:
+      - description: "Exactly one of activity and definition_version (ck_outcome_label_owner)."
+    annotations:
+      table: outcome_label
+      source: "TAR-0004 2.4, DEC-0056/C5"
+      mutable: "never"

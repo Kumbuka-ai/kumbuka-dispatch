@@ -1,0 +1,65 @@
+@startuml 01-definition
+' Group 1: definition (docs/data-model/groups/01-definition.md).
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+
+class selector <<system>> {
+  id : bigint
+  name : text  {unique per scope}
+  next_number : bigint >= 1
+}
+class definition_version <<system>> {
+  id : bigint
+  version : int >= 1  {unique per selector}
+  state : draft | active | retired
+  verdict_required : bool
+  outcome_required : bool
+  seed : bool  [V4]
+}
+note right of definition_version
+  at most one ACTIVE per selector
+  (partial unique index uq_definition_version_active)
+  only state is updated
+end note
+class definition_act <<system>> {
+  id : bigint
+  sequence : int >= 1  {unique per version}
+  kind : define | activate
+  actor_subject, actor_owner_subject
+  permission, path, authentication_level
+  at : timestamptz
+}
+note right of definition_act : insert-only
+class definition_tag <<system>> {
+  id : bigint
+  tag_id : uuid  {unique per version}
+}
+class activity <<system>> {
+  id : bigint
+  name : text  {unique per version}
+  verdict_required, outcome_required, criteria_required : bool
+  input_kind : text | bound | parameters | none
+  may_ask, starts_excluded : bool
+  handbook_address : text
+}
+note right of activity : input_kind = bound <=> bound_activity set
+class outcome_label <<system>> {
+  id : bigint
+  label : text  {unique per owner}
+  ordinal : int
+}
+note bottom of outcome_label : owner: exactly one of activity, definition_version
+
+selector "1" -- "*" definition_version
+definition_version "1" -- "*" definition_act : trace
+definition_version "1" -- "*" definition_tag
+definition_version "1" -- "*" activity
+activity "0..1" -- "*" activity : bound_activity
+activity "0..1" -- "*" outcome_label : task outcomes
+definition_version "0..1" -- "*" outcome_label : instance outcomes
+@enduml

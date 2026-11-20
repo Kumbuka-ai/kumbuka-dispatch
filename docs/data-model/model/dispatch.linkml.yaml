@@ -1,0 +1,16 @@
+id: https://kumbuka.ai/model/dispatch
+name: dispatch
+title: Dispatch data model
+description: >-
+  The data model of the dispatch service on the conceptual and logical level. Each group of tables is
+  a schema of its own and is imported here; the physical level is the store line in
+  backend/src/main/resources/db/store/ (docs/data-model/method/format.md).
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - definition.linkml
