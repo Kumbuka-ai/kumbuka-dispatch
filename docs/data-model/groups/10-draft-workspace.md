@@ -60,9 +60,12 @@ assessment says so.
 Draft field values for the start and result contracts, if the console edits control fields of a draft
 (TAR-0004 2.7); they would follow the same pattern.
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- The workspace duplicates four shapes of the record; assessed under L2 against a state column on the
-  record tables.
-- `draft_free_fields` is also where the free metadata of a copied bracket-store draft lands (REA-0010
-  S4).
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+
+- **The addressed role** arrives on the draft, where it changes freely until `send`.
+- The workspace duplicates four shapes of the record; the operator waived the assessment of that
+  under L2.
+- `draft_free_fields` is also where the free metadata of a copied bracket-store draft lands
+  (REA-0010 S4).

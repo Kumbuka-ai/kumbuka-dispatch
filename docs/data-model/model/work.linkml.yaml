@@ -45,8 +45,16 @@ classes:
         - system
         range: Act
         required: true
+      instance:
+        description: The instance of its act, carried so that foreign keys bind the act, the concerned
+          task and the bound task to one instance (V4).
+        in_subset:
+        - system
+        range: Instance
+        required: true
       title:
-        description: The title of the work.
+        description: 'The title of the work. Text of the customer: never in a log line, a metric or a
+          view of the operator.'
         in_subset:
         - system
         required: true
@@ -78,6 +86,9 @@ classes:
         - tenant
         - scope
         - act
+    rules:
+    - description: 'The act, the concerned task and the bound task belong to the instance named: foreign
+        keys over (instance, act), (instance, concerns_task) and (instance, bound_task) (V4).'
     annotations:
       table: commission
       source: TAR-0004 2.4

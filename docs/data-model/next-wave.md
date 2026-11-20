@@ -49,7 +49,7 @@ the next wave.
 | Limiters on feedback loops | worklist://kumbuka/item/1255 | one more restriction pattern table | none | a concept of its own is required first |
 | Role that answers the questions of an activity | worklist://kumbuka/item/1256 | nullable column on `activity` | `activity` (column) | variant not chosen |
 | An instance takes no new tasks | worklist://kumbuka/item/1272 | a projection column on `instance`, or a third instance state | `instance` (column, or checks on `instance.state` and `act.to_state`) | attribute or state (DEC-0046) |
-| Type `money` (amount and ISO 4217 currency, no conversion); field marked searchable with a projection of the values in force | operator, 2026-11-20 | type checks widened, two typed columns, the one-value check adjusted; defaulted column on `control_field`; new table | `control_field`, `field_value` (checks, columns) | the catalogue grows by decision (DEC-0056/C3); the projection changes at `accept`, not at `deliver` |
+| Type `money` (amount and ISO 4217 currency, no conversion); a field marked searchable, should the projection of the values in force (V4, `instance_field_value`) hold fewer fields than all | operator, 2026-11-20 | type checks widened, two typed columns, the one-value check adjusted; defaulted column on `control_field`; new table | `control_field`, `field_value` (checks, columns) | the catalogue grows by decision (DEC-0056/C3); the projection changes at `accept`, not at `deliver` |
 | Key identifier of an encrypted text | operator, 2026-11-20 | nullable columns on `content` | `content` (columns) | idea |
 | A process marked as part of a family; a default process | concept from item to instance, section 12; item 1217 | defaulted column on `definition_version` | `definition_version` (column) | not decided |
 | The sequence as written, beside the rules it translates into | data model concept O1 | column or table at the definition version | none or `definition_version` | with the modelling interface |
@@ -112,8 +112,8 @@ Before the build orders of the current wave:
    and TAR-0004 2.4 is open.
 2. TAR-0004 2.3 brought in line with DEC-0055/C9 (item 1276); item 1273 is answered by the wording of C9
    and can be closed with that note.
-3. The assessment of V1 to V3 against the evaluation catalogue, with the six bindings only the service
-   keeps (chapters 04, 05, 08) and the payload tables of worklist://kumbuka/item/1282.
+3. The assessment of V1 to V3 against the evaluation catalogue: done, see
+   `assessments/2026-11-20-assessment.md` and `assessments/2026-11-20-decisions.md`.
 4. The statement that an actor column holds an opaque identifier: in the model; REA-0010 step 5 should
    carry it as well.
 
@@ -146,3 +146,6 @@ Organisation:
     cut-over waits for the next wave (REA-0010). The two conditions wait on each other.
 17. Recurring instances were moved to dispatch://kumbuka/sprint/211.3; whether that work builds against
     the store of the integration branch is not read.
+18. Which activities receive the input text of an instance: a declaration at the activity beside its
+    input contract. From V4 every reader permitted to read content reads it (operator, 2026-11-20).
+19. Addenda to the input text of an instance.

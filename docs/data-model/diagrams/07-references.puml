@@ -20,7 +20,7 @@ class external_reference <<system>> {
   set_by_act_id : -> act
   ended_by_act_id : -> act  [0..1]
 }
-note bottom of external_reference : updates: ended_by_act only, as projection
+note bottom of external_reference : updates: ended_by_act only, set once by the service; it is the record of the end, not a projection
 class act <<other>>
 class instance <<other>>
 class task <<other>>

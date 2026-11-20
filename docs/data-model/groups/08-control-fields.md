@@ -74,9 +74,19 @@ Reconstructed for this chapter from the corpus; DEC-0056 records the main choice
 Derived fields of an instance (computed from control fields, TAR-0004 2.3) and the conditions of
 process rules and restrictions, which read field values by name; both attach to `control_field`.
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- The EAV form is assessed against prior art (Camunda variables, Temporal search attributes) and
-  measured under P4 for the rule reads.
-- Three checks are the service's; the assessment records them as accepted gaps or as candidates for
-  denormalising the version onto the act.
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+The tables above describe V1 to V3; the model and the diagram carry V4.
+
+- **The projection of the values in force.** `instance_field_value` holds one row per instance and
+  field with the value in force (DEC-0056/C10), written by the service with `start` and `accept`.
+  A listing by a control field read every value of the field in the scope without it: 692 ms against
+  0.06 ms in the assessment. The gate of the next wave reads the same rows. It is a projection like
+  the state of a task: updatable by grant, rebuilt from the trace at any time, compared by a test.
+- Indexes for number, date and choice; none for text, whose 4,096 characters exceed what an index
+  row holds, and none for boolean. A filter by a text reads the rows of the field, one per instance.
+- `field_value` is not an entity-attribute-value table standing in for declared fields: the fields
+  are declared, the types are a closed set, and keys bind type and enumeration.
+- **Kept by the service** (REA-0010 S5): that a field belongs to the version of the act's instance,
+  that a value hangs only on a start or a deliver, that a name shadows no system field.

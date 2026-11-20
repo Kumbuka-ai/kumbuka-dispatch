@@ -25,6 +25,9 @@ class act <<system>> {
   at : datetime
   to_state : string
   refers_to_act_id : -> act  [0..1]
+  hold_reason : dependency | external  [0..1]
+  not_before : datetime  [0..1]
+  free_text_admitted : boolean  [0..1]
 }
 note bottom of act : updates: never (no UPDATE grant)
 class idempotency_key <<system>> {

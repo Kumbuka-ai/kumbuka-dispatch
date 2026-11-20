@@ -71,9 +71,21 @@ assessment says so.
 Derived fields of an instance and the process selection (TAR-0004 2.2, 2.3) attach by reference; the
 tables here change only by addition.
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- `title`, `activity_id` and `concerns_task_id` of `task` are updatable as projections of the
-  commission and the draft; whether this meets L5 (insert-only where the method demands it) is judged
-  there.
-- No store check binds a projection to its trace; the measurement checks it by rebuild.
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+The tables above describe V1 to V3; the model and the diagram carry V4.
+
+- **A task under `.0`.** `ck_task_sub` admits 0 from V4, for the task a bracket of the bracket store
+  is copied from (REA-0010 S4). The counter of the instance still starts at 1: a new instance has no
+  task under `.0`, its first task is `.1`, and the instance itself carries no sub-number.
+- **The title of an instance.** A nullable column, set by `start` and never changed; for a copied
+  bracket the title of its task under `.0`. Without it a new instance had no name in a listing.
+- **The input text of an instance** is content on its start act (group 9).
+- **The version belongs to the selector.** A foreign key over (`selector_id`,
+  `definition_version_id`) binds it; a rebind stays inside the selector.
+- **An index for the listing of an executor** over state and addressed role: the open tasks of a
+  scope were read without one (17.9 ms against 0.04 ms in the assessment).
+- **The addressed role** arrives as a projection column, as decided before the assessment.
+- The projections of the task stay updatable; the store cannot check a fold, the service writes act
+  and projection in one transaction, and the measurement checks it by rebuild.

@@ -54,6 +54,12 @@ assessment says so.
 
 Nothing planned.
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- `question` carries one boolean besides its act; assessed with the other payload tables.
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+The tables above describe V1 to V3; the model and the diagram carry V4.
+
+- **`question` goes.** A question is its ask act; whether free text is admitted is a column of the
+  act (group 3). `question_option` and `answer` reference the ask act through `ask_act_id`.
+- The label of an option is text of the customer: a system field that never appears in a log line,
+  a metric or a view of the operator.

@@ -53,9 +53,22 @@ class field_value <<control>> {
   choice_value_id : -> enumeration_value  [0..1]
 }
 note bottom of field_value : updates: never
+class instance_field_value <<control>> {
+  id : bigint
+  instance_id : -> instance
+  control_field_id : -> control_field
+  field_value_id : -> field_value
+  boolean_value : boolean  [0..1]
+  number_value : decimal  [0..1]
+  date_value : date  [0..1]
+  text_value : string  [0..1]
+  choice_value_id : -> enumeration_value  [0..1]
+}
+note bottom of instance_field_value : updates: field_value and the typed columns, as projection; written by the service with start and accept
 class act <<other>>
 class activity <<other>>
 class definition_version <<other>>
+class instance <<other>>
 enumeration }o--|| definition_version : definition_version
 enumeration_value }o--|| enumeration : enumeration
 control_field }o--|| definition_version : definition_version
@@ -67,4 +80,8 @@ field_value }o--|| act : act
 field_value }o--|| control_field : control_field
 field_value }o--o| enumeration : enumeration
 field_value }o--o| enumeration_value : choice_value
+instance_field_value }o--|| instance : instance
+instance_field_value }o--|| control_field : control_field
+instance_field_value }o--|| field_value : field_value
+instance_field_value }o--o| enumeration_value : choice_value
 @enduml

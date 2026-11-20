@@ -82,6 +82,7 @@ classes:
         unique_key_slots: [tenant, scope, selector, version]
     rules:
       - description: "At most one active version per selector (partial unique index uq_definition_version_active WHERE state = 'active')."
+      - description: "A unique key over (selector, id) is the target of the instance's foreign key over (selector, definition_version), so that an instance is bound only to a version of its own selector (V4)."
     annotations:
       table: definition_version
       source: "TAR-0004 2.2, DEC-0055"
@@ -163,7 +164,7 @@ classes:
     attributes:
       activity: {range: Activity, description: "The activity whose tasks may take this outcome; empty when the label belongs to the version.", in_subset: [system]}
       definition_version: {range: DefinitionVersion, description: "The version whose instances may take this outcome; empty when the label belongs to an activity.", in_subset: [system]}
-      label: {required: true, description: "The outcome, unique per owner.", in_subset: [system]}
+      label: {required: true, description: "The outcome, unique per owner. Text of the author of the definition: never in a log line, a metric or a view of the operator.", in_subset: [system]}
       ordinal: {range: integer, required: true, description: "The order in which the labels are shown.", in_subset: [system]}
     rules:
       - description: "Exactly one of activity and definition_version (ck_outcome_label_owner)."

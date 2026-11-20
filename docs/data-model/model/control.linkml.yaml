@@ -2,7 +2,7 @@ id: https://kumbuka.ai/model/dispatch/control
 name: dispatch_control
 title: Dispatch data model - group "control fields"
 description: >-
-  The control fields a definition version declares, the contracts that name them, and the values acts write for them; the only data rules evaluate (DEC-0056). Physical level: store line V3.
+  The control fields a definition version declares, the contracts that name them, the values acts write for them and the projection of the values in force; the only data rules evaluate (DEC-0056). Physical level: store line V3; instance_field_value with V4.
 prefixes:
   linkml: https://w3id.org/linkml/
   kd: https://kumbuka.ai/model/dispatch/
@@ -246,3 +246,70 @@ classes:
       table: field_value
       source: DEC-0056
       mutable: never
+  InstanceFieldValue:
+    is_a: TenantScoped
+    description: 'Projection: the value in force of one control field in one instance, the last value
+      written by the start or by a delivery that was accepted (DEC-0056/C10). One row per instance and
+      field that has a value. It answers a listing that filters or sorts by a control field, and the gate,
+      without folding the trace; it can be rebuilt from the trace at any time (V4).'
+    attributes:
+      instance:
+        description: The instance.
+        in_subset:
+        - control
+        range: Instance
+        required: true
+      control_field:
+        description: The field.
+        in_subset:
+        - control
+        range: ControlField
+        required: true
+      field_value:
+        description: The written value that is in force; the trace keeps every earlier one.
+        in_subset:
+        - control
+        range: FieldValue
+        required: true
+      boolean_value:
+        description: Copy of the value of a boolean.
+        in_subset:
+        - control
+        range: boolean
+      number_value:
+        description: Copy of the value of a number.
+        in_subset:
+        - control
+        range: decimal
+      date_value:
+        description: Copy of the value of a date.
+        in_subset:
+        - control
+        range: date
+      text_value:
+        description: Copy of the value of a text.
+        in_subset:
+        - control
+      choice_value:
+        description: Copy of the value of a choice.
+        in_subset:
+        - control
+        range: EnumerationValue
+    unique_keys:
+      one_per_instance_and_field:
+        unique_key_slots:
+        - tenant
+        - scope
+        - instance
+        - control_field
+    rules:
+    - description: Indexes over tenant, scope, control_field and one typed column each for number, date
+        and choice, followed by the instance; none for text, whose values may exceed what an index row
+        holds, and none for boolean.
+    - description: 'Not checked by the store: that the row agrees with the trace; the service writes both
+        in one transaction, and a test rebuilds the projection from the trace and compares (REA-0010 S5).'
+    annotations:
+      table: instance_field_value
+      source: DEC-0056/C10, C22, C23; REA-0010
+      mutable: field_value and the typed columns, as projection; written by the service with start and
+        accept

@@ -15,6 +15,7 @@ class instance <<system>> {
   id : bigint
   selector_id : -> selector
   number : integer
+  title : string  [0..1]
   trigger_task_id : -> task  [0..1]
   next_sub : integer
   definition_version_id : -> definition_version

@@ -74,8 +74,14 @@ assessment says so.
 Process rules, restrictions and conditions per version, and the tenant rule set with versions of its
 own (TAR-0004 2.6). Their tables attach to `definition_version`; this group changes only by addition.
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- The partial unique index is the only place the rule "at most one active" is kept; a reader of the
-  DBML view does not see it (`../method/format.md`).
-- `seed` arrives with V4 and is not yet in the store; the reconciliation reports it until then.
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+
+- `seed` arrives with V4.
+- V4 adds a unique key over (`selector_id`, `id`) on `definition_version`, the target of the
+  instance's foreign key, so that an instance is bound only to a version of its own selector.
+- `selector` stands for the process definition and keeps its name; the worklist uses the word for its
+  views (finding 9).
+- The label of an outcome is text of the author of the definition: a system field that never appears
+  in a log line, a metric or a view of the operator.

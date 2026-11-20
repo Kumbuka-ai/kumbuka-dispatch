@@ -85,6 +85,12 @@ classes:
         range: integer
         required: true
         minimum_value: 1
+      title:
+        description: 'Its title, set by start and never changed; for a bracket copied from the bracket
+          store the title of its task under .0 (V4). Text of the customer: it stands in listings and never
+          in a log line, a metric or a view of the operator.'
+        in_subset:
+        - system
       trigger_task:
         description: The task of the same scope that started it, so that the triggering instance can read
           its return; other triggers are references of the kind trigger.
@@ -124,6 +130,8 @@ classes:
         - number
     rules:
     - description: resolution is set exactly when state is closed (ck_instance_closed_resolved).
+    - description: 'The version it is bound to belongs to its selector: a foreign key over (selector,
+        definition_version) into a unique key of the version (V4); a rebind stays inside the selector.'
     annotations:
       table: instance
       source: TAR-0004 2.3, DEC-0046
@@ -141,14 +149,17 @@ classes:
         range: Instance
         required: true
       sub:
-        description: Its number within the instance, from the instance's counter.
+        description: Its number within the instance, from the instance's counter, which counts from 1.
+          Only the task a bracket of the bracket store was copied from stands under 0; no new task receives
+          it (V4 admits 0, the counter does not hand it out).
         in_subset:
         - system
         range: integer
         required: true
-        minimum_value: 1
+        minimum_value: 0
       title:
-        description: 'Projection: the title of its commission, or of its draft before sending.'
+        description: 'Projection: the title of its commission, or of its draft before sending. Text of
+          the customer: never in a log line, a metric or a view of the operator.'
         in_subset:
         - system
       activity:
@@ -206,6 +217,8 @@ classes:
     - description: resolution is set exactly when state is closed (ck_task_closed_resolved).
     - description: not_before only on an open task (ck_task_not_before_open).
     - description: parked only when on hold for an external reason (ck_task_parked).
+    - description: Listed by state and addressed role through an index over tenant, scope, state, addressed_role,
+        instance and sub (V4).
     - description: a task does not concern itself; the concerned task belongs to the same instance (ck_task_concerns_other,
         fk_task_task_concerns).
     annotations:

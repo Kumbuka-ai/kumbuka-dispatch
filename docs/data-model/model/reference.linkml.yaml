@@ -65,7 +65,10 @@ classes:
         range: Act
         required: true
       ended_by_act:
-        description: 'Projection: the act that ended it; a trigger is never ended.'
+        description: The act that ended it; a trigger is never ended. The ending act carries no payload,
+          so this column is the only record of which reference it ended. The service sets it only while
+          it is empty; the store cannot refuse a second update without a trigger (accepted by the operator,
+          2026-11-20).
         in_subset:
         - system
         range: Act
@@ -79,4 +82,4 @@ classes:
     annotations:
       table: external_reference
       source: TAR-0004 2.3, DEC-0055/C5, REA-0010 D12
-      mutable: ended_by_act only, as projection
+      mutable: ended_by_act only, set once by the service; it is the record of the end, not a projection

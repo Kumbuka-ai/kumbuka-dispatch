@@ -15,6 +15,13 @@ imports:
 
 
 enums:
+  HoldKind:
+    description: The reasons a hold act gives; a question is asked with ask.
+    permissible_values:
+      dependency:
+        description: It waits on other work.
+      external:
+        description: It waits on something outside the platform.
   ActKind:
     description: The kinds of act on an instance or a task (TAR-0004 2.5, REA-0010 catalogue).
     permissible_values:
@@ -144,6 +151,24 @@ classes:
         in_subset:
         - system
         range: Act
+      hold_reason:
+        description: Why a hold act puts the task on hold; set exactly on a hold (V4, before it the table
+          hold).
+        in_subset:
+        - system
+        range: HoldKind
+      not_before:
+        description: The time before which a defer act gives the task back; only on a defer (V4, before
+          it the table deferral).
+        in_subset:
+        - system
+        range: datetime
+      free_text_admitted:
+        description: Whether the question an ask act puts may be answered in free text; set exactly on
+          an ask (V4, before it the table question).
+        in_subset:
+        - system
+        range: boolean
     unique_keys:
       sequence_per_instance:
         unique_key_slots:
@@ -155,6 +180,8 @@ classes:
     - description: 'The object follows the kind: start, conclude, refer, unrefer and import act on the
         instance alone; withdraw, tag and untag on either; every other kind on a task (ck_act_object).'
     - description: authentication_level only on the console path (ck_act_authentication_level).
+    - description: 'hold_reason exactly on a hold, not_before only on a defer, free_text_admitted exactly
+        on an ask: one check each (V4).'
     - description: 'Not checked by the store: that actor_subject and actor_owner_subject hold an opaque
         subject identifier and never a name or an address, so that the erasure of a person (REQ-0116)
         needs no change to an act.'

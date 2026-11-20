@@ -32,18 +32,6 @@ class receipt <<system>> {
   issued_at : datetime
 }
 note bottom of receipt : updates: never
-class hold <<system>> {
-  id : bigint
-  act_id : -> act
-  reason : dependency | external
-}
-note bottom of hold : updates: never
-class deferral <<system>> {
-  id : bigint
-  act_id : -> act
-  not_before : datetime
-}
-note bottom of deferral : updates: never
 class act <<other>>
 class task <<other>>
 holding }o--|| task : task
@@ -52,6 +40,4 @@ holding }o--o| act : ended_by_act
 lease }o--|| holding : holding
 lease |o--|| act : act
 receipt }o--|| holding : holding
-hold |o--|| act : act
-deferral |o--|| act : act
 @enduml

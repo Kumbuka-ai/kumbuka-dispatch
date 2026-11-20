@@ -90,8 +90,19 @@ assessment says so.
 - Whether a sent task can be addressed to another role by an act of its own, and until when, is open
   (`../next-wave.md`). In this wave the addressed role changes only in a draft.
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- Three bindings are kept by the service, not the store: the label owner, the criterion's commission,
-  the concerned and bound task's instance. Each is a candidate for a composite key (L4).
-- `delivery` and `instance_return` have the same columns; assessed under L2 (no redundancy).
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+The tables above describe V1 to V3; the model and the diagram carry V4.
+
+- **The commission carries its instance.** With `instance_id`, foreign keys bind the act, the
+  concerned task and the bound task of a commission to one instance; before, the service did.
+- **The addressed role** arrives on the commission, frozen with it.
+- **Kept by the service:** that an outcome belongs to the activity of the task or to the version of
+  the instance, and that a criterion reported belongs to the commission of the delivered task. A key
+  for the second would need the commission on the delivery and on each of its criteria.
+- `delivery` and `instance_return` have the same columns today and stay two tables: the instance
+  return gains the status of the item criteria with the next wave (DEC-0055/C9), and the outcome of
+  one belongs to an activity, of the other to a version.
+- The title of a commission is text of the customer: a system field that never appears in a log
+  line, a metric or a view of the operator.

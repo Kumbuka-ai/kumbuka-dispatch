@@ -38,6 +38,8 @@ enums:
         description: A remark on an act.
       addendum:
         description: An addendum supplementing an earlier text or an answer.
+      instance_input:
+        description: The input text an instance is started with, written by start and never changed (V4).
       instance_return:
         description: The prose of an instance return.
       instance_translation_basis:

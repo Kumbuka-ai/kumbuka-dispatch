@@ -2,7 +2,7 @@ id: https://kumbuka.ai/model/dispatch/holding
 name: dispatch_holding
 title: Dispatch data model - group "holding"
 description: >-
-  Who holds a task and until when, the receipts a holder writes with, and the payloads of the acts that pause or defer a task. Physical level: store line V1 (holding, lease, receipt, hold, deferral).
+  Who holds a task and until when, and the receipts a holder writes with. Physical level: store line V1 (holding, lease, receipt). The reason of a hold and the time of a deferral are columns of the act from V4.
 prefixes:
   linkml: https://w3id.org/linkml/
   kd: https://kumbuka.ai/model/dispatch/
@@ -14,14 +14,6 @@ imports:
   - trace.linkml
 
 
-enums:
-  HoldKind:
-    description: The reasons a hold act gives; a question is asked with ask.
-    permissible_values:
-      dependency:
-        description: It waits on other work.
-      external:
-        description: It waits on something outside the platform.
 classes:
   Holding:
     is_a: TenantScoped
@@ -41,7 +33,8 @@ classes:
         range: Act
         required: true
       ended_by_act:
-        description: 'Projection: the release, defer, delivery or closing act that ended it.'
+        description: 'Projection: the release, defer, delivery or closing act on its task that ended it;
+          set once.'
         in_subset:
         - system
         range: Act
@@ -113,56 +106,4 @@ classes:
     annotations:
       table: receipt
       source: TAR-0004 2.5, 2.8
-      mutable: never
-  Hold:
-    is_a: TenantScoped
-    description: The reason a hold act puts a task on hold for.
-    attributes:
-      act:
-        description: The hold act.
-        in_subset:
-        - system
-        range: Act
-        required: true
-      reason:
-        description: Why the task is held.
-        in_subset:
-        - system
-        range: HoldKind
-        required: true
-    unique_keys:
-      one_per_act:
-        unique_key_slots:
-        - tenant
-        - scope
-        - act
-    annotations:
-      table: hold
-      source: TAR-0004 2.4
-      mutable: never
-  Deferral:
-    is_a: TenantScoped
-    description: The time before which a defer act gives a task back.
-    attributes:
-      act:
-        description: The defer act.
-        in_subset:
-        - system
-        range: Act
-        required: true
-      not_before:
-        description: The time before which the task is not offered again.
-        in_subset:
-        - system
-        range: datetime
-        required: true
-    unique_keys:
-      one_per_act:
-        unique_key_slots:
-        - tenant
-        - scope
-        - act
-    annotations:
-      table: deferral
-      source: TAR-0004 2.5
       mutable: never

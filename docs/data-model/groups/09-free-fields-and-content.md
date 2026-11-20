@@ -63,8 +63,15 @@ Reconstructed for this chapter from the corpus; DEC-0056 records the separation.
 A search index over the free-field documents is a later migration (V2 header). Retention rules for
 content follow the audit concept.
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- The anchor of free fields and content is the act alone; that an instance's free fields hang on its
-  start act is a rule of the service, assessed under F2 (does a reader find them).
-- `content.kind` lists twelve kinds in a check; assessed with `ck_act_kind`.
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+
+- **The input text of an instance.** The content kind `instance_input`, written with the start act
+  and never changed, beside the kind `instance_return` at its end. Whoever starts an instance hands
+  the text in; the service copies it and reads no other service for it. It is read through the read
+  of the instance under the permission to read content. Which activities receive it is a
+  declaration of the next wave.
+- The anchor of free fields and content is the act alone; that the free fields of an instance hang
+  on its start act is a rule of the service.
+- `ck_content_kind` lists the kinds in a check; a new kind widens it.

@@ -20,7 +20,7 @@ note bottom of free_fields : updates: never
 class content <<content>> {
   id : bigint
   act_id : -> act
-  kind : ContentKind, 12 values
+  kind : ContentKind, 13 values
   supplements_content_id : -> content  [0..1]
   supplements_act_id : -> act  [0..1]
   commission_criterion_id : -> commission_criterion  [0..1]

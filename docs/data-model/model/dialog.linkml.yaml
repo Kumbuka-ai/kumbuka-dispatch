@@ -2,7 +2,7 @@ id: https://kumbuka.ai/model/dispatch/dialog
 name: dispatch_dialog
 title: Dispatch data model - group "dialog"
 description: >-
-  The questions an executor asks during a task, their options and their answers; their texts are content. Physical level: store line V1 (question, question_option, answer).
+  The options of the questions an executor asks during a task, and their answers; a question is its ask act, its texts are content. Physical level: store line V1 (question_option, answer); the table question becomes a column of the act with V4.
 prefixes:
   linkml: https://w3id.org/linkml/
   kd: https://kumbuka.ai/model/dispatch/
@@ -15,45 +15,19 @@ imports:
 
 
 classes:
-  Question:
-    is_a: TenantScoped
-    description: A question an ask act puts, and whether an answer may be free text; allowed only when
-      the interaction contract of the activity admits dialog.
-    attributes:
-      act:
-        description: The ask that put it.
-        in_subset:
-        - system
-        range: Act
-        required: true
-      free_text_admitted:
-        description: Whether an answer may be free text rather than an option.
-        in_subset:
-        - system
-        range: boolean
-        required: true
-    unique_keys:
-      one_per_act:
-        unique_key_slots:
-        - tenant
-        - scope
-        - act
-    annotations:
-      table: question
-      source: TAR-0004 2.4
-      mutable: never
   QuestionOption:
     is_a: TenantScoped
     description: An option a question offers, by its label and place.
     attributes:
-      question:
-        description: The question it belongs to.
+      ask_act:
+        description: The ask act whose question offers it (V4; before it the table question).
         in_subset:
         - system
-        range: Question
+        range: Act
         required: true
       label:
-        description: The option, unique in the question.
+        description: 'The option, unique in the question. Text of the customer: never in a log line, a
+          metric or a view of the operator.'
         in_subset:
         - system
         required: true
@@ -68,13 +42,13 @@ classes:
         unique_key_slots:
         - tenant
         - scope
-        - question
+        - ask_act
         - label
       ordinal_per_question:
         unique_key_slots:
         - tenant
         - scope
-        - question
+        - ask_act
         - ordinal
     annotations:
       table: question_option
@@ -91,11 +65,11 @@ classes:
         - system
         range: Act
         required: true
-      question:
-        description: The question answered.
+      ask_act:
+        description: The ask act whose question it answers (V4; before it the table question).
         in_subset:
         - system
-        range: Question
+        range: Act
         required: true
       option:
         description: The option chosen, one of that question's own.
@@ -112,7 +86,7 @@ classes:
         unique_key_slots:
         - tenant
         - scope
-        - question
+        - ask_act
     annotations:
       table: answer
       source: TAR-0004 2.4

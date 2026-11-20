@@ -70,7 +70,16 @@ The kind `item` (V4). The copy of the bracket store writes the item keys of its 
 and the origin, predecessor, follow-up, merge and handover keys as `reference`, on the root task's
 instance only (REA-0010 S4).
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- The owner is a pair of nullable columns with a check; assessed against two tables or a supertype.
-- `tag` references and `definition_tag` (group 1) hold tags in two places for two owners.
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+
+- **The kind `item`** arrives with V4.
+- **The end of a reference is not a projection.** The act that ends a reference carries no payload,
+  so `ended_by_act_id` is the only record of which reference it ended. The column stays updatable by
+  grant; the service sets it only while it is empty, and a test of S5 checks that. Accepted by the
+  operator: an insert-only form would be one more table hanging 0..1 on a row.
+- The owner as a pair of nullable columns with a check is the exclusive arc, the usual remedy for a
+  polymorphic association; it stays.
+- A tag is held in two forms, an identifier at a definition version and a text value here; recorded,
+  unchanged (finding 9).

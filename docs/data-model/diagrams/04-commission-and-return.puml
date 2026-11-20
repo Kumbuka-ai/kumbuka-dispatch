@@ -14,6 +14,7 @@ skinparam class<<other>> {
 class commission <<system>> {
   id : bigint
   act_id : -> act
+  instance_id : -> instance
   title : string
   activity_id : -> activity
   concerns_task_id : -> task  [0..1]
@@ -51,9 +52,11 @@ class instance_return <<system>> {
 note bottom of instance_return : updates: never
 class act <<other>>
 class activity <<other>>
+class instance <<other>>
 class outcome_label <<other>>
 class task <<other>>
 commission |o--|| act : act
+commission }o--|| instance : instance
 commission }o--|| activity : activity
 commission }o--o| task : concerns_task
 commission }o--o| task : bound_task

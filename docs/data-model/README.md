@@ -73,8 +73,10 @@ model; a change to the model regenerates them, never an edit by hand.
 
 As of 2026-11-20 the store line holds V1 to V3 on the integration branch `wave-2` (35 tables). The
 store is not deployed; it is changed freely until the cut-over (REA-0010 step 7), which waits until the
-wave that builds the process rules is built on the same branch. The ten groups of the wave-2 store are
-modelled on the conceptual and logical level and reconcile with the store (`reconcile.py`, four reports:
-`definition_version.seed` and the three attributes `addressed_role`, which arrive with V4). The first assessment against the
-catalogue is `assessments/2026-11-20-assessment.md`; its findings are decided before V4 is written. The
+wave that builds the process rules is built on the same branch.
+
+The first assessment against the catalogue is `assessments/2026-11-20-assessment.md`; what the
+operator decided on it, and therefore what V4 holds, is `assessments/2026-11-20-decisions.md`. The
+model and the diagrams carry V4; the chapters describe V1 to V3 and close with what V4 changes. Until
+V4 is built, `reconcile.py` reports the difference: 17 reports, each a row of the decisions page. The
 target model of the next wave is still to be written.

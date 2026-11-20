@@ -64,9 +64,14 @@ assessment says so.
 Nothing planned; the parking threshold is a value of the tenant rule set (TAR-0004 2.2) and is read,
 not stored here.
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- "One current holding per task" and "the claim acts on this task" are kept by the service alone; the
-  second is a candidate for a composite key over `(task_id, claim_act_id)`.
-- `hold` and `deferral` are 0..1 payloads with one column each; assessed with the other payload
-  tables of group 3.
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+The tables above describe V1 to V3; the model and the diagram carry V4.
+
+- **`hold` and `deferral` go.** The reason of a hold and the time of a deferral are columns of the
+  act from V4 (group 3). This group then holds `holding`, `lease` and `receipt`.
+- **Kept by the service:** that the claim act of a holding acts on the holding's task. A key would
+  need a unique key on `act` over (`task_id`, `id`), a sixth index on the largest table. A test of
+  the holder protocol checks it (worklist://kumbuka/item/1286).
+- "At most one current holding per task" cannot be a key: a lapse is never written (ADR-0002).

@@ -68,9 +68,20 @@ Interventions (rebind, repair, recall by a supervisor) and decision bases of rou
 and payload tables anchored on the act (TAR-0004 2.6, 2.10); the act table itself changes only by its
 kind check.
 
-## Open in the assessment
+## Assessed, and what V4 changes
 
-- The act payload tables (groups 4 to 6) are 0..1 per act and kind; whether a payload per kind or a
-  generic payload is the better cut is assessed against prior art (EventStoreDB, Axon, Temporal,
-  Camunda).
-- `ck_act_kind` lists 26 kinds; each new kind is a migration of a check.
+Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessments/2026-11-20-decisions.md`.
+The tables above describe V1 to V3; the model and the diagram carry V4.
+
+- **Three payloads become columns of the act.** `hold_reason`, `not_before` and `free_text_admitted`
+  replace the tables `hold`, `deferral` and `question`, each of which carried one column. One check
+  each binds the column to the kind of the act, which the tables could not: that a reason stands
+  only on a hold is the store's from V4.
+- **The other payload tables stay** (`commission`, `delivery`, `instance_return`, `answer`,
+  `free_fields`): class table inheritance on the act. They have children or several columns; folded
+  into the act they would make it one table of unrelated nullable columns, and a generic payload
+  column would put verdicts, outcomes and statuses out of reach of foreign keys. Which kind of act
+  such a row may hang on stays the service's.
+- `ck_act_kind` lists 26 kinds; each new kind widens a check and validates it once against every act.
+- `fk_idempotency_key_task` loses its column list, the one construct of the line that PostgreSQL has
+  only had since version 15.

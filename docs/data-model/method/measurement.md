@@ -77,7 +77,8 @@ dataset.
 
 2026-11-20: `catalogue-checks.sql` (P1, P2, L5), `reconcile.py` (R1), `seed-volume.sql`,
 `run-hot-paths.sh` with the files under `hot-paths/`, and `generate-dbml.sh` exist. The first
-assessment is `../assessments/2026-11-20-assessment.md`. `reconcile.py` over all ten groups reports
-only what V4 adds (`definition_version.seed` and the three attributes `addressed_role`). The dataset
+assessment is `../assessments/2026-11-20-assessment.md`. The model carries V4 as decided on 2026-11-20
+(`../assessments/2026-11-20-decisions.md`); `reconcile.py` reports 17 differences against the store
+of V1 to V3, each a change V4 makes. The dataset
 is sized by an estimate of the steering corpus; a count from the production store is still to be
 taken. The write paths are measured with `psql` timing and `pgbench`, not with `EXPLAIN`.
