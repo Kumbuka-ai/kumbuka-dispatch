@@ -25,7 +25,8 @@ key lets a caller repeat a call after a lost answer and receive the same object 
 | The acts of an instance are totally ordered. | `uq_act_instance_sequence`; the sequence, not the time, orders |
 | The object of an act follows its kind: some act on the instance alone, some on a task, some on either. | `ck_act_object` |
 | An act on a task acts on a task of its own instance. | the foreign key over `(instance_id, task_id)` |
-| An act refers only to an earlier act of the same instance, never to itself. | `ck_act_refers_other`; the foreign key over the instance |
+| An act refers only to an act of the same instance, never to itself. | `ck_act_refers_other`; the foreign key over the instance |
+| The act referred to is an earlier one. | the service, which writes acts in the order of their sequence; the store compares no sequences |
 | An authentication level is recorded only for the console path. | `ck_act_authentication_level` |
 | The actor of an act is an opaque subject identifier, never a name or an address, so that the erasure of a person needs no change to an act. | the service; the store holds text and cannot tell |
 | A lapse is never written. | by construction (ADR-0002): a holding without an ending act whose lease has passed ended then |
@@ -85,3 +86,7 @@ The tables above describe V1 to V3; the model and the diagram carry V4.
 - `ck_act_kind` lists 26 kinds; each new kind widens a check and validates it once against every act.
 - `fk_idempotency_key_task` loses its column list, the one construct of the line that PostgreSQL has
   only had since version 15.
+
+## Columns the text above does not name
+
+`act.actor_subject` and `actor_owner_subject`: the opaque identifiers of the delegated identity and of its owner. `idempotency_key.created_at`: the first use of a key, from which its 24 hours run.

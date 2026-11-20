@@ -81,6 +81,9 @@ The tables above describe V1 to V3; the model and the diagram carry V4.
 
 - **The projection of the values in force.** `instance_field_value` holds one row per instance and
   field with the value in force (DEC-0056/C10), written by the service with `start` and `accept`.
+  The row names the written value and the accept that put it in force, so both times are read from
+  it: when the value was written and when it was accepted. Deliveries of one field are ordered by
+  their acceptance (DEC-0056, Consequences): every accept replaces the row.
   A listing by a control field read every value of the field in the scope without it: 692 ms against
   0.06 ms in the assessment. The gate of the next wave reads the same rows. It is a projection like
   the state of a task: updatable by grant, rebuilt from the trace at any time, compared by a test.
@@ -90,3 +93,7 @@ The tables above describe V1 to V3; the model and the diagram carry V4.
   are declared, the types are a closed set, and keys bind type and enumeration.
 - **Kept by the service** (REA-0010 S5): that a field belongs to the version of the act's instance,
   that a value hangs only on a start or a deliver, that a name shadows no system field.
+
+## Columns the text above does not name
+
+`field_value.boolean_value`, `number_value`, `date_value` and `text_value`, beside `choice_value_id`: the typed columns, of which exactly the one `value_type` names is set. `contract_field.required`: whether the contract requires the field.

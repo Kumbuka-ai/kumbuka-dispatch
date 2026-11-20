@@ -108,14 +108,13 @@ Nothing in this direction requires a change to V1 to V4.
 
 Before the build orders of the current wave:
 
-1. The place of `apparatus` in the new store (item 1288): decided, see section 3; the revision of REA-0010
-   and TAR-0004 2.4 is open.
+1. The place of `apparatus` in the new store (item 1288): done. REA-0010 D16 and TAR-0004 2.4 carry the
+   addressed role.
 2. TAR-0004 2.3 brought in line with DEC-0055/C9 (item 1276); item 1273 is answered by the wording of C9
    and can be closed with that note.
 3. The assessment of V1 to V3 against the evaluation catalogue: done, see
    `assessments/2026-11-20-assessment.md` and `assessments/2026-11-20-decisions.md`.
-4. The statement that an actor column holds an opaque identifier: in the model; REA-0010 step 5 should
-   carry it as well.
+4. The statement that an actor column holds an opaque identifier: done, REA-0010 D17.
 
 The inside of the engine, next:
 

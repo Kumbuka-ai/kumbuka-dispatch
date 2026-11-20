@@ -237,6 +237,7 @@ classes:
         - act
         - control_field
     rules:
+    - description: The values of one field through idx_field_value_control_field.
     - description: Exactly one typed value, the one value_type names (ck_field_value_one_value, ck_field_value_typed_value).
     - description: The type is the field's type and the choice is a value of the field's enumeration (composite
         foreign keys).
@@ -266,11 +267,18 @@ classes:
         range: ControlField
         required: true
       field_value:
-        description: The written value that is in force; the trace keeps every earlier one.
+        description: The written value that is in force; the trace keeps every earlier one. Its act says
+          when it was written.
         in_subset:
         - control
         range: FieldValue
         required: true
+      accepted_by_act:
+        description: The accept that put the value in force, empty for a value of the start. Its time
+          says when the value came into force, which may be days after it was written.
+        in_subset:
+        - control
+        range: Act
       boolean_value:
         description: Copy of the value of a boolean.
         in_subset:
@@ -303,6 +311,9 @@ classes:
         - instance
         - control_field
     rules:
+    - description: 'Deliveries of the same field are ordered by their acceptance (DEC-0056, Consequences,
+        on C10): every accept of a delivery that wrote the field replaces the row, also where that delivery
+        was written before the value it replaces. A delivery sent back with rework never reaches the row.'
     - description: Indexes over tenant, scope, control_field and one typed column each for number, date
         and choice, followed by the instance; none for text, whose values may exceed what an index row
         holds, and none for boolean.
@@ -311,5 +322,5 @@ classes:
     annotations:
       table: instance_field_value
       source: DEC-0056/C10, C22, C23; REA-0010
-      mutable: field_value and the typed columns, as projection; written by the service with start and
-        accept
+      mutable: field_value, accepted_by_act and the typed columns, as projection; written by the service
+        with start and accept

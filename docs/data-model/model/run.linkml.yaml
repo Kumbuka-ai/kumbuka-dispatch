@@ -213,6 +213,8 @@ classes:
         - instance
         - sub
     rules:
+    - description: Unique under its instance as well (uq_task_instance_id), the target of the keys that
+        bind a row to a task of one instance.
     - description: hold_reason is set exactly when state is on_hold (ck_task_on_hold_reason).
     - description: resolution is set exactly when state is closed (ck_task_closed_resolved).
     - description: not_before only on an open task (ck_task_not_before_open).

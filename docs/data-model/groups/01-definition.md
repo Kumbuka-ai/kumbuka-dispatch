@@ -39,7 +39,7 @@ recorded for the assessment under F3.
 | An activity takes a bound input exactly when it names the bound activity. | `ck_activity_bound` |
 | An outcome label belongs to exactly one owner: an activity or the version. | `ck_outcome_label_owner`; uniqueness per owner by two partial unique indexes |
 | An authentication level is recorded only for an act on the console path. | `ck_definition_act_authentication_level` |
-| Every row carries tenant and scope; every reference carries them too. | columns, `UNIQUE (tenant_id, scope_id, id)`, foreign keys over tenant and scope, forced row-level security |
+| Every row carries tenant and scope; every reference carries them too. | columns, `UNIQUE (tenant_id, scope_id, id)`, foreign keys over tenant and scope, forced row-level security: the policy of every table admits a row only where its `tenant_id` equals the session setting `app.tenant_id`, which the service sets per request |
 
 ## Questions this group answers
 
@@ -85,3 +85,7 @@ Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessment
   views (finding 9).
 - The label of an outcome is text of the author of the definition: a system field that never appears
   in a log line, a metric or a view of the operator.
+
+## Columns the text above does not name
+
+`definition_version.verdict_required` and `outcome_required`, and `activity.verdict_required`, `outcome_required` and `criteria_required`: what a return must carry, for the version and for one activity. `activity.starts_excluded`: whether the activity is excluded until an include rule includes it. `activity.handbook_address`: the address of its handbook in the documents service, never read by the platform.

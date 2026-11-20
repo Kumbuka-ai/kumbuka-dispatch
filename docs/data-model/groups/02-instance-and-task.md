@@ -23,8 +23,8 @@ those acts, kept so that a read and the gate need not fold the trace on every ca
 | Invariant | Kept by |
 |---|---|
 | A number is unique per selector; a sub-number unique per instance. | `uq_instance_selector_number`, `uq_task_instance_sub`; the counters `selector.next_number` and `instance.next_sub` |
-| An instance never changes selector or number, a task never changes instance or sub-number. | the UPDATE grants name only the projection columns |
-| A closed instance or task carries its resolution, an open one none. | `ck_instance_closed_resolved`, `ck_task_closed_resolved` |
+| An instance never changes selector or number, a task never changes instance or sub-number. | the UPDATE grants name no identity column: on `instance` the counter `next_sub`, the bound version `definition_version_id` and the projections `state` and `resolution`; on `task` the projections `title`, `activity_id`, `concerns_task_id`, `state`, `hold_reason`, `resolution`, `not_before` and `parked` |
+| A closed instance or task carries its resolution, an open one none. The two sets differ: an instance is `concluded` or `withdrawn`, a task `accepted`, `rejected`, `failed` or `withdrawn`. | `ck_instance_closed_resolved`, `ck_task_closed_resolved`; `ck_instance_resolution`, `ck_task_resolution` |
 | A task on hold carries its reason, no other task does. | `ck_task_on_hold_reason` |
 | `not_before` only on an open task; `parked` only on a task held for an external reason. | `ck_task_not_before_open`, `ck_task_parked` |
 | A task concerns another task of the same instance, never itself. | `ck_task_concerns_other`; the foreign key over `(instance_id, concerns_task_id)` |

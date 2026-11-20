@@ -11,6 +11,7 @@ changes in the store line is decided there and built as V4.
 | Store line | `backend/src/main/resources/db/store/` V1 to V3 at `be20877` (branch `wave-2`), 35 tables |
 | Model | `docs/data-model/model/` at `a2fc048`, three definitions added with this assessment (finding 15) |
 | Catalogue and method | `method/evaluation-catalogue.md` and `method/measurement.md` at `a2fc048` |
+| Corpus read against (F1) | `Kumbuka-ai/platform-specs` at `7a1f4c4`: TAR-0004 sections 2.2 to 2.4 and 2.8 and its building blocks B1 to B7 in full; of DEC-0054, DEC-0055 and DEC-0056 the opening of each clause, not its full text; TAR-0002 B17 to B21. TAR-0006 was not read |
 | Database | PostgreSQL 16.15, `shared_buffers` 128 MB, `work_mem` 4 MB, `fsync` and `synchronous_commit` on |
 | Machine | 2 cores, 7 GB memory, a container; times are comparable with each other and with nothing else |
 | Dataset | `scripts/data-model/seed-volume.sql`, deterministic, no seed value: two tenants, three scopes each, per scope 3,000 instances, 36,000 tasks, about 215,000 acts; in all 1.29 million acts, 1.49 million content rows, 2.9 GB |
@@ -146,8 +147,8 @@ For the five others the alternatives were weighed and none is better:
 
 ### 8. The end of a reference stands only in a column that can be overwritten (L5, group 7)
 
-`external_reference.ended_by_act_id` is updatable by grant. The model calls it a projection; it is
-not one. The act that ends a reference (`unrefer`, `untag`) carries no payload, so which reference it
+`external_reference.ended_by_act_id` is updatable by grant. The model called it a projection at the
+commit assessed; it is not one, and the model was corrected with the decisions on this assessment. The act that ends a reference (`unrefer`, `untag`) carries no payload, so which reference it
 ended is recorded in this column and nowhere else. The service sets it once; the store would accept a
 second update, and the trace could not correct it.
 
@@ -172,7 +173,8 @@ for this assessment.
 `task.title`, `commission.title`, `draft.title`, `question_option.label` and `outcome_label.label` are
 written by a commissioner, an asker or an author of a definition and are assigned to the kind
 `system`. L4 holds as worded: each column has exactly one kind. Whether a title may appear where
-system fields appear (a log line, a metric label, an operator's view) is not said in the model.
+system fields appear (a log line, a metric label, an operator's view) was not said in the model at the
+commit assessed; the decisions on this assessment added the rule to the model.
 P2 as measured concerns grants: no role but the service role and the owner of the tables holds any
 privilege on any table, and the owner is subject to the forced policies.
 
@@ -196,9 +198,13 @@ no trigger, no deferrable constraint, no exclusion constraint and no generated c
 | Derived control fields | DEC-0056/C11 | next wave by REA-0010 D14 |
 | `rebind`, `repair` and their payloads | TAR-0004 2.7 | next wave |
 
-Every other requirement of TAR-0004 2.2 to 2.4 and 2.8, of DEC-0055 and of DEC-0056/C1 to C10 and C12
-was traced to a concept; the trace from concept to clause is carried by the model, where every class
-names its source (F4).
+The table is the result of reading the sections of the corpus named under "What was applied" against
+the store and noting each requirement on stored data that found no table or column. It is not a trace
+matrix: no list of every clause with its concept was written, the clauses of DEC-0055 and DEC-0056
+were read by their opening words, and the foreign review of 2026-11-20 found the claim of a complete
+trace unbacked. What holds is the other direction (F4): every class of the model names the clause it
+comes from. A trace matrix from clause to concept is still to be written and is what level 2 of the
+maturity waits for.
 
 ### 13. The values in force of one instance, read from the trace (P4, group 3)
 

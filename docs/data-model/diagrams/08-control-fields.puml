@@ -58,13 +58,14 @@ class instance_field_value <<control>> {
   instance_id : -> instance
   control_field_id : -> control_field
   field_value_id : -> field_value
+  accepted_by_act_id : -> act  [0..1]
   boolean_value : boolean  [0..1]
   number_value : decimal  [0..1]
   date_value : date  [0..1]
   text_value : string  [0..1]
   choice_value_id : -> enumeration_value  [0..1]
 }
-note bottom of instance_field_value : updates: field_value and the typed columns, as projection; written by the service with start and accept
+note bottom of instance_field_value : updates: field_value, accepted_by_act and the typed columns, as projection; written by the service with start and accept
 class act <<other>>
 class activity <<other>>
 class definition_version <<other>>
@@ -83,5 +84,6 @@ field_value }o--o| enumeration_value : choice_value
 instance_field_value }o--|| instance : instance
 instance_field_value }o--|| control_field : control_field
 instance_field_value }o--|| field_value : field_value
+instance_field_value }o--o| act : accepted_by_act
 instance_field_value }o--o| enumeration_value : choice_value
 @enduml

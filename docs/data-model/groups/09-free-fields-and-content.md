@@ -24,7 +24,7 @@ what separates them from control fields (group 8).
 | Invariant | Kept by |
 |---|---|
 | One free-field document per act, and it is a JSON object. | `uq_free_fields_act`, `ck_free_fields_document` |
-| An addendum supplements exactly one earlier text or one answer act; no other kind supplements anything. | `ck_content_supplements`, `ck_content_supplements_other` |
+| An addendum supplements exactly one earlier text or one answer act; no other kind supplements anything. An answer act is supplemented where the answer was given by an option alone and so has no text of its own to hang on. | `ck_content_supplements`, `ck_content_supplements_other` |
 | A criterion text belongs to its commission criterion, evidence to its delivery criterion, and only those kinds carry them. | `ck_content_criterion`, `ck_content_criterion_evidence` |
 | One text per commission criterion and per delivery criterion. | partial unique indexes |
 | Nothing changes once written; a correction is an addendum. | no UPDATE grant |
@@ -75,3 +75,7 @@ Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessment
 - The anchor of free fields and content is the act alone; that the free fields of an instance hang
   on its start act is a rule of the service.
 - `ck_content_kind` lists the kinds in a check; a new kind widens it.
+
+## Columns the text above does not name
+
+`content.media_type` and `content.body`: the format of a text and the text itself; the workspace holds the same pair in `draft_text`. The chapters call the column `ordinal` of a criterion, an option, an outcome label or an enumeration value its place.

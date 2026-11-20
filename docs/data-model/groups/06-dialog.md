@@ -27,7 +27,7 @@ may admit free text; an answer chooses an option, gives free text, or both. Text
 | A label and a place are unique in their question. | `uq_question_option_label`, `uq_question_option_ordinal` |
 | The option chosen is one of that question's own. | the foreign key over `(question_id, option_id)` |
 | Nothing changes once written. | no UPDATE grant |
-| An answer without option carries free text, and only where admitted. | the service; content of kind answer |
+| An answer without option carries free text, and only where admitted. | the service, from `question.free_text_admitted`; content of kind answer |
 | Ask only where the activity's contract admits it. | the service, from `activity.may_ask` |
 
 ## Questions this group answers
@@ -61,5 +61,8 @@ The tables above describe V1 to V3; the model and the diagram carry V4.
 
 - **`question` goes.** A question is its ask act; whether free text is admitted is a column of the
   act (group 3). `question_option` and `answer` reference the ask act through `ask_act_id`.
+- **The option stays bound to its question in the store.** `uq_question_option_question_id` and
+  `fk_answer_question_option` are re-pointed to (`ask_act_id`, `id`) and (`ask_act_id`, `option_id`);
+  the foreign review of 2026-11-20 found that the first list for V4 had left them out.
 - The label of an option is text of the customer: a system field that never appears in a log line,
   a metric or a view of the operator.

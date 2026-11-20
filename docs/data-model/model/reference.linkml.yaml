@@ -73,6 +73,7 @@ classes:
         - system
         range: Act
     rules:
+    - description: Listed by kind and value through idx_external_reference_kind_value.
     - description: Exactly one of instance and task (ck_external_reference_owner).
     - description: trigger, reference and item are held on an instance; curation on a task (ck_external_reference_instance_kinds,
         ck_external_reference_task_kinds).

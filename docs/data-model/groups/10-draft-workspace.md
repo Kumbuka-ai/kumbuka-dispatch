@@ -27,7 +27,7 @@ act, and empties the workspace (TAR-0004 2.4).
 | One draft per task, one free-field document per draft. | `uq_draft_task`, `uq_draft_free_fields_draft` |
 | A criterion identifier is unique in its draft. | `uq_draft_criterion_identifier` |
 | One commission text per draft, one text per criterion; a criterion text hangs on a criterion of the same draft. | partial unique indexes; the foreign key over `(draft_id, draft_criterion_id)` |
-| Only the work-in-progress columns change. | UPDATE grants on the columns named in the model; DELETE granted on every table |
+| Only the work-in-progress columns change. | UPDATE grants on `draft` (`title`, `activity_id`, `concerns_task_id`, `bound_task_id`), `draft_criterion` (`identifier`, `ordinal`), `draft_free_fields` (`document`) and `draft_text` (`media_type`, `body`); DELETE granted on every table |
 | A draft row hangs only on a task in draft or recalled. | the service; without triggers the store cannot |
 | Sending empties the workspace, children first. | the service; no foreign key deletes along |
 
@@ -69,3 +69,7 @@ Assessment: `../assessments/2026-11-20-assessment.md`; decisions: `../assessment
   under L2.
 - `draft_free_fields` is also where the free metadata of a copied bracket-store draft lands
   (REA-0010 S4).
+
+## Columns the text above does not name
+
+`draft.bound_task_id`: the task whose return the draft will be bound to.

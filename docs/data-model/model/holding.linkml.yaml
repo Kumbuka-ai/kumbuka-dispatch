@@ -44,6 +44,10 @@ classes:
         - tenant
         - scope
         - claim_act
+    rules:
+    - description: The holdings of one task through idx_holding_task.
+    - description: 'Not checked by the store: that claim_act acts on the task held, and that a task has
+        at most one holding without an end that has not lapsed (service; a lapse is never written).'
     annotations:
       table: holding
       source: TAR-0004 2.5, 2.8

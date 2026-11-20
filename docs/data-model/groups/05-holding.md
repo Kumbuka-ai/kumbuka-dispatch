@@ -75,3 +75,7 @@ The tables above describe V1 to V3; the model and the diagram carry V4.
   need a unique key on `act` over (`task_id`, `id`), a sixth index on the largest table. A test of
   the holder protocol checks it (worklist://kumbuka/item/1286).
 - "At most one current holding per task" cannot be a key: a lapse is never written (ADR-0002).
+
+## Columns the text above does not name
+
+`receipt.issued_at`: when a receipt was issued. The table holds the hash of a receipt and never the receipt.

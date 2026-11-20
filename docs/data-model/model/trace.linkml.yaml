@@ -177,6 +177,13 @@ classes:
         - instance
         - sequence
     rules:
+    - description: to_state is one of the states of an instance or a task (ck_act_to_state).
+    - description: Unique under its instance as well (uq_act_instance_id), the target of the keys that
+        bind a row to an act of one instance.
+    - description: The acts of one task in order through idx_act_task_sequence.
+    - description: 'Not checked by the store: that refers_to_act names an earlier act; the store binds
+        it to the same instance and refuses a reference to itself, the service writes acts in the order
+        of their sequence.'
     - description: 'The object follows the kind: start, conclude, refer, unrefer and import act on the
         instance alone; withdraw, tag and untag on either; every other kind on a task (ck_act_object).'
     - description: authentication_level only on the console path (ck_act_authentication_level).
@@ -230,6 +237,9 @@ classes:
         - caller_subject
         - idempotency_key
     rules:
+    - description: The key to the task empties the task column when the draft is deleted; V4 writes that
+        foreign key without a column list, so that the clause is one PostgreSQL has had before version
+        15.
     - description: At most one of task and act (ck_idempotency_key_one_target).
     annotations:
       table: idempotency_key

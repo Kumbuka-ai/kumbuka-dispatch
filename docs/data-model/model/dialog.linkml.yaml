@@ -50,6 +50,15 @@ classes:
         - scope
         - ask_act
         - ordinal
+      option_of_question:
+        unique_key_slots:
+        - tenant
+        - scope
+        - ask_act
+        - id
+    rules:
+    - description: The unique key over (ask_act, id) is the target of the answer's key over (ask_act,
+        option); before V4 it stood over (question_id, id) as uq_question_option_question_id.
     annotations:
       table: question_option
       source: TAR-0004 2.4
@@ -87,6 +96,10 @@ classes:
         - tenant
         - scope
         - ask_act
+    rules:
+    - description: 'The option chosen is one of that question''s own: a foreign key over (ask_act, option)
+        into the options of the same ask act; before V4 fk_answer_question_option over (question_id, option_id).
+        V4 keeps this binding in the store.'
     annotations:
       table: answer
       source: TAR-0004 2.4
