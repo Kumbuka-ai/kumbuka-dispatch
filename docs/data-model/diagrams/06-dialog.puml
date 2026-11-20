@@ -1,0 +1,40 @@
+@startuml 06-dialog
+' 06-dialog (docs/data-model/groups/06-dialog.md), generated from model/dialog.linkml.yaml.
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below. Tables of other groups are drawn grey.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+skinparam class<<other>> {
+  BackgroundColor #EEEEEE
+  BorderColor #999999
+}
+class question <<system>> {
+  id : bigint
+  act_id : -> act
+  free_text_admitted : boolean
+}
+note bottom of question : updates: never
+class question_option <<system>> {
+  id : bigint
+  question_id : -> question
+  label : string
+  ordinal : integer
+}
+note bottom of question_option : updates: never
+class answer <<system>> {
+  id : bigint
+  act_id : -> act
+  question_id : -> question
+  option_id : -> question_option  [0..1]
+}
+note bottom of answer : updates: never
+class act <<other>>
+question |o--|| act : act
+question_option }o--|| question : question
+answer |o--|| act : act
+answer |o--|| question : question
+answer }o--o| question_option : option
+@enduml

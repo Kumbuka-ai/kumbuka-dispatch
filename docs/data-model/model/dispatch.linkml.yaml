@@ -14,3 +14,12 @@ imports:
   - linkml:types
   - core.linkml
   - definition.linkml
+  - run.linkml
+  - trace.linkml
+  - work.linkml
+  - holding.linkml
+  - dialog.linkml
+  - reference.linkml
+  - control.linkml
+  - payload.linkml
+  - draft.linkml

@@ -48,11 +48,31 @@ conceptual and logical levels, and the check that the three agree, are built up 
 | `groups/` | one chapter per group of tables: purpose, invariants, questions answered, cut, rejected alternative |
 | `diagrams/` | one diagram per group and an overview |
 | `assessments/` | dated results of an assessment, each grade with its evidence |
-| `../../scripts/data-model/` | catalogue checks, reconciliation, the DBML view |
+
+## Groups
+
+| Group | Chapter | Model | Tables |
+|---|---|---|---|
+| 1 definition | `groups/01-definition.md` | `model/definition.linkml.yaml` | selector, definition_version, definition_act, definition_tag, activity, outcome_label |
+| 2 instance and task | `groups/02-instance-and-task.md` | `model/run.linkml.yaml` | instance, task |
+| 3 trace | `groups/03-trace.md` | `model/trace.linkml.yaml` | act, idempotency_key |
+| 4 commission and return | `groups/04-commission-and-return.md` | `model/work.linkml.yaml` | commission, commission_criterion, delivery, delivery_criterion, instance_return |
+| 5 holding | `groups/05-holding.md` | `model/holding.linkml.yaml` | holding, lease, receipt, hold, deferral |
+| 6 dialog | `groups/06-dialog.md` | `model/dialog.linkml.yaml` | question, question_option, answer |
+| 7 references | `groups/07-references.md` | `model/reference.linkml.yaml` | external_reference |
+| 8 control fields | `groups/08-control-fields.md` | `model/control.linkml.yaml` | enumeration, enumeration_value, control_field, contract_field, field_value |
+| 9 free fields and content | `groups/09-free-fields-and-content.md` | `model/payload.linkml.yaml` | free_fields, content |
+| 10 draft workspace | `groups/10-draft-workspace.md` | `model/draft.linkml.yaml` | draft, draft_criterion, draft_free_fields, draft_text |
+
+The diagram of each group is `diagrams/<chapter name>.puml`. Diagrams 02 to 10 are generated from the
+model; a change to the model regenerates them, never an edit by hand.
+| `../../scripts/data-model/` | catalogue checks, reconciliation, the DBML view, the group diagrams |
 
 ## State
 
 As of 2026-11-20 the store line holds V1 to V3 on the integration branch `wave-2` (35 tables). The
 store is not deployed; it is changed freely until the cut-over (REA-0010 step 7), which waits until the
-wave that builds the process rules is built on the same branch. The maturity of the model is level 0:
-the physical level exists, the other two are being written.
+wave that builds the process rules is built on the same branch. The ten groups of the wave-2 store are
+modelled on the conceptual and logical level and reconcile with the store (`reconcile.py`, one report:
+`definition_version.seed`, which arrives with V4). The target model of the next wave is still to be
+written; the maturity is assessed after it.

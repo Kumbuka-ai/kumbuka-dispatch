@@ -1,0 +1,55 @@
+@startuml 10-draft-workspace
+' 10-draft-workspace (docs/data-model/groups/10-draft-workspace.md), generated from model/draft.linkml.yaml.
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below. Tables of other groups are drawn grey.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+skinparam class<<other>> {
+  BackgroundColor #EEEEEE
+  BorderColor #999999
+}
+class draft <<system>> {
+  id : bigint
+  task_id : -> task
+  title : string  [0..1]
+  activity_id : -> activity  [0..1]
+  concerns_task_id : -> task  [0..1]
+  bound_task_id : -> task  [0..1]
+}
+note bottom of draft : updates: title, activity, concerns_task, bound_task; DELETE
+class draft_criterion <<system>> {
+  id : bigint
+  draft_id : -> draft
+  identifier : string
+  ordinal : integer
+}
+note bottom of draft_criterion : updates: identifier, ordinal; DELETE
+class draft_free_fields <<free>> {
+  id : bigint
+  draft_id : -> draft
+  document : string
+}
+note bottom of draft_free_fields : updates: document; DELETE
+class draft_text <<content>> {
+  id : bigint
+  draft_id : -> draft
+  kind : commission | criterion
+  draft_criterion_id : -> draft_criterion  [0..1]
+  media_type : string
+  body : string
+}
+note bottom of draft_text : updates: media_type, body; DELETE
+class activity <<other>>
+class task <<other>>
+draft |o--|| task : task
+draft }o--o| activity : activity
+draft }o--o| task : concerns_task
+draft }o--o| task : bound_task
+draft_criterion }o--|| draft : draft
+draft_free_fields |o--|| draft : draft
+draft_text }o--|| draft : draft
+draft_text }o--o| draft_criterion : draft_criterion
+@enduml

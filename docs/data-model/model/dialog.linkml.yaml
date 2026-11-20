@@ -1,0 +1,119 @@
+id: https://kumbuka.ai/model/dispatch/dialog
+name: dispatch_dialog
+title: Dispatch data model - group "dialog"
+description: >-
+  The questions an executor asks during a task, their options and their answers; their texts are content. Physical level: store line V1 (question, question_option, answer).
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - trace.linkml
+
+
+classes:
+  Question:
+    is_a: TenantScoped
+    description: A question an ask act puts, and whether an answer may be free text; allowed only when
+      the interaction contract of the activity admits dialog.
+    attributes:
+      act:
+        description: The ask that put it.
+        in_subset:
+        - system
+        range: Act
+        required: true
+      free_text_admitted:
+        description: Whether an answer may be free text rather than an option.
+        in_subset:
+        - system
+        range: boolean
+        required: true
+    unique_keys:
+      one_per_act:
+        unique_key_slots:
+        - tenant
+        - scope
+        - act
+    annotations:
+      table: question
+      source: TAR-0004 2.4
+      mutable: never
+  QuestionOption:
+    is_a: TenantScoped
+    description: An option a question offers, by its label and place.
+    attributes:
+      question:
+        description: The question it belongs to.
+        in_subset:
+        - system
+        range: Question
+        required: true
+      label:
+        description: The option, unique in the question.
+        in_subset:
+        - system
+        required: true
+      ordinal:
+        description: Its place, unique in the question.
+        in_subset:
+        - system
+        range: integer
+        required: true
+    unique_keys:
+      label_per_question:
+        unique_key_slots:
+        - tenant
+        - scope
+        - question
+        - label
+      ordinal_per_question:
+        unique_key_slots:
+        - tenant
+        - scope
+        - question
+        - ordinal
+    annotations:
+      table: question_option
+      source: TAR-0004 2.4
+      mutable: never
+  Answer:
+    is_a: TenantScoped
+    description: 'The answer an answer act gives to a question: at most one per question, with the option
+      chosen where one was; free text is content.'
+    attributes:
+      act:
+        description: The answer act.
+        in_subset:
+        - system
+        range: Act
+        required: true
+      question:
+        description: The question answered.
+        in_subset:
+        - system
+        range: Question
+        required: true
+      option:
+        description: The option chosen, one of that question's own.
+        in_subset:
+        - system
+        range: QuestionOption
+    unique_keys:
+      one_per_act:
+        unique_key_slots:
+        - tenant
+        - scope
+        - act
+      one_per_question:
+        unique_key_slots:
+        - tenant
+        - scope
+        - question
+    annotations:
+      table: answer
+      source: TAR-0004 2.4
+      mutable: never

@@ -17,8 +17,9 @@ classes:
   Selector:
     is_a: TenantScoped
     description: >-
-      A kind of instance a scope declares (sprint, satellite, orga), under which its instances are
-      numbered. The address of an instance is scope, selector and number.
+      The selector segment of the address dispatch://<scope>/<selector>/<number>, for example sprint
+      in dispatch://kumbuka/sprint/215: a kind of instance a scope declares, under which its
+      instances are numbered. Not the object kinds the worklist service calls selectors.
     attributes:
       name:
         required: true

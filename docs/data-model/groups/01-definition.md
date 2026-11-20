@@ -15,12 +15,17 @@ concept), so that the rules an instance ran under can always be read again.
 
 | Concept | Table | In one sentence |
 |---|---|---|
-| Selector | `selector` | A kind of instance of a scope (sprint, satellite, orga); it numbers its instances. |
+| Selector | `selector` | The selector segment of the address `dispatch://<scope>/<selector>/<number>` (`sprint` in `dispatch://kumbuka/sprint/215`): a kind of instance of a scope that numbers its instances. |
 | Definition version | `definition_version` | One numbered version of the process a selector declares. |
 | Definition act | `definition_act` | `define` or `activate` of a version, with who did it, how and when: the trace of the definition. |
 | Definition tag | `definition_tag` | A tag of the platform catalogue the version carries, held as a value. |
 | Activity | `activity` | A kind of work the version declares, with what its tasks require and take as input. |
 | Outcome label | `outcome_label` | One value of the closed set of outcomes, either of an activity's tasks or of the version's instances. |
+
+The table `selector` holds exactly the selector of the address, nothing more general: one row per
+selector segment a scope uses, with its counter. The worklist service uses the same word for its
+object kinds (`item`, `iteration`, `milestone`), which are not instance kinds; the shared word is
+recorded for the assessment under F3.
 
 ## Invariants and what keeps them
 

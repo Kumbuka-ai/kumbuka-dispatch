@@ -1,0 +1,70 @@
+@startuml 08-control-fields
+' 08-control-fields (docs/data-model/groups/08-control-fields.md), generated from model/control.linkml.yaml.
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below. Tables of other groups are drawn grey.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+skinparam class<<other>> {
+  BackgroundColor #EEEEEE
+  BorderColor #999999
+}
+class enumeration <<control>> {
+  id : bigint
+  definition_version_id : -> definition_version
+  name : string
+}
+note bottom of enumeration : updates: never
+class enumeration_value <<control>> {
+  id : bigint
+  enumeration_id : -> enumeration
+  value : string
+  ordinal : integer
+}
+note bottom of enumeration_value : updates: never
+class control_field <<control>> {
+  id : bigint
+  definition_version_id : -> definition_version
+  name : string
+  type : boolean | number | date | text | choice
+  enumeration_id : -> enumeration  [0..1]
+}
+note bottom of control_field : updates: never
+class contract_field <<control>> {
+  id : bigint
+  definition_version_id : -> definition_version
+  activity_id : -> activity  [0..1]
+  control_field_id : -> control_field
+  required : boolean
+}
+note bottom of contract_field : updates: never
+class field_value <<control>> {
+  id : bigint
+  act_id : -> act
+  control_field_id : -> control_field
+  value_type : boolean | number | date | text | choice
+  enumeration_id : -> enumeration  [0..1]
+  boolean_value : boolean  [0..1]
+  number_value : decimal  [0..1]
+  date_value : date  [0..1]
+  text_value : string  [0..1]
+  choice_value_id : -> enumeration_value  [0..1]
+}
+note bottom of field_value : updates: never
+class act <<other>>
+class activity <<other>>
+class definition_version <<other>>
+enumeration }o--|| definition_version : definition_version
+enumeration_value }o--|| enumeration : enumeration
+control_field }o--|| definition_version : definition_version
+control_field }o--o| enumeration : enumeration
+contract_field }o--|| definition_version : definition_version
+contract_field }o--o| activity : activity
+contract_field }o--|| control_field : control_field
+field_value }o--|| act : act
+field_value }o--|| control_field : control_field
+field_value }o--o| enumeration : enumeration
+field_value }o--o| enumeration_value : choice_value
+@enduml

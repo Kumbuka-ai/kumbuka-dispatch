@@ -1,0 +1,41 @@
+@startuml 09-free-fields-and-content
+' 09-free-fields-and-content (docs/data-model/groups/09-free-fields-and-content.md), generated from model/payload.linkml.yaml.
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below. Tables of other groups are drawn grey.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+skinparam class<<other>> {
+  BackgroundColor #EEEEEE
+  BorderColor #999999
+}
+class free_fields <<free>> {
+  id : bigint
+  act_id : -> act
+  document : string
+}
+note bottom of free_fields : updates: never
+class content <<content>> {
+  id : bigint
+  act_id : -> act
+  kind : ContentKind (12 values)
+  supplements_content_id : -> content  [0..1]
+  supplements_act_id : -> act  [0..1]
+  commission_criterion_id : -> commission_criterion  [0..1]
+  delivery_criterion_id : -> delivery_criterion  [0..1]
+  media_type : string
+  body : string
+}
+note bottom of content : updates: never
+class act <<other>>
+class commission_criterion <<other>>
+class delivery_criterion <<other>>
+free_fields |o--|| act : act
+content }o--|| act : act
+content }o--o| content : supplements_content
+content }o--o| act : supplements_act
+content }o--o| commission_criterion : commission_criterion
+content }o--o| delivery_criterion : delivery_criterion
+@enduml

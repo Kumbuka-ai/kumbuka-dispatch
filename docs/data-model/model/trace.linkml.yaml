@@ -1,0 +1,206 @@
+id: https://kumbuka.ai/model/dispatch/trace
+name: dispatch_trace
+title: Dispatch data model - group "trace"
+description: >-
+  The acts on an instance and its tasks, in order: the trace every projection folds, and the idempotency keys that answer a repeated call. Physical level: store line V1 (act, idempotency_key).
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - run.linkml
+
+
+enums:
+  ActKind:
+    description: The kinds of act on an instance or a task (TAR-0004 2.5, REA-0010 catalogue).
+    permissible_values:
+      start:
+        description: Starts an instance.
+      send:
+        description: 'Sends a task: draft or recalled to open; writes its commission.'
+      recall:
+        description: Takes a sent, unclaimed task back to recalled (intervention).
+      claim:
+        description: Takes up an open task; opens a holding.
+      renew:
+        description: Extends the lease of a holding.
+      release:
+        description: Gives a held task back to open.
+      defer:
+        description: Gives a held task back until a time.
+      ask:
+        description: Puts a task on hold with a question.
+      answer:
+        description: Answers a question; resumes the task.
+      hold:
+        description: Puts a task on hold for a dependency or an external cause.
+      resume:
+        description: Ends a hold.
+      deliver:
+        description: Delivers a return.
+      rework:
+        description: Sends a delivery back to its holder.
+      accept:
+        description: Accepts a delivery; closes the task.
+      reject:
+        description: Declines a commission; closes the task.
+      fail:
+        description: Closes a held task as failed.
+      withdraw:
+        description: Withdraws a task or an instance.
+      conclude:
+        description: Closes an instance with its return.
+      annotate:
+        description: Adds an addendum to a text.
+      tag:
+        description: Sets a tag.
+      untag:
+        description: Ends a tag.
+      refer:
+        description: Sets a reference of an instance.
+      unrefer:
+        description: Ends a reference of an instance.
+      relate:
+        description: Relates a closed task to an object outside the service (curation).
+      unrelate:
+        description: Ends such a relation.
+      import:
+        description: Starts the trace of an instance copied from the bracket store; its actor is the person
+          who ran the copy.
+classes:
+  Act:
+    is_a: TenantScoped
+    description: 'One act of an identity on an instance or one of its tasks: who acted (delegated identity
+      and owner), under which permission, by which path, when, and the state it led to. The ordered acts
+      of an instance are its trace; every state is a fold over them. A lapse is not an act and is never
+      written.'
+    attributes:
+      instance:
+        description: The instance whose trace it belongs to.
+        in_subset:
+        - system
+        range: Instance
+        required: true
+      sequence:
+        description: Its position in the trace of the instance; the sequence orders the acts, not the
+          time.
+        in_subset:
+        - system
+        range: integer
+        required: true
+        minimum_value: 1
+      task:
+        description: The task it acts on, of the same instance; empty for an act on the instance alone.
+        in_subset:
+        - system
+        range: Task
+      kind:
+        description: What the act did.
+        in_subset:
+        - system
+        range: ActKind
+        required: true
+      actor_subject:
+        description: The delegated identity that acted, or the base identity on the console.
+        in_subset:
+        - system
+        required: true
+      actor_owner_subject:
+        description: The owner behind the delegated identity; persons are compared by owner.
+        in_subset:
+        - system
+      permission:
+        description: The permission the act was admitted under; empty for an imported act.
+        in_subset:
+        - system
+      path:
+        description: The way the act came by; empty for an imported act.
+        in_subset:
+        - system
+        range: Path
+      authentication_level:
+        description: The authentication level of the session, only on the console path.
+        in_subset:
+        - system
+      at:
+        description: When the act was written, with time zone.
+        in_subset:
+        - system
+        range: datetime
+        required: true
+      to_state:
+        description: The state of the task, or of the instance for an act on it alone, after the act.
+        in_subset:
+        - system
+        required: true
+      refers_to_act:
+        description: An earlier act of the same instance this act refers to, such as the delivery a rework
+          answers.
+        in_subset:
+        - system
+        range: Act
+    unique_keys:
+      sequence_per_instance:
+        unique_key_slots:
+        - tenant
+        - scope
+        - instance
+        - sequence
+    rules:
+    - description: 'The object follows the kind: start, conclude, refer, unrefer and import act on the
+        instance alone; withdraw, tag and untag on either; every other kind on a task (ck_act_object).'
+    - description: authentication_level only on the console path (ck_act_authentication_level).
+    - description: An act does not refer to itself; the act referred to belongs to the same instance (ck_act_refers_other,
+        fk_act_act_refers).
+    annotations:
+      table: act
+      source: TAR-0004 B5, 2.5; ADR-0002
+      mutable: never (no UPDATE grant)
+  IdempotencyKey:
+    is_a: TenantScoped
+    description: 'The first answer to a caller''s idempotency key: the task a create made or the act a
+      call wrote. A repeated call with the same key answers the same object.'
+    attributes:
+      caller_subject:
+        description: The identity that sent the key.
+        in_subset:
+        - system
+        required: true
+      idempotency_key:
+        description: The key of the caller.
+        in_subset:
+        - system
+        required: true
+      task:
+        description: The task the first call created; empty once that draft was deleted.
+        in_subset:
+        - system
+        range: Task
+      act:
+        description: The act the first call wrote.
+        in_subset:
+        - system
+        range: Act
+      created_at:
+        description: When the key was first seen.
+        in_subset:
+        - system
+        range: datetime
+        required: true
+    unique_keys:
+      key_per_caller:
+        unique_key_slots:
+        - tenant
+        - scope
+        - caller_subject
+        - idempotency_key
+    rules:
+    - description: At most one of task and act (ck_idempotency_key_one_target).
+    annotations:
+      table: idempotency_key
+      source: TAR-0004 2.5
+      mutable: never (no UPDATE grant); task set to empty when the draft it created is deleted

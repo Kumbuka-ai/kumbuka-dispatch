@@ -1,0 +1,207 @@
+id: https://kumbuka.ai/model/dispatch/work
+name: dispatch_work
+title: Dispatch data model - group "commission and return"
+description: >-
+  What a task is commissioned with and what it returns, and the return of an instance: each written once by the act that carries it. Physical level: store line V1 (commission, commission_criterion, delivery, delivery_criterion, instance_return).
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - trace.linkml
+
+
+enums:
+  Verdict:
+    description: The verdict of a return (TAR-0004 2.4).
+    permissible_values:
+      green:
+        description: The work is done as commissioned.
+      red:
+        description: The work is not done as commissioned.
+      question:
+        description: The executor cannot decide without an answer.
+  CriterionStatus:
+    description: The status a return reports for a criterion (TAR-0004 2.4, DEC-0055/C9).
+    permissible_values:
+      met:
+        description: The criterion is met.
+      not_met:
+        description: The criterion is not met.
+      not_applicable:
+        description: The criterion does not apply to this work.
+classes:
+  Commission:
+    is_a: TenantScoped
+    description: 'The commission a send gives a task: title, activity, the task it concerns and the task
+      whose return it is bound to. Written at send and never changed; its text is content.'
+    attributes:
+      act:
+        description: The send that wrote it.
+        in_subset:
+        - system
+        range: Act
+        required: true
+      title:
+        description: The title of the work.
+        in_subset:
+        - system
+        required: true
+      activity:
+        description: The activity the task executes.
+        in_subset:
+        - system
+        range: Activity
+        required: true
+      concerns_task:
+        description: The task it concerns, at most one.
+        in_subset:
+        - system
+        range: Task
+      bound_task:
+        description: The task whose return it takes as bound input.
+        in_subset:
+        - system
+        range: Task
+    unique_keys:
+      one_per_act:
+        unique_key_slots:
+        - tenant
+        - scope
+        - act
+    annotations:
+      table: commission
+      source: TAR-0004 2.4
+      mutable: never (no UPDATE grant)
+  CommissionCriterion:
+    is_a: TenantScoped
+    description: An acceptance criterion of a commission, by its identifier and place; its text is content.
+    attributes:
+      commission:
+        description: The commission it belongs to.
+        in_subset:
+        - system
+        range: Commission
+        required: true
+      identifier:
+        description: Its identifier, unique in the commission; for an instance started for an item, the
+          identifier the worklist gave.
+        in_subset:
+        - system
+        required: true
+      ordinal:
+        description: Its place in the list.
+        in_subset:
+        - system
+        range: integer
+        required: true
+    unique_keys:
+      identifier_per_commission:
+        unique_key_slots:
+        - tenant
+        - scope
+        - commission
+        - identifier
+    annotations:
+      table: commission_criterion
+      source: TAR-0004 2.4, DEC-0055/C9
+      mutable: never
+  Delivery:
+    is_a: TenantScoped
+    description: 'The return a deliver makes on a task: verdict and outcome where the result contract
+      asks for them; its prose and translation basis are content, its field values control fields, its
+      free fields free.'
+    attributes:
+      act:
+        description: The deliver that wrote it.
+        in_subset:
+        - system
+        range: Act
+        required: true
+      verdict:
+        description: The verdict, where given.
+        in_subset:
+        - system
+        range: Verdict
+      outcome_label:
+        description: The outcome, one of the closed set of the activity.
+        in_subset:
+        - system
+        range: OutcomeLabel
+    unique_keys:
+      one_per_act:
+        unique_key_slots:
+        - tenant
+        - scope
+        - act
+    annotations:
+      table: delivery
+      source: TAR-0004 2.4
+      mutable: never
+  DeliveryCriterion:
+    is_a: TenantScoped
+    description: The status a delivery reports for one criterion of its commission; its evidence is content.
+    attributes:
+      delivery:
+        description: The delivery it belongs to.
+        in_subset:
+        - system
+        range: Delivery
+        required: true
+      commission_criterion:
+        description: The criterion it reports on.
+        in_subset:
+        - system
+        range: CommissionCriterion
+        required: true
+      status:
+        description: The status reported.
+        in_subset:
+        - system
+        range: CriterionStatus
+        required: true
+    unique_keys:
+      one_per_criterion:
+        unique_key_slots:
+        - tenant
+        - scope
+        - delivery
+        - commission_criterion
+    annotations:
+      table: delivery_criterion
+      source: TAR-0004 2.4
+      mutable: never
+  InstanceReturn:
+    is_a: TenantScoped
+    description: The return an instance closes with, written by conclude or withdraw, in the shape of
+      a task return.
+    attributes:
+      act:
+        description: The conclude or withdraw that wrote it.
+        in_subset:
+        - system
+        range: Act
+        required: true
+      verdict:
+        description: The verdict, where given.
+        in_subset:
+        - system
+        range: Verdict
+      outcome_label:
+        description: The outcome, one of the closed set of the version.
+        in_subset:
+        - system
+        range: OutcomeLabel
+    unique_keys:
+      one_per_act:
+        unique_key_slots:
+        - tenant
+        - scope
+        - act
+    annotations:
+      table: instance_return
+      source: TAR-0004 2.3
+      mutable: never

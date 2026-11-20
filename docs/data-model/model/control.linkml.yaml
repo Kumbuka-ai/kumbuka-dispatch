@@ -1,0 +1,247 @@
+id: https://kumbuka.ai/model/dispatch/control
+name: dispatch_control
+title: Dispatch data model - group "control fields"
+description: >-
+  The control fields a definition version declares, the contracts that name them, and the values acts write for them; the only data rules evaluate (DEC-0056). Physical level: store line V3.
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - trace.linkml
+
+
+enums:
+  FieldType:
+    description: The types of the platform's field catalogue (DEC-0056).
+    permissible_values:
+      boolean:
+        description: True or false.
+      number:
+        description: A decimal number.
+      date:
+        description: A calendar date.
+      text:
+        description: A text of at most 4096 characters.
+      choice:
+        description: One value of a named enumeration of the same version.
+classes:
+  Enumeration:
+    is_a: TenantScoped
+    description: A named list of values a definition version declares for its choice fields; several fields
+      may share it.
+    attributes:
+      definition_version:
+        description: The version that declares it.
+        in_subset:
+        - control
+        range: DefinitionVersion
+        required: true
+      name:
+        description: Its name, unique in the version.
+        in_subset:
+        - control
+        required: true
+        pattern: ^[a-z][a-z0-9_]{0,62}$
+    unique_keys:
+      name_per_version:
+        unique_key_slots:
+        - tenant
+        - scope
+        - definition_version
+        - name
+    annotations:
+      table: enumeration
+      source: DEC-0056
+      mutable: never
+  EnumerationValue:
+    is_a: TenantScoped
+    description: One value of an enumeration, by its text and its place.
+    attributes:
+      enumeration:
+        description: The enumeration it belongs to.
+        in_subset:
+        - control
+        range: Enumeration
+        required: true
+      value:
+        description: The value, 1 to 200 characters, unique in the enumeration.
+        in_subset:
+        - control
+        required: true
+      ordinal:
+        description: Its place, unique in the enumeration.
+        in_subset:
+        - control
+        range: integer
+        required: true
+        minimum_value: 1
+    unique_keys:
+      value_per_enumeration:
+        unique_key_slots:
+        - tenant
+        - scope
+        - enumeration
+        - value
+      ordinal_per_enumeration:
+        unique_key_slots:
+        - tenant
+        - scope
+        - enumeration
+        - ordinal
+    annotations:
+      table: enumeration_value
+      source: DEC-0056
+      mutable: never
+  ControlField:
+    is_a: TenantScoped
+    description: A control field the schema of a definition version declares, with its name, its type
+      and, for a choice, its enumeration of the same version.
+    attributes:
+      definition_version:
+        description: The version that declares it.
+        in_subset:
+        - control
+        range: DefinitionVersion
+        required: true
+      name:
+        description: Its name, unique in the version; later an identifier in expressions.
+        in_subset:
+        - control
+        required: true
+        pattern: ^[a-z][a-z0-9_]{0,62}$
+      type:
+        description: Its type.
+        in_subset:
+        - control
+        range: FieldType
+        required: true
+      enumeration:
+        description: Its enumeration; set exactly for a choice.
+        in_subset:
+        - control
+        range: Enumeration
+    unique_keys:
+      name_per_version:
+        unique_key_slots:
+        - tenant
+        - scope
+        - definition_version
+        - name
+    rules:
+    - description: enumeration is set exactly when type is choice (ck_control_field_enumeration).
+    - description: The enumeration belongs to the same version (fk over definition_version_id).
+    - description: 'Not checked by the store: that the name does not shadow a system field (service, REA-0010
+        S5).'
+    annotations:
+      table: control_field
+      source: DEC-0056
+      mutable: never
+  ContractField:
+    is_a: TenantScoped
+    description: 'A control field a contract names: with an activity, the result contract of that activity;
+      without, the start contract of the version.'
+    attributes:
+      definition_version:
+        description: The version of the contract.
+        in_subset:
+        - control
+        range: DefinitionVersion
+        required: true
+      activity:
+        description: The activity whose result contract it belongs to; empty for the start contract.
+        in_subset:
+        - control
+        range: Activity
+      control_field:
+        description: The field named.
+        in_subset:
+        - control
+        range: ControlField
+        required: true
+      required:
+        description: Whether the contract requires a value.
+        in_subset:
+        - control
+        range: boolean
+        required: true
+    rules:
+    - description: A field at most once per result contract and once per start contract (partial unique
+        indexes).
+    - description: Activity and field belong to the same version (fk over definition_version_id).
+    annotations:
+      table: contract_field
+      source: DEC-0056, TAR-0004 2.4
+      mutable: never
+  FieldValue:
+    is_a: TenantScoped
+    description: The value one act writes for one control field, in exactly the typed column of its type.
+      A later act writes a new value; the current value is a fold.
+    attributes:
+      act:
+        description: The start or deliver that wrote it.
+        in_subset:
+        - control
+        range: Act
+        required: true
+      control_field:
+        description: The field.
+        in_subset:
+        - control
+        range: ControlField
+        required: true
+      value_type:
+        description: The type, carried so that the key binds it to the field's type.
+        in_subset:
+        - control
+        range: FieldType
+        required: true
+      enumeration:
+        description: The enumeration of a choice, carried for the same reason.
+        in_subset:
+        - control
+        range: Enumeration
+      boolean_value:
+        description: The value of a boolean.
+        in_subset:
+        - control
+        range: boolean
+      number_value:
+        description: The value of a number.
+        in_subset:
+        - control
+        range: decimal
+      date_value:
+        description: The value of a date.
+        in_subset:
+        - control
+        range: date
+      text_value:
+        description: The value of a text, at most 4096 characters.
+        in_subset:
+        - control
+      choice_value:
+        description: The value of a choice, one of its enumeration.
+        in_subset:
+        - control
+        range: EnumerationValue
+    unique_keys:
+      one_per_act_and_field:
+        unique_key_slots:
+        - tenant
+        - scope
+        - act
+        - control_field
+    rules:
+    - description: Exactly one typed value, the one value_type names (ck_field_value_one_value, ck_field_value_typed_value).
+    - description: The type is the field's type and the choice is a value of the field's enumeration (composite
+        foreign keys).
+    - description: 'Not checked by the store: that the field belongs to the version of the act''s instance,
+        and that the act is a start or deliver (service, REA-0010 S5).'
+    annotations:
+      table: field_value
+      source: DEC-0056
+      mutable: never
