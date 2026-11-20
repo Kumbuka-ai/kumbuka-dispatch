@@ -48,6 +48,7 @@ conceptual and logical levels, and the check that the three agree, are built up 
 | `groups/` | one chapter per group of tables: purpose, invariants, questions answered, cut, rejected alternative |
 | `diagrams/` | one diagram per group and an overview |
 | `assessments/` | dated results of an assessment, each grade with its evidence |
+| `next-wave.md` | what the wave that builds the process rules adds to the store, whether it touches what is built now, and the open topics |
 
 ## Groups
 
