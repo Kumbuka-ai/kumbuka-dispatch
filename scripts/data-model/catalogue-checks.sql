@@ -44,3 +44,32 @@ SELECT DISTINCT table_name, column_name
 FROM information_schema.column_privileges
 WHERE table_schema = 'dispatch' AND privilege_type = 'UPDATE' AND grantee = 'kumbuka_dispatch'
 ORDER BY 1, 2;
+
+\echo 'L5: tables on which the service role holds DELETE (expected: task and the draft workspace)'
+SELECT table_name
+FROM information_schema.role_table_grants
+WHERE table_schema = 'dispatch' AND privilege_type = 'DELETE' AND grantee = 'kumbuka_dispatch'
+ORDER BY 1;
+
+\echo 'L5: privileges of the service role beyond SELECT, INSERT, UPDATE, DELETE'
+SELECT table_name, privilege_type
+FROM information_schema.role_table_grants
+WHERE table_schema = 'dispatch' AND grantee = 'kumbuka_dispatch'
+  AND privilege_type NOT IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+ORDER BY 1, 2;
+
+\echo 'P2: roles other than the service role and the owner with any privilege on a table of the schema'
+SELECT DISTINCT g.grantee, g.table_name, g.privilege_type
+FROM information_schema.role_table_grants g
+JOIN pg_class c ON c.relname = g.table_name AND c.relnamespace = 'dispatch'::regnamespace
+WHERE g.table_schema = 'dispatch' AND g.grantee <> 'kumbuka_dispatch'
+  AND g.grantee <> pg_get_userbyid(c.relowner)
+ORDER BY 1, 2, 3;
+
+\echo 'P2: column privileges of any such role'
+SELECT DISTINCT g.grantee, g.table_name, g.column_name, g.privilege_type
+FROM information_schema.column_privileges g
+JOIN pg_class c ON c.relname = g.table_name AND c.relnamespace = 'dispatch'::regnamespace
+WHERE g.table_schema = 'dispatch' AND g.grantee <> 'kumbuka_dispatch'
+  AND g.grantee <> pg_get_userbyid(c.relowner)
+ORDER BY 1, 2, 3;

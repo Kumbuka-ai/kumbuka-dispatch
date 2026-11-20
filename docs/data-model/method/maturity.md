@@ -27,4 +27,6 @@ a definition that no longer matches the table is caught by the reconciliation, n
 
 ## State
 
-2026-11-20: level 0.
+2026-11-20: level 1 reached. Level 2 is open on the requirements without a carrier that the
+assessment of 2026-11-20 names (finding 12). The reconciliation of level 3 exists as a script and runs
+by hand; it is not yet run on every change.

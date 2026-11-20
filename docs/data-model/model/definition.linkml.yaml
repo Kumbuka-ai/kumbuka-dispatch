@@ -130,9 +130,9 @@ classes:
       kind of executor. It says what a task of it requires in its return and takes as input.
     attributes:
       definition_version: {range: DefinitionVersion, required: true, description: "The definition version this row belongs to.", in_subset: [system]}
-      name: {required: true, in_subset: [system]}
-      verdict_required: {range: boolean, required: true, in_subset: [system]}
-      outcome_required: {range: boolean, required: true, in_subset: [system]}
+      name: {required: true, description: "The name of the activity, object and verb, unique in its version.", in_subset: [system]}
+      verdict_required: {range: boolean, required: true, description: "Whether a return of a task of this activity must carry a verdict.", in_subset: [system]}
+      outcome_required: {range: boolean, required: true, description: "Whether a return of a task of this activity must carry an outcome of its closed set.", in_subset: [system]}
       criteria_required: {range: boolean, required: true, description: "Whether the return must name a status for every acceptance criterion of the commission.", in_subset: [system]}
       input_kind: {range: InputKind, required: true, description: "What a task of this activity takes as input.", in_subset: [system]}
       bound_activity: {range: Activity, description: "The activity whose return a task of this one takes as input.", in_subset: [system]}

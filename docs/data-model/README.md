@@ -67,7 +67,7 @@ conceptual and logical levels, and the check that the three agree, are built up 
 
 The diagram of each group is `diagrams/<chapter name>.puml`. Diagrams 02 to 10 are generated from the
 model; a change to the model regenerates them, never an edit by hand.
-| `../../scripts/data-model/` | catalogue checks, reconciliation, the DBML view, the group diagrams |
+| `../../scripts/data-model/` | catalogue checks, reconciliation, the volume dataset, the hot paths, the DBML view, the group diagrams |
 
 ## State
 
@@ -75,5 +75,6 @@ As of 2026-11-20 the store line holds V1 to V3 on the integration branch `wave-2
 store is not deployed; it is changed freely until the cut-over (REA-0010 step 7), which waits until the
 wave that builds the process rules is built on the same branch. The ten groups of the wave-2 store are
 modelled on the conceptual and logical level and reconcile with the store (`reconcile.py`, four reports:
-`definition_version.seed` and the three attributes `addressed_role`, which arrive with V4). The target model of the next wave is still to be
-written; the maturity is assessed after it.
+`definition_version.seed` and the three attributes `addressed_role`, which arrive with V4). The first assessment against the
+catalogue is `assessments/2026-11-20-assessment.md`; its findings are decided before V4 is written. The
+target model of the next wave is still to be written.
