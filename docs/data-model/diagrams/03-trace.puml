@@ -16,7 +16,7 @@ class act <<system>> {
   instance_id : -> instance
   sequence : integer
   task_id : -> task  [0..1]
-  kind : ActKind (26 values)
+  kind : ActKind, 26 values
   actor_subject : string
   actor_owner_subject : string  [0..1]
   permission : string  [0..1]

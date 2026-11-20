@@ -33,7 +33,7 @@ for c in classes:
             edges.append((tab[c], tab[r], a.name, a.required, one))
             if r not in classes: others.add(tab[r])
         elif sv.get_enum(r):
-            col = a.name; pv = list(sv.get_enum(r).permissible_values.keys()); t = " | ".join(pv) if len(pv) <= 7 else f"{r} ({len(pv)} values)"
+            col = a.name; pv = list(sv.get_enum(r).permissible_values.keys()); t = " | ".join(pv) if len(pv) <= 7 else f"{r}, {len(pv)} values"
         else:
             col = a.name; t = r
         if a.in_subset: subs.update(a.in_subset)
