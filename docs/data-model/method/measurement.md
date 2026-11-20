@@ -76,5 +76,6 @@ dataset.
 ## State
 
 2026-11-20: `catalogue-checks.sql` (P1, L5 grants), `reconcile.py` (R1) and `generate-dbml.sh` exist;
-`reconcile.py` over all ten groups reports only `definition_version.seed` (V4 not yet built);
+`reconcile.py` over all ten groups reports only what V4 adds (`definition_version.seed` and the three
+attributes `addressed_role`);
 the dataset generator and the hot-path files are written with the assessment.

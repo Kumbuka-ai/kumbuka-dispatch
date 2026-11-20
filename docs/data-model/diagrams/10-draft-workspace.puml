@@ -18,8 +18,9 @@ class draft <<system>> {
   activity_id : -> activity  [0..1]
   concerns_task_id : -> task  [0..1]
   bound_task_id : -> task  [0..1]
+  addressed_role : string  [0..1]
 }
-note bottom of draft : updates: title, activity, concerns_task, bound_task; DELETE
+note bottom of draft : updates: title, activity, concerns_task, bound_task, addressed_role; DELETE
 class draft_criterion <<system>> {
   id : bigint
   draft_id : -> draft

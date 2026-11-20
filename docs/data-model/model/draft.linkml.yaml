@@ -52,6 +52,10 @@ classes:
         in_subset:
         - system
         range: Task
+      addressed_role:
+        description: The role the task will be addressed to (V4).
+        in_subset:
+        - system
     unique_keys:
       one_per_task:
         unique_key_slots:
@@ -63,7 +67,7 @@ classes:
     annotations:
       table: draft
       source: TAR-0004 2.4
-      mutable: title, activity, concerns_task, bound_task; DELETE
+      mutable: title, activity, concerns_task, bound_task, addressed_role; DELETE
   DraftCriterion:
     is_a: TenantScoped
     description: A criterion of a draft by identifier and place; its text is a draft text.

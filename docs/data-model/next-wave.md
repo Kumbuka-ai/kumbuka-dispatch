@@ -42,7 +42,8 @@ the next wave.
 | Interventions `repair` and `rebind` with their payloads | TAR-0004 2.7 | new payload tables; `ck_act_kind` and `ck_act_object` widened (`recall` exists) | `act` (checks) | - |
 | Item criteria an instance takes over at its start, and their status and evidence reference in the instance return | DEC-0055/C9 | two new tables; a content kind for the copied text | `content` (check, one nullable column) | TAR-0004 2.3 states the earlier rule (worklist://kumbuka/item/1276) |
 | Selection of a definition for a start request | concept on declared fields, section 3; items 1067, 1213 | new tables; a payload on the start act (version, row, aspects supplied) | none | the form is open on purpose (table, start event, external resolver) |
-| Lock mode of a process step, take-up without a lease, addressee | items 1155, 1211; concept from item to instance, section 6 | defaulted column on `activity`; nullable column on `commission` and `draft`; a holding without a lease is representable today | `activity`, `commission`, `draft` (columns) | not decided; concept in draft |
+| Lock mode of a process step, take-up without a lease; refusing a take-up by a caller who does not hold the addressed role | items 1155, 1211; concept from item to instance, section 6 | defaulted column on `activity`; a holding without a lease is representable today; the addressed role exists from V4 | `activity` (column) | not decided; concept in draft |
+| Addressing a sent task to another role by an act of its own | operator, 2026-11-20 | a new act kind with the new role as its payload; `task.addressed_role` follows as a projection | `act` (check) | whether at all, and whether only before the first take-up |
 | Activity kinds, agent objects, capability descriptions, bindings | concept on activity kinds | new tables; nullable reference on `activity` | `activity` (column) | O1 to O4, O8, O9 of the concept block a target |
 | Override of a declared separation (break-glass) | dispatch://kumbuka/sprint/207.0e, E21.3 | column on the restriction; a payload naming rule and reason | none | no node; own act or attribute of `accept` |
 | Limiters on feedback loops | worklist://kumbuka/item/1255 | one more restriction pattern table | none | a concept of its own is required first |
@@ -62,14 +63,19 @@ the next wave.
   and in the store", step 5 keeps it readable, filterable and written, and the acceptance of step 6 has
   the agent controller select work by it. V1 to V3 hold no column and no other place for it, the copy
   rule of step 4 names no destination, and the catalogue rows of `create` and `query` do not name it.
-  Filed as worklist://kumbuka/item/1288. To be settled before the orders of steps 4 and 5 are cut.
+  Filed as worklist://kumbuka/item/1288. **Decided by the operator on 2026-11-20:** the field becomes
+  the addressed role of a commission, a system field that V4 adds as `commission.addressed_role`
+  (frozen), `draft.addressed_role` and the projection `task.addressed_role`; the copy of step 4 writes
+  the value of `apparatus` there; the verb surface keeps the name `apparatus` for this wave; after the
+  send the value is fixed. The model carries the three attributes; REA-0010 and TAR-0004 2.4 are still
+  to be revised.
 - **TAR-0004 2.3 and DEC-0055/C9 disagree** on the criteria of a worklist item (worklist://kumbuka/item/1276).
   The current wave builds neither the copy nor the statuses, so nothing built contradicts the decision;
   the target a reviewer reads does.
 - **The actor of an act is immutable text.** `act.actor_subject` and `act.actor_owner_subject` are never
   changed. The erasure of a person (REQ-0116, open in TAR-0004 section 6) stays additive only if these
   columns hold an opaque subject identifier and never a name or an address. Neither V1 nor REA-0010
-  states that; the model should.
+  states that; the model states it now as a rule the service keeps (chapter 03).
 
 ## 4. Audit
 
@@ -102,12 +108,14 @@ Nothing in this direction requires a change to V1 to V4.
 
 Before the build orders of the current wave:
 
-1. The place of `apparatus` in the new store (item 1288).
+1. The place of `apparatus` in the new store (item 1288): decided, see section 3; the revision of REA-0010
+   and TAR-0004 2.4 is open.
 2. TAR-0004 2.3 brought in line with DEC-0055/C9 (item 1276); item 1273 is answered by the wording of C9
    and can be closed with that note.
 3. The assessment of V1 to V3 against the evaluation catalogue, with the six bindings only the service
    keeps (chapters 04, 05, 08) and the payload tables of worklist://kumbuka/item/1282.
-4. The statement that an actor column holds an opaque identifier.
+4. The statement that an actor column holds an opaque identifier: in the model; REA-0010 step 5 should
+   carry it as well.
 
 The inside of the engine, next:
 
@@ -126,14 +134,15 @@ Product decisions of the next wave, carried by item 1033 and bracket sprint/209.
 12. Limiters (item 1255); the role that answers questions (item 1256); an instance that takes no new
     tasks (item 1272).
 13. `money`, searchable fields, encryption of content.
+14. Addressing a sent task to another role.
 
 Audit:
 
-14. The audit concept (item 1287): the single audit points and the mechanism of the register's writer.
+15. The audit concept (item 1287): the single audit points and the mechanism of the register's writer.
 
 Organisation:
 
-15. Bracket sprint/209.0 and item 1033 start "when the current wave is cut over". Since 2026-11-20 the
+16. Bracket sprint/209.0 and item 1033 start "when the current wave is cut over". Since 2026-11-20 the
     cut-over waits for the next wave (REA-0010). The two conditions wait on each other.
-16. Recurring instances were moved to dispatch://kumbuka/sprint/211.3; whether that work builds against
+17. Recurring instances were moved to dispatch://kumbuka/sprint/211.3; whether that work builds against
     the store of the integration branch is not read.

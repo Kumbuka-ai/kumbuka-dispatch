@@ -15,7 +15,7 @@ act, and empties the workspace (TAR-0004 2.4).
 
 | Concept | Table | In one sentence |
 |---|---|---|
-| Draft | `draft` | The control a task in draft will carry when sent, one per task. |
+| Draft | `draft` | The control a task in draft will carry when sent, one per task; from V4 with the role it will be addressed to. |
 | Draft criterion | `draft_criterion` | A criterion of a draft by identifier and place. |
 | Draft free fields | `draft_free_fields` | The free-field document the draft will carry. |
 | Draft text | `draft_text` | The commission text of the draft or the text of one of its criteria. |

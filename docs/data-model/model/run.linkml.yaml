@@ -189,6 +189,11 @@ classes:
         - system
         range: boolean
         required: true
+      addressed_role:
+        description: 'Projection: the role its current commission, or its draft before sending, addresses;
+          what an executor selects its work by (V4).'
+        in_subset:
+        - system
     unique_keys:
       sub_per_instance:
         unique_key_slots:

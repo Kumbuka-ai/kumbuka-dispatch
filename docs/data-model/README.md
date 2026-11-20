@@ -74,6 +74,6 @@ model; a change to the model regenerates them, never an edit by hand.
 As of 2026-11-20 the store line holds V1 to V3 on the integration branch `wave-2` (35 tables). The
 store is not deployed; it is changed freely until the cut-over (REA-0010 step 7), which waits until the
 wave that builds the process rules is built on the same branch. The ten groups of the wave-2 store are
-modelled on the conceptual and logical level and reconcile with the store (`reconcile.py`, one report:
-`definition_version.seed`, which arrives with V4). The target model of the next wave is still to be
+modelled on the conceptual and logical level and reconcile with the store (`reconcile.py`, four reports:
+`definition_version.seed` and the three attributes `addressed_role`, which arrive with V4). The target model of the next wave is still to be
 written; the maturity is assessed after it.

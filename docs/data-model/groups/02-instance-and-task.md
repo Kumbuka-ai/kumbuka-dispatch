@@ -38,6 +38,7 @@ those acts, kept so that a read and the gate need not fold the trace on every ca
 - Which tasks of an instance are open, held, on hold, delivered?
 - Which version does a running instance run under?
 - Which task does a review concern?
+- Which open tasks are addressed to a given role (the selection of an executor, from V4)?
 - Which instance did a task of this scope start?
 
 ## Why it is cut this way

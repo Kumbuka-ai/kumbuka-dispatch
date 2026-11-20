@@ -66,6 +66,12 @@ classes:
         in_subset:
         - system
         range: Task
+      addressed_role:
+        description: The role the commission is addressed to, as an opaque role name the service never
+          resolves; empty where it is addressed to no role. Frozen with the commission (V4; in the bracket
+          store the field apparatus).
+        in_subset:
+        - system
     unique_keys:
       one_per_act:
         unique_key_slots:

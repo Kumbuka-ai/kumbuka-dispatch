@@ -53,6 +53,14 @@ edited one.
   is content so that it is stored and never evaluated. These are the criteria of a task and the dispatch
   service's own. The criteria an instance takes over from a worklist item are another thing and are
   kept apart from them (DEC-0055/C9); see "What the next wave adds here".
+- **The addressed role on the commission (V4).** A commission may name the role it is addressed to: an
+  opaque role name the service stores and never resolves. It is the field an executor selects its work
+  by, and it replaces the field `apparatus` of the bracket store, whose name stays on the verb surface
+  for this wave (REA-0010). It is frozen with the commission like the title; `task.addressed_role` is
+  its projection, and `draft.addressed_role` the value a draft will carry. A role, never a kind of
+  actor. The process rule of an activity says which roles may execute it at all; the addressed role says
+  for which of them this one commission is meant, and serves the default process, which has one activity
+  and no rule. That a take-up by a caller without the role is refused is built with the rules.
 - **The instance return in the shape of a task return.** A triggering instance reads the return of
   the instance it started the same way it reads the return of a task.
 
@@ -63,6 +71,10 @@ assessment says so.
 
 - **Criteria as one text list on the commission.** Rejected: a delivery could not report on a
   criterion by identifier.
+- **The addressed role as a free field, a tag, a payload table of its own, or an activity per role.**
+  A free field would put the executor's selection on a search in JSON; a tag exists only from the first
+  send on; a table of its own would be one more row per send for one value; an activity per role was
+  rejected for the seed definitions (dispatch://kumbuka/sprint/207.0a, E4.4).
 - **One return table for task and instance with an owner column.** Rejected for the same reason the
   outcome label kept one table: here the anchors differ in kind (deliver versus conclude or withdraw)
   and the reads differ; whether one table would be the better cut is left to the assessment.
@@ -75,6 +87,8 @@ assessment says so.
   lacks one is refused. Neither the copy nor the statuses of an instance return have a table in V1 to V3.
   TAR-0004 2.3 still states the earlier rule and is to be brought in line (worklist://kumbuka/item/1276).
 - Decision bases of routing acts (TAR-0004 2.5); they attach to the act as a payload of their own.
+- Whether a sent task can be addressed to another role by an act of its own, and until when, is open
+  (`../next-wave.md`). In this wave the addressed role changes only in a draft.
 
 ## Open in the assessment
 

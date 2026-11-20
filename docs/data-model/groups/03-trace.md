@@ -27,6 +27,7 @@ key lets a caller repeat a call after a lost answer and receive the same object 
 | An act on a task acts on a task of its own instance. | the foreign key over `(instance_id, task_id)` |
 | An act refers only to an earlier act of the same instance, never to itself. | `ck_act_refers_other`; the foreign key over the instance |
 | An authentication level is recorded only for the console path. | `ck_act_authentication_level` |
+| The actor of an act is an opaque subject identifier, never a name or an address, so that the erasure of a person needs no change to an act. | the service; the store holds text and cannot tell |
 | A lapse is never written. | by construction (ADR-0002): a holding without an ending act whose lease has passed ended then |
 | A key answers at most one object per caller. | `uq_idempotency_key_caller_key`, `ck_idempotency_key_one_target` |
 

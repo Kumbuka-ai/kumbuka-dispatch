@@ -18,6 +18,7 @@ class commission <<system>> {
   activity_id : -> activity
   concerns_task_id : -> task  [0..1]
   bound_task_id : -> task  [0..1]
+  addressed_role : string  [0..1]
 }
 note bottom of commission : updates: never (no UPDATE grant)
 class commission_criterion <<system>> {

@@ -34,6 +34,7 @@ class task <<system>> {
   resolution : accepted | rejected | failed | withdrawn  [0..1]
   not_before : datetime  [0..1]
   parked : boolean
+  addressed_role : string  [0..1]
 }
 note bottom of task : updates: projection columns after sub; DELETE only of a task without an act (a draft never sent)
 class activity <<other>>
