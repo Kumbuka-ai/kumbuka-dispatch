@@ -1,0 +1,246 @@
+@startuml store-overview
+' Store of dispatch wave 2 (REA-0010 S3 and S4): store line V1 to V3 on wave-2 at be20877,
+' plus the V4 of step 4 (seed mark, external reference kind item).
+' Every table carries tenant_id and scope_id; every key carries both (ADR-0042). They are left out below.
+' Status: overview drawn for review sprint/207.51; it leaves out ids, unique constraints and some
+' columns and keys (review answer A.1). It is replaced by the diagrams of the groups under groups/.
+' Stereotypes <<system>>, <<control>>, <<free>> and <<content>> give the kind of data under
+' DEC-0056/C1; <<draft>> marks the draft workspace, a stage of the lifecycle and not a kind of data:
+'   <<system>>  system fields: defined and written by the platform alone
+'   <<control>> control fields: declared by a customer in the schema of a definition version
+'   <<free>>    free fields: stored with an act, never evaluated
+'   <<content>> the text of the work
+'   <<draft>>   the draft workspace of a task that was never sent; no act, no trace
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+
+package "Definition" {
+  class selector <<system>> {
+    name
+    next_number
+  }
+  class definition_version <<system>> {
+    version
+    state : draft | active | retired
+    verdict_required
+    outcome_required
+    seed : boolean  [V4]
+  }
+  class definition_act <<system>> {
+    sequence
+    kind : define | activate
+    actor_subject, actor_owner_subject
+    permission, path, authentication_level
+    at
+  }
+  class definition_tag <<system>> {
+    tag_id
+  }
+  class activity <<system>> {
+    name
+    verdict_required, outcome_required, criteria_required
+    input_kind : text | bound | parameters | none
+    may_ask, starts_excluded
+    handbook_address
+  }
+  class outcome_label <<system>> {
+    label
+    ordinal
+  }
+}
+
+package "Schema of control fields (declared per version)" {
+  class control_field <<control>> {
+    name
+    type : boolean | number | date | text | choice
+  }
+  class enumeration <<control>> {
+    name
+  }
+  class enumeration_value <<control>> {
+    value
+    ordinal
+  }
+  class contract_field <<control>> {
+    required
+    activity_id null = start contract
+  }
+}
+
+package "Runtime control" {
+  class instance <<system>> {
+    number
+    state : running | closed
+    resolution : concluded | withdrawn
+    next_sub
+  }
+  class task <<system>> {
+    sub
+    title
+    state : draft | recalled | open | active
+            | on_hold | delivered | closed
+    hold_reason, resolution
+    not_before, parked
+  }
+  class act <<system>> {
+    sequence
+    kind : start | import | send | claim | ...
+    actor_subject, actor_owner_subject
+    permission, path, authentication_level
+    at
+    to_state
+  }
+  class commission <<system>> {
+    title
+  }
+  class commission_criterion <<system>> {
+    identifier
+    ordinal
+  }
+  class delivery <<system>> {
+    verdict : green | red | question
+  }
+  class delivery_criterion <<system>> {
+    status : met | not_met | not_applicable
+  }
+  class instance_return <<system>> {
+    verdict
+  }
+  class hold <<system>> {
+    reason
+  }
+  class deferral <<system>> {
+    not_before
+  }
+  class question <<system>> {
+    free_text_admitted
+  }
+  class question_option <<system>> {
+    label
+    ordinal
+  }
+  class answer <<system>>
+  class holding <<system>>
+  class lease <<system>> {
+    expires_at
+  }
+  class receipt <<system>> {
+    receipt_hash
+    issued_at
+  }
+  class idempotency_key <<system>> {
+    caller_subject
+    idempotency_key
+    created_at
+  }
+}
+
+package "References outside the service (n:m, opaque values)" {
+  class external_reference <<system>> {
+    kind : trigger | tag | item [V4] | reference | curation
+    value : opaque, never resolved
+  }
+}
+
+package "Values" {
+  class field_value <<control>> {
+    value_type
+    boolean_value | number_value | date_value
+    | text_value | choice_value_id
+  }
+  class free_fields <<free>> {
+    document : jsonb
+  }
+  class content <<content>> {
+    kind
+    media_type
+    body
+  }
+}
+
+package "Draft workspace" {
+  class draft <<draft>> {
+    title
+  }
+  class draft_criterion <<draft>> {
+    identifier
+    ordinal
+  }
+  class draft_text <<draft>> {
+    kind
+    media_type
+    body
+  }
+  class draft_free_fields <<draft>> {
+    document : jsonb
+  }
+}
+
+selector "1" -- "*" definition_version
+definition_version "1" -- "*" definition_act
+definition_version "1" -- "*" definition_tag
+definition_version "1" -- "*" activity
+definition_version "1" -- "*" outcome_label : instance outcomes
+activity "1" -- "*" outcome_label : task outcomes
+activity "0..1" -- "*" activity : bound_activity
+definition_version "1" -- "*" control_field
+definition_version "1" -- "*" enumeration
+enumeration "1" -- "*" enumeration_value
+control_field "*" -- "0..1" enumeration : type choice
+contract_field "*" -- "1" control_field
+contract_field "*" -- "0..1" activity
+
+selector "1" -- "*" instance
+instance "*" -- "1" definition_version : bound to
+instance "0..1" -- "0..1" task : trigger_task
+instance "1" -- "*" task
+instance "1" -- "*" act : trace
+task "0..1" -- "*" act
+act "0..1" -- "*" act : refers_to
+task "*" -- "0..1" activity
+task "0..1" -- "*" task : concerns
+act "1" -- "0..1" commission : send
+commission "*" -- "1" activity
+commission "*" -- "0..1" task : bound_task
+commission "1" -- "*" commission_criterion
+act "1" -- "0..1" delivery : deliver
+delivery "*" -- "0..1" outcome_label
+delivery "1" -- "*" delivery_criterion
+delivery_criterion "*" -- "1" commission_criterion
+act "1" -- "0..1" instance_return : conclude | withdraw
+instance_return "*" -- "0..1" outcome_label
+act "1" -- "0..1" hold
+act "1" -- "0..1" deferral
+act "1" -- "0..1" question : ask
+question "1" -- "*" question_option
+act "1" -- "0..1" answer
+answer "*" -- "1" question
+answer "*" -- "0..1" question_option
+task "1" -- "*" holding
+holding "*" -- "1" act : claim
+holding "*" -- "0..1" act : ended_by
+holding "1" -- "*" lease
+holding "1" -- "*" receipt
+idempotency_key "*" -- "0..1" act
+
+external_reference "*" -- "0..1" instance : owner (xor)
+external_reference "*" -- "0..1" task : owner (xor)
+note right of external_reference : exactly one of instance and task\n(ck_external_reference_owner)
+external_reference "*" -- "1" act : set_by
+external_reference "*" -- "0..1" act : ended_by
+
+act "1" -- "*" field_value : anchors
+field_value "*" -- "1" control_field
+field_value "*" -- "0..1" enumeration_value
+act "1" -- "0..1" free_fields : anchors
+act "1" -- "*" content : anchors
+
+task "1" -- "0..1" draft
+draft "1" -- "*" draft_criterion
+draft "1" -- "*" draft_text
+draft "1" -- "0..1" draft_free_fields
+draft "*" -- "0..1" activity
+@enduml

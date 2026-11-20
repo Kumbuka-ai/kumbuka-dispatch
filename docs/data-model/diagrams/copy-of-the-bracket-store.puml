@@ -1,0 +1,92 @@
+@startuml copy-of-the-bracket-store
+' Copy of the bracket store into the store of wave 2 (REA-0010 S4, revised 2026-11-20).
+' Left: the renamed schema dispatch_legacy as the service runs it today (migration line V1 to V25).
+' Right: the targets in the new schema dispatch. exchange is a remnant of the line before V17 and is not read.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+left to right direction
+
+package "dispatch_legacy (renamed, read only)" {
+  class "selector" as l_selector {
+    name
+    next_number
+  }
+  class "task" as l_task {
+    number, sub
+    state, hold_reason, outcome
+    holder_subject, holder_receipt_hash
+    lease_expires_at
+    title, apparatus
+    dispatch_metadata : jsonb
+    return_metadata : jsonb
+    created_*, state_changed_*, first_taken_at
+  }
+  class "task_text" as l_text {
+    text_type
+    addendum_suffix
+    text
+  }
+  class "task_tag" as l_tag {
+    tag_id
+  }
+  class "cutover" as l_cutover <<new, rename script>> {
+    opened_at
+  }
+}
+
+package "dispatch (new store)" {
+  class "selector + definition_version 1" as n_def <<system>> {
+    one activity, no rules
+    prose only, seed = true
+    counter behind the highest number
+  }
+  class "instance" as n_inst <<system>> {
+    one per bracket root
+    bound to the seed
+  }
+  class "task + act (trace)" as n_task <<system>> {
+    same address, state, holder, lease end
+    first act: import (actor = argument)
+    derived acts only from what legacy records
+    no activity, outcome, verdict, field value
+  }
+  class "content" as n_content <<content>> {
+    texts unchanged
+  }
+  class "external_reference" as n_ref <<system>> {
+    kind tag: tags of sent tasks
+    kind item: items, intake-items
+    kind reference: origin, predecessor,
+      follow-up, merged, handover-pr, handover-state
+    only from the root task, on the instance
+    kind curation: curated tasks
+    set by the import act
+  }
+  class "free_fields" as n_free <<free>> {
+    every other key, unknown included,
+    on the act of commission or return
+  }
+  class "draft workspace" as n_draft <<draft>> {
+    tasks never sent; no act
+    their tags left behind, counted
+  }
+  class "instance_return" as n_ret <<system>> {
+    closed bracket: refers to the
+    valid return of the root task
+  }
+}
+
+l_selector --> n_def
+l_task --> n_inst : root <n>.0
+l_task --> n_task : sent tasks
+l_task --> n_draft : never sent
+l_text --> n_content
+l_tag --> n_ref
+l_task --> n_ref : listed keys of the root task
+l_task --> n_free : all other keys
+l_task --> n_ret : closed bracket
+l_cutover ..> n_task : set = copy refuses
+@enduml
