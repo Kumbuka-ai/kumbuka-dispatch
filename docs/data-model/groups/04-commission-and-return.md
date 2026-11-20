@@ -48,9 +48,11 @@ edited one.
 - **Commission and delivery as act payloads, not as columns of the task.** A task can be sent again
   after a recall and delivered again after a rework; each carries its own commission or delivery. Held
   on the act, every version stays readable; the current one is projected onto the task (group 2).
-- **Criteria as rows with identifiers.** The criteria contract of DEC-0055/C9 refers to a criterion by
-  its identifier across commission, delivery and the worklist item; a row with an identifier is what a
-  foreign key and a report can name. The text is content so that it is stored and never evaluated.
+- **Criteria as rows with identifiers.** A delivery reports on a criterion of its commission by the
+  criterion's identifier; a row with an identifier is what a foreign key and a report can name. The text
+  is content so that it is stored and never evaluated. These are the criteria of a task and the dispatch
+  service's own. The criteria an instance takes over from a worklist item are another thing and are
+  kept apart from them (DEC-0055/C9); see "What the next wave adds here".
 - **The instance return in the shape of a task return.** A triggering instance reads the return of
   the instance it started the same way it reads the return of a task.
 
@@ -60,15 +62,19 @@ Reconstructed for this chapter from the corpus and the store; where no node reco
 assessment says so.
 
 - **Criteria as one text list on the commission.** Rejected: a delivery could not report on a
-  criterion by identifier, and a worklist item could not carry the same identifiers.
+  criterion by identifier.
 - **One return table for task and instance with an owner column.** Rejected for the same reason the
   outcome label kept one table: here the anchors differ in kind (deliver versus conclude or withdraw)
   and the reads differ; whether one table would be the better cut is left to the assessment.
 
 ## What the next wave adds here
 
-Decision bases of routing acts and the derived fields of a return (TAR-0004 2.5, 2.6); they attach to
-the delivery as new payload rows.
+- **The criteria of a worklist item, taken over at the start (DEC-0055/C9).** An instance takes over
+  the identifiers and the text of the item criteria it is to fulfil, as a copy that freezes with the
+  start; its return states a status and an evidence reference for each identifier, and a conclude that
+  lacks one is refused. Neither the copy nor the statuses of an instance return have a table in V1 to V3.
+  TAR-0004 2.3 still states the earlier rule and is to be brought in line (worklist://kumbuka/item/1276).
+- Decision bases of routing acts (TAR-0004 2.5); they attach to the act as a payload of their own.
 
 ## Open in the assessment
 

@@ -25,7 +25,7 @@ enums:
       question:
         description: The executor cannot decide without an answer.
   CriterionStatus:
-    description: The status a return reports for a criterion (TAR-0004 2.4, DEC-0055/C9).
+    description: The status a return reports for a criterion (TAR-0004 2.4).
     permissible_values:
       met:
         description: The criterion is met.
@@ -87,8 +87,9 @@ classes:
         range: Commission
         required: true
       identifier:
-        description: Its identifier, unique in the commission; for an instance started for an item, the
-          identifier the worklist gave.
+        description: Its identifier, unique in the commission. These are the criteria of a task, the dispatch
+          service's own; the criteria an instance takes over from a worklist item are kept apart from
+          them (DEC-0055/C9) and are not in the store yet.
         in_subset:
         - system
         required: true
@@ -107,7 +108,7 @@ classes:
         - identifier
     annotations:
       table: commission_criterion
-      source: TAR-0004 2.4, DEC-0055/C9
+      source: TAR-0004 2.4
       mutable: never
   Delivery:
     is_a: TenantScoped

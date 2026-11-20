@@ -179,7 +179,8 @@ classes:
   FieldValue:
     is_a: TenantScoped
     description: The value one act writes for one control field, in exactly the typed column of its type.
-      A later act writes a new value; the current value is a fold.
+      A later act writes a new value and never changes an earlier one; the value in force is the last
+      one written by the start or by a delivery that was accepted (DEC-0056/C9, C10).
     attributes:
       act:
         description: The start or deliver that wrote it.

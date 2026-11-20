@@ -17,7 +17,7 @@ dependency or an external cause; a defer gives it back until a time.
 | Concept | Table | In one sentence |
 |---|---|---|
 | Holding | `holding` | A hold of a task by one identity, from the claim that opened it to the act that ended it. |
-| Lease | `lease` | The time a claim or renew grants a holding, until it expires. |
+| Lease | `lease` | The time an act grants a holding, until it expires: a claim opens it; a renew, a resume, an answer or a rework starts a new one (TAR-0004 2.8). |
 | Receipt | `receipt` | The hash of a receipt handed to the holder; every write of the holder carries the receipt. |
 | Hold | `hold` | The reason a hold act puts a task on hold for: dependency or external. |
 | Deferral | `deferral` | The time before which a defer act gives a task back. |
@@ -29,7 +29,7 @@ dependency or an external cause; a defer gives it back until a time.
 | One holding per claim. | `uq_holding_claim_act` |
 | Of a holding, only its ending act is ever set. | UPDATE grant on `ended_by_act_id` alone |
 | A lapsed holding keeps no ending act. | by construction; hence no unique index on open holdings |
-| One lease per claim or renew; leases and receipts never change. | `uq_lease_act`; no UPDATE grant |
+| One lease per granting act (claim, renew, resume, answer, rework); leases and receipts never change. | `uq_lease_act`; no UPDATE grant |
 | A receipt is never stored, only its hash. | the column `receipt_hash`; the service hashes before insert |
 | A hold names dependency or external; a question is asked with ask (group 6). | `ck_hold_reason` |
 | At most one current holding per task. | the service, from the leases and ending acts; a partial unique index cannot see a lapse |

@@ -57,7 +57,8 @@ classes:
       mutable: ended_by_act only, as projection
   Lease:
     is_a: TenantScoped
-    description: A lease a claim grants or a renew extends on a holding, until it expires.
+    description: 'The time an act grants a holding: a claim opens it, a renew, a resume, an answer or
+      a rework starts a new one (TAR-0004 2.8). The lease in force is the latest.'
     attributes:
       holding:
         description: The holding it belongs to.
@@ -66,7 +67,7 @@ classes:
         range: Holding
         required: true
       act:
-        description: The claim or renew that granted it.
+        description: 'The act that granted it: a claim, renew, resume, answer or rework.'
         in_subset:
         - system
         range: Act

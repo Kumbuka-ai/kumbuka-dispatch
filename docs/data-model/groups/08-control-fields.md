@@ -12,7 +12,9 @@ declares, free fields, and content. The gate and the rules of the next wave eval
 control fields. A control field is declared per definition version with a name and a type of the
 platform's catalogue (boolean, number, date, text, choice); a start contract names the fields a start
 carries, a result contract the fields a delivery of an activity carries. An act writes one typed value
-per field; a later act writes a new one, and the current value is a fold.
+per field; a later act writes a new one and never changes an earlier one. The value in force is the last
+one written by the start of the instance or by a delivery that was accepted; a value from a delivery
+that was not accepted never steers (DEC-0056/C9, C10).
 
 ## Concepts
 
@@ -42,7 +44,7 @@ per field; a later act writes a new one, and the current value is a fold.
 
 - Which control fields does a version declare, of which type, with which values for a choice?
 - What must a start carry, and what must a delivery of this activity carry?
-- What is the current value of a field on this instance, and which act wrote it?
+- What is the value in force of a field on this instance, and which act wrote it?
 - Which instances have a field with a given value (the rule and selection reads of wave 3)?
 
 ## Why it is cut this way
@@ -54,7 +56,7 @@ per field; a later act writes a new one, and the current value is a fold.
 - **Fields per version, not per scope.** A field is part of the declaration (group 1) and changes with
   it (P7).
 - **Values on the act, not on the instance.** The history of a value is part of the trace; the current
-  value is the last one written.
+  value in force is folded from the start and the accepted deliveries.
 
 ## Rejected alternatives
 
