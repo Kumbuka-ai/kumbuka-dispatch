@@ -89,8 +89,12 @@ What the store as built means for that direction:
 - A trigger sees a row that is written. A refused attempt (REQ-0080) and a read by a delegated identity
   (service contract C28.2) write no row of the store; a register that holds them needs a writer in the
   service.
-- ADR-0024 places the register in the platform layer. A register kept in the dispatch service, or the
-  dispatch service as the central place of audit, is a question for the audit concept.
+- A schema is never changed in place: a change is a new definition version, written by `define` and put
+  into force by `activate`, each an act of `definition_act` with its actor and time. The version is the
+  copy.
+- The register stays in the platform layer (ADR-0024); the dispatch service is not the central place of
+  audit (operator, 2026-11-20). What the audit concept still has to do is specify the single audit
+  points.
 
 Nothing in this direction requires a change to V1 to V4.
 
@@ -125,7 +129,7 @@ Product decisions of the next wave, carried by item 1033 and bracket sprint/209.
 
 Audit:
 
-14. The audit concept (item 1287), with the place of the register and the mechanism of its writer.
+14. The audit concept (item 1287): the single audit points and the mechanism of the register's writer.
 
 Organisation:
 
