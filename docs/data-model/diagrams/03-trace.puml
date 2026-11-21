@@ -1,0 +1,49 @@
+@startuml 03-trace
+' 03-trace (docs/data-model/groups/03-trace.md), generated from model/trace.linkml.yaml.
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below. Tables of other groups are drawn grey.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+skinparam class<<other>> {
+  BackgroundColor #EEEEEE
+  BorderColor #999999
+}
+class act <<system>> {
+  id : bigint
+  instance_id : -> instance
+  sequence : integer
+  task_id : -> task  [0..1]
+  kind : ActKind, 26 values
+  actor_subject : string
+  actor_owner_subject : string  [0..1]
+  permission : string  [0..1]
+  path : interface | console  [0..1]
+  authentication_level : string  [0..1]
+  at : datetime
+  to_state : string
+  refers_to_act_id : -> act  [0..1]
+  hold_reason : dependency | external  [0..1]
+  not_before : datetime  [0..1]
+  free_text_admitted : boolean  [0..1]
+}
+note bottom of act : updates: never (no UPDATE grant)
+class idempotency_key <<system>> {
+  id : bigint
+  caller_subject : string
+  idempotency_key : string
+  task_id : -> task  [0..1]
+  act_id : -> act  [0..1]
+  created_at : datetime
+}
+note bottom of idempotency_key : updates: never (no UPDATE grant); task set to empty when the draft it created is deleted
+class instance <<other>>
+class task <<other>>
+act }o--|| instance : instance
+act }o--o| task : task
+act }o--o| act : refers_to_act
+idempotency_key }o--o| task : task
+idempotency_key }o--o| act : act
+@enduml

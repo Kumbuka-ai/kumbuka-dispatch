@@ -1,0 +1,50 @@
+@startuml 02-instance-and-task
+' 02-instance-and-task (docs/data-model/groups/02-instance-and-task.md), generated from model/run.linkml.yaml.
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below. Tables of other groups are drawn grey.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+skinparam class<<other>> {
+  BackgroundColor #EEEEEE
+  BorderColor #999999
+}
+class instance <<system>> {
+  id : bigint
+  selector_id : -> selector
+  number : integer
+  title : string  [0..1]
+  trigger_task_id : -> task  [0..1]
+  next_sub : integer
+  definition_version_id : -> definition_version
+  state : running | closed
+  resolution : concluded | withdrawn  [0..1]
+}
+note bottom of instance : updates: projection columns next_sub, definition_version, state, resolution; written by the service from the acts
+class task <<system>> {
+  id : bigint
+  instance_id : -> instance
+  sub : integer
+  title : string  [0..1]
+  activity_id : -> activity  [0..1]
+  concerns_task_id : -> task  [0..1]
+  state : draft | recalled | open | active | on_hold | delivered | closed
+  hold_reason : question | dependency | external  [0..1]
+  resolution : accepted | rejected | failed | withdrawn  [0..1]
+  not_before : datetime  [0..1]
+  parked : boolean
+  addressed_role : string  [0..1]
+}
+note bottom of task : updates: projection columns after sub; DELETE only of a task without an act (a draft never sent)
+class activity <<other>>
+class definition_version <<other>>
+class selector <<other>>
+instance }o--|| selector : selector
+instance }o--o| task : trigger_task
+instance }o--|| definition_version : definition_version
+task }o--|| instance : instance
+task }o--o| activity : activity
+task }o--o| task : concerns_task
+@enduml

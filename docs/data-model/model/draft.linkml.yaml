@@ -1,0 +1,166 @@
+id: https://kumbuka.ai/model/dispatch/draft
+name: dispatch_draft
+title: Dispatch data model - group "draft workspace"
+description: >-
+  The only changeable place of the store: what a task in draft or recalled will carry when sent. Sending writes it out to the insert-only tables and empties it. Physical level: store line V2.
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - run.linkml
+
+
+enums:
+  DraftTextKind:
+    description: The texts a draft holds.
+    permissible_values:
+      commission:
+        description: The commission text.
+      criterion:
+        description: The text of a criterion.
+classes:
+  Draft:
+    is_a: TenantScoped
+    description: The control a task in draft will carry when sent, one per task.
+    attributes:
+      task:
+        description: The task in draft or recalled.
+        in_subset:
+        - system
+        range: Task
+        required: true
+      title:
+        description: The title it will carry.
+        in_subset:
+        - system
+      activity:
+        description: The activity it will execute.
+        in_subset:
+        - system
+        range: Activity
+      concerns_task:
+        description: The task it will concern.
+        in_subset:
+        - system
+        range: Task
+      bound_task:
+        description: The task whose return it will be bound to.
+        in_subset:
+        - system
+        range: Task
+      addressed_role:
+        description: The role the task will be addressed to (V4).
+        in_subset:
+        - system
+    unique_keys:
+      one_per_task:
+        unique_key_slots:
+        - tenant
+        - scope
+        - task
+    rules:
+    - description: 'Not checked by the store: that its task is in draft or recalled (service).'
+    annotations:
+      table: draft
+      source: TAR-0004 2.4
+      mutable: title, activity, concerns_task, bound_task, addressed_role; DELETE
+  DraftCriterion:
+    is_a: TenantScoped
+    description: A criterion of a draft by identifier and place; its text is a draft text.
+    attributes:
+      draft:
+        description: The draft.
+        in_subset:
+        - system
+        range: Draft
+        required: true
+      identifier:
+        description: Its identifier, unique in the draft.
+        in_subset:
+        - system
+        required: true
+      ordinal:
+        description: Its place.
+        in_subset:
+        - system
+        range: integer
+        required: true
+    unique_keys:
+      identifier_per_draft:
+        unique_key_slots:
+        - tenant
+        - scope
+        - draft
+        - identifier
+    annotations:
+      table: draft_criterion
+      source: TAR-0004 2.4
+      mutable: identifier, ordinal; DELETE
+  DraftFreeFields:
+    is_a: TenantScoped
+    description: The free-field document a draft will carry; also the landing place of the free metadata
+      of a copied bracket-store draft.
+    attributes:
+      draft:
+        description: The draft.
+        in_subset:
+        - free
+        range: Draft
+        required: true
+      document:
+        description: A JSON object.
+        in_subset:
+        - free
+        required: true
+    unique_keys:
+      one_per_draft:
+        unique_key_slots:
+        - tenant
+        - scope
+        - draft
+    annotations:
+      table: draft_free_fields
+      source: DEC-0056, REA-0010 S4
+      mutable: document; DELETE
+  DraftText:
+    is_a: TenantScoped
+    description: The commission text of a draft or the text of one of its criteria.
+    attributes:
+      draft:
+        description: The draft.
+        in_subset:
+        - content
+        range: Draft
+        required: true
+      kind:
+        description: Which text.
+        in_subset:
+        - content
+        range: DraftTextKind
+        required: true
+      draft_criterion:
+        description: The criterion, of the same draft, for a criterion text.
+        in_subset:
+        - content
+        range: DraftCriterion
+      media_type:
+        description: The media type.
+        in_subset:
+        - content
+        required: true
+      body:
+        description: The text.
+        in_subset:
+        - content
+        required: true
+    rules:
+    - description: draft_criterion is set exactly for kind criterion (ck_draft_text_criterion).
+    - description: One commission text per draft and one text per criterion (partial unique indexes).
+    annotations:
+      table: draft_text
+      source: TAR-0004 2.4
+      mutable: media_type, body; DELETE

@@ -1,0 +1,43 @@
+@startuml 05-holding
+' 05-holding (docs/data-model/groups/05-holding.md), generated from model/holding.linkml.yaml.
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below. Tables of other groups are drawn grey.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+skinparam class<<other>> {
+  BackgroundColor #EEEEEE
+  BorderColor #999999
+}
+class holding <<system>> {
+  id : bigint
+  task_id : -> task
+  claim_act_id : -> act
+  ended_by_act_id : -> act  [0..1]
+}
+note bottom of holding : updates: ended_by_act only, as projection
+class lease <<system>> {
+  id : bigint
+  holding_id : -> holding
+  act_id : -> act
+  expires_at : datetime
+}
+note bottom of lease : updates: never
+class receipt <<system>> {
+  id : bigint
+  holding_id : -> holding
+  receipt_hash : string
+  issued_at : datetime
+}
+note bottom of receipt : updates: never
+class act <<other>>
+class task <<other>>
+holding }o--|| task : task
+holding |o--|| act : claim_act
+holding }o--o| act : ended_by_act
+lease }o--|| holding : holding
+lease |o--|| act : act
+receipt }o--|| holding : holding
+@enduml

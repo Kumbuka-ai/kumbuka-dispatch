@@ -1,0 +1,113 @@
+id: https://kumbuka.ai/model/dispatch/holding
+name: dispatch_holding
+title: Dispatch data model - group "holding"
+description: >-
+  Who holds a task and until when, and the receipts a holder writes with. Physical level: store line V1 (holding, lease, receipt). The reason of a hold and the time of a deferral are columns of the act from V4.
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - trace.linkml
+
+
+classes:
+  Holding:
+    is_a: TenantScoped
+    description: A hold of a task by one delegated identity, from the claim that opened it to the act
+      that ended it. A lapse leaves it unended; it is derived, never written (ADR-0002).
+    attributes:
+      task:
+        description: The task held.
+        in_subset:
+        - system
+        range: Task
+        required: true
+      claim_act:
+        description: The claim that opened it.
+        in_subset:
+        - system
+        range: Act
+        required: true
+      ended_by_act:
+        description: 'Projection: the release, defer, delivery or closing act on its task that ended it;
+          set once.'
+        in_subset:
+        - system
+        range: Act
+    unique_keys:
+      one_per_claim:
+        unique_key_slots:
+        - tenant
+        - scope
+        - claim_act
+    rules:
+    - description: The holdings of one task through idx_holding_task.
+    - description: 'Not checked by the store: that claim_act acts on the task held, and that a task has
+        at most one holding without an end that has not lapsed (service; a lapse is never written).'
+    annotations:
+      table: holding
+      source: TAR-0004 2.5, 2.8
+      mutable: ended_by_act only, as projection
+  Lease:
+    is_a: TenantScoped
+    description: 'The time an act grants a holding: a claim opens it, a renew, a resume, an answer or
+      a rework starts a new one (TAR-0004 2.8). The lease in force is the latest.'
+    attributes:
+      holding:
+        description: The holding it belongs to.
+        in_subset:
+        - system
+        range: Holding
+        required: true
+      act:
+        description: 'The act that granted it: a claim, renew, resume, answer or rework.'
+        in_subset:
+        - system
+        range: Act
+        required: true
+      expires_at:
+        description: When it expires unless renewed.
+        in_subset:
+        - system
+        range: datetime
+        required: true
+    unique_keys:
+      one_per_act:
+        unique_key_slots:
+        - tenant
+        - scope
+        - act
+    annotations:
+      table: lease
+      source: TAR-0004 2.5, 2.8
+      mutable: never
+  Receipt:
+    is_a: TenantScoped
+    description: A receipt handed to the holder of a holding, kept only as the hash of what was handed
+      out; every write of the holder carries it.
+    attributes:
+      holding:
+        description: The holding it was issued for.
+        in_subset:
+        - system
+        range: Holding
+        required: true
+      receipt_hash:
+        description: The hash of the receipt; the receipt itself is never stored.
+        in_subset:
+        - system
+        required: true
+      issued_at:
+        description: When it was issued.
+        in_subset:
+        - system
+        range: datetime
+        required: true
+    annotations:
+      table: receipt
+      source: TAR-0004 2.5, 2.8
+      mutable: never

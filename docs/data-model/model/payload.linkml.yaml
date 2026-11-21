@@ -1,0 +1,129 @@
+id: https://kumbuka.ai/model/dispatch/payload
+name: dispatch_payload
+title: Dispatch data model - group "free fields and content"
+description: >-
+  What an act carries that the platform stores and returns and never evaluates: the free-field document and the texts. Physical level: store line V2 (free_fields, content).
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - work.linkml
+
+
+enums:
+  ContentKind:
+    description: The kinds of text an act writes.
+    permissible_values:
+      commission:
+        description: The text of a commission.
+      criterion:
+        description: The text of a commission criterion.
+      criterion_evidence:
+        description: The evidence a delivery gives for a criterion.
+      decision_basis:
+        description: The decision basis of a delivery.
+      question:
+        description: The text of a question.
+      answer:
+        description: A free-text answer.
+      return:
+        description: The prose of a delivery.
+      translation_basis:
+        description: The translation basis of a delivery.
+      remark:
+        description: A remark on an act.
+      addendum:
+        description: An addendum supplementing an earlier text or an answer.
+      instance_input:
+        description: The input text an instance is started with, written by start and never changed (V4).
+      instance_return:
+        description: The prose of an instance return.
+      instance_translation_basis:
+        description: The translation basis of an instance return.
+classes:
+  FreeFields:
+    is_a: TenantScoped
+    description: The document of free fields an act attaches; whose it is (instance, commission, return)
+      follows from the act's kind. Never evaluated.
+    attributes:
+      act:
+        description: The act that attached it.
+        in_subset:
+        - free
+        range: Act
+        required: true
+      document:
+        description: A JSON object; the only JSON besides the draft's.
+        in_subset:
+        - free
+        required: true
+    unique_keys:
+      one_per_act:
+        unique_key_slots:
+        - tenant
+        - scope
+        - act
+    annotations:
+      table: free_fields
+      source: DEC-0056
+      mutable: never
+  Content:
+    is_a: TenantScoped
+    description: A text of a kind an act writes. An addendum supplements exactly one earlier text or an
+      answer act; a criterion text hangs on its criterion so that one text belongs to one identifier.
+    attributes:
+      act:
+        description: The act that wrote it.
+        in_subset:
+        - content
+        range: Act
+        required: true
+      kind:
+        description: What the text is.
+        in_subset:
+        - content
+        range: ContentKind
+        required: true
+      supplements_content:
+        description: The text an addendum supplements.
+        in_subset:
+        - content
+        range: Content
+      supplements_act:
+        description: The answer act an addendum supplements, for an answer given by an option alone.
+        in_subset:
+        - content
+        range: Act
+      commission_criterion:
+        description: The criterion a criterion text belongs to.
+        in_subset:
+        - content
+        range: CommissionCriterion
+      delivery_criterion:
+        description: The delivery criterion evidence belongs to.
+        in_subset:
+        - content
+        range: DeliveryCriterion
+      media_type:
+        description: The media type of the body.
+        in_subset:
+        - content
+        required: true
+      body:
+        description: The text.
+        in_subset:
+        - content
+        required: true
+    rules:
+    - description: An addendum supplements exactly one thing, every other kind none (ck_content_supplements).
+    - description: criterion and criterion_evidence carry their criterion, no other kind does (ck_content_criterion,
+        ck_content_criterion_evidence).
+    - description: One text per commission criterion and per delivery criterion (partial unique indexes).
+    annotations:
+      table: content
+      source: TAR-0004 2.4, ADR-0042
+      mutable: never

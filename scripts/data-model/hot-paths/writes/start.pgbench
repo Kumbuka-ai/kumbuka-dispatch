@@ -1,0 +1,12 @@
+-- write one act: one start with two field values, free fields and three references.
+-- pgbench script; set :sel with -D sel=26, or prepend a \set sel random(26, 30) line. Selectors 26 to 30 lie in scope 6 of tenant 2 of the volume dataset.
+-- Run as the service role: PGOPTIONS='-c role=kumbuka_dispatch -c app.tenant_id=00000000-0000-4000-8000-000000000002'
+BEGIN;
+UPDATE dispatch.selector SET next_number = next_number + 1 WHERE tenant_id = '00000000-0000-4000-8000-000000000002' AND scope_id = '00000000-0000-4000-9000-000000000006' AND id = :sel RETURNING next_number - 1 AS n \gset
+INSERT INTO dispatch.instance (tenant_id, scope_id, selector_id, number, next_sub, definition_version_id, state) VALUES ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-9000-000000000006', :sel, :n, 1, :sel, 'running') RETURNING id AS iid \gset
+INSERT INTO dispatch.act (tenant_id, scope_id, instance_id, sequence, kind, actor_subject, permission, path, at, to_state) VALUES ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-9000-000000000006', :iid, 1, 'start', 'bench', 'dispatch.start', 'interface', now(), 'running') RETURNING id AS aid \gset
+INSERT INTO dispatch.field_value (tenant_id, scope_id, act_id, control_field_id, value_type, text_value) VALUES ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-9000-000000000006', :aid, :sel * 4 + 2, 'text', 'component-1');
+INSERT INTO dispatch.field_value (tenant_id, scope_id, act_id, control_field_id, value_type, enumeration_id, choice_value_id) VALUES ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-9000-000000000006', :aid, :sel * 4 + 3, 'choice', :sel, :sel * 4 + 1);
+INSERT INTO dispatch.free_fields (tenant_id, scope_id, act_id, document) VALUES ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-9000-000000000006', :aid, '{"note": "bench"}');
+INSERT INTO dispatch.external_reference (tenant_id, scope_id, instance_id, kind, value, set_by_act_id) VALUES ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-9000-000000000006', :iid, 'trigger', 'bench://' || :iid, :aid), ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-9000-000000000006', :iid, 'tag', 'tag-1', :aid), ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-9000-000000000006', :iid, 'reference', 'worklist://seed/item/1', :aid);
+COMMIT;

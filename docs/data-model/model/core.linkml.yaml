@@ -1,0 +1,84 @@
+id: https://kumbuka.ai/model/dispatch/core
+name: dispatch_core
+title: Dispatch data model - shared definitions
+description: >-
+  Shared definitions of the data model of the dispatch service: prefixes, the kinds of data under
+  DEC-0056/C1, types, enumerations used by several groups, and the tenant-scoped base class.
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+
+subsets:
+  system:
+    description: System field - defined and written by the platform alone (DEC-0056/C1).
+  control:
+    description: Control field - declared by a customer in the schema of a definition version (DEC-0056/C1).
+  free:
+    description: Free field - stored with an act and never evaluated (DEC-0056/C1).
+  content:
+    description: The text of the work (DEC-0056/C1).
+
+enums:
+  DefinitionVersionState:
+    description: The lifecycle of a definition version (TAR-0004 2.2).
+    permissible_values:
+      draft:
+        description: Written by define, not in force.
+      active:
+        description: In force; new instances bind to it. At most one per selector.
+      retired:
+        description: Replaced by the activation of a later version; still readable.
+  DefinitionActKind:
+    description: The kinds of act on a definition version (TAR-0004 2.2).
+    permissible_values:
+      define:
+        description: Writes a version as a draft.
+      activate:
+        description: Puts a version in force and retires the one before.
+  InputKind:
+    description: What a task of the activity takes as input (TAR-0004 2.2).
+    permissible_values:
+      text: {description: Prose in the commission.}
+      bound: {description: The return of a task of the bound activity.}
+      parameters: {description: Values of the fields of the input contract.}
+      none: {description: Nothing beyond the title.}
+  Path:
+    description: The way an act came by (TAR-0004 B5).
+    permissible_values:
+      interface: {description: The verb surface (MCP or REST).}
+      console: {description: The interactive web console.}
+
+slots:
+  tenant:
+    description: The tenant the row belongs to; taken from the validated identity, never from a parameter (DEC-0049).
+    range: uuidtype
+    required: true
+    in_subset: [system]
+    annotations: {column: tenant_id, source: "ADR-0042"}
+  scope:
+    description: The scope of the tenant the row belongs to.
+    range: uuidtype
+    required: true
+    in_subset: [system]
+    annotations: {column: scope_id, source: "ADR-0042"}
+
+types:
+  uuidtype:
+    typeof: string
+    pattern: "^[0-9a-f-]{36}$"
+    description: A UUID.
+
+classes:
+  TenantScoped:
+    abstract: true
+    description: Every row of the store carries its tenant and scope; every key that names another row carries them too.
+    slots: [tenant, scope]
+    annotations:
+      rls: "enabled and forced; policy <table>_tenant_isolation"
+      tenant_key: "UNIQUE (tenant_id, scope_id, id); every foreign key over (tenant_id, scope_id, <column>)"
+      source: "ADR-0042"
+

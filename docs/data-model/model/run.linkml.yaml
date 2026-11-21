@@ -1,0 +1,229 @@
+id: https://kumbuka.ai/model/dispatch/run
+name: dispatch_run
+title: Dispatch data model - group "instance and task"
+description: >-
+  One run of a declared process and the tasks within it, with the state each projects from its acts. Physical level: store line V1 (instance, task).
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - definition.linkml
+
+
+enums:
+  InstanceState:
+    description: The two states of an instance (DEC-0046).
+    permissible_values:
+      running:
+        description: Open for acts.
+      closed:
+        description: Concluded or withdrawn; no act changes it any more.
+  InstanceResolution:
+    description: How a closed instance ended.
+    permissible_values:
+      concluded:
+        description: Closed by conclude, with its return.
+      withdrawn:
+        description: Closed by withdraw.
+  TaskState:
+    description: The seven states of a task (TAR-0004 2.4).
+    permissible_values:
+      draft:
+        description: Written, not sent.
+      recalled:
+        description: Taken back from open by an intervention, not yet sent again.
+      open:
+        description: Sent and waiting to be claimed.
+      active:
+        description: Held by a holder under a lease.
+      on_hold:
+        description: Paused for a question, a dependency or an external cause.
+      delivered:
+        description: Returned and waiting for acceptance.
+      closed:
+        description: Ended; the resolution says how.
+  HoldReason:
+    description: Why a task is on hold.
+    permissible_values:
+      question:
+        description: Its executor asked and waits for an answer.
+      dependency:
+        description: It waits on other work.
+      external:
+        description: It waits on something outside the platform; a parked task is held for this reason.
+  TaskResolution:
+    description: How a closed task ended.
+    permissible_values:
+      accepted:
+        description: The commissioner accepted the delivery.
+      rejected:
+        description: The executor declined the commission.
+      failed:
+        description: The work failed for a reason of the matter.
+      withdrawn:
+        description: The commissioner withdrew the commission.
+classes:
+  Instance:
+    is_a: TenantScoped
+    description: One numbered run of a declared process, addressed dispatch://<scope>/<selector>/<number>.
+      It binds to the definition version in force at its start; its state is a projection of its acts.
+    attributes:
+      selector:
+        description: The selector of its address, under which it is numbered.
+        in_subset:
+        - system
+        range: Selector
+        required: true
+      number:
+        description: Its number under the selector, from the selector's counter, never reissued.
+        in_subset:
+        - system
+        range: integer
+        required: true
+        minimum_value: 1
+      title:
+        description: 'Its title, set by start and never changed; for a bracket copied from the bracket
+          store the title of its task under .0 (V4). Text of the customer: it stands in listings and never
+          in a log line, a metric or a view of the operator.'
+        in_subset:
+        - system
+      trigger_task:
+        description: The task of the same scope that started it, so that the triggering instance can read
+          its return; other triggers are references of the kind trigger.
+        in_subset:
+        - system
+        range: Task
+      next_sub:
+        description: 'Projection: the sub-number the next task receives.'
+        in_subset:
+        - system
+        range: integer
+        required: true
+        minimum_value: 1
+      definition_version:
+        description: 'Projection: the version it is bound to; changed only by the rebind intervention.'
+        in_subset:
+        - system
+        range: DefinitionVersion
+        required: true
+      state:
+        description: 'Projection: whether it runs or is closed.'
+        in_subset:
+        - system
+        range: InstanceState
+        required: true
+      resolution:
+        description: 'Projection: how it closed; set exactly when the state is closed.'
+        in_subset:
+        - system
+        range: InstanceResolution
+    unique_keys:
+      address:
+        unique_key_slots:
+        - tenant
+        - scope
+        - selector
+        - number
+    rules:
+    - description: resolution is set exactly when state is closed (ck_instance_closed_resolved).
+    - description: 'The version it is bound to belongs to its selector: a foreign key over (selector,
+        definition_version) into a unique key of the version (V4); a rebind stays inside the selector.'
+    annotations:
+      table: instance
+      source: TAR-0004 2.3, DEC-0046
+      mutable: projection columns next_sub, definition_version, state, resolution; written by the service
+        from the acts
+  Task:
+    is_a: TenantScoped
+    description: One execution of one activity by one identity within an instance, addressed dispatch://<scope>/<selector>/<number>.<sub>.
+      Every column after sub is a projection of its acts and its draft.
+    attributes:
+      instance:
+        description: The instance it belongs to; it never changes instance.
+        in_subset:
+        - system
+        range: Instance
+        required: true
+      sub:
+        description: Its number within the instance, from the instance's counter, which counts from 1.
+          Only the task a bracket of the bracket store was copied from stands under 0; no new task receives
+          it (V4 admits 0, the counter does not hand it out).
+        in_subset:
+        - system
+        range: integer
+        required: true
+        minimum_value: 0
+      title:
+        description: 'Projection: the title of its commission, or of its draft before sending. Text of
+          the customer: never in a log line, a metric or a view of the operator.'
+        in_subset:
+        - system
+      activity:
+        description: 'Projection: the activity it executes.'
+        in_subset:
+        - system
+        range: Activity
+      concerns_task:
+        description: 'Projection: the task of the same instance it concerns (the review concerns the code);
+          the only edge between tasks that rules evaluate.'
+        in_subset:
+        - system
+        range: Task
+      state:
+        description: 'Projection: its state.'
+        in_subset:
+        - system
+        range: TaskState
+        required: true
+      hold_reason:
+        description: 'Projection: why it is on hold; set exactly when the state is on_hold.'
+        in_subset:
+        - system
+        range: HoldReason
+      resolution:
+        description: 'Projection: how it closed; set exactly when the state is closed.'
+        in_subset:
+        - system
+        range: TaskResolution
+      not_before:
+        description: 'Projection: the time before which an open, deferred task is not offered.'
+        in_subset:
+        - system
+        range: datetime
+      parked:
+        description: 'Projection: held externally after too many lapses; leaves only by repair or withdraw.'
+        in_subset:
+        - system
+        range: boolean
+        required: true
+      addressed_role:
+        description: 'Projection: the role its current commission, or its draft before sending, addresses;
+          what an executor selects its work by (V4).'
+        in_subset:
+        - system
+    unique_keys:
+      sub_per_instance:
+        unique_key_slots:
+        - tenant
+        - scope
+        - instance
+        - sub
+    rules:
+    - description: Unique under its instance as well (uq_task_instance_id), the target of the keys that
+        bind a row to a task of one instance.
+    - description: hold_reason is set exactly when state is on_hold (ck_task_on_hold_reason).
+    - description: resolution is set exactly when state is closed (ck_task_closed_resolved).
+    - description: not_before only on an open task (ck_task_not_before_open).
+    - description: parked only when on hold for an external reason (ck_task_parked).
+    - description: Listed by state and addressed role through an index over tenant, scope, state, addressed_role,
+        instance and sub (V4).
+    - description: a task does not concern itself; the concerned task belongs to the same instance (ck_task_concerns_other,
+        fk_task_task_concerns).
+    annotations:
+      table: task
+      source: TAR-0004 2.4, 2.5
+      mutable: projection columns after sub; DELETE only of a task without an act (a draft never sent)

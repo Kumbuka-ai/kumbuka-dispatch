@@ -1,0 +1,70 @@
+@startuml 04-commission-and-return
+' 04-commission-and-return (docs/data-model/groups/04-commission-and-return.md), generated from model/work.linkml.yaml.
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below. Tables of other groups are drawn grey.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+skinparam class<<other>> {
+  BackgroundColor #EEEEEE
+  BorderColor #999999
+}
+class commission <<system>> {
+  id : bigint
+  act_id : -> act
+  instance_id : -> instance
+  title : string
+  activity_id : -> activity
+  concerns_task_id : -> task  [0..1]
+  bound_task_id : -> task  [0..1]
+  addressed_role : string  [0..1]
+}
+note bottom of commission : updates: never (no UPDATE grant)
+class commission_criterion <<system>> {
+  id : bigint
+  commission_id : -> commission
+  identifier : string
+  ordinal : integer
+}
+note bottom of commission_criterion : updates: never
+class delivery <<system>> {
+  id : bigint
+  act_id : -> act
+  verdict : green | red | question  [0..1]
+  outcome_label_id : -> outcome_label  [0..1]
+}
+note bottom of delivery : updates: never
+class delivery_criterion <<system>> {
+  id : bigint
+  delivery_id : -> delivery
+  commission_criterion_id : -> commission_criterion
+  status : met | not_met | not_applicable
+}
+note bottom of delivery_criterion : updates: never
+class instance_return <<system>> {
+  id : bigint
+  act_id : -> act
+  verdict : green | red | question  [0..1]
+  outcome_label_id : -> outcome_label  [0..1]
+}
+note bottom of instance_return : updates: never
+class act <<other>>
+class activity <<other>>
+class instance <<other>>
+class outcome_label <<other>>
+class task <<other>>
+commission |o--|| act : act
+commission }o--|| instance : instance
+commission }o--|| activity : activity
+commission }o--o| task : concerns_task
+commission }o--o| task : bound_task
+commission_criterion }o--|| commission : commission
+delivery |o--|| act : act
+delivery }o--o| outcome_label : outcome_label
+delivery_criterion }o--|| delivery : delivery
+delivery_criterion }o--|| commission_criterion : commission_criterion
+instance_return |o--|| act : act
+instance_return }o--o| outcome_label : outcome_label
+@enduml

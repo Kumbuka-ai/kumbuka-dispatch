@@ -1,0 +1,31 @@
+@startuml 07-references
+' 07-references (docs/data-model/groups/07-references.md), generated from model/reference.linkml.yaml.
+' Every table carries tenant_id and scope_id and a unique key (tenant_id, scope_id, id); every foreign
+' key runs over tenant, scope and id (ADR-0042). Left out below. Tables of other groups are drawn grey.
+skinparam shadowing false
+skinparam roundcorner 0
+skinparam classAttributeIconSize 0
+hide methods
+hide empty members
+skinparam class<<other>> {
+  BackgroundColor #EEEEEE
+  BorderColor #999999
+}
+class external_reference <<system>> {
+  id : bigint
+  instance_id : -> instance  [0..1]
+  task_id : -> task  [0..1]
+  kind : trigger | tag | item | reference | curation
+  value : string
+  set_by_act_id : -> act
+  ended_by_act_id : -> act  [0..1]
+}
+note bottom of external_reference : updates: ended_by_act only, set once by the service; it is the record of the end, not a projection
+class act <<other>>
+class instance <<other>>
+class task <<other>>
+external_reference }o--o| instance : instance
+external_reference }o--o| task : task
+external_reference }o--|| act : set_by_act
+external_reference }o--o| act : ended_by_act
+@enduml

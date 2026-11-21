@@ -1,0 +1,106 @@
+id: https://kumbuka.ai/model/dispatch/dialog
+name: dispatch_dialog
+title: Dispatch data model - group "dialog"
+description: >-
+  The options of the questions an executor asks during a task, and their answers; a question is its ask act, its texts are content. Physical level: store line V1 (question_option, answer); the table question becomes a column of the act with V4.
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - trace.linkml
+
+
+classes:
+  QuestionOption:
+    is_a: TenantScoped
+    description: An option a question offers, by its label and place.
+    attributes:
+      ask_act:
+        description: The ask act whose question offers it (V4; before it the table question).
+        in_subset:
+        - system
+        range: Act
+        required: true
+      label:
+        description: 'The option, unique in the question. Text of the customer: never in a log line, a
+          metric or a view of the operator.'
+        in_subset:
+        - system
+        required: true
+      ordinal:
+        description: Its place, unique in the question.
+        in_subset:
+        - system
+        range: integer
+        required: true
+    unique_keys:
+      label_per_question:
+        unique_key_slots:
+        - tenant
+        - scope
+        - ask_act
+        - label
+      ordinal_per_question:
+        unique_key_slots:
+        - tenant
+        - scope
+        - ask_act
+        - ordinal
+      option_of_question:
+        unique_key_slots:
+        - tenant
+        - scope
+        - ask_act
+        - id
+    rules:
+    - description: The unique key over (ask_act, id) is the target of the answer's key over (ask_act,
+        option); before V4 it stood over (question_id, id) as uq_question_option_question_id.
+    annotations:
+      table: question_option
+      source: TAR-0004 2.4
+      mutable: never
+  Answer:
+    is_a: TenantScoped
+    description: 'The answer an answer act gives to a question: at most one per question, with the option
+      chosen where one was; free text is content.'
+    attributes:
+      act:
+        description: The answer act.
+        in_subset:
+        - system
+        range: Act
+        required: true
+      ask_act:
+        description: The ask act whose question it answers (V4; before it the table question).
+        in_subset:
+        - system
+        range: Act
+        required: true
+      option:
+        description: The option chosen, one of that question's own.
+        in_subset:
+        - system
+        range: QuestionOption
+    unique_keys:
+      one_per_act:
+        unique_key_slots:
+        - tenant
+        - scope
+        - act
+      one_per_question:
+        unique_key_slots:
+        - tenant
+        - scope
+        - ask_act
+    rules:
+    - description: 'The option chosen is one of that question''s own: a foreign key over (ask_act, option)
+        into the options of the same ask act; before V4 fk_answer_question_option over (question_id, option_id).
+        V4 keeps this binding in the store.'
+    annotations:
+      table: answer
+      source: TAR-0004 2.4
+      mutable: never

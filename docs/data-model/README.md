@@ -16,7 +16,7 @@ The binding statements live in the architecture corpus (`Kumbuka-ai/platform-spe
 | DEC-0055 | a process definition belongs to the dispatch service alone; the criteria contract with the worklist |
 | DEC-0056 | the gate evaluates only what a definition declares; the kinds of data |
 | DEC-0057 | the one cut-over to the new store |
-| ADR-0042 | tenant and scope in every key |
+| ADR-0042 | tenant and scope on every row, in a unique key of every table and in every foreign key |
 
 This area explains and measures. Where it states a rule, it names the node the rule comes from. Where
 it finds that the store and a node disagree, that is a finding, reported and resolved in the node or in
@@ -43,14 +43,43 @@ conceptual and logical levels, and the check that the three agree, are built up 
 | `method/evaluation-catalogue.md` | the criteria the model is assessed against, the scale, the knock-out rule, the weights |
 | `method/maturity.md` | the maturity levels 0 to 3 and what each requires |
 | `method/measurement.md` | how the physical criteria are measured: dataset, volume, queries, recording |
+| `method/format.md` | which format carries which level, and why |
 | `model/` | the model on the conceptual and logical level, and the physical level derived from the SQL |
 | `groups/` | one chapter per group of tables: purpose, invariants, questions answered, cut, rejected alternative |
 | `diagrams/` | one diagram per group and an overview |
 | `assessments/` | dated results of an assessment, each grade with its evidence |
+| `next-wave.md` | what the wave that builds the process rules adds to the store, whether it touches what is built now, and the open topics |
+
+## Groups
+
+| Group | Chapter | Model | Tables |
+|---|---|---|---|
+| 1 definition | `groups/01-definition.md` | `model/definition.linkml.yaml` | selector, definition_version, definition_act, definition_tag, activity, outcome_label |
+| 2 instance and task | `groups/02-instance-and-task.md` | `model/run.linkml.yaml` | instance, task |
+| 3 trace | `groups/03-trace.md` | `model/trace.linkml.yaml` | act, idempotency_key |
+| 4 commission and return | `groups/04-commission-and-return.md` | `model/work.linkml.yaml` | commission, commission_criterion, delivery, delivery_criterion, instance_return |
+| 5 holding | `groups/05-holding.md` | `model/holding.linkml.yaml` | holding, lease, receipt, hold, deferral |
+| 6 dialog | `groups/06-dialog.md` | `model/dialog.linkml.yaml` | question, question_option, answer |
+| 7 references | `groups/07-references.md` | `model/reference.linkml.yaml` | external_reference |
+| 8 control fields | `groups/08-control-fields.md` | `model/control.linkml.yaml` | enumeration, enumeration_value, control_field, contract_field, field_value |
+| 9 free fields and content | `groups/09-free-fields-and-content.md` | `model/payload.linkml.yaml` | free_fields, content |
+| 10 draft workspace | `groups/10-draft-workspace.md` | `model/draft.linkml.yaml` | draft, draft_criterion, draft_free_fields, draft_text |
+
+The diagram of each group is `diagrams/<chapter name>.puml`. Diagrams 02 to 10 are generated from the
+model; a change to the model regenerates them, never an edit by hand.
+| `../../scripts/data-model/` | catalogue checks, reconciliation, the volume dataset, the hot paths, the DBML view, the group diagrams |
 
 ## State
 
-As of 2026-11-20 the store line holds V1 to V3 on the integration branch `wave-2` (35 tables). The
-store is not deployed; it is changed freely until the cut-over (REA-0010 step 7), which waits until the
-wave that builds the process rules is built on the same branch. The maturity of the model is level 0:
-the physical level exists, the other two are being written.
+As of 2026-11-21 the store line holds V1 to V4 (33 tables); V4 is the migration the assessment of
+2026-11-20 led to (pull request #62 on the integration branch `wave-2`). The store is not deployed;
+its cut-over (REA-0010 step 7) waits until the wave that builds the process rules is built on the same
+branch. After V4 the line takes changes additively only.
+
+The first assessment against the catalogue is `assessments/2026-11-20-assessment.md`; what the
+operator decided on it, and therefore what V4 holds, is `assessments/2026-11-20-decisions.md`. The
+model and the diagrams carry V4. The chapters describe V1 to V3 in their body and close with what V4
+changes; bringing their bodies to V4 is still to be done. Measured on 2026-11-21 against a database
+migrated through V4: `reconcile.py` reports no difference between model and store (against V1 to V3
+it reports 17, each a change V4 makes), and the catalogue checks return no row. The target model of
+the next wave and the trace matrix from clause to concept are still to be written.

@@ -66,14 +66,14 @@ operator with a written reason; gaps on `medium` and `low` are reported.
 | L2 | The level of abstraction fits: no schema per customer, no entity-attribute-value table standing in for declared fields | Hoberman 4 (abstraction) | review against DEC-0056/C2 to C7 | medium |
 | L3 | No column that is filled only some of the time without a stated reason | review criterion 16 of the code conventions | per nullable column, the condition under which it is null | medium |
 | L4 | **knock-out.** The kinds of data are kept apart: every column is a system field, a control field, a free field or content, and no column is two | DEC-0056/C1 | every column assigned to exactly one kind | knock-out |
-| L5 | **knock-out.** What is written once is never changed: commissions, returns, addenda, field values, start values and the trace | TAR-0004 B5, DEC-0056/C9 | per table, the constraint, trigger or grant that refuses the update | knock-out |
+| L5 | **knock-out.** What is written once is never changed: commissions, returns, addenda, field values, start values and the trace | TAR-0004 2.3 (start values), 2.4 (commission, addenda) and section 4, "What happened stays establishable" (trace, return); DEC-0056/C9 | per table, the constraint, trigger or grant that refuses the update | knock-out |
 | L6 | Names follow one convention | Hoberman 5 (standards) | a lint over the physical names | low |
 
 ### Physical level
 
 | # | Criterion | Source | Method | Weight |
 |---|---|---|---|---|
-| P1 | **knock-out.** Tenant isolation: every table carries tenant and scope in its key, and row-level security is on for every table | ADR-0042, north star | a query over the system catalogue: no table without, no policy missing | knock-out |
+| P1 | **knock-out.** Tenant isolation: every table carries the columns `tenant_id` and `scope_id`, a unique key over (`tenant_id`, `scope_id`, `id`), and every foreign key runs over tenant, scope and the referenced id; row-level security is enabled and forced with a tenant policy on every table. The primary key is the identity column alone and is not one of these keys | ADR-0042, north star | queries over the system catalogue (`measurement.md`, P1): no table, key or policy missing | knock-out |
 | P2 | **knock-out.** No content where the operator reads: the text of the work stands only in the tables that hold content, and no role of the operator reads them | north star (ops-no-content, private memory) | the grants of every role against the tables that hold content | knock-out |
 | P3 | Integrity is kept by the database where it can be: every invariant of the logical level that a foreign key, a check or a unique constraint can express is expressed by one | Moody/Shanks integrity | per invariant, the constraint that keeps it, or the reason none can | high |
 | P4 | The hot paths are fast enough: `query`, the next acts of a task, `read_trace`, writing one act, and the check of the gate | Hoberman 8 (physical), Moody/Shanks implementability | `EXPLAIN (ANALYZE, BUFFERS)` on a store of ten times the current stock (`measurement.md`) | high |

@@ -1,0 +1,86 @@
+id: https://kumbuka.ai/model/dispatch/reference
+name: dispatch_reference
+title: Dispatch data model - group "references outside the service"
+description: >-
+  Values that name objects outside the service, held on an instance or a task and never resolved: triggers, tags, worklist items, other references and curations. Physical level: store line V1 (external_reference), the kind item with V4.
+prefixes:
+  linkml: https://w3id.org/linkml/
+  kd: https://kumbuka.ai/model/dispatch/
+default_prefix: kd
+default_range: string
+imports:
+  - linkml:types
+  - core.linkml
+  - trace.linkml
+
+
+enums:
+  ReferenceKind:
+    description: The kinds of external reference (TAR-0004 2.3; DEC-0055/C5).
+    permissible_values:
+      trigger:
+        description: What started an instance, if not a task of the scope; set at start and never ended.
+      tag:
+        description: A tag of the platform catalogue on an instance or a task.
+      item:
+        description: A worklist item the instance serves; the anchor of the criteria contract (DEC-0055/C9).
+          From V4.
+      reference:
+        description: Any other object outside the service the instance serves.
+      curation:
+        description: The object a closed task was curated into.
+classes:
+  ExternalReference:
+    is_a: TenantScoped
+    description: A reference to something outside the service, held as a value on exactly one instance
+      or one task, set by an act and ended by an act. The service stores, hands out and never resolves
+      it. Together with the other service's half it forms a many-to-many relation (an instance serves
+      several items, an item is served by several instances).
+    attributes:
+      instance:
+        description: The instance it is held on; set for trigger, item and reference.
+        in_subset:
+        - system
+        range: Instance
+      task:
+        description: The task it is held on; set for curation.
+        in_subset:
+        - system
+        range: Task
+      kind:
+        description: What kind of object it names, named by the caller and never derived from the value.
+        in_subset:
+        - system
+        range: ReferenceKind
+        required: true
+      value:
+        description: The opaque value, such as worklist://acme/item/42; never parsed.
+        in_subset:
+        - system
+        required: true
+      set_by_act:
+        description: The act that set it.
+        in_subset:
+        - system
+        range: Act
+        required: true
+      ended_by_act:
+        description: The act that ended it; a trigger is never ended. The ending act carries no payload,
+          so this column is the only record of which reference it ended. The service sets it only while
+          it is empty; the store cannot refuse a second update without a trigger (accepted by the operator,
+          2026-11-20).
+        in_subset:
+        - system
+        range: Act
+    rules:
+    - description: Listed by kind and value through idx_external_reference_kind_value.
+    - description: Exactly one of instance and task (ck_external_reference_owner).
+    - description: trigger, reference and item are held on an instance; curation on a task (ck_external_reference_instance_kinds,
+        ck_external_reference_task_kinds).
+    - description: At most one current reference of a kind and value per instance and per task (partial
+        unique indexes uq_external_reference_*_current).
+    - description: A trigger is never ended (ck_external_reference_trigger_not_ended).
+    annotations:
+      table: external_reference
+      source: TAR-0004 2.3, DEC-0055/C5, REA-0010 D12
+      mutable: ended_by_act only, set once by the service; it is the record of the end, not a projection
