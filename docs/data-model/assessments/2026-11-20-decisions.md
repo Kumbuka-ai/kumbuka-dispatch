@@ -22,7 +22,7 @@ build of this wave and of the next runs on.
 | 9 | The version of an instance belongs to its selector | `definition_version` (unique key over selector and id), `instance` (foreign key) | finding 4 |
 | 10 | The act, the concerned task and the bound task of a commission lie in one instance | `commission` (column `instance_id`, three foreign keys) | finding 5 |
 | 11 | The reason of a hold, the time of a deferral and the free-text mark of a question become columns of the act, each with a check on the kind; the tables `hold`, `deferral` and `question` go; `question_option` and `answer` reference the ask act, and the option an answer chooses stays bound to its question in the store: a unique key on `question_option` over (`ask_act_id`, `id`) in the place of `uq_question_option_question_id`, and the key of `answer` over (`ask_act_id`, `option_id`) in the place of `fk_answer_question_option` | `act` (three nullable columns, three checks), `question_option`, `answer` (column renamed to `ask_act_id`, their keys re-pointed), three tables dropped | finding 7; foreign review of 2026-11-20 |
-| 12 | `fk_idempotency_key_task` in the form without a column list | `idempotency_key` (foreign key) | finding 11 |
+| 12 | withdrawn on 2026-11-21: `fk_idempotency_key_task` keeps `ON DELETE SET NULL (task_id)`. Without the column list the delete of a draft would set `tenant_id` and `scope_id` of the key to NULL as well, which both columns refuse; the form exists since PostgreSQL 15 and the line is tested on 16 | none | finding 11 |
 
 The store then holds 33 tables: 35, less three, plus one.
 

@@ -84,8 +84,9 @@ The tables above describe V1 to V3; the model and the diagram carry V4.
   column would put verdicts, outcomes and statuses out of reach of foreign keys. Which kind of act
   such a row may hang on stays the service's.
 - `ck_act_kind` lists 26 kinds; each new kind widens a check and validates it once against every act.
-- `fk_idempotency_key_task` loses its column list, the one construct of the line that PostgreSQL has
-  only had since version 15.
+- `fk_idempotency_key_task` keeps its column list (`ON DELETE SET NULL (task_id)`), the one construct of
+  the line that PostgreSQL has only had since version 15: without the list a delete would empty tenant
+  and scope of the key as well.
 
 ## Columns the text above does not name
 

@@ -237,9 +237,9 @@ classes:
         - caller_subject
         - idempotency_key
     rules:
-    - description: The key to the task empties the task column when the draft is deleted; V4 writes that
-        foreign key without a column list, so that the clause is one PostgreSQL has had before version
-        15.
+    - description: The key to the task empties the task column alone when the draft is deleted (ON DELETE
+        SET NULL with a column list, a form PostgreSQL has since version 15); without the list tenant
+        and scope would be emptied as well.
     - description: At most one of task and act (ck_idempotency_key_one_target).
     annotations:
       table: idempotency_key

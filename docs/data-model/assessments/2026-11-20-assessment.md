@@ -181,7 +181,8 @@ privilege on any table, and the owner is subject to the forced policies.
 ### 11. One clause uses a form PostgreSQL has had since version 15 (portability)
 
 `fk_idempotency_key_task` reads `ON DELETE SET NULL (task_id)`, the column list form introduced with
-PostgreSQL 15. It is the only delete rule in the store line, and the only construct that is not as
+PostgreSQL 15. (Decided on 2026-11-21: it stays. The form without a column list would empty tenant and
+scope of the key on a delete, which the columns refuse.) It is the only delete rule in the store line, and the only construct that is not as
 old as partial unique indexes, check constraints, `jsonb` and row-level security. The store line uses
 no trigger, no deferrable constraint, no exclusion constraint and no generated column.
 
