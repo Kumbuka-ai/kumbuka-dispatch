@@ -649,16 +649,18 @@ final class CutoverStock {
                     + "selector_id, number, sub, state, hold_reason, outcome, state_changed_at, "
                     + "state_changed_by, question_options, not_before, lapse_count, holder_subject, "
                     + "holder_receipt_hash, lease_expires_at, curated_in_id, title, apparatus, "
-                    + "dispatch_metadata, return_metadata, first_taken_at, created_at, created_by) "
+                    + "dispatch_metadata, return_metadata, first_taken_at, created_at, created_by, "
+                    + "updated_at, updated_by) "
                     + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, "
-                    + "?::jsonb, ?::jsonb, ?, ?, 'creator') RETURNING id",
+                    + "?::jsonb, ?::jsonb, ?, ?, 'creator', ?, 'creator') RETURNING id",
                 store.tenant, store.scope, selector, number, sub, state, holdReason, outcome,
                 T0.plusMinutes(changedAt), changedBy, questionOptions, notBefore, lapses, holder,
                 receiptHash, leaseEnd, curatedIn,
                 "title of " + number + "." + sub + " in selector " + selector + ", tenant "
                     + store.tag,
                 apparatus, dispatchMetadata, returnMetadata,
-                firstTakenAt == null ? null : T0.plusMinutes(firstTakenAt), T0);
+                firstTakenAt == null ? null : T0.plusMinutes(firstTakenAt), T0,
+                T0.plusMinutes(changedAt));
         }
     }
 }
