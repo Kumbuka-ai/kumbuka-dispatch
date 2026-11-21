@@ -54,7 +54,7 @@ classes:
         range: ReferenceKind
         required: true
       value:
-        description: The opaque value, such as worklist://kumbuka/item/1207; never parsed.
+        description: The opaque value, such as worklist://acme/item/42; never parsed.
         in_subset:
         - system
         required: true

@@ -3,7 +3,7 @@
 ' plus the V4 of step 4 (seed mark, external reference kind item).
 ' Every table carries tenant_id and scope_id, a unique key (tenant_id, scope_id, id) and foreign keys
 ' over tenant, scope and id (ADR-0042); the primary key is id alone. Tenant and scope are left out below.
-' Status: overview drawn for review sprint/207.51; it leaves out ids, unique constraints and some
+' Status: overview drawn for a review; it leaves out ids, unique constraints and some
 ' columns and keys (review answer A.1). It is replaced by the diagrams of the groups under groups/.
 ' Stereotypes <<system>>, <<control>>, <<free>> and <<content>> give the kind of data under
 ' DEC-0056/C1; <<draft>> marks the draft workspace, a stage of the lifecycle and not a kind of data:

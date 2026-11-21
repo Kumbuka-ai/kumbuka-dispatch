@@ -1,6 +1,6 @@
 # Formats of the model
 
-Decided by the operator on 2026-11-20 (dispatch://kumbuka/sprint/215.0) after a probe on the group
+Decided by the operator on 2026-11-20 after a probe on the group
 `definition`.
 
 ## The levels and their carriers

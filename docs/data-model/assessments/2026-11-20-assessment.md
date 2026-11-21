@@ -119,7 +119,7 @@ The key needs a unique key on `act` over (`task_id`, `id`), a sixth index on the
 by every act. "At most one current holding per task" cannot be a key at all: a lapse is never written
 (ADR-0002), so a lapsed holding and its successor are both without an ending act.
 
-### 7. Which payload an act may carry is kept by the service; three payload tables hold one column (L2, P3; groups 3 to 6; item 1282)
+### 7. Which payload an act may carry is kept by the service; three payload tables hold one column (L2, P3; groups 3 to 6)
 
 The eight tables that hang 0..1 on an act (`commission`, `delivery`, `instance_return`, `hold`,
 `deferral`, `question`, `answer`, `free_fields`) are class table inheritance (Fowler, *Patterns of

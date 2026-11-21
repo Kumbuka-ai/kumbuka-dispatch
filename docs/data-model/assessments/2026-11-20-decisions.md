@@ -1,6 +1,6 @@
 # Decisions after the assessment of 2026-11-20: what V4 holds
 
-Decided by the operator on 2026-11-20 (dispatch://kumbuka/sprint/215.0) on the findings of
+Decided by the operator on 2026-11-20 on the findings of
 `2026-11-20-assessment.md`. This page is the list V4 of the store line is written from. The binding
 statements stand in REA-0010 and TAR-0004; where this page and they differ, they hold.
 
@@ -30,7 +30,7 @@ The store then holds 33 tables: 35, less three, plus one.
 
 | Finding | Decision | Reason |
 |---|---|---|
-| 6: the claim act of a holding acts on the holding's task | kept by the service | the key would cost a sixth index on `act`, paid by every act; a test of the holder protocol checks it (worklist://kumbuka/item/1286) |
+| 6: the claim act of a holding acts on the holding's task | kept by the service | the key would cost a sixth index on `act`, paid by every act; a test of the holder protocol checks it |
 | 7: the kind of act a payload row may hang on, for `commission`, `delivery`, `instance_return`, `answer`, `free_fields` | kept by the service | binding by key costs a sixth index on `act`; the five tables stay as they are |
 | 8: the end of a reference in an updatable column | accepted | an insert-only form would be one more table that hangs 0..1 on a row; the service sets the column only while it is empty, and a test of S5 checks it; the model no longer calls it a projection |
 | 9: `selector` stands for the process definition; a tag is held in two forms | unchanged | recorded in the model |

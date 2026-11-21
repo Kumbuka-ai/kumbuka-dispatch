@@ -50,7 +50,7 @@ The kinds:
 
 - **One table for every kind.** All kinds share shape, lifecycle and the query by kind and value; a
   table per kind would repeat the shape five times.
-- **Kinds named, not inferred.** A value such as `worklist://kumbuka/item/1207` could be parsed, but
+- **Kinds named, not inferred.** A value such as `worklist://acme/item/42` could be parsed, but
   parsing would make this service depend on the address form of another (P1, REA-0010 D12).
 - **Set and ended by acts.** The history of a reference is part of the trace; a delete would lose it.
 

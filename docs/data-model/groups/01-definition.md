@@ -15,7 +15,7 @@ concept), so that the rules an instance ran under can always be read again.
 
 | Concept | Table | In one sentence |
 |---|---|---|
-| Selector | `selector` | The selector segment of the address `dispatch://<scope>/<selector>/<number>` (`sprint` in `dispatch://kumbuka/sprint/215`): a kind of instance of a scope that numbers its instances. |
+| Selector | `selector` | The selector segment of the address `dispatch://<scope>/<selector>/<number>` (`sprint` in `dispatch://acme/sprint/215`): a kind of instance of a scope that numbers its instances. |
 | Definition version | `definition_version` | One numbered version of the process a selector declares. |
 | Definition act | `definition_act` | `define` or `activate` of a version, with who did it, how and when: the trace of the definition. |
 | Definition tag | `definition_tag` | A tag of the platform catalogue the version carries, held as a value. |

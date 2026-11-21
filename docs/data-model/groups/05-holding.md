@@ -73,7 +73,7 @@ The tables above describe V1 to V3; the model and the diagram carry V4.
   act from V4 (group 3). This group then holds `holding`, `lease` and `receipt`.
 - **Kept by the service:** that the claim act of a holding acts on the holding's task. A key would
   need a unique key on `act` over (`task_id`, `id`), a sixth index on the largest table. A test of
-  the holder protocol checks it (worklist://kumbuka/item/1286).
+  the holder protocol checks it.
 - "At most one current holding per task" cannot be a key: a lapse is never written (ADR-0002).
 
 ## Columns the text above does not name

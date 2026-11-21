@@ -74,7 +74,7 @@ assessment says so.
 - **The addressed role as a free field, a tag, a payload table of its own, or an activity per role.**
   A free field would put the executor's selection on a search in JSON; a tag exists only from the first
   send on; a table of its own would be one more row per send for one value; an activity per role was
-  rejected for the seed definitions (dispatch://kumbuka/sprint/207.0a, E4.4).
+  rejected for the seed definitions.
 - **One return table for task and instance with an owner column.** Rejected for the same reason the
   outcome label kept one table: here the anchors differ in kind (deliver versus conclude or withdraw)
   and the reads differ; whether one table would be the better cut is left to the assessment.
@@ -85,7 +85,7 @@ assessment says so.
   the identifiers and the text of the item criteria it is to fulfil, as a copy that freezes with the
   start; its return states a status and an evidence reference for each identifier, and a conclude that
   lacks one is refused. Neither the copy nor the statuses of an instance return have a table in V1 to V3.
-  TAR-0004 2.3 still states the earlier rule and is to be brought in line (worklist://kumbuka/item/1276).
+  TAR-0004 2.3 still states the earlier rule and is to be brought in line.
 - Decision bases of routing acts (TAR-0004 2.5); they attach to the act as a payload of their own.
 - Whether a sent task can be addressed to another role by an act of its own, and until when, is open
   (`../next-wave.md`). In this wave the addressed role changes only in a draft.
