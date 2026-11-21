@@ -71,12 +71,15 @@ model; a change to the model regenerates them, never an edit by hand.
 
 ## State
 
-As of 2026-11-20 the store line holds V1 to V3 on the integration branch `wave-2` (35 tables). The
-store is not deployed; it is changed freely until the cut-over (REA-0010 step 7), which waits until the
-wave that builds the process rules is built on the same branch.
+As of 2026-11-21 the store line holds V1 to V4 (33 tables); V4 is the migration the assessment of
+2026-11-20 led to (pull request #62 on the integration branch `wave-2`). The store is not deployed;
+its cut-over (REA-0010 step 7) waits until the wave that builds the process rules is built on the same
+branch. After V4 the line takes changes additively only.
 
 The first assessment against the catalogue is `assessments/2026-11-20-assessment.md`; what the
 operator decided on it, and therefore what V4 holds, is `assessments/2026-11-20-decisions.md`. The
-model and the diagrams carry V4; the chapters describe V1 to V3 and close with what V4 changes. Until
-V4 is built, `reconcile.py` reports the difference: 17 reports, each a row of the decisions page. The
-target model of the next wave is still to be written.
+model and the diagrams carry V4. The chapters describe V1 to V3 in their body and close with what V4
+changes; bringing their bodies to V4 is still to be done. Measured on 2026-11-21 against a database
+migrated through V4: `reconcile.py` reports no difference between model and store (against V1 to V3
+it reports 17, each a change V4 makes), and the catalogue checks return no row. The target model of
+the next wave and the trace matrix from clause to concept are still to be written.
