@@ -16,8 +16,11 @@ predecessor service into `dispatch.selector`, `dispatch.number_circle` and
                                      4 exchanges, generated -- see the section
                                      further down
     check-kd003.sql                  a read-only check before deploying V17,
-                                     see the section at the foot of this file
+                                     see the section further down
     generate-import.py               the generator that writes both
+    cutover-rename.sql               the cut-over to the store line db/store:
+    cutover-rename-reverse.sql       rename, its way back, and the copy of the
+    cutover-copy.sql                 stock -- see the last section
 
 The SQL file is a projection of the source corpus. Do not hand-edit it: an
 edit makes the file and the corpus disagree without saying so. Change the
@@ -341,3 +344,210 @@ on 2026-10-17. Never against production.
     as superuser, at V16           2 rows: sprint/10.0a, sprint/155.2a
     as superuser, after V16_1..V21 0 rows
     as owner, no tenant bound      0 rows -- the wrong answer named above
+
+---
+
+# The cut-over to the store line db/store
+
+Three scripts move the stock of the old store (line `db/migration`, V1 to V25)
+into the new store (line `db/store`, V1 to V4) once, at the cut-over:
+
+    cutover-rename.sql           schema dispatch -> dispatch_legacy, plus the
+                                 table dispatch_legacy.cutover with one row
+    cutover-rename-reverse.sql   the way back of the rename
+    cutover-copy.sql             reads dispatch_legacy, writes the new dispatch
+
+None of them is a migration. No build and no service runs them; the operator
+runs each with psql, with `-v ON_ERROR_STOP=1`. Each runs in one transaction of
+its own and writes nothing when it refuses. Every table is named with its
+schema; none relies on `search_path`. The probes are `CutoverRenameIT`,
+`CutoverCopyIT` and `CutoverRefusalIT`.
+
+## The order of the cut-over
+
+    1. stop the service
+    2. take the backup
+    3. rename         psql -v ON_ERROR_STOP=1 -U <owner> -d <db> -f cutover-rename.sql
+    4. start the new image: it builds the line db/store in an empty schema dispatch
+    5. copy           psql -v ON_ERROR_STOP=1 -U <role reading every tenant> -d <db> \
+                          -c "SET kumbuka.cutover_actor = '<subject>'" -f cutover-copy.sql
+    6. reconcile
+    7. open           UPDATE dispatch_legacy.cutover SET opened_at = now();
+
+The rename runs as the role that owns the schema `dispatch` (the migrating
+role). The copy runs as a role that reads every tenant: the superuser, or a role
+with `BYPASSRLS`. Both stores are under `FORCE ROW LEVEL SECURITY`, and any other
+role would copy the bound tenant and nothing of the others; the copy refuses it.
+
+The history of the old line, `dispatch.flyway_schema_history`, moves with the
+rename into `dispatch_legacy`; the new line writes its own into the new
+`dispatch`. The service role keeps `search_path = dispatch` and so lands in the
+new store after the rename.
+
+## The way back
+
+Until the opening the way back loses nothing:
+
+    1. drop the new schema    DROP SCHEMA dispatch CASCADE;
+    2. reverse the rename     psql -v ON_ERROR_STOP=1 -U <owner> -d <db> \
+                                  -f cutover-rename-reverse.sql
+    3. start the old image
+
+`cutover-rename-reverse.sql` drops `dispatch_legacy.cutover` and renames
+`dispatch_legacy` back to `dispatch`. The old store then stands with its stock,
+privileges, policies, functions and triggers as before the rename: a rename of
+a schema carries all of them along, and `CutoverRenameIT` compares the catalog
+and every row before the rename and after the way back.
+
+**Nothing writes into `dispatch_legacy` after the rename except `cutover`.** Two
+trigger functions of V17 (`refuse_text_writes_after_send`,
+`refuse_task_delete_after_send`) name `dispatch.task` in their bodies; after the
+rename they read the new table `task`. An update or delete of a text in
+`dispatch_legacy` would therefore be judged against the wrong table. The copy
+only reads the old store, and `CutoverCopyIT` compares every table of it before
+and after.
+
+## The setting kumbuka.cutover_actor
+
+The subject the copy names as the actor of every import act, set in the session
+before the run: `SET kumbuka.cutover_actor = '<subject>'`. With psql, `-c` and
+`-f` run in one session, as in step 5. The subject is opaque, like every actor
+of the new store: an identifier, never a name or an address.
+
+## The refusals
+
+The rename refuses when `dispatch_legacy` exists already, when `dispatch` is not
+the old store (no history, no `task`, or the store line in it), when the history
+records a failed migration, or when the last version is not 25.
+
+The way back refuses when there is no `dispatch_legacy`, when a schema
+`dispatch` still stands, when `cutover` is missing or does not hold exactly one
+row, or when the cut-over was opened.
+
+The copy refuses, writing nothing, when
+
+- `kumbuka.cutover_actor` is not set or empty;
+- `dispatch_legacy.cutover.opened_at` is set, or the table does not hold
+  exactly one row: after the opening the copy would empty what the new store
+  took since;
+- `dispatch_legacy` or the store line V4 is not there, or the role does not read
+  every tenant;
+- an act the copy derives has no recorded actor;
+- `return_metadata` stands on a task without a return text;
+- a bracket has no root task `<number>.0`;
+- an `apparatus` would be refused by `ck_task_addressed_role`;
+- an addendum has no base text of its type.
+
+A refusal names its reason and, where there is one, the address of each task,
+written as `<scope_id>/<selector>/<number>.<sub>` (an addendum with its
+suffix). It names no title, no text and no value.
+
+## What the copy does
+
+It empties every table of the new store first (`TRUNCATE … RESTART IDENTITY`),
+then copies. A second run gives the same stock; only the time of the import acts
+differs, which is the time of the run. The principle: no text is rewritten, and
+no event the old store did not record is made up. Every act of the copy names
+the recorded actor as `actor_subject` and `actor_owner_subject` and leaves
+`permission`, `path` and `authentication_level` empty.
+
+- **Selector.** One per old selector, same name; `next_number` behind the larger
+  of the old counter and the highest copied number, so a number once issued is
+  never issued again. One `definition_version` 1 with `seed = true`,
+  `state = active`, `verdict_required = false`, `outcome_required = false`; one
+  activity `default` (`input_kind = text`, `may_ask = true`, the rest false or
+  empty); no outcome label, control field, rule or `definition_act`.
+- **Instance.** One per bracket (root task, sub 0), same number, bound to version
+  1, titled as its root task, without an input text; `next_sub` behind the
+  highest sub. A closed root task closes the instance: `concluded` where it was
+  accepted, otherwise `withdrawn`. The closing act (`conclude` or `withdraw`, on
+  the instance) carries time and actor of the root task's change of state and the
+  `instance_return`, without verdict or outcome; a `conclude` refers
+  (`refers_to_act_id`) to the deliver act of the valid, youngest return of the
+  root task.
+- **Trace.** Each instance begins with one act `import` (actor from the setting,
+  time of the run). The derived acts follow by time, then sub-number, then in
+  this order: send, claim of a holder, deliver, ask, answer, annotate, the act of
+  the present state, the closing act of the instance. They are older than the
+  import act before them; the sequence orders, not the time.
+- **Task.** Same address, state, `hold_reason`, `resolution` (from `outcome`),
+  `not_before`; no activity, verdict, outcome or field value; `addressed_role`
+  on the task, the commission and the draft is the `apparatus`. `parked` is true
+  exactly for a task on hold `external` without a holder and with
+  `lapse_count >= 3`. `self_accepted`, `first_taken_at` and `lapse_count` are not
+  carried.
+- **Derived acts**, only from what the old store records:
+  - `send` for every task but a draft, at the time and by the actor of its
+    dispatch text; the commission (title, the activity `default`,
+    `addressed_role`) and the text as content of kind `commission`;
+  - `deliver` for every return text, the text as content of kind `return`;
+  - `ask` and `answer` for every question and answer text, as content of kind
+    `question` and `answer` (see the next section for the options);
+  - `annotate` for every text with a suffix, as content of kind `addendum`
+    supplementing the text of its type it belongs to: the youngest of that type
+    not younger than the addendum, or else the oldest;
+  - the act of the present state, at `state_changed_at` by `state_changed_by`:
+    `claim` for active without a holder, `hold` for on hold `dependency` or
+    `external`, `defer` for open with `not_before`, and `accept`, `reject`,
+    `fail` or `withdraw` for closed; none where an act above makes the state
+    already (delivered after deliver, on hold for a question after ask);
+  - `claim` of a holder for every sent task with a holder, active, on hold or
+    delivered: by the holder, at `first_taken_at` or else at the send, ordered
+    before the deliver, ask or hold act that makes the present state; a
+    `holding`, unended, and a `receipt` with the existing hash; a `lease` with
+    the existing end for an active task only;
+  - a remark becomes content of kind `remark` on the last derived act of its
+    task whose time is not after the remark's (on the first act where none is,
+    counted in the report).
+- **Metadata**, split by key, never by what a value says. On a sent root task,
+  `items` and `intake-items` become references of kind `item`, and `origin`,
+  `predecessor`, `follow-up`, `merged`, `handover-pr` and `handover-state`
+  references of kind `reference` of the instance, each value of a list one
+  reference, set by the import act; a value on both sides is one reference.
+  Every other key, unknown ones included, and on every other task the listed
+  ones too, stays with its value in the free fields of the send
+  (`dispatch_metadata`) or of the valid deliver (`return_metadata`).
+- **Curation.** `curated_in_id` becomes a reference of kind `curation` of the
+  task, set by the import act, with the address `<scope_id>/<selector>/<number>.<sub>`
+  of the task it was curated into.
+- **Tags.** Each tag of a sent task becomes a reference of kind `tag` of the
+  task, set by the import act. Tags of a never-sent task are left behind and
+  counted.
+- **Drafts.** A never-sent task is a task in draft with a draft (title,
+  `addressed_role`), its dispatch text as `draft_text` of kind `commission`, its
+  `dispatch_metadata` unchanged as `draft_free_fields`, and no act.
+- **Idempotency keys** are counted, not copied.
+- Every text keeps its body; its `media_type` is `text/plain`, since the old
+  store records no format.
+
+## The options of a question: a value set, not recorded
+
+The old store holds `question_options` only for the open question: every change
+of state other than a hold for a question clears it (`Task.enter`). What an
+answered question offered, and whether it admitted free text, is recorded
+nowhere. The new store requires `free_text_admitted` on every ask act
+(`ck_act_free_text_kind`).
+
+So, by decision of the operator of 2026-11-21: the ask act of the open question
+(the youngest question of a task on hold for a question with
+`question_options`) carries its options, in their order, and its `free_text`.
+**Every other ask act carries `free_text_admitted = true` and no options. That
+value is set by the copy, not recorded**, and the report counts these ask acts
+apart.
+
+## What the report contains
+
+The last statement prints `pg_temp.cutover_copy_report`: numbers, the keys of the
+metadata and the names of tables, never a title, a text or a value.
+
+    metadata          per key: how many values went where -- a reference of
+                      kind item or reference, the free fields of the send or
+                      the deliver, the free fields of a draft
+    tags              left behind on never-sent tasks
+    idempotency keys  not copied, from task_idempotency_key and idempotency_key
+    ask acts          free_text_admitted set by the copy; from question_options
+    holders           claim acts of a holder
+    instances         concluded without a return to refer to
+    remarks           placed on the first act, with no act before them
+    texts             of never-sent tasks besides the commission, not carried
+    rows              per table of the new store, its row count
