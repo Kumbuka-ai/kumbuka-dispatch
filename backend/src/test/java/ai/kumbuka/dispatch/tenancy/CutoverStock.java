@@ -253,7 +253,7 @@ final class CutoverStock {
                          || ' acl=' || coalesce(n.nspacl::text, '') AS f
                     FROM pg_namespace n WHERE n.nspname = ?1
                   UNION ALL
-                  SELECT 'relation ' || cl.relname || ' kind=' || cl.relkind
+                  SELECT 'relation ' || cl.relname || ' kind=' || cl.relkind::text
                          || ' owner=' || pg_get_userbyid(cl.relowner)
                          || ' rls=' || cl.relrowsecurity || ' force=' || cl.relforcerowsecurity
                          || ' acl=' || coalesce(cl.relacl::text, '')
@@ -283,7 +283,7 @@ final class CutoverStock {
                          || ' ' || p.roles::text
                     FROM pg_policies p WHERE p.schemaname = ?1
                   UNION ALL
-                  SELECT 'trigger ' || cl.relname || ' ' || t.tgname || ' ' || t.tgenabled
+                  SELECT 'trigger ' || cl.relname || ' ' || t.tgname || ' ' || t.tgenabled::text
                          || ' ' || pg_get_triggerdef(t.oid)
                     FROM pg_trigger t JOIN pg_class cl ON cl.oid = t.tgrelid
                     JOIN pg_namespace n ON n.oid = cl.relnamespace
