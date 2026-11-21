@@ -85,7 +85,7 @@ class CutoverRenameIT {
             assertThat(renamed).as("the rename ran").isEqualTo(NOT_REFUSED);
             assertThat(CutoverStock.scalar(admin, "SELECT to_regnamespace('dispatch') IS NULL"))
                 .as("no schema dispatch stands after the rename").isEqualTo("t");
-            assertThat(catalogueRenamed.stream().filter(fact -> fact.contains(MARK)).toList())
+            assertThat(catalogueRenamed.stream().filter(CutoverRenameIT::isMark).toList())
                 .as("the mark is a table cutover with the one column opened_at")
                 .anyMatch(fact -> fact.startsWith("relation cutover kind=r"))
                 .anyMatch(fact -> fact.startsWith("column cutover.opened_at timestamp with time zone"))
@@ -93,7 +93,7 @@ class CutoverRenameIT {
             assertThat(CutoverStock.scalar(admin, "SELECT count(*) || ' ' || count(opened_at) "
                     + "FROM dispatch_legacy.cutover"))
                 .as("holding exactly one row whose opened_at is empty").isEqualTo("1 0");
-            assertThat(catalogueRenamed.stream().filter(fact -> !fact.contains(MARK))
+            assertThat(catalogueRenamed.stream().filter(fact -> !isMark(fact))
                     .map(fact -> fact.replace(LEGACY + ".", OLD_SCHEMA + ".")).toList())
                 .as("beside the mark, the renamed schema carries every relation, column, "
                     + "constraint, index, policy, trigger, function, owner and privilege of the "
@@ -145,6 +145,11 @@ class CutoverRenameIT {
                     + "IS NULL AND to_regclass('dispatch.cutover') IS NULL"))
                 .as("no dispatch_legacy and no table cutover remain").isEqualTo("t");
         }
+    }
+
+    /** A fact of the catalog about the table cutover itself or one of its columns. */
+    private static boolean isMark(String fact) {
+        return fact.startsWith("relation " + MARK + " ") || fact.startsWith("column " + MARK + ".");
     }
 
     @Test
