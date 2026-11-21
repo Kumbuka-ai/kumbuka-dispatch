@@ -20,6 +20,7 @@ import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.sql.Statement;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -55,17 +56,24 @@ class StoreLineIT {
 
     private static final String HISTORY = "flyway_schema_history";
 
-    /** The thirty-five tables the line builds, as the orders name them: 24 in V1, 6 in V2, 5 in V3. */
+    /**
+     * The thirty-three tables the line builds, as the orders name them: 24 in V1, 6 in V2, 5 in
+     * V3, and V4 drops hold, deferral and question and adds instance_field_value.
+     */
     private static final Set<String> TABLES = new TreeSet<>(List.of(
         "selector", "definition_version", "definition_act", "definition_tag", "activity",
         "outcome_label",
         "instance", "task", "act",
-        "commission", "commission_criterion", "holding", "receipt", "lease", "deferral", "hold",
-        "question", "question_option", "answer", "delivery", "delivery_criterion",
+        "commission", "commission_criterion", "holding", "receipt", "lease",
+        "question_option", "answer", "delivery", "delivery_criterion",
         "instance_return", "external_reference", "idempotency_key",
         "free_fields", "content",
         "draft", "draft_criterion", "draft_free_fields", "draft_text",
-        "enumeration", "enumeration_value", "control_field", "contract_field", "field_value"));
+        "enumeration", "enumeration_value", "control_field", "contract_field", "field_value",
+        "instance_field_value"));
+
+    /** The tables V4 drops, whose payloads became columns of act. */
+    private static final List<String> DROPPED = List.of("hold", "deferral", "question");
 
     /** The tables of the draft workspace, the only ones besides task the runtime role deletes from. */
     private static final Set<String> DRAFT_WORKSPACE =
@@ -76,9 +84,13 @@ class StoreLineIT {
      * 9 on instance, task and act, 30 on the payloads; in V2 1 on free_fields,
      * 5 on content and 8 in the draft workspace; in V3 1 on enumeration, 1 on
      * enumeration_value, 2 on control_field, 3 on contract_field and 4 on
-     * field_value.
+     * field_value: 71. V4 adds 1 from commission to instance, replaces the keys on instance and
+     * commission and the key of answer to its option without changing their number, replaces
+     * the keys of question_option and answer to question by one each to act, drops the three
+     * keys of hold, deferral and question to act, and adds 5 on instance_field_value:
+     * 71 + 1 - 3 + 5 = 74.
      */
-    private static final int FOREIGN_KEYS = 71;
+    private static final int FOREIGN_KEYS = 74;
 
     /** The only JSON columns of the schema, both JSONB, as the order names them. */
     private static final List<String> JSON_DOCUMENTS =
@@ -89,10 +101,30 @@ class StoreLineIT {
 
     /**
      * The tables the isolation is observed on: two of V1, a content and a
-     * draft table of V2, the field and the value table of V3.
+     * draft table of V2, the field and the value table of V3, the projection
+     * of V4.
      */
-    private static final List<String> ISOLATED =
-        List.of("task", "act", "content", "draft_text", "control_field", "field_value");
+    private static final List<String> ISOLATED = List.of("task", "act", "content", "draft_text",
+        "control_field", "field_value", "instance_field_value");
+
+    /** An addressed role the pattern of the order refuses: it carries a space. */
+    private static final String ROLE_WITH_SPACE = "reviewer lead";
+
+    /** An act on the chain's task, with the three payload columns of V4, without RETURNING. */
+    private static final String ACT = "INSERT INTO dispatch.act "
+        + "(tenant_id, scope_id, instance_id, sequence, task_id, kind, actor_subject, at, "
+        + "to_state, hold_reason, not_before, free_text_admitted) "
+        + "VALUES (?, ?, ?, ?, ?, ?, 'probe-subject', now(), ?, ?, ?, ?)";
+
+    /** A commission, without RETURNING. */
+    private static final String COMMISSION = "INSERT INTO dispatch.commission "
+        + "(tenant_id, scope_id, instance_id, act_id, title, activity_id, concerns_task_id, "
+        + "bound_task_id, addressed_role) VALUES (?, ?, ?, ?, 'probe', ?, ?, ?, ?)";
+
+    /** A row of the projection of field values, without RETURNING. */
+    private static final String INSTANCE_FIELD_VALUE = "INSERT INTO dispatch.instance_field_value "
+        + "(tenant_id, scope_id, instance_id, control_field_id, field_value_id, "
+        + "accepted_by_act_id, text_value) VALUES (?, ?, ?, ?, ?, ?, 'probe')";
 
     /** A control field, without RETURNING so that {@link #refusal} can run it. */
     private static final String CONTROL_FIELD = "INSERT INTO dispatch.control_field "
@@ -122,18 +154,21 @@ class StoreLineIT {
         "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid";
 
     /** The columns the runtime role may update, per table; every other table has none. */
-    private static final Map<String, Set<String>> PROJECTION = Map.of(
-        "selector", Set.of("next_number"),
-        "definition_version", Set.of("state"),
-        "instance", Set.of("next_sub", "definition_version_id", "state", "resolution"),
-        "task", Set.of("title", "activity_id", "concerns_task_id", "state", "hold_reason",
-            "resolution", "not_before", "parked"),
-        "holding", Set.of("ended_by_act_id"),
-        "external_reference", Set.of("ended_by_act_id"),
-        "draft", Set.of("title", "activity_id", "concerns_task_id", "bound_task_id"),
-        "draft_criterion", Set.of("identifier", "ordinal"),
-        "draft_free_fields", Set.of("document"),
-        "draft_text", Set.of("media_type", "body"));
+    private static final Map<String, Set<String>> PROJECTION = Map.ofEntries(
+        Map.entry("selector", Set.of("next_number")),
+        Map.entry("definition_version", Set.of("state")),
+        Map.entry("instance", Set.of("next_sub", "definition_version_id", "state", "resolution")),
+        Map.entry("task", Set.of("title", "activity_id", "concerns_task_id", "state",
+            "hold_reason", "resolution", "not_before", "parked", "addressed_role")),
+        Map.entry("holding", Set.of("ended_by_act_id")),
+        Map.entry("external_reference", Set.of("ended_by_act_id")),
+        Map.entry("draft", Set.of("title", "activity_id", "concerns_task_id", "bound_task_id",
+            "addressed_role")),
+        Map.entry("draft_criterion", Set.of("identifier", "ordinal")),
+        Map.entry("draft_free_fields", Set.of("document")),
+        Map.entry("draft_text", Set.of("media_type", "body")),
+        Map.entry("instance_field_value", Set.of("field_value_id", "accepted_by_act_id",
+            "boolean_value", "number_value", "date_value", "text_value", "choice_value_id")));
 
     private static MigrationHarness harness;
     private static String url;
@@ -168,22 +203,25 @@ class StoreLineIT {
     // -----------------------------------------------------------------------
 
     @Test
-    void the_line_builds_the_thirty_five_tables_on_an_empty_database_and_writes_no_row()
+    void the_line_builds_the_thirty_three_tables_on_an_empty_database_and_writes_no_row()
             throws SQLException {
         try (Connection c = harness.adminConnection(url)) {
             assertThat(scalar(c, "SELECT string_agg(version, ',' ORDER BY installed_rank) FROM "
                     + "dispatch." + HISTORY + " WHERE success AND version IS NOT NULL"))
-                .as("the line's three migrations are recorded as applied, V1, V2, V3 in order")
-                .isEqualTo("1,2,3");
+                .as("the line's four migrations are recorded as applied, V1 to V4 in order")
+                .isEqualTo("1,2,3,4");
         }
         Map<String, Long> expected = new TreeMap<>();
         TABLES.forEach(table -> expected.put(table, 0L));
         Map<String, Long> withoutHistory = new TreeMap<>(ROWS_AFTER_MIGRATION);
         withoutHistory.remove(HISTORY);
         assertThat(withoutHistory)
-            .as("the schema holds exactly the thirty-five tables of the orders, and none of them "
+            .as("the schema holds exactly the thirty-three tables of the orders, and none of them "
                 + "a row: selectors are declared later by a migration of the installation")
             .isEqualTo(expected);
+        assertThat(ROWS_AFTER_MIGRATION.keySet())
+            .as("hold, deferral and question no longer exist: V4 dropped them")
+            .doesNotContainAnyElementsOf(DROPPED);
         assertThat(ROWS_AFTER_MIGRATION.get(HISTORY))
             .as("only the history of the migration tool carries rows")
             .isPositive();
@@ -224,7 +262,7 @@ class StoreLineIT {
                     JOIN pg_namespace n ON n.oid = k.connamespace
                     WHERE n.nspname = 'dispatch' AND k.contype = 'f'
                     """))
-                .as("the orders name seventy-one keys; a different count is a key missing or one "
+                .as("the orders name seventy-four keys; a different count is a key missing or one "
                     + "the orders do not name")
                 .isEqualTo(String.valueOf(FOREIGN_KEYS));
         }
@@ -509,12 +547,20 @@ class StoreLineIT {
                     .as("the runtime role deletes a task that has no act").isEqualTo(1);
             }
             try (PreparedStatement st = c.prepareStatement(
-                    "SELECT count(*), count(task_id) FROM dispatch.idempotency_key WHERE id = ?")) {
-                st.setLong(1, key);
+                    "SELECT count(*), count(task_id), "
+                        + "count(*) FILTER (WHERE tenant_id = ? AND scope_id = ?) "
+                        + "FROM dispatch.idempotency_key WHERE id = ?")) {
+                st.setObject(1, tenant);
+                st.setObject(2, scope);
+                st.setLong(3, key);
                 try (ResultSet rs = st.executeQuery()) {
                     rs.next();
                     assertThat(rs.getLong(1)).as("the key outlives its draft").isEqualTo(1);
                     assertThat(rs.getLong(2)).as("and lets go of it").isZero();
+                    assertThat(rs.getLong(3))
+                        .as("while its tenant_id and scope_id stay as they were: the key sets "
+                            + "task_id alone to NULL")
+                        .isEqualTo(1);
                 }
             }
             assertThat(refusal(c, "DELETE FROM dispatch.task WHERE id = ?", chain.task()))
@@ -838,6 +884,365 @@ class StoreLineIT {
     }
 
     // -----------------------------------------------------------------------
+    // V4: the projection of field values, the payload columns of act, the
+    // addressed role and the keys that bind a commission to one instance.
+    // -----------------------------------------------------------------------
+
+    @Test
+    void the_service_role_changes_the_seven_projection_columns_of_a_field_value_and_nothing_else()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Work work = insertChainAndWork(c, tenant, scope, "projection-privileges");
+            Chain chain = work.chain();
+            long projection = instanceFieldValueOf(c, chain.instance());
+
+            assertThat(refusal(c, "DELETE FROM dispatch.instance_field_value WHERE id = ?",
+                    projection))
+                .as("a row of the projection is never deleted: no DELETE on instance_field_value")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "UPDATE dispatch.instance_field_value "
+                    + "SET instance_id = instance_id WHERE id = ?", projection))
+                .as("instance_id is no projection column and cannot be updated")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "UPDATE dispatch.instance_field_value "
+                    + "SET control_field_id = control_field_id WHERE id = ?", projection))
+                .as("nor control_field_id")
+                .isEqualTo("42501");
+            assertThat(executed(c, "UPDATE dispatch.instance_field_value SET "
+                    + "field_value_id = ?, accepted_by_act_id = ?, boolean_value = NULL, "
+                    + "number_value = NULL, date_value = NULL, text_value = 'changed', "
+                    + "choice_value_id = NULL WHERE id = ?",
+                    work.fieldValue(), chain.act(), projection))
+                .as("while the seven projection columns are updated").isEqualTo(1);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void the_service_role_cannot_change_the_columns_v4_freezes() throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Chain chain = insertChain(c, tenant, scope, "frozen-columns");
+            long commission = insertReturningId(c, COMMISSION + " RETURNING id", tenant, scope,
+                chain.instance(), chain.act(), insertActivity(c, chain), null, null, "reviewer");
+
+            assertThat(refusal(c, "UPDATE dispatch.act SET hold_reason = 'external' WHERE id = ?",
+                    chain.act()))
+                .as("act.hold_reason is written with its act and never changed")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "UPDATE dispatch.commission SET addressed_role = 'other' "
+                    + "WHERE id = ?", commission))
+                .as("commission.addressed_role freezes when the commission is sent")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "UPDATE dispatch.instance SET title = 'other' WHERE id = ?",
+                    chain.instance()))
+                .as("instance.title is set by start and never changed")
+                .isEqualTo("42501");
+            assertThat(refusal(c, "UPDATE dispatch.definition_version SET seed = true "
+                    + "WHERE id = ?", chain.version()))
+                .as("definition_version.seed is written by no call")
+                .isEqualTo("42501");
+            c.rollback();
+        }
+    }
+
+    @Test
+    void a_task_takes_sub_zero_and_refuses_sub_minus_one() throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = harness.adminConnection(url)) {
+            c.setAutoCommit(false);
+            Chain chain = insertChain(c, tenant, scope, "sub-zero");
+            String task = "INSERT INTO dispatch.task (tenant_id, scope_id, instance_id, sub) "
+                + "VALUES (?, ?, ?, ?)";
+
+            assertThat(refusal(c, task, tenant, scope, chain.instance(), 0))
+                .as("a task under .0 is taken: the copy of the stock places a root task there")
+                .isEqualTo(NOT_REFUSED);
+            assertThat(refusal(c, task, tenant, scope, chain.instance(), -1))
+                .as("a task under .-1 is refused")
+                .isEqualTo("23514");
+
+            Savepoint old = c.setSavepoint();
+            exec(c, "ALTER TABLE dispatch.task DROP CONSTRAINT ck_task_sub");
+            exec(c, "ALTER TABLE dispatch.task ADD CONSTRAINT ck_task_sub CHECK (sub >= 1)");
+            String withOldCheck = refusal(c, task, tenant, scope, chain.instance(), 0);
+            c.rollback(old);
+            assertThat(withOldCheck)
+                .as("RED STATE, observed: with the check of V1, sub >= 1, a task under .0 is "
+                    + "refused")
+                .isEqualTo("23514");
+            c.rollback();
+        }
+    }
+
+    /**
+     * Each check refuses its row with 23514, and the same row is taken once
+     * the check is dropped: the red state, observed in a savepoint on every
+     * build and rolled back with it.
+     */
+    @Test
+    void the_payload_checks_of_an_act_refuse_and_without_them_the_row_is_taken()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        OffsetDateTime later = OffsetDateTime.now().plusDays(1);
+        try (Connection c = harness.adminConnection(url)) {
+            c.setAutoCommit(false);
+            Chain chain = insertChain(c, tenant, scope, "act-payloads");
+
+            assertThat(withAndWithoutCheck(c, "act", "ck_act_hold_kind", ACT,
+                    act(chain, "claim", "active", "dependency", null, null)))
+                .as("a claim with a hold reason is refused; RED STATE, observed: without the "
+                    + "check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "act", "ck_act_hold_kind", ACT,
+                    act(chain, "hold", "on_hold", null, null, null)))
+                .as("a hold without a hold reason is refused; RED STATE, observed: without the "
+                    + "check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "act", "ck_act_hold_reason", ACT,
+                    act(chain, "hold", "on_hold", "question", null, null)))
+                .as("a hold reason other than dependency and external is refused; RED STATE, "
+                    + "observed: without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "act", "ck_act_not_before_kind", ACT,
+                    act(chain, "claim", "active", null, later, null)))
+                .as("a claim with a not-before time is refused; RED STATE, observed: without "
+                    + "the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "act", "ck_act_free_text_kind", ACT,
+                    act(chain, "ask", "on_hold", null, null, null)))
+                .as("an ask that does not say whether free text is admitted is refused; RED "
+                    + "STATE, observed: without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "act", "ck_act_free_text_kind", ACT,
+                    act(chain, "claim", "active", null, null, true)))
+                .as("a claim that says whether free text is admitted is refused; RED STATE, "
+                    + "observed: without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+
+            assertThat(List.of(
+                    refusal(c, ACT, act(chain, "hold", "on_hold", "dependency", null, null)),
+                    refusal(c, ACT, act(chain, "defer", "open", null, later, null)),
+                    refusal(c, ACT, act(chain, "ask", "on_hold", null, null, false))))
+                .as("while each payload on the act of its own kind is taken, so the refusals "
+                    + "above are the pairing with the kind and not the row")
+                .containsOnly(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    /**
+     * Each check refuses its row with 23514, and the same row is taken once
+     * the check is dropped: the red state, observed in a savepoint on every
+     * build and rolled back with it.
+     */
+    @Test
+    void the_checks_of_the_addressed_role_and_the_item_reference_refuse_and_without_them_the_row_is_taken()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = harness.adminConnection(url)) {
+            c.setAutoCommit(false);
+            Chain chain = insertChain(c, tenant, scope, "role-and-item");
+            long activity = insertActivity(c, chain);
+
+            assertThat(withAndWithoutCheck(c, "task", "ck_task_addressed_role",
+                    "INSERT INTO dispatch.task (tenant_id, scope_id, instance_id, sub, "
+                        + "addressed_role) VALUES (?, ?, ?, 2, ?)",
+                    tenant, scope, chain.instance(), ROLE_WITH_SPACE))
+                .as("a task addressed to a role with a space is refused; RED STATE, observed: "
+                    + "without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "commission", "ck_commission_addressed_role",
+                    COMMISSION, tenant, scope, chain.instance(), chain.act(), activity, null, null,
+                    ROLE_WITH_SPACE))
+                .as("so is a commission; RED STATE, observed: without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "draft", "ck_draft_addressed_role",
+                    "INSERT INTO dispatch.draft (tenant_id, scope_id, task_id, addressed_role) "
+                        + "VALUES (?, ?, ?, ?)",
+                    tenant, scope, chain.task(), ROLE_WITH_SPACE))
+                .as("and a draft; RED STATE, observed: without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            assertThat(withAndWithoutCheck(c, "external_reference",
+                    "ck_external_reference_instance_kinds",
+                    "INSERT INTO dispatch.external_reference "
+                        + "(tenant_id, scope_id, task_id, kind, value, set_by_act_id) "
+                        + "VALUES (?, ?, ?, 'item', 'worklist://probe/item/1', ?)",
+                    tenant, scope, chain.task(), chain.act()))
+                .as("a reference of the kind item without an instance is refused; RED STATE, "
+                    + "observed: without the check it is taken")
+                .containsExactly("23514", NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void an_instance_is_bound_only_to_a_version_of_its_own_selector() throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Chain chain = insertChain(c, tenant, scope, "own-selector");
+            long otherSelector = insertReturningId(c, "INSERT INTO dispatch.selector "
+                + "(tenant_id, scope_id, name) VALUES (?, ?, 'other-selector') RETURNING id",
+                tenant, scope);
+            long otherVersion = insertReturningId(c, "INSERT INTO dispatch.definition_version "
+                + "(tenant_id, scope_id, selector_id, version, verdict_required, outcome_required, "
+                + "state) VALUES (?, ?, ?, 1, false, false, 'active') RETURNING id",
+                tenant, scope, otherSelector);
+            String instance = "INSERT INTO dispatch.instance "
+                + "(tenant_id, scope_id, selector_id, number, definition_version_id) "
+                + "VALUES (?, ?, ?, 2, ?)";
+
+            assertThat(refusal(c, instance, tenant, scope, chain.selector(), otherVersion))
+                .as("an instance bound to a version of another selector is refused by the key "
+                    + "that carries the selector")
+                .isEqualTo("23503");
+            assertThat(refusal(c, instance, tenant, scope, chain.selector(), chain.version()))
+                .as("while the same instance bound to a version of its own selector is taken, "
+                    + "so the refusal above is the pairing and not the row")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void a_commission_takes_its_act_and_its_tasks_only_from_its_own_instance()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Chain chain = insertChain(c, tenant, scope, "commission-instance");
+            Other other = insertOtherInstance(c, chain);
+            long activity = insertActivity(c, chain);
+            long instance = chain.instance();
+
+            assertThat(refusal(c, COMMISSION, tenant, scope, instance, other.act(), activity,
+                    null, null, null))
+                .as("a commission whose act belongs to another instance is refused")
+                .isEqualTo("23503");
+            assertThat(refusal(c, COMMISSION, tenant, scope, instance, chain.act(), activity,
+                    null, null, null))
+                .as("while the same commission with an act of its own instance is taken")
+                .isEqualTo(NOT_REFUSED);
+            assertThat(refusal(c, COMMISSION, tenant, scope, instance, chain.act(), activity,
+                    other.task(), null, null))
+                .as("a commission concerning a task of another instance is refused")
+                .isEqualTo("23503");
+            assertThat(refusal(c, COMMISSION, tenant, scope, instance, chain.act(), activity,
+                    chain.task(), null, null))
+                .as("while the same commission concerning a task of its own instance is taken")
+                .isEqualTo(NOT_REFUSED);
+            assertThat(refusal(c, COMMISSION, tenant, scope, instance, chain.act(), activity,
+                    null, other.task(), null))
+                .as("a commission bound to a task of another instance is refused")
+                .isEqualTo("23503");
+            assertThat(refusal(c, COMMISSION, tenant, scope, instance, chain.act(), activity,
+                    null, chain.task(), null))
+                .as("while the same commission bound to a task of its own instance is taken")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void an_answer_chooses_only_an_option_of_its_own_question() throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Chain chain = insertChain(c, tenant, scope, "answer-option");
+            long asked = insertReturningId(c, ACT + " RETURNING id",
+                act(chain, 2, "ask", "on_hold", null, null, false));
+            long otherAsked = insertReturningId(c, ACT + " RETURNING id",
+                act(chain, 3, "ask", "on_hold", null, null, false));
+            long answering = insertReturningId(c, ACT + " RETURNING id",
+                act(chain, 4, "answer", "active", null, null, null));
+            long option = insertReturningId(c, "INSERT INTO dispatch.question_option "
+                + "(tenant_id, scope_id, ask_act_id, label, ordinal) VALUES (?, ?, ?, 'yes', 1) "
+                + "RETURNING id", tenant, scope, asked);
+            String answer = "INSERT INTO dispatch.answer "
+                + "(tenant_id, scope_id, act_id, ask_act_id, option_id) VALUES (?, ?, ?, ?, ?)";
+
+            assertThat(refusal(c, answer, tenant, scope, answering, otherAsked, option))
+                .as("an answer choosing an option of another question is refused by the key "
+                    + "that carries the ask act")
+                .isEqualTo("23503");
+            assertThat(refusal(c, answer, tenant, scope, answering, asked, option))
+                .as("while the same answer to the option's own question is taken")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void a_field_value_is_projected_once_per_instance_and_field_and_accepted_only_within_it()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Work work = insertChainAndWork(c, tenant, scope, "projection-keys");
+            Chain chain = work.chain();
+            Other other = insertOtherInstance(c, chain);
+
+            assertThat(refusal(c, INSTANCE_FIELD_VALUE, tenant, scope, chain.instance(),
+                    work.controlField(), work.fieldValue(), null))
+                .as("a second row for the same instance and field is refused")
+                .isEqualTo("23505");
+            assertThat(refusal(c, INSTANCE_FIELD_VALUE, tenant, scope, other.instance(),
+                    work.controlField(), work.fieldValue(), chain.act()))
+                .as("a row accepted by an act of another instance is refused")
+                .isEqualTo("23503");
+            assertThat(refusal(c, INSTANCE_FIELD_VALUE, tenant, scope, other.instance(),
+                    work.controlField(), work.fieldValue(), other.act()))
+                .as("while the same row of the same field for another instance, accepted by an "
+                    + "act of that instance, is taken: the refusals above are the pair and the "
+                    + "pairing, not the row")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    @Test
+    void an_item_reference_on_an_instance_and_an_input_text_on_its_start_are_taken()
+            throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID scope = UUID.randomUUID();
+        try (Connection c = service()) {
+            bind(c, tenant);
+            Chain chain = insertChain(c, tenant, scope, "start-input");
+            long start = insertReturningId(c, "INSERT INTO dispatch.act "
+                + "(tenant_id, scope_id, instance_id, sequence, kind, actor_subject, at, to_state) "
+                + "VALUES (?, ?, ?, 2, 'start', 'probe-subject', now(), 'running') RETURNING id",
+                tenant, scope, chain.instance());
+
+            assertThat(refusal(c, "INSERT INTO dispatch.external_reference "
+                    + "(tenant_id, scope_id, instance_id, kind, value, set_by_act_id) "
+                    + "VALUES (?, ?, ?, 'item', 'worklist://probe/item/1', ?)",
+                    tenant, scope, chain.instance(), start))
+                .as("a reference of the kind item on an instance is taken")
+                .isEqualTo(NOT_REFUSED);
+            assertThat(refusal(c, "INSERT INTO dispatch.content "
+                    + "(tenant_id, scope_id, act_id, kind, media_type, body) "
+                    + "VALUES (?, ?, ?, 'instance_input', 'text/plain', 'probe')",
+                    tenant, scope, start))
+                .as("and a content of the kind instance_input on a start act")
+                .isEqualTo(NOT_REFUSED);
+            c.rollback();
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // JSON only in the two documents of free fields.
     // -----------------------------------------------------------------------
 
@@ -907,7 +1312,8 @@ class StoreLineIT {
      * The ids the cases read of what V2 and V3 hang on one chain: a content
      * row and a document of free fields on its act, a draft of its task and
      * the draft's commission text, a text field of its version and a value of
-     * that field on its act.
+     * that field on its act. The value also stands as the projection of V4 on
+     * the chain's instance, read back by {@link #instanceFieldValueOf}.
      */
     private record Work(Chain chain, long content, long freeFields, long draft, long draftText,
                         long controlField, long fieldValue) {
@@ -936,7 +1342,63 @@ class StoreLineIT {
         long fieldValue = insertReturningId(c, FIELD_VALUE + " RETURNING id",
             fieldValue(new Target(tenant, scope, chain.act(), controlField), "text",
                 Map.of("text_value", "probe")));
+        executed(c, INSTANCE_FIELD_VALUE, tenant, scope, chain.instance(), controlField,
+            fieldValue, null);
         return new Work(chain, content, freeFields, draft, draftText, controlField, fieldValue);
+    }
+
+    /** The id of the row of the projection on an instance, as the service role reads it. */
+    private static long instanceFieldValueOf(Connection c, long instance) throws SQLException {
+        try (PreparedStatement st = c.prepareStatement(
+                "SELECT id FROM dispatch.instance_field_value WHERE instance_id = ?")) {
+            st.setLong(1, instance);
+            try (ResultSet rs = st.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    /** The ids of a second instance of a chain's selector and version, with a task and an act. */
+    private record Other(long instance, long task, long act) {
+    }
+
+    private static Other insertOtherInstance(Connection c, Chain chain) throws SQLException {
+        long instance = insertReturningId(c, "INSERT INTO dispatch.instance "
+            + "(tenant_id, scope_id, selector_id, number, definition_version_id) "
+            + "VALUES (?, ?, ?, 2, ?) RETURNING id",
+            chain.tenant(), chain.scope(), chain.selector(), chain.version());
+        long task = insertReturningId(c, "INSERT INTO dispatch.task "
+            + "(tenant_id, scope_id, instance_id, sub) VALUES (?, ?, ?, 1) RETURNING id",
+            chain.tenant(), chain.scope(), instance);
+        long act = insertReturningId(c, "INSERT INTO dispatch.act "
+            + "(tenant_id, scope_id, instance_id, sequence, task_id, kind, actor_subject, at, "
+            + "to_state) VALUES (?, ?, ?, 1, ?, 'send', 'probe-subject', now(), 'open') "
+            + "RETURNING id", chain.tenant(), chain.scope(), instance, task);
+        return new Other(instance, task, act);
+    }
+
+    /** An activity of the chain's version that takes no input. */
+    private static long insertActivity(Connection c, Chain chain) throws SQLException {
+        return insertReturningId(c, "INSERT INTO dispatch.activity "
+            + "(tenant_id, scope_id, definition_version_id, name, verdict_required, "
+            + "outcome_required, criteria_required, input_kind, may_ask, starts_excluded) "
+            + "VALUES (?, ?, ?, 'probe-activity', false, false, false, 'none', false, false) "
+            + "RETURNING id", chain.tenant(), chain.scope(), chain.version());
+    }
+
+    /** The arguments of {@link #ACT} for the second act of the chain, on its task. */
+    private static Object[] act(Chain chain, String kind, String toState, String holdReason,
+                                OffsetDateTime notBefore, Boolean freeTextAdmitted) {
+        return act(chain, 2, kind, toState, holdReason, notBefore, freeTextAdmitted);
+    }
+
+    /** The arguments of {@link #ACT} for an act of the chain at a sequence, on its task. */
+    private static Object[] act(Chain chain, int sequence, String kind, String toState,
+                                String holdReason, OffsetDateTime notBefore,
+                                Boolean freeTextAdmitted) {
+        return new Object[] {chain.tenant(), chain.scope(), chain.instance(), sequence,
+            chain.task(), kind, toState, holdReason, notBefore, freeTextAdmitted};
     }
 
     /**
