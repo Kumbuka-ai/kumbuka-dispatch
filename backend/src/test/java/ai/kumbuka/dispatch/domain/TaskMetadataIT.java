@@ -33,18 +33,16 @@ class TaskMetadataIT {
     static final String REBUILT = "rebuilt in T4: metadata written with a draft keeps its "
         + "cardinality and a value the rules refuse is refused before any write";
 
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code a_list_returns_as_the_list_and_a_string_as_the_string}</li>
+     *   <li>{@code the_executor_s_metadata_keeps_its_shape_too}</li>
+     *   <li>{@code a_value_the_rules_refuse_is_refused_and_nothing_is_written}</li>
+     * </ul>
+     */
     @Test
-    void a_list_returns_as_the_list_and_a_string_as_the_string() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_executor_s_metadata_keeps_its_shape_too() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_value_the_rules_refuse_is_refused_and_nothing_is_written() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

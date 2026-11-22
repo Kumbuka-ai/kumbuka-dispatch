@@ -35,23 +35,17 @@ class TaskClaimRepeatIT {
     static final String REBUILT = "rebuilt in T5: a claim repeated under its idempotency key hands "
         + "out a new receipt and moves nothing else";
 
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code a_repeated_claim_answers_the_same_task_with_a_new_receipt_and_moves_nothing}</li>
+     *   <li>{@code a_repeat_after_the_hold_ended_is_refused_and_takes_nothing}</li>
+     *   <li>{@code a_repeat_after_the_lease_lapsed_names_the_lapse_and_takes_nothing}</li>
+     *   <li>{@code the_same_key_on_another_call_or_other_arguments_is_refused}</li>
+     * </ul>
+     */
     @Test
-    void a_repeated_claim_answers_the_same_task_with_a_new_receipt_and_moves_nothing() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_repeat_after_the_hold_ended_is_refused_and_takes_nothing() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_repeat_after_the_lease_lapsed_names_the_lapse_and_takes_nothing() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_same_key_on_another_call_or_other_arguments_is_refused() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

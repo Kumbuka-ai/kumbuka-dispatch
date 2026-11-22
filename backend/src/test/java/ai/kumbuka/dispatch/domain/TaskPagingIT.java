@@ -52,82 +52,21 @@ class TaskPagingIT {
         + "task once while its cursor continues only the listing that handed it out";
 
     /**
-     * {@code x.2} before {@code x.10}: the address sorts as two numbers, and a
-     * page of two cuts the bracket at every second child, so a textual order
-     * would surface at the first boundary it crosses.
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code the_address_order_is_numeric_across_every_page_boundary}</li>
+     *   <li>{@code a_tie_on_the_instant_of_creation_is_broken_by_the_address}</li>
+     *   <li>{@code a_task_inserted_during_a_walk_shifts_nothing_already_handed_out}</li>
+     *   <li>{@code the_state_filter_holds_on_every_page_and_misses_nothing}</li>
+     *   <li>{@code a_cursor_of_another_listing_is_refused_as_foreign_naming_what_differs}</li>
+     *   <li>{@code a_cursor_of_a_scope_of_the_same_name_in_another_tenant_is_foreign}</li>
+     *   <li>{@code a_cursor_this_service_did_not_hand_out_is_refused_as_malformed}</li>
+     *   <li>{@code the_page_size_and_the_sort_are_refused_outside_what_is_declared}</li>
+     *   <li>{@code a_page_carries_the_text_heads_a_read_carries}</li>
+     * </ul>
      */
     @Test
-    void the_address_order_is_numeric_across_every_page_boundary() {
-        fail(REBUILT);
-    }
-
-    /**
-     * Five tasks created in one transaction carry one {@code created_at}: the
-     * database stamps the transaction's start. The address is the second key,
-     * so the tie is broken the same way on every page and every walk.
-     */
-    @Test
-    void a_tie_on_the_instant_of_creation_is_broken_by_the_address() {
-        fail(REBUILT);
-    }
-
-    /**
-     * A task created between two pages: the walk hands out every task that
-     * existed when it began exactly once, and the new one where the order puts
-     * it. An offset would hand out the last task of the first page again.
-     */
-    @Test
-    void a_task_inserted_during_a_walk_shifts_nothing_already_handed_out() {
-        fail(REBUILT);
-    }
-
-    /**
-     * The effective state is in the statement: a page holds no task in another
-     * state and the walk misses none in this one, including a lapsed lease,
-     * which the row stores as {@code active} and which is {@code open}.
-     */
-    @Test
-    void the_state_filter_holds_on_every_page_and_misses_nothing() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_cursor_of_another_listing_is_refused_as_foreign_naming_what_differs() {
-        fail(REBUILT);
-    }
-
-    /**
-     * A scope's name recurs across tenants and its identity does not, so the
-     * cursor binds the identity (ADR-0049). The kernel is handed the scope
-     * only by identity, which is what the platform's directory resolves a
-     * name to in each tenant: a scope of the same name in another tenant is a
-     * scope with another identity here.
-     *
-     * <p>Red probe, observed 2026-10-12: the scope taken out of the cursor's
-     * binding answers the cursor of tenant A with a page of tenant B.
-     */
-    @Test
-    void a_cursor_of_a_scope_of_the_same_name_in_another_tenant_is_foreign() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_cursor_this_service_did_not_hand_out_is_refused_as_malformed() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_page_size_and_the_sort_are_refused_outside_what_is_declared() {
-        fail(REBUILT);
-    }
-
-    /**
-     * The heads of a page carry the list of texts, by type and suffix, as a
-     * read does, read for the whole page at once. The curation target is
-     * held the same way in {@code TaskCurationIT}, where a subject is bound.
-     */
-    @Test
-    void a_page_carries_the_text_heads_a_read_carries() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

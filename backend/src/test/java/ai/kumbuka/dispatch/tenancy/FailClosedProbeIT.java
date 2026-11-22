@@ -39,31 +39,16 @@ class FailClosedProbeIT {
     static final String REBUILT =
         "rebuilt in T4: a task read fails closed without a bound tenant and each layer isolates alone";
 
-    @Test
-    void an_unbound_read_returns_nothing_and_the_rows_are_still_there() {
-        fail(REBUILT);
-    }
-
     /**
-     * Layer 1 alone: the ORM filter, with the database policy switched off.
-     *
-     * <p>Hibernate rewrites every statement it routes with the tenant
-     * predicate. That holds without any help from the database, and this is
-     * where it is seen holding: the policy is disabled for the length of the
-     * assertion, so nothing but the filter is left to do the work.
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code an_unbound_read_returns_nothing_and_the_rows_are_still_there}</li>
+     *   <li>{@code the_orm_filter_isolates_on_its_own_when_the_policy_is_off}</li>
+     *   <li>{@code the_policy_isolates_raw_sql_that_the_orm_never_touched}</li>
+     * </ul>
      */
     @Test
-    void the_orm_filter_isolates_on_its_own_when_the_policy_is_off() {
-        fail(REBUILT);
-    }
-
-    /**
-     * Layer 2 alone: the database policy, against a statement the ORM never
-     * saw. No switching is needed here — raw SQL is by definition outside
-     * layer 1, so anything that scopes it is the policy.
-     */
-    @Test
-    void the_policy_isolates_raw_sql_that_the_orm_never_touched() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

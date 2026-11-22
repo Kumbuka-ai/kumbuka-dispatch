@@ -29,63 +29,25 @@ class CheckOrderTest {
     static final String REBUILT = "rebuilt in T13: a call that breaks two checks is refused "
         + "by the earlier one in the order state, condition, relation, proof, confirmation, payload";
 
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code state_before_condition}</li>
+     *   <li>{@code condition_before_relation}</li>
+     *   <li>{@code relation_before_proof}</li>
+     *   <li>{@code proof_before_confirmation}</li>
+     *   <li>{@code confirmation_before_payload}</li>
+     *   <li>{@code the_identity_that_delivered_accepts_holding_both_capacities_and_alone_never}</li>
+     *   <li>{@code the_order_has_no_check_for_the_mark_on_acceptance}</li>
+     *   <li>{@code a_write_of_the_holder_without_its_receipt_is_refused}</li>
+     *   <li>{@code an_answer_names_an_option_or_free_text_where_admitted}</li>
+     *   <li>{@code a_lease_is_positive}</li>
+     *   <li>{@code a_recall_is_refused_once_taken_up_and_on_a_root_with_a_task_under_it}</li>
+     *   <li>{@code a_recall_takes_the_commissioner_and_the_current_token}</li>
+     * </ul>
+     */
     @Test
-    void state_before_condition() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void condition_before_relation() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void relation_before_proof() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void proof_before_confirmation() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void confirmation_before_payload() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_identity_that_delivered_accepts_holding_both_capacities_and_alone_never() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_order_has_no_check_for_the_mark_on_acceptance() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_write_of_the_holder_without_its_receipt_is_refused() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void an_answer_names_an_option_or_free_text_where_admitted() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_lease_is_positive() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_recall_is_refused_once_taken_up_and_on_a_root_with_a_task_under_it() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_recall_takes_the_commissioner_and_the_current_token() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

@@ -23,6 +23,7 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -72,18 +73,11 @@ class ActServiceIT {
                 + "sequence, no task, its kind and target state, the delegated identity and the "
                 + "person it belongs to, the permission, the path interface and no "
                 + "authentication level")
-            .containsEntry("tenant_id", TENANT)
-            .containsEntry("scope_id", scope)
-            .containsEntry("instance_id", planted.instance())
-            .containsEntry("sequence", 1)
-            .containsEntry("task_id", null)
-            .containsEntry("kind", "start")
-            .containsEntry("to_state", "running")
-            .containsEntry("actor_subject", "delegate-of-ada")
-            .containsEntry("actor_owner_subject", "ada")
-            .containsEntry("permission", "dispatch.instance.start")
-            .containsEntry("path", "interface")
-            .containsEntry("authentication_level", null);
+            .containsAllEntriesOf(entries("tenant_id", TENANT, "scope_id", scope,
+                "instance_id", planted.instance(), "sequence", 1, "task_id", null,
+                "kind", "start", "to_state", "running", "actor_subject", "delegate-of-ada",
+                "actor_owner_subject", "ada", "permission", "dispatch.instance.start",
+                "path", "interface", "authentication_level", null));
         assertThat(((Timestamp) first.get("at")).toInstant())
             .as("the time of the act is the service's, taken while it was written")
             .isBetween(before, after);
@@ -91,14 +85,10 @@ class ActServiceIT {
         assertThat(InstanceFixture.actRow(conclude.id()))
             .as("the act of the person in the console carries no owner, the path console and "
                 + "the authentication level of the session, and takes the next number")
-            .containsEntry("sequence", 2)
-            .containsEntry("kind", "conclude")
-            .containsEntry("to_state", "closed")
-            .containsEntry("actor_subject", "ada")
-            .containsEntry("actor_owner_subject", null)
-            .containsEntry("permission", "dispatch.instance.conclude")
-            .containsEntry("path", "console")
-            .containsEntry("authentication_level", "step-up");
+            .containsAllEntriesOf(entries("sequence", 2, "kind", "conclude",
+                "to_state", "closed", "actor_subject", "ada", "actor_owner_subject", null,
+                "permission", "dispatch.instance.conclude", "path", "console",
+                "authentication_level", "step-up"));
 
         assertThat(List.of(start.sequence(), start.kind(), start.toState(), start.actorSubject(),
                 start.actorOwnerSubject().orElseThrow(), start.permission().orElseThrow(),
@@ -182,5 +172,14 @@ class ActServiceIT {
         assertThat(InstanceFixture.actsOf(planted.instance()))
             .as("and restored: the act taken without the check was rolled back with it")
             .isZero();
+    }
+
+    /** Columns and their expected values, in pairs; a value may be null, an empty column. */
+    private static Map<String, Object> entries(Object... pairs) {
+        Map<String, Object> expected = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            expected.put((String) pairs[i], pairs[i + 1]);
+        }
+        return expected;
     }
 }

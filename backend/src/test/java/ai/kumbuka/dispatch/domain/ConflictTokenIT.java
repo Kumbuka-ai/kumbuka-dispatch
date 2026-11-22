@@ -40,23 +40,17 @@ class ConflictTokenIT {
     static final String REBUILT = "rebuilt in T4: the conflict token moves with the clock on every "
         + "write that changes a draft and stays on one that changes nothing";
 
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code two_writes_in_the_same_microsecond_yield_two_tokens}</li>
+     *   <li>{@code the_token_follows_the_clock_and_never_returns_to_an_earlier_value}</li>
+     *   <li>{@code a_write_that_changes_nothing_keeps_the_token}</li>
+     *   <li>{@code a_change_of_the_dispatch_text_alone_moves_the_token}</li>
+     * </ul>
+     */
     @Test
-    void two_writes_in_the_same_microsecond_yield_two_tokens() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_token_follows_the_clock_and_never_returns_to_an_earlier_value() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_write_that_changes_nothing_keeps_the_token() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_change_of_the_dispatch_text_alone_moves_the_token() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

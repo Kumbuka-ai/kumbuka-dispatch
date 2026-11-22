@@ -42,43 +42,21 @@ class VerbSurfaceConformanceIT {
     static final String REBUILT =
         "rebuilt in T13: the REST routes and the MCP tools match the declared calls and the specification";
 
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code no_route_exists_outside_the_declared_bindings}</li>
+     *   <li>{@code every_declared_binding_is_registered}</li>
+     *   <li>{@code the_probe_walked_a_tree_that_has_routes_in_it}</li>
+     *   <li>{@code every_declared_call_has_exactly_one_route_and_no_route_stands_without_one}</li>
+     *   <li>{@code the_routes_take_the_forms_the_specification_writes}</li>
+     *   <li>{@code the_verb_is_split_off_the_end_and_not_off_the_front}</li>
+     *   <li>{@code every_mcp_tool_is_a_declared_call_under_the_prefix}</li>
+     *   <li>{@code every_mcp_tool_declares_an_argument_schema_closed_at_every_level}</li>
+     * </ul>
+     */
     @Test
-    void no_route_exists_outside_the_declared_bindings() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void every_declared_binding_is_registered() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_probe_walked_a_tree_that_has_routes_in_it() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void every_declared_call_has_exactly_one_route_and_no_route_stands_without_one() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_routes_take_the_forms_the_specification_writes() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_verb_is_split_off_the_end_and_not_off_the_front() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void every_mcp_tool_is_a_declared_call_under_the_prefix() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void every_mcp_tool_declares_an_argument_schema_closed_at_every_level() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

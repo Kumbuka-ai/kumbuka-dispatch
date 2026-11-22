@@ -30,28 +30,18 @@ class TaskBracketIT {
     static final String REBUILT = "rebuilt in T3: withdrawing a root with unfinished children takes "
         + "a confirmation and then withdraws them in one transaction";
 
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code closing_a_root_with_unfinished_children_needs_a_confirmation_and_then_withdraws_them}</li>
+     *   <li>{@code a_confirmation_is_void_once_the_set_of_unfinished_children_changed}</li>
+     *   <li>{@code a_confirmation_is_bound_to_the_verb_it_was_handed_out_for}</li>
+     *   <li>{@code a_root_whose_children_are_all_closed_closes_without_a_confirmation}</li>
+     *   <li>{@code a_closed_root_takes_no_new_child}</li>
+     * </ul>
+     */
     @Test
-    void closing_a_root_with_unfinished_children_needs_a_confirmation_and_then_withdraws_them() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_confirmation_is_void_once_the_set_of_unfinished_children_changed() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_confirmation_is_bound_to_the_verb_it_was_handed_out_for() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_root_whose_children_are_all_closed_closes_without_a_confirmation() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_closed_root_takes_no_new_child() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

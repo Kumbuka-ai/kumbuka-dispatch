@@ -47,9 +47,17 @@ class RestRouteFormTest {
     private static final String REBUILT =
         "rebuilt in T2: every route of a call has the form of its effect class and accepts its verbs";
 
+    /**
+     * Stands for the checks of the routes of the calls until their order rebuilds them:
+     * <ul>
+     *   <li>{@code every_route_has_the_form_of_its_effect_class}</li>
+     *   <li>{@code a_verb_not_carried_at_an_address_answers_405_listing_what_the_address_carries}</li>
+     *   <li>{@code the_check_reports_accepts_that_are_not_what_the_address_carries}</li>
+     * </ul>
+     */
     @Test
     @Disabled(REBUILT)
-    void every_route_has_the_form_of_its_effect_class() {
+    void the_routes_of_the_calls_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 
@@ -105,18 +113,6 @@ class RestRouteFormTest {
         return literals.stream().map(path -> path.substring("/api/".length()))
             .filter(name -> AddressParser.scopeOf(name).isPresent())
             .sorted().toList();
-    }
-
-    @Test
-    @Disabled(REBUILT)
-    void a_verb_not_carried_at_an_address_answers_405_listing_what_the_address_carries() {
-        fail(REBUILT);
-    }
-
-    @Test
-    @Disabled(REBUILT)
-    void the_check_reports_accepts_that_are_not_what_the_address_carries() {
-        fail(REBUILT);
     }
 
     static List<String> pathOffences(List<String> paths) {

@@ -37,28 +37,18 @@ class SelectorWithdrawalIT {
     static final String REBUILT = "rebuilt in T3: a selector is withdrawn only while nothing is "
         + "numbered under it and nothing new is created under it afterwards";
 
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code a_selector_without_a_task_is_withdrawn_as_a_status}</li>
+     *   <li>{@code a_selector_with_a_task_under_it_is_not_withdrawn}</li>
+     *   <li>{@code nothing_is_created_under_a_withdrawn_selector}</li>
+     *   <li>{@code a_selector_a_root_is_being_created_under_is_not_withdrawn}</li>
+     *   <li>{@code no_root_is_created_under_a_selector_being_withdrawn}</li>
+     * </ul>
+     */
     @Test
-    void a_selector_without_a_task_is_withdrawn_as_a_status() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_selector_with_a_task_under_it_is_not_withdrawn() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void nothing_is_created_under_a_withdrawn_selector() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_selector_a_root_is_being_created_under_is_not_withdrawn() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void no_root_is_created_under_a_selector_being_withdrawn() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

@@ -42,18 +42,16 @@ class TaskBracketLockIT {
     static final String REBUILT = "rebuilt in T3: the locks of a bracket keep a closing root, "
         + "its children and the numbering of new roots consistent under concurrency";
 
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code a_child_created_while_its_root_closes_never_stays_unfinished_under_a_closed_root}</li>
+     *   <li>{@code a_child_accepted_by_a_second_transaction_before_the_root_closes_keeps_accepted}</li>
+     *   <li>{@code two_roots_created_at_once_take_consecutive_numbers}</li>
+     * </ul>
+     */
     @Test
-    void a_child_created_while_its_root_closes_never_stays_unfinished_under_a_closed_root() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_child_accepted_by_a_second_transaction_before_the_root_closes_keeps_accepted() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void two_roots_created_at_once_take_consecutive_numbers() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

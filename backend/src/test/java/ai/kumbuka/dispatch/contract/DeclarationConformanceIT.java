@@ -37,78 +37,26 @@ class DeclarationConformanceIT {
     static final String REBUILT =
         "rebuilt in T13: the declaration conforms to the target surface and the contract copy";
 
-    @Test
-    void the_declaration_carries_the_calls_of_the_target() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_sixteen_transitions_are_the_transitions_and_the_nine_are_not() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void every_call_takes_exactly_the_arguments_of_the_concept_table() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_mandatory_arguments_are_the_ones_the_concept_names() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void every_description_is_within_its_budget() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_description_over_the_budget_is_refused_by_the_start_up_guard() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_texts_of_concept_section_3_5_stand_word_for_word() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void every_description_is_the_contract_copy_s() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_catalogue_is_the_contract_copy_s_table() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void every_form_an_argument_takes_is_a_message_of_its_own() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_declaration_is_servable() {
-        fail(REBUILT);
-    }
-
     /**
-     * Sprint/210: the declaration carries both calls on the tags, the field
-     * {@code tags} on every answer that carries it, and the filter {@code tag}.
-     * The calls write an addressed task without a conflict token, which this
-     * declaration carries as a custom method on the item.
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code the_declaration_carries_the_calls_of_the_target}</li>
+     *   <li>{@code the_sixteen_transitions_are_the_transitions_and_the_nine_are_not}</li>
+     *   <li>{@code every_call_takes_exactly_the_arguments_of_the_concept_table}</li>
+     *   <li>{@code the_mandatory_arguments_are_the_ones_the_concept_names}</li>
+     *   <li>{@code every_description_is_within_its_budget}</li>
+     *   <li>{@code a_description_over_the_budget_is_refused_by_the_start_up_guard}</li>
+     *   <li>{@code the_texts_of_concept_section_3_5_stand_word_for_word}</li>
+     *   <li>{@code every_description_is_the_contract_copy_s}</li>
+     *   <li>{@code the_catalogue_is_the_contract_copy_s_table}</li>
+     *   <li>{@code every_form_an_argument_takes_is_a_message_of_its_own}</li>
+     *   <li>{@code the_declaration_is_servable}</li>
+     *   <li>{@code the_declaration_carries_the_calls_the_field_and_the_filter_of_the_tags}</li>
+     *   <li>{@code every_call_this_service_carries_describes_every_argument}</li>
+     * </ul>
      */
     @Test
-    void the_declaration_carries_the_calls_the_field_and_the_filter_of_the_tags() {
-        fail(REBUILT);
-    }
-
-    /**
-     * Every declared argument of every call is described, which is what makes
-     * the start-up check of described arguments more than a possibility.
-     */
-    @Test
-    void every_call_this_service_carries_describes_every_argument() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

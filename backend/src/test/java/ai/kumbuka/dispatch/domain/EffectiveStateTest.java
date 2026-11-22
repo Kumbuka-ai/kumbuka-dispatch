@@ -27,42 +27,20 @@ class EffectiveStateTest {
     static final String REBUILT = "rebuilt in T5: a lapsed lease opens the task without a holder "
         + "and the third lapse parks it on hold";
 
-    @Test
-    void a_running_lease_is_active_with_its_holder() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_first_and_second_lapse_open_the_task_without_a_holder() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_third_lapse_parks_the_task_without_a_holder() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_lease_ending_exactly_now_has_lapsed() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void every_other_stored_state_is_itself() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_root_counts_its_unfinished_children_and_not_its_closed_ones() {
-        fail(REBUILT);
-    }
-
     /**
-     * There is no write that takes a state: the entity's public methods read,
-     * and the one that enters a state is the kernel's own, after a decision.
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code a_running_lease_is_active_with_its_holder}</li>
+     *   <li>{@code the_first_and_second_lapse_open_the_task_without_a_holder}</li>
+     *   <li>{@code the_third_lapse_parks_the_task_without_a_holder}</li>
+     *   <li>{@code a_lease_ending_exactly_now_has_lapsed}</li>
+     *   <li>{@code every_other_stored_state_is_itself}</li>
+     *   <li>{@code a_root_counts_its_unfinished_children_and_not_its_closed_ones}</li>
+     *   <li>{@code the_task_offers_no_public_write_of_its_state}</li>
+     * </ul>
      */
     @Test
-    void the_task_offers_no_public_write_of_its_state() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

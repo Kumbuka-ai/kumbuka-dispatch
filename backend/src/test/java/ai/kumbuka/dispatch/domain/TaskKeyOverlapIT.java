@@ -38,32 +38,17 @@ class TaskKeyOverlapIT {
     static final String REBUILT = "rebuilt in T4: two overlapping calls under one idempotency key "
         + "wait on one lock and the second answers what the first produced";
 
-    @Test
-    void an_overlapping_creation_under_one_key_answers_the_first_root() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void an_overlapping_claim_under_one_key_answers_the_task_with_a_new_receipt() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void an_overlapping_addendum_under_one_key_is_attached_once() {
-        fail(REBUILT);
-    }
-
     /**
-     * Two keys whose parts differ only in where a unit separator falls do not
-     * wait on each other: the key lock is taken over the parts, not over the
-     * parts joined by a character a key may itself carry.
-     *
-     * <p>RED STATE, observed against the lock over the parts joined by {@code
-     * chr(31)}: caller {@code x} under key {@code y␟z} and caller {@code x␟y}
-     * under key {@code z} took one lock, and the second waited on the first.
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code an_overlapping_creation_under_one_key_answers_the_first_root}</li>
+     *   <li>{@code an_overlapping_claim_under_one_key_answers_the_task_with_a_new_receipt}</li>
+     *   <li>{@code an_overlapping_addendum_under_one_key_is_attached_once}</li>
+     *   <li>{@code keys_that_join_alike_across_a_unit_separator_take_two_locks}</li>
+     * </ul>
      */
     @Test
-    void keys_that_join_alike_across_a_unit_separator_take_two_locks() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

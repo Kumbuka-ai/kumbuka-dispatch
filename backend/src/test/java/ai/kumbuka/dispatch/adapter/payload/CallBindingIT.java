@@ -37,106 +37,28 @@ class CallBindingIT {
     static final String REBUILT = "rebuilt in T13: the adapter refuses a malformed call before the kernel "
         + "and tells a kernel refusal with the task as it stands";
 
-    @Test
-    void an_invented_argument_is_refused_by_name_at_either_level_for_every_call() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_missing_mandatory_argument_is_refused_by_the_surface_for_every_call() {
-        fail(REBUILT);
-    }
-
     /**
-     * The conflict token is the verb surface's to handle (C1.1): a call
-     * without one reaches it, after the scope has resolved, and the kernel
-     * refuses it as {@code CONFLICT_TOKEN_MISSING} where the caller may see the
-     * task. Here the verb surface is a mock, so what is observed is that the
-     * call reached it with no token.
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code an_invented_argument_is_refused_by_name_at_either_level_for_every_call}</li>
+     *   <li>{@code a_missing_mandatory_argument_is_refused_by_the_surface_for_every_call}</li>
+     *   <li>{@code a_call_without_its_conflict_token_reaches_the_verb_surface}</li>
+     *   <li>{@code an_address_whose_number_does_not_fit_is_refused_by_name_on_both_surfaces}</li>
+     *   <li>{@code a_lease_or_a_deferral_past_what_a_task_stores_is_refused_by_name}</li>
+     *   <li>{@code a_lease_of_no_length_or_a_negative_one_is_refused_by_name}</li>
+     *   <li>{@code a_combination_the_kernel_would_meet_as_a_defect_is_refused_first}</li>
+     *   <li>{@code an_undeclared_filter_is_refused}</li>
+     *   <li>{@code after_a_claim_read_text_stands_first_in_next_with_the_concept_s_sentence}</li>
+     *   <li>{@code the_commissioner_of_a_delivered_task_reads_the_answer_before_accepting}</li>
+     *   <li>{@code where_nothing_is_open_the_answer_says_what_the_task_waits_for}</li>
+     *   <li>{@code a_stale_conflict_token_is_refused_with_the_task_as_it_stands}</li>
+     *   <li>{@code a_claim_before_a_deferral_has_passed_is_refused_as_deferral_pending}</li>
+     *   <li>{@code a_holder_s_call_by_a_caller_who_holds_nothing_is_told_by_who_holds_the_task}</li>
+     *   <li>{@code an_unexpected_failure_gives_back_no_value_the_call_carried}</li>
+     * </ul>
      */
     @Test
-    void a_call_without_its_conflict_token_reaches_the_verb_surface() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void an_address_whose_number_does_not_fit_is_refused_by_name_on_both_surfaces() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_lease_or_a_deferral_past_what_a_task_stores_is_refused_by_name() {
-        fail(REBUILT);
-    }
-
-    /**
-     * A lease of no length or of a negative one is a form fault the adapter
-     * refuses before the scope is resolved, by the argument that carried it.
-     */
-    @Test
-    void a_lease_of_no_length_or_a_negative_one_is_refused_by_name() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_combination_the_kernel_would_meet_as_a_defect_is_refused_first() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void an_undeclared_filter_is_refused() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void after_a_claim_read_text_stands_first_in_next_with_the_concept_s_sentence() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_commissioner_of_a_delivered_task_reads_the_answer_before_accepting() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void where_nothing_is_open_the_answer_says_what_the_task_waits_for() {
-        fail(REBUILT);
-    }
-
-    /**
-     * A stale token is told with the task as it stands (DEC-0041, C8.7): its
-     * address, its fields, its current token and the service that holds it.
-     */
-    @Test
-    void a_stale_conflict_token_is_refused_with_the_task_as_it_stands() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_claim_before_a_deferral_has_passed_is_refused_as_deferral_pending() {
-        fail(REBUILT);
-    }
-
-    /**
-     * The holder's call by a caller who holds nothing is told by who holds the
-     * task: another executor ({@code CLAIM_HELD}), or nobody, because nobody
-     * does or the caller's own lease ended ({@code CLAIM_ABSENT}); each 409
-     * and each with the attempted call, the state and the calls open, and
-     * nothing the task waits for (C8.6, C8.7).
-     */
-    @Test
-    void a_holder_s_call_by_a_caller_who_holds_nothing_is_told_by_who_holds_the_task() {
-        fail(REBUILT);
-    }
-
-    /**
-     * The one code no caller can raise on the wire, held to DEC-0042 here: a
-     * kernel that fails with the caller's value in its own message, under a
-     * call that carries it, answers with neither. The wire half is {@code
-     * UnexpectedFailureIT}.
-     */
-    @Test
-    void an_unexpected_failure_gives_back_no_value_the_call_carried() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }

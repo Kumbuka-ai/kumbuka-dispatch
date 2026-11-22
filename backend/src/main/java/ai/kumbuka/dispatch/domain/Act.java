@@ -117,6 +117,7 @@ public class Act {
 
     /** For the persistence provider only. */
     protected Act() {
+        // The provider fills every column from the row it reads.
     }
 
     private Act(Instance instance, int sequence, Kind kind, State toState,

@@ -51,23 +51,17 @@ class TaskListingPlanIT {
     static final String REBUILT = "rebuilt in T11: the page statement of a listing walks the index "
         + "of its order and sorts nothing";
 
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code the_creation_order_walks_its_index_and_sorts_nothing}</li>
+     *   <li>{@code a_continued_descending_creation_order_walks_its_index_backward}</li>
+     *   <li>{@code the_address_order_walks_the_address_key_and_sorts_nothing}</li>
+     *   <li>{@code with_the_index_that_ends_on_id_the_creation_order_is_sorted}</li>
+     * </ul>
+     */
     @Test
-    void the_creation_order_walks_its_index_and_sorts_nothing() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void a_continued_descending_creation_order_walks_its_index_backward() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void the_address_order_walks_the_address_key_and_sorts_nothing() {
-        fail(REBUILT);
-    }
-
-    @Test
-    void with_the_index_that_ends_on_id_the_creation_order_is_sorted() {
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
         fail(REBUILT);
     }
 }
