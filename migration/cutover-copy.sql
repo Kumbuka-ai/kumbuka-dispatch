@@ -9,7 +9,7 @@
 --
 -- The copy of the stock: reads the old store dispatch_legacy (line
 -- db/migration, V1 to V25, renamed by cutover-rename.sql) and writes the new
--- store dispatch (line db/store, V1 to V4). Not a migration; no build and no
+-- store dispatch (line db/store, V1 to V5). Not a migration; no build and no
 -- service runs it. The operator runs it with psql:
 --
 --     psql -v ON_ERROR_STOP=1 -U <role reading every tenant> -d <database> \
@@ -34,7 +34,12 @@
 --   - return_metadata stands on a task without a return text;
 --   - a bracket has no root task <number>.0;
 --   - an apparatus that ck_task_addressed_role would refuse;
---   - an addendum without a base text of its type.
+--   - an addendum to a text other than a question or an answer without a
+--     base text of its type;
+--   - an answer without an ask act of its task not after it;
+--   - a question text of more than 2000 characters;
+--   - an addendum to a question or an answer whose base text cannot be
+--     determined.
 --
 -- OTHERWISE it empties every table of the new store and copies the stock. A
 -- second run gives the same stock; only the time of the import acts, the time
@@ -59,6 +64,9 @@
 --     that closes the instance;
 --   - a task keeps its address, state, hold reason, resolution, not_before
 --     and holder; addressed_role is its apparatus;
+--   - a question is an ask act with a bundle of one question q1, an answer
+--     an answer act answering q1 of the youngest ask act of its task not
+--     after it; their texts and addenda stand in elicitation_content;
 --   - a never-sent task is a draft without an act.
 --
 -- Every table is named with its schema; nothing relies on search_path.
@@ -99,7 +107,7 @@ BEGIN
     END IF;
 
     IF to_regclass('dispatch.flyway_schema_history') IS NULL
-       OR to_regclass('dispatch.instance_field_value') IS NULL THEN
+       OR to_regclass('dispatch.elicitation_content') IS NULL THEN
         RAISE EXCEPTION 'cutover copy refused: the schema dispatch does not hold the store '
             'line db/store'
             USING ERRCODE = 'KC001';
@@ -110,8 +118,8 @@ BEGIN
      WHERE h.version IS NOT NULL AND h.success
      ORDER BY h.installed_rank DESC
      LIMIT 1;
-    IF latest IS DISTINCT FROM '4' THEN
-        RAISE EXCEPTION 'cutover copy refused: the store line stands at version %, expected 4',
+    IF latest IS DISTINCT FROM '5' THEN
+        RAISE EXCEPTION 'cutover copy refused: the store line stands at version %, expected 5',
             coalesce(latest, 'none')
             USING ERRCODE = 'KC001';
     END IF;
@@ -226,6 +234,7 @@ BEGIN
       FROM pg_temp.cutover_task c
       JOIN dispatch_legacy.task_text x ON x.task_id = c.legacy_id
      WHERE x.addendum_suffix IS NOT NULL
+       AND x.text_type NOT IN ('question', 'answer')
        AND NOT EXISTS (SELECT 1 FROM dispatch_legacy.task_text b
                         WHERE b.task_id = x.task_id AND b.text_type = x.text_type
                           AND b.addendum_suffix IS NULL);
@@ -234,11 +243,58 @@ BEGIN
             offenders
             USING ERRCODE = 'KC003';
     END IF;
+
+    -- An answer answers q1 of the youngest ask act of its task that is not
+    -- after it, the act of the youngest question text not younger than the
+    -- answer; an answer without one has no question to answer.
+    SELECT string_agg(DISTINCT c.address, ', ' ORDER BY c.address) INTO offenders
+      FROM pg_temp.cutover_task c
+      JOIN dispatch_legacy.task_text x
+        ON x.task_id = c.legacy_id AND x.text_type = 'answer' AND x.addendum_suffix IS NULL
+     WHERE c.state <> 'draft'
+       AND NOT EXISTS (SELECT 1 FROM dispatch_legacy.task_text q
+                        WHERE q.task_id = c.legacy_id AND q.text_type = 'question'
+                          AND q.addendum_suffix IS NULL AND q.created_at <= x.created_at);
+    IF offenders IS NOT NULL THEN
+        RAISE EXCEPTION 'cutover copy refused: an answer has no ask act of its task that is not '
+            'after it, at %', offenders
+            USING ERRCODE = 'KC003';
+    END IF;
+
+    -- The bound of ck_elicitation_content_question_body (db/store V5), checked
+    -- here so that the refusal names an address instead of a failing row.
+    SELECT string_agg(DISTINCT c.address, ', ' ORDER BY c.address) INTO offenders
+      FROM pg_temp.cutover_task c
+      JOIN dispatch_legacy.task_text x
+        ON x.task_id = c.legacy_id AND x.text_type = 'question' AND x.addendum_suffix IS NULL
+     WHERE c.state <> 'draft' AND char_length(x.text) > 2000;
+    IF offenders IS NOT NULL THEN
+        RAISE EXCEPTION 'cutover copy refused: a question text has more than 2000 characters, '
+            'at %', offenders
+            USING ERRCODE = 'KC003';
+    END IF;
+
+    -- An addendum to a question or an answer supplements its base text in
+    -- elicitation_content; without a base text of its type there is none.
+    SELECT string_agg(c.address || x.addendum_suffix, ', '
+                      ORDER BY c.address || x.addendum_suffix) INTO offenders
+      FROM pg_temp.cutover_task c
+      JOIN dispatch_legacy.task_text x ON x.task_id = c.legacy_id
+     WHERE x.addendum_suffix IS NOT NULL
+       AND x.text_type IN ('question', 'answer')
+       AND NOT EXISTS (SELECT 1 FROM dispatch_legacy.task_text b
+                        WHERE b.task_id = x.task_id AND b.text_type = x.text_type
+                          AND b.addendum_suffix IS NULL);
+    IF offenders IS NOT NULL THEN
+        RAISE EXCEPTION 'cutover copy refused: an addendum to a question or an answer has no '
+            'base text to supplement, at %', offenders
+            USING ERRCODE = 'KC003';
+    END IF;
 END
 $stock$;
 
 -- ---------------------------------------------------------------------------
--- 4. The new store, emptied. Every table of V1 to V4; the identities restart,
+-- 4. The new store, emptied. Every table of V1 to V5; the identities restart,
 -- so that a second run gives the same stock.
 -- ---------------------------------------------------------------------------
 TRUNCATE TABLE
@@ -246,13 +302,15 @@ TRUNCATE TABLE
     dispatch.definition_tag, dispatch.activity, dispatch.outcome_label,
     dispatch.instance, dispatch.task, dispatch.act,
     dispatch.commission, dispatch.commission_criterion, dispatch.holding, dispatch.receipt,
-    dispatch.lease, dispatch.question_option, dispatch.answer, dispatch.delivery,
+    dispatch.lease, dispatch.delivery,
     dispatch.delivery_criterion, dispatch.instance_return, dispatch.external_reference,
     dispatch.idempotency_key,
     dispatch.free_fields, dispatch.content,
     dispatch.draft, dispatch.draft_criterion, dispatch.draft_free_fields, dispatch.draft_text,
     dispatch.enumeration, dispatch.enumeration_value, dispatch.control_field,
-    dispatch.contract_field, dispatch.field_value, dispatch.instance_field_value
+    dispatch.contract_field, dispatch.field_value, dispatch.instance_field_value,
+    dispatch.elicitation_question, dispatch.elicitation_option, dispatch.elicitation_answer,
+    dispatch.elicitation_answer_option, dispatch.elicitation_content
     RESTART IDENTITY;
 
 -- ---------------------------------------------------------------------------
@@ -357,7 +415,8 @@ CREATE TEMPORARY TABLE pg_temp.cutover_event (
     options_recorded    BOOLEAN,
     holder_claim        BOOLEAN      NOT NULL DEFAULT false,
     sequence            INTEGER,
-    act_id              BIGINT
+    act_id              BIGINT,
+    asked_event_id      BIGINT
 ) ON COMMIT DROP;
 
 -- send: every task but a draft, at the time and by the actor of its dispatch
@@ -385,11 +444,12 @@ SELECT c.legacy_id, c.tenant_id, c.scope_id, c.instance_id, c.task_id, c.sub, tr
  WHERE c.state <> 'draft'
  ORDER BY c.legacy_id, x.id;
 
--- ask: every question text. The old store holds question_options for the
--- open question only, the youngest question of a task on hold for a
--- question; its options and free_text are taken from there. Every other ask
--- is set to admit free text, without options: that value is set by the copy,
--- not recorded, and the report counts it.
+-- ask: every question text, a bundle of one question. The old store holds
+-- question_options for the open question only, the youngest question of a
+-- task on hold for a question; its options and free_text are taken from
+-- there, with selection one. Every other question has selection none and
+-- admits free text: that value is set by the copy, not recorded, and the
+-- report counts it.
 INSERT INTO pg_temp.cutover_event (legacy_task_id, tenant_id, scope_id, instance_id, task_id,
                                    sub, on_task, kind, rank, at, actor, text_id, content_kind,
                                    to_state, free_text_admitted, options, options_recorded)
@@ -524,6 +584,16 @@ UPDATE pg_temp.cutover_event e
   FROM pg_temp.cutover_task c
  WHERE c.legacy_id = e.legacy_task_id AND e.kind = 'annotate';
 
+-- An answer answers q1 of the youngest ask act of its task that is not after
+-- it; section 3 refused an answer without one.
+UPDATE pg_temp.cutover_event e
+   SET asked_event_id = (
+       SELECT a.event_id FROM pg_temp.cutover_event a
+        WHERE a.legacy_task_id = e.legacy_task_id AND a.kind = 'ask' AND a.at <= e.at
+        ORDER BY a.sequence DESC
+        LIMIT 1)
+ WHERE e.kind = 'answer';
+
 -- ---------------------------------------------------------------------------
 -- 8. The acts: the import act, the acts on tasks, the closing acts.
 -- ---------------------------------------------------------------------------
@@ -535,11 +605,16 @@ SELECT i.tenant_id, i.scope_id, i.id, 1, NULL, 'import',
   FROM dispatch.instance i
  ORDER BY i.id;
 
+-- The old store knows no mark human_required, and a copied question does not
+-- raise it; every copied answer is answered, since the old store records no
+-- declined answer.
 INSERT INTO dispatch.act (tenant_id, scope_id, instance_id, sequence, task_id, kind,
                           actor_subject, actor_owner_subject, at, to_state, hold_reason,
-                          not_before, free_text_admitted)
+                          not_before, human_required, answer_outcome)
 SELECT e.tenant_id, e.scope_id, e.instance_id, e.sequence, e.task_id, e.kind,
-       e.actor, e.actor, e.at, e.to_state, e.hold_reason, e.not_before, e.free_text_admitted
+       e.actor, e.actor, e.at, e.to_state, e.hold_reason, e.not_before,
+       CASE WHEN e.kind = 'ask' THEN false END,
+       CASE WHEN e.kind = 'answer' THEN 'answered' END
   FROM pg_temp.cutover_event e
  WHERE e.on_task
  ORDER BY e.instance_id, e.sequence;
@@ -579,7 +654,8 @@ SELECT e.tenant_id, e.scope_id, e.act_id
  ORDER BY e.act_id;
 
 -- ---------------------------------------------------------------------------
--- 9. What hangs on the acts: commission, options, holding, receipt, lease.
+-- 9. What hangs on the acts: commission, the elicitation complex, holding,
+-- receipt, lease.
 -- ---------------------------------------------------------------------------
 INSERT INTO dispatch.commission (tenant_id, scope_id, instance_id, act_id, title, activity_id,
                                  addressed_role)
@@ -593,12 +669,39 @@ SELECT e.tenant_id, e.scope_id, e.instance_id, e.act_id, c.title, a.id, c.appara
  WHERE e.kind = 'send'
  ORDER BY e.act_id;
 
-INSERT INTO dispatch.question_option (tenant_id, scope_id, ask_act_id, label, ordinal)
-SELECT e.tenant_id, e.scope_id, e.act_id, o.label, o.ordinal::INTEGER
+-- Each ask act carries a bundle of one question q1, required: selection one
+-- where the old store recorded options for it, none otherwise.
+INSERT INTO dispatch.elicitation_question (tenant_id, scope_id, ask_act_id, identifier, ordinal,
+                                           selection, free_text_admitted, required)
+SELECT e.tenant_id, e.scope_id, e.act_id, 'q1', 1,
+       CASE WHEN e.options_recorded THEN 'one' ELSE 'none' END,
+       e.free_text_admitted, true
   FROM pg_temp.cutover_event e
+ WHERE e.kind = 'ask'
+ ORDER BY e.act_id;
+
+-- The options recorded, in their order, as o1, o2, ...
+INSERT INTO dispatch.elicitation_option (tenant_id, scope_id, question_id, identifier, label,
+                                         ordinal)
+SELECT q.tenant_id, q.scope_id, q.id, 'o' || o.ordinal, o.label, o.ordinal::INTEGER
+  FROM pg_temp.cutover_event e
+  JOIN dispatch.elicitation_question q
+    ON q.tenant_id = e.tenant_id AND q.scope_id = e.scope_id AND q.ask_act_id = e.act_id
  CROSS JOIN LATERAL jsonb_array_elements_text(e.options) WITH ORDINALITY AS o(label, ordinal)
  WHERE e.kind = 'ask' AND e.options IS NOT NULL
- ORDER BY e.act_id, o.ordinal;
+ ORDER BY q.id, o.ordinal;
+
+-- Each answer act answers q1 of its ask act, by text alone: the old store
+-- records no option chosen, so no elicitation_answer_option is written.
+INSERT INTO dispatch.elicitation_answer (tenant_id, scope_id, answer_act_id, question_id)
+SELECT e.tenant_id, e.scope_id, e.act_id, q.id
+  FROM pg_temp.cutover_event e
+  JOIN pg_temp.cutover_event a ON a.event_id = e.asked_event_id
+  JOIN dispatch.elicitation_question q
+    ON q.tenant_id = a.tenant_id AND q.scope_id = a.scope_id AND q.ask_act_id = a.act_id
+   AND q.identifier = 'q1'
+ WHERE e.kind = 'answer'
+ ORDER BY e.act_id;
 
 INSERT INTO dispatch.holding (tenant_id, scope_id, task_id, claim_act_id)
 SELECT e.tenant_id, e.scope_id, e.task_id, e.act_id
@@ -624,7 +727,9 @@ SELECT h.tenant_id, h.scope_id, h.id, h.claim_act_id, c.lease_expires_at
 -- ---------------------------------------------------------------------------
 -- 10. Content. Every text keeps its body. A remark hangs on the last derived
 -- act of its task whose time is not after the remark's; an addendum
--- supplements the text of its type it belongs to.
+-- supplements the text of its type it belongs to. Question and answer texts
+-- and their addenda stand in elicitation_content, every other text in
+-- content.
 -- ---------------------------------------------------------------------------
 CREATE TEMPORARY TABLE pg_temp.cutover_remark ON COMMIT DROP AS
 SELECT x.id AS text_id, c.tenant_id, c.scope_id,
@@ -645,9 +750,11 @@ SELECT x.id AS text_id, c.tenant_id, c.scope_id,
     ON x.task_id = c.legacy_id AND x.text_type = 'remark' AND x.addendum_suffix IS NULL
  WHERE c.state <> 'draft';
 
+-- Which text became which row; elicitation says in which table it stands.
 CREATE TEMPORARY TABLE pg_temp.cutover_content (
-    text_id     BIGINT  PRIMARY KEY,
-    content_id  BIGINT  NOT NULL
+    text_id      BIGINT   PRIMARY KEY,
+    content_id   BIGINT   NOT NULL,
+    elicitation  BOOLEAN  NOT NULL
 ) ON COMMIT DROP;
 
 DO $content$
@@ -659,7 +766,7 @@ BEGIN
         SELECT e.tenant_id, e.scope_id, e.act_id, e.content_kind AS kind, e.text_id, x.text AS body
           FROM pg_temp.cutover_event e
           JOIN dispatch_legacy.task_text x ON x.id = e.text_id
-         WHERE e.kind IN ('send', 'deliver', 'ask', 'answer')
+         WHERE e.kind IN ('send', 'deliver')
         UNION ALL
         SELECT m.tenant_id, m.scope_id, m.act_id, 'remark', m.text_id, x.text
           FROM pg_temp.cutover_remark m
@@ -669,13 +776,41 @@ BEGIN
         INSERT INTO dispatch.content (tenant_id, scope_id, act_id, kind, media_type, body)
         VALUES (r.tenant_id, r.scope_id, r.act_id, r.kind, 'text/plain', r.body)
         RETURNING id INTO made;
-        INSERT INTO pg_temp.cutover_content (text_id, content_id) VALUES (r.text_id, made);
+        INSERT INTO pg_temp.cutover_content (text_id, content_id, elicitation)
+        VALUES (r.text_id, made, false);
+    END LOOP;
+
+    -- A question text on the question of its ask act, an answer text on the
+    -- answer of its answer act.
+    FOR r IN
+        SELECT e.tenant_id, e.scope_id, e.act_id, e.content_kind AS kind, e.text_id,
+               x.text AS body, q.id AS question_id, w.id AS answer_id
+          FROM pg_temp.cutover_event e
+          JOIN dispatch_legacy.task_text x ON x.id = e.text_id
+          LEFT JOIN dispatch.elicitation_question q
+            ON e.kind = 'ask' AND q.tenant_id = e.tenant_id AND q.scope_id = e.scope_id
+           AND q.ask_act_id = e.act_id
+          LEFT JOIN dispatch.elicitation_answer w
+            ON e.kind = 'answer' AND w.tenant_id = e.tenant_id AND w.scope_id = e.scope_id
+           AND w.answer_act_id = e.act_id
+         WHERE e.kind IN ('ask', 'answer')
+         ORDER BY e.act_id
+    LOOP
+        INSERT INTO dispatch.elicitation_content (tenant_id, scope_id, act_id, kind, question_id,
+                                                  answer_id, media_type, body)
+        VALUES (r.tenant_id, r.scope_id, r.act_id, r.kind, r.question_id, r.answer_id,
+                'text/plain', r.body)
+        RETURNING id INTO made;
+        INSERT INTO pg_temp.cutover_content (text_id, content_id, elicitation)
+        VALUES (r.text_id, made, true);
     END LOOP;
 
     -- The base of an addendum: the youngest text of its type on its task
-    -- that is not younger than the addendum, or else the oldest.
+    -- that is not younger than the addendum, or else the oldest. An addendum
+    -- to a question or an answer supplements its base in elicitation_content.
     FOR r IN
         SELECT e.tenant_id, e.scope_id, e.act_id, e.text_id, x.text AS body,
+               x.text_type IN ('question', 'answer') AS elicitation,
                coalesce(
                    (SELECT b.id FROM dispatch_legacy.task_text b
                      WHERE b.task_id = x.task_id AND b.text_type = x.text_type
@@ -692,14 +827,25 @@ BEGIN
          WHERE e.kind = 'annotate'
          ORDER BY e.act_id
     LOOP
-        INSERT INTO dispatch.content (tenant_id, scope_id, act_id, kind, supplements_content_id,
-                                      media_type, body)
-        VALUES (r.tenant_id, r.scope_id, r.act_id, 'addendum',
-                (SELECT m.content_id FROM pg_temp.cutover_content m
-                  WHERE m.text_id = r.base_text_id),
-                'text/plain', r.body)
-        RETURNING id INTO made;
-        INSERT INTO pg_temp.cutover_content (text_id, content_id) VALUES (r.text_id, made);
+        IF r.elicitation THEN
+            INSERT INTO dispatch.elicitation_content (tenant_id, scope_id, act_id, kind,
+                                                      supplements_content_id, media_type, body)
+            VALUES (r.tenant_id, r.scope_id, r.act_id, 'addendum',
+                    (SELECT m.content_id FROM pg_temp.cutover_content m
+                      WHERE m.text_id = r.base_text_id AND m.elicitation),
+                    'text/plain', r.body)
+            RETURNING id INTO made;
+        ELSE
+            INSERT INTO dispatch.content (tenant_id, scope_id, act_id, kind,
+                                          supplements_content_id, media_type, body)
+            VALUES (r.tenant_id, r.scope_id, r.act_id, 'addendum',
+                    (SELECT m.content_id FROM pg_temp.cutover_content m
+                      WHERE m.text_id = r.base_text_id AND NOT m.elicitation),
+                    'text/plain', r.body)
+            RETURNING id INTO made;
+        END IF;
+        INSERT INTO pg_temp.cutover_content (text_id, content_id, elicitation)
+        VALUES (r.text_id, made, r.elicitation);
     END LOOP;
 END
 $content$;
@@ -862,14 +1008,24 @@ SELECT 'idempotency keys', 'not copied: dispatch_legacy.idempotency_key', count(
   FROM dispatch_legacy.idempotency_key;
 
 INSERT INTO pg_temp.cutover_copy_report (section, subject, amount)
-SELECT 'ask acts', 'free_text_admitted set by the copy, not recorded', count(*)
-  FROM pg_temp.cutover_event e
- WHERE e.kind = 'ask' AND NOT e.options_recorded;
+SELECT 'elicitation', 'bundles with selection none, free text admitted set by the copy', count(*)
+  FROM dispatch.elicitation_question q
+ WHERE q.selection = 'none';
 
 INSERT INTO pg_temp.cutover_copy_report (section, subject, amount)
-SELECT 'ask acts', 'options and free_text from question_options', count(*)
-  FROM pg_temp.cutover_event e
- WHERE e.kind = 'ask' AND e.options_recorded;
+SELECT 'elicitation', 'bundles with selection one, options and free_text from question_options',
+       count(*)
+  FROM dispatch.elicitation_question q
+ WHERE q.selection = 'one';
+
+INSERT INTO pg_temp.cutover_copy_report (section, subject, amount)
+SELECT 'elicitation', 'answers to q1 of the youngest ask act not after them', count(*)
+  FROM dispatch.elicitation_answer;
+
+INSERT INTO pg_temp.cutover_copy_report (section, subject, amount)
+SELECT 'elicitation', 'addenda to a question or answer text', count(*)
+  FROM dispatch.elicitation_content x
+ WHERE x.kind = 'addendum';
 
 INSERT INTO pg_temp.cutover_copy_report (section, subject, amount)
 SELECT 'holders', 'claim acts of a holder', count(*)
@@ -910,8 +1066,6 @@ UNION ALL SELECT 'rows', 'dispatch.commission_criterion', count(*) FROM dispatch
 UNION ALL SELECT 'rows', 'dispatch.holding', count(*) FROM dispatch.holding
 UNION ALL SELECT 'rows', 'dispatch.receipt', count(*) FROM dispatch.receipt
 UNION ALL SELECT 'rows', 'dispatch.lease', count(*) FROM dispatch.lease
-UNION ALL SELECT 'rows', 'dispatch.question_option', count(*) FROM dispatch.question_option
-UNION ALL SELECT 'rows', 'dispatch.answer', count(*) FROM dispatch.answer
 UNION ALL SELECT 'rows', 'dispatch.delivery', count(*) FROM dispatch.delivery
 UNION ALL SELECT 'rows', 'dispatch.delivery_criterion', count(*) FROM dispatch.delivery_criterion
 UNION ALL SELECT 'rows', 'dispatch.instance_return', count(*) FROM dispatch.instance_return
@@ -928,7 +1082,12 @@ UNION ALL SELECT 'rows', 'dispatch.enumeration_value', count(*) FROM dispatch.en
 UNION ALL SELECT 'rows', 'dispatch.control_field', count(*) FROM dispatch.control_field
 UNION ALL SELECT 'rows', 'dispatch.contract_field', count(*) FROM dispatch.contract_field
 UNION ALL SELECT 'rows', 'dispatch.field_value', count(*) FROM dispatch.field_value
-UNION ALL SELECT 'rows', 'dispatch.instance_field_value', count(*) FROM dispatch.instance_field_value;
+UNION ALL SELECT 'rows', 'dispatch.instance_field_value', count(*) FROM dispatch.instance_field_value
+UNION ALL SELECT 'rows', 'dispatch.elicitation_question', count(*) FROM dispatch.elicitation_question
+UNION ALL SELECT 'rows', 'dispatch.elicitation_option', count(*) FROM dispatch.elicitation_option
+UNION ALL SELECT 'rows', 'dispatch.elicitation_answer', count(*) FROM dispatch.elicitation_answer
+UNION ALL SELECT 'rows', 'dispatch.elicitation_answer_option', count(*) FROM dispatch.elicitation_answer_option
+UNION ALL SELECT 'rows', 'dispatch.elicitation_content', count(*) FROM dispatch.elicitation_content;
 
 COMMIT;
 

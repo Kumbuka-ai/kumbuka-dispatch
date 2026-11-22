@@ -350,7 +350,7 @@ on 2026-10-17. Never against production.
 # The cut-over to the store line db/store
 
 Three scripts move the stock of the old store (line `db/migration`, V1 to V25)
-into the new store (line `db/store`, V1 to V4) once, at the cut-over:
+into the new store (line `db/store`, V1 to V5) once, at the cut-over:
 
     cutover-rename.sql           schema dispatch -> dispatch_legacy, plus the
                                  table dispatch_legacy.cutover with one row
@@ -430,13 +430,20 @@ The copy refuses, writing nothing, when
 - `dispatch_legacy.cutover.opened_at` is set, or the table does not hold
   exactly one row: after the opening the copy would empty what the new store
   took since;
-- `dispatch_legacy` or the store line V4 is not there, or the role does not read
+- `dispatch_legacy` or the store line V5 is not there, or the role does not read
   every tenant;
 - an act the copy derives has no recorded actor;
 - `return_metadata` stands on a task without a return text;
 - a bracket has no root task `<number>.0`;
 - an `apparatus` would be refused by `ck_task_addressed_role`;
-- an addendum has no base text of its type.
+- an addendum to a text other than a question or an answer has no base text of
+  its type;
+- an answer of a sent task has no ask act of its task that is not after it: no
+  question text of the task not younger than the answer;
+- a question text of a sent task has more than 2000 characters, which
+  `ck_elicitation_content_question_body` would refuse;
+- an addendum to a question or an answer has no base text to supplement: no
+  question or answer text of its type on its task.
 
 A refusal names its reason and, where there is one, the address of each task,
 written as `<scope_id>/<selector>/<number>.<sub>` (an addendum with its
@@ -481,11 +488,23 @@ the recorded actor as `actor_subject` and `actor_owner_subject` and leaves
     dispatch text; the commission (title, the activity `default`,
     `addressed_role`) and the text as content of kind `commission`;
   - `deliver` for every return text, the text as content of kind `return`;
-  - `ask` and `answer` for every question and answer text, as content of kind
-    `question` and `answer` (see the next section for the options);
-  - `annotate` for every text with a suffix, as content of kind `addendum`
-    supplementing the text of its type it belongs to: the youngest of that type
-    not younger than the addendum, or else the oldest;
+  - `ask` for every question text, with `human_required = false`: the old store
+    knows no such mark, and a copied question does not raise it. The ask act
+    carries a bundle of exactly one question in `elicitation_question`:
+    identifier `q1`, ordinal 1, `required = true`; the text unchanged as a row
+    of kind `question` in `elicitation_content` (see the next section for the
+    selection, the options and free text);
+  - `answer` for every answer text, with `answer_outcome = answered`, and one
+    row in `elicitation_answer` for `q1` of the youngest ask act of its task
+    that is not after it; the text unchanged as a row of kind `answer` in
+    `elicitation_content` on that answer. No `elicitation_answer_option` is
+    written: the old store records no option chosen, and reading one out of
+    the text would be made up;
+  - `annotate` for every text with a suffix, as an addendum supplementing the
+    text of its type it belongs to: the youngest of that type not younger than
+    the addendum, or else the oldest. An addendum to a question or an answer is
+    a row of kind `addendum` in `elicitation_content` supplementing the row of
+    that text; every other addendum is content of kind `addendum`;
   - the act of the present state, at `state_changed_at` by `state_changed_by`:
     `claim` for active without a holder, `hold` for on hold `dependency` or
     `external`, `defer` for open with `not_before`, and `accept`, `reject`,
@@ -518,22 +537,29 @@ the recorded actor as `actor_subject` and `actor_owner_subject` and leaves
   `dispatch_metadata` unchanged as `draft_free_fields`, and no act.
 - **Idempotency keys** are counted, not copied.
 - Every text keeps its body; its `media_type` is `text/plain`, since the old
-  store records no format.
+  store records no format. `content` holds no question or answer text and no
+  addendum to one: those stand in `elicitation_content`.
 
 ## The options of a question: a value set, not recorded
 
 The old store holds `question_options` only for the open question: every change
 of state other than a hold for a question clears it (`Task.enter`). What an
 answered question offered, and whether it admitted free text, is recorded
-nowhere. The new store requires `free_text_admitted` on every ask act
-(`ck_act_free_text_kind`).
+nowhere. The new store requires `selection` and `free_text_admitted` on every
+question of a bundle.
 
-So, by decision of the operator of 2026-11-21: the ask act of the open question
-(the youngest question of a task on hold for a question with
-`question_options`) carries its options, in their order, and its `free_text`.
-**Every other ask act carries `free_text_admitted = true` and no options. That
-value is set by the copy, not recorded**, and the report counts these ask acts
-apart.
+So, by decision of the operator of 2026-11-21, carried into the bundle by the
+order of V5: the question of the open question's ask act (the youngest question
+of a task on hold for a question with `question_options`) has `selection = one`
+with exactly its options, in their order, as `elicitation_option` with the
+identifiers `o1`, `o2`, ... by that order, and `free_text_admitted` from its
+`free_text`. **Every other question has `selection = none` and
+`free_text_admitted = true`. That value is set by the copy, not recorded**, and
+the report counts these bundles apart.
+
+An option label of more than 200 characters, or two equal labels, is refused by
+the checks of `elicitation_option` with the error of the store and without an
+address; the old store bounds neither.
 
 ## What the report contains
 
@@ -545,7 +571,10 @@ metadata and the names of tables, never a title, a text or a value.
                       the deliver, the free fields of a draft
     tags              left behind on never-sent tasks
     idempotency keys  not copied, from task_idempotency_key and idempotency_key
-    ask acts          free_text_admitted set by the copy; from question_options
+    elicitation       bundles with selection none, free text admitted set by
+                      the copy; bundles with selection one, from
+                      question_options; answers; addenda to a question or an
+                      answer text
     holders           claim acts of a holder
     instances         concluded without a return to refer to
     remarks           placed on the first act, with no act before them

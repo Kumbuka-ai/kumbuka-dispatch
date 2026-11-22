@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The cut-over on a database of its own: the old line db/migration V1 to V25,
- * a stock in two tenants, the rename, the line db/store V1 to V4, and the copy
+ * a stock in two tenants, the rename, the line db/store V1 to V5, and the copy
  * (migration/cutover-copy.sql), each as the operator runs it.
  *
  * <p>Every run happens once, in {@link #cutOver}, in the order of the
@@ -51,21 +51,26 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class CutoverCopyIT {
 
-    /** The thirty-three tables of the store line after V4, as StoreLineIT names them. */
+    /** The thirty-six tables of the store line after V5, as StoreLineIT names them. */
     private static final Set<String> TABLES = new TreeSet<>(List.of(
         "selector", "definition_version", "definition_act", "definition_tag", "activity",
         "outcome_label", "instance", "task", "act", "commission", "commission_criterion",
-        "holding", "receipt", "lease", "question_option", "answer", "delivery",
+        "holding", "receipt", "lease", "delivery",
         "delivery_criterion", "instance_return", "external_reference", "idempotency_key",
         "free_fields", "content", "draft", "draft_criterion", "draft_free_fields", "draft_text",
         "enumeration", "enumeration_value", "control_field", "contract_field", "field_value",
-        "instance_field_value"));
+        "instance_field_value", "elicitation_question", "elicitation_option",
+        "elicitation_answer", "elicitation_answer_option", "elicitation_content"));
 
-    /** The tables no rule of the copy writes: no criterion, verdict, outcome, field or rule. */
+    /**
+     * The tables no rule of the copy writes: no criterion, verdict, outcome, field, rule or
+     * chosen option.
+     */
     private static final List<String> UNWRITTEN = List.of("definition_act", "definition_tag",
-        "outcome_label", "commission_criterion", "answer", "delivery", "delivery_criterion",
+        "outcome_label", "commission_criterion", "delivery", "delivery_criterion",
         "idempotency_key", "draft_criterion", "enumeration", "enumeration_value",
-        "control_field", "contract_field", "field_value", "instance_field_value");
+        "control_field", "contract_field", "field_value", "instance_field_value",
+        "elicitation_answer_option");
 
     /** A task of the new store and its address within its tenant. */
     private static final String TASKS = " FROM dispatch.task t "
@@ -92,7 +97,8 @@ class CutoverCopyIT {
         "send@1", "send@2", "send@3", "claim@3", "send@4", "send@6", "send@7", "send@8",
         "send@9", "send@10", "send@12",
         "send@5", "claim@5", "annotate@0", "claim@6", "claim@2", "hold@3", "hold@4", "ask@5",
-        "deliver@0", "answer@5", "ask@5", "deliver@6", "annotate@6", "reject@7", "fail@8",
+        "deliver@0", "annotate@5", "answer@5", "ask@5", "deliver@6", "annotate@6", "reject@7",
+        "fail@8",
         "withdraw@9", "deliver@10", "accept@10", "deliver@0", "defer@12", "accept@0",
         "conclude*");
 
@@ -306,7 +312,8 @@ class CutoverCopyIT {
                     + "ORDER BY a.sequence", TENANT_A))
                 .as("the import, then what the old store records: send, the claim of a holder "
                     + "before the act that makes its state, deliver, ask, answer, annotate, the act "
-                    + "of the present state, the conclusion of the instance")
+                    + "of the present state, the conclusion of the instance; the addendum to the "
+                    + "answered question of 1.5 at minute 10, after the deliver of 1.0")
                 .containsExactlyElementsOf(TRACE_OF_SPRINT_1);
             assertThat(lines(c, "SELECT s.name || '/' || i.number, string_agg(a.kind || "
                     + "CASE WHEN a.task_id IS NULL THEN '*' ELSE '' END, ' ' ORDER BY a.sequence) "
@@ -334,23 +341,111 @@ class CutoverCopyIT {
     }
 
     @Test
-    void an_ask_carries_the_options_where_the_old_store_recorded_them_and_free_text_otherwise()
+    void an_ask_carries_a_bundle_of_one_question_with_the_options_recorded_or_selection_none()
             throws SQLException {
         try (Connection c = harness.adminConnection(url)) {
-            assertThat(lines(c, "SELECT a.free_text_admitted, coalesce((SELECT string_agg("
-                    + "o.label, ',' ORDER BY o.ordinal) FROM dispatch.question_option o "
-                    + "WHERE o.ask_act_id = a.id), '-') FROM dispatch.act a "
-                    + "JOIN dispatch.task t ON t.id = a.task_id "
+            assertThat(lines(c, "SELECT a.human_required, q.identifier, q.ordinal, q.selection, "
+                    + "q.free_text_admitted, q.required, coalesce((SELECT string_agg("
+                    + "o.identifier || '=' || o.label, ',' ORDER BY o.ordinal) "
+                    + "FROM dispatch.elicitation_option o WHERE o.question_id = q.id), '-') "
+                    + "FROM dispatch.act a JOIN dispatch.task t ON t.id = a.task_id "
+                    + "JOIN dispatch.elicitation_question q ON q.ask_act_id = a.id "
                     + "WHERE a.kind = 'ask' AND a.tenant_id = ? AND t.sub = 5 ORDER BY a.sequence",
                     TENANT_A))
-                .as("the answered question admits free text and offers no option, a value the "
-                    + "copy sets; the open one carries the options and free_text of "
-                    + "question_options, in their order")
-                .containsExactly("t | -", "f | left,right");
+                .as("the answered question is a bundle of q1 with selection none admitting free "
+                    + "text, a value the copy sets; the open one a bundle of q1 with selection one, "
+                    + "exactly the options of question_options in their order as o1 and o2, and "
+                    + "its free_text; both required, neither marked human_required")
+                .containsExactly("f | q1 | 1 | none | t | t | -",
+                    "f | q1 | 1 | one | f | t | o1=left,o2=right");
+            assertThat(scalar(c, "SELECT count(*) FROM dispatch.act WHERE kind = 'ask'"))
+                .as("the check must have ask acts to read: two in each tenant").isEqualTo("4");
+            assertThat(scalar(c, "SELECT count(*) FROM dispatch.act a WHERE a.kind = 'ask' "
+                    + "AND (a.human_required IS DISTINCT FROM false OR (SELECT count(*) "
+                    + "FROM dispatch.elicitation_question q WHERE q.ask_act_id = a.id) <> 1)"))
+                .as("every copied ask act carries human_required false and exactly one question")
+                .isEqualTo(NONE);
             assertThat(firstReport)
-                .as("the report counts each kind of ask apart")
-                .contains("ask acts | free_text_admitted set by the copy, not recorded | 2",
-                    "ask acts | options and free_text from question_options | 2");
+                .as("the report counts the bundles by selection")
+                .contains(
+                    "elicitation | bundles with selection none, free text admitted set by the "
+                        + "copy | 2",
+                    "elicitation | bundles with selection one, options and free_text from "
+                        + "question_options | 2");
+        }
+    }
+
+    @Test
+    void an_answer_answers_q1_of_the_youngest_ask_act_not_after_it_with_no_option_chosen()
+            throws SQLException {
+        try (Connection c = harness.adminConnection(url)) {
+            assertThat(lines(c, "SELECT " + ADDRESS + ", a.answer_outcome, q.identifier, "
+                    + "to_char(k.at AT TIME ZONE 'UTC', 'HH24:MI'), (SELECT count(*) "
+                    + "FROM dispatch.elicitation_answer_option o WHERE o.answer_id = w.id)" + TASKS
+                    + "JOIN dispatch.act a ON a.task_id = t.id "
+                    + "JOIN dispatch.elicitation_answer w ON w.answer_act_id = a.id "
+                    + "JOIN dispatch.elicitation_question q ON q.id = w.question_id "
+                    + "JOIN dispatch.act k ON k.id = q.ask_act_id" + IN_TENANT_A
+                    + "AND a.kind = 'answer'", TENANT_A))
+                .as("the answer of minute 11 is answered and answers q1 of the ask act of minute "
+                    + "9, the youngest not after it, without an option chosen")
+                .containsExactly("sprint/1.5 | answered | q1 | 08:09 | 0");
+            assertThat(scalar(c, "SELECT count(*) FROM dispatch.act a WHERE a.kind = 'answer' "
+                    + "AND (a.answer_outcome IS DISTINCT FROM 'answered' OR (SELECT count(*) "
+                    + "FROM dispatch.elicitation_answer w WHERE w.answer_act_id = a.id) <> 1)"))
+                .as("every copied answer act is answered and answers one question")
+                .isEqualTo(NONE);
+            assertThat(firstReport).as("the report counts the answers")
+                .contains("elicitation | answers to q1 of the youngest ask act not after them | 2");
+        }
+    }
+
+    @Test
+    void question_and_answer_texts_and_their_addenda_stand_unchanged_in_elicitation_content()
+            throws SQLException {
+        try (Connection c = harness.adminConnection(url)) {
+            List<String> old = lines(c, "SELECT t.tenant_id || ' ' || " + OLD_ADDRESS
+                + ", CASE WHEN x.addendum_suffix IS NOT NULL THEN 'addendum' ELSE x.text_type END, "
+                + "x.text" + OLD_TASKS + "JOIN dispatch_legacy.task_text x ON x.task_id = t.id "
+                + "WHERE x.text_type IN ('question', 'answer') ORDER BY 1, 3");
+            List<String> copied = lines(c, "SELECT t.tenant_id || ' ' || " + ADDRESS
+                + ", x.kind, x.body" + TASKS + "JOIN dispatch.act a ON a.task_id = t.id "
+                + "JOIN dispatch.elicitation_content x ON x.act_id = a.id ORDER BY 1, 3");
+
+            assertThat(old).as("the stock as planted: two questions, an answer and an addendum "
+                + "to a question in each tenant").hasSize(8);
+            assertThat(copied)
+                .as("every question and answer text and the addendum stand unchanged in "
+                    + "elicitation_content, each as its kind")
+                .isEqualTo(old);
+            assertThat(lines(c, "SELECT x.kind, x.question_id = q.id, x.answer_id = w.id "
+                    + "FROM dispatch.elicitation_content x JOIN dispatch.act a ON a.id = x.act_id "
+                    + "LEFT JOIN dispatch.elicitation_question q ON q.ask_act_id = a.id "
+                    + "LEFT JOIN dispatch.elicitation_answer w ON w.answer_act_id = a.id "
+                    + "WHERE x.tenant_id = ? AND x.kind <> 'addendum' ORDER BY a.sequence",
+                    TENANT_A))
+                .as("a question text hangs on the question of its ask act, an answer text on the "
+                    + "answer of its answer act")
+                .containsExactly("question | t | null", "answer | null | t",
+                    "question | t | null");
+            assertThat(lines(c, "SELECT a.kind, b.kind, b.body = (SELECT l.text "
+                    + "FROM dispatch_legacy.task_text l JOIN dispatch_legacy.task lt "
+                    + "ON lt.id = l.task_id WHERE lt.tenant_id = x.tenant_id AND lt.sub = 5 "
+                    + "AND l.text_type = 'question' AND l.addendum_suffix IS NULL "
+                    + "AND l.created_at < (SELECT m.created_at FROM dispatch_legacy.task_text m "
+                    + "WHERE m.task_id = lt.id AND m.text_type = 'answer')) "
+                    + "FROM dispatch.elicitation_content x JOIN dispatch.act a ON a.id = x.act_id "
+                    + "JOIN dispatch.elicitation_content b ON b.id = x.supplements_content_id "
+                    + "WHERE x.tenant_id = ? AND x.kind = 'addendum'", TENANT_A))
+                .as("the addendum hangs on its annotate act and supplements the text of the "
+                    + "question it was written to, the one asked before it")
+                .containsExactly("annotate | question | t");
+            assertThat(scalar(c, "SELECT count(*) FROM dispatch.content x "
+                    + "JOIN dispatch_legacy.task_text l ON l.text = x.body "
+                    + "WHERE l.text_type IN ('question', 'answer')"))
+                .as("content holds none of them").isEqualTo(NONE);
+            assertThat(firstReport).as("the report counts the addenda of the complex")
+                .contains("elicitation | addenda to a question or answer text | 2");
         }
     }
 
@@ -406,6 +501,8 @@ class CutoverCopyIT {
                 + ", string_agg(b.body, '|' ORDER BY b.body)" + TASKS
                 + "JOIN (SELECT a.task_id, x.body FROM dispatch.content x "
                 + "JOIN dispatch.act a ON a.id = x.act_id "
+                + "UNION ALL SELECT a.task_id, x.body FROM dispatch.elicitation_content x "
+                + "JOIN dispatch.act a ON a.id = x.act_id "
                 + "UNION ALL SELECT d.task_id, x.body FROM dispatch.draft_text x "
                 + "JOIN dispatch.draft d ON d.id = x.draft_id) b ON b.task_id = t.id "
                 + "GROUP BY 1 ORDER BY 1");
@@ -428,7 +525,8 @@ class CutoverCopyIT {
                     + "JOIN dispatch.content x ON x.act_id = a.id "
                     + "JOIN dispatch.content b ON b.id = x.supplements_content_id"
                     + IN_TENANT_A + "AND x.kind = 'addendum' ORDER BY 1", TENANT_A))
-                .as("an addendum supplements the text of its type it belongs to")
+                .as("an addendum to a text other than a question or an answer supplements the "
+                    + "content of its type it belongs to")
                 .containsExactly("sprint/1.0 | commission", "sprint/1.6 | return");
             assertThat(lines(c, "SELECT " + ADDRESS + ", a.kind" + TASKS
                     + "JOIN dispatch.act a ON a.task_id = t.id "
@@ -617,7 +715,7 @@ class CutoverCopyIT {
                 .as("one row, not opened").containsExactly("1 | 0");
             Set<String> tables = new TreeSet<>(CutoverStock.tables(c, OLD_SCHEMA));
             tables.remove(HISTORY);
-            assertThat(tables).as("the new store holds the thirty-three tables").isEqualTo(TABLES);
+            assertThat(tables).as("the new store holds the thirty-six tables").isEqualTo(TABLES);
             assertThat(lines(c, "SELECT cl.relname FROM pg_class cl "
                     + "JOIN pg_namespace n ON n.oid = cl.relnamespace "
                     + "WHERE n.nspname = 'dispatch' AND cl.relkind = 'r' "
@@ -636,7 +734,7 @@ class CutoverCopyIT {
             rows.add("rows | dispatch." + table + " | " + rowCount(storeAfterFirst.get(table)));
         }
         assertThat(firstReport.stream().filter(line -> line.startsWith("rows |")).toList())
-            .as("the row count of each of the thirty-three tables").containsExactlyInAnyOrderElementsOf(rows);
+            .as("the row count of each of the thirty-six tables").containsExactlyInAnyOrderElementsOf(rows);
         assertThat(firstReport).as("and the remaining counts of the order and of its answer")
             .contains("idempotency keys | not copied: dispatch_legacy.idempotency_key | 0",
                 "instances | concluded without a return to refer to | 0",

@@ -33,7 +33,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * The refusals of the copy that the stock itself causes, each on a database
  * of its own: a derived act without its recorded actor, return_metadata on a
  * task without a return text, a bracket without its root task, an apparatus
- * the addressed role refuses, an addendum without a base text of its type.
+ * the addressed role refuses, an addendum without a base text of its type;
+ * and those of the elicitation complex: an answer without an ask act of its
+ * task not after it, a question text of 2001 characters, an addendum to a
+ * question without a base text to supplement.
  *
  * <p>Each case copies the stock of {@link CutoverStock#stage} first, which
  * runs: that is the red state of the refusal, observed on every build, since
@@ -45,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CutoverRefusalIT {
 
     private static final String LEAD = "lead-a";
+    private static final String EXEC = "exec-a";
 
     /** A planting into tenant A of the renamed old store. */
     @FunctionalInterface
@@ -67,7 +71,15 @@ class CutoverRefusalIT {
             l -> l.task(l.selectorId(SPRINT), 1, 13).apparatus("reviewer lead")
                 .in(CutoverStock.DRAFT, 25, LEAD).insert()),
         ADDENDUM_WITHOUT_BASE("an addendum has no base text of its type", "1.1a",
-            l -> l.text(l.taskId(SPRINT, 1, 1), CutoverStock.QUESTION, "a", 25, "exec-a"));
+            l -> l.text(l.taskId(SPRINT, 1, 1), CutoverStock.RETURN, "a", 25, EXEC)),
+        ANSWER_WITHOUT_ASK("an answer has no ask act of its task that is not after it", "1.1",
+            l -> l.text(l.taskId(SPRINT, 1, 1), CutoverStock.ANSWER, null, 25, LEAD)),
+        QUESTION_TEXT_TOO_LONG("a question text has more than 2000 characters", "1.1",
+            l -> l.text(l.taskId(SPRINT, 1, 1), CutoverStock.QUESTION, null, 25, EXEC,
+                "q".repeat(2001))),
+        ADDENDUM_TO_A_QUESTION_WITHOUT_BASE(
+            "an addendum to a question or an answer has no base text to supplement", "1.1a",
+            l -> l.text(l.taskId(SPRINT, 1, 1), CutoverStock.QUESTION, "a", 25, EXEC));
 
         private final String reason;
         private final String id;
