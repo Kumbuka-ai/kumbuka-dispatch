@@ -11,7 +11,8 @@
 -- It changes tables of V1 to V3 in place, drops three and adds one. The line
 -- is not deployed, no service reads or writes it, no configuration points
 -- here and it holds no row, so this one migration may drop, rename and add
--- NOT NULL columns. After it the line takes changes additively only.
+-- NOT NULL columns. After it V5 follows as the second and last exception;
+-- from V6 on the line takes changes additively only.
 --
 -- The rules of V1 to V3 hold unchanged: every table carries tenant_id and
 -- scope_id and UNIQUE (tenant_id, scope_id, id); every foreign key carries

@@ -123,7 +123,7 @@ final class CutoverStock {
         return url;
     }
 
-    /** The line db/store, V1 to V4, in the empty schema dispatch after the rename. */
+    /** The line db/store, V1 to V5, in the empty schema dispatch after the rename. */
     static void newStore(MigrationHarness harness, String url) {
         harness.migrateLine(url, MIGRATOR, MIGRATOR_PASSWORD, "classpath:db/store",
             new TenantMigrationCallback());
@@ -358,6 +358,7 @@ final class CutoverStock {
      *   sprint/1.3   on hold for a dependency, holder, no first take-up
      *   sprint/1.4   on hold external, no holder, three lapses: parked
      *   sprint/1.5   on hold for a question with options, an answered one before
+     *                without options, with an addendum to it
      *   sprint/1.6   delivered, holder, a return addendum
      *   sprint/1.7   closed rejected, a remark
      *   sprint/1.8   closed failed, a remark
@@ -409,6 +410,7 @@ final class CutoverStock {
             .questionOptions(QUESTION_OPTIONS).insert();
         l.text(asked, DISPATCH, null, 3, lead);
         l.text(asked, QUESTION, null, 9, exec);
+        l.text(asked, QUESTION, "a", 10, exec);
         l.text(asked, ANSWER, null, 11, lead);
         l.text(asked, QUESTION, null, 12, exec);
 
@@ -511,13 +513,18 @@ final class CutoverStock {
         /** A text of a task, written at a minute after {@link #T0} by a subject. */
         void text(long task, String type, String suffix, int minute, String by)
                 throws SQLException {
+            text(task, type, suffix, minute, by,
+                type + " text " + (suffix == null ? "" : suffix + " ") + "of task " + task
+                    + " at minute " + minute + ", tenant " + tag);
+        }
+
+        /** A text of a task with the body given, at a minute after {@link #T0} by a subject. */
+        void text(long task, String type, String suffix, int minute, String by, String body)
+                throws SQLException {
             returningId("INSERT INTO " + schema + ".task_text (tenant_id, scope_id, task_id, "
                     + "text_type, addendum_suffix, text, created_at, created_by) "
                     + "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
-                tenant, scope, task, type, suffix,
-                type + " text " + (suffix == null ? "" : suffix + " ") + "of task " + task
-                    + " at minute " + minute + ", tenant " + tag,
-                T0.plusMinutes(minute), by);
+                tenant, scope, task, type, suffix, body, T0.plusMinutes(minute), by);
         }
 
         void tag(long task, UUID tagId) throws SQLException {

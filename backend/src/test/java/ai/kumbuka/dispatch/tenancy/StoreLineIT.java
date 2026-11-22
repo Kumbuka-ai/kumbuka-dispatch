@@ -57,23 +57,29 @@ class StoreLineIT {
     private static final String HISTORY = "flyway_schema_history";
 
     /**
-     * The thirty-three tables the line builds, as the orders name them: 24 in V1, 6 in V2, 5 in
-     * V3, and V4 drops hold, deferral and question and adds instance_field_value.
+     * The thirty-six tables the line builds, as the orders name them: 24 in V1, 6 in V2, 5 in
+     * V3, V4 drops hold, deferral and question and adds instance_field_value, and V5 drops
+     * question_option and answer and adds the five tables of the elicitation complex.
      */
     private static final Set<String> TABLES = new TreeSet<>(List.of(
         "selector", "definition_version", "definition_act", "definition_tag", "activity",
         "outcome_label",
         "instance", "task", "act",
         "commission", "commission_criterion", "holding", "receipt", "lease",
-        "question_option", "answer", "delivery", "delivery_criterion",
+        "delivery", "delivery_criterion",
         "instance_return", "external_reference", "idempotency_key",
         "free_fields", "content",
         "draft", "draft_criterion", "draft_free_fields", "draft_text",
         "enumeration", "enumeration_value", "control_field", "contract_field", "field_value",
-        "instance_field_value"));
+        "instance_field_value",
+        "elicitation_question", "elicitation_option", "elicitation_answer",
+        "elicitation_answer_option", "elicitation_content"));
 
     /** The tables V4 drops, whose payloads became columns of act. */
     private static final List<String> DROPPED = List.of("hold", "deferral", "question");
+
+    /** The tables V5 drops, replaced by the elicitation complex. */
+    private static final List<String> DROPPED_BY_V5 = List.of("question_option", "answer");
 
     /** The tables of the draft workspace, the only ones besides task the runtime role deletes from. */
     private static final Set<String> DRAFT_WORKSPACE =
@@ -88,9 +94,11 @@ class StoreLineIT {
      * commission and the key of answer to its option without changing their number, replaces
      * the keys of question_option and answer to question by one each to act, drops the three
      * keys of hold, deferral and question to act, and adds 5 on instance_field_value:
-     * 71 + 1 - 3 + 5 = 74.
+     * 71 + 1 - 3 + 5 = 74. V5 drops the 1 key of question_option and the 3 of answer, and adds
+     * 1 on elicitation_question, 1 on elicitation_option, 2 on elicitation_answer, 2 on
+     * elicitation_answer_option and 4 on elicitation_content: 74 - 4 + 10 = 80.
      */
-    private static final int FOREIGN_KEYS = 74;
+    private static final int FOREIGN_KEYS = 80;
 
     /** The only JSON columns of the schema, both JSONB, as the order names them. */
     private static final List<String> JSON_DOCUMENTS =
@@ -110,11 +118,14 @@ class StoreLineIT {
     /** An addressed role the pattern of the order refuses: it carries a space. */
     private static final String ROLE_WITH_SPACE = "reviewer lead";
 
-    /** An act on the chain's task, with the three payload columns of V4, without RETURNING. */
+    /**
+     * An act on the chain's task, with the two payload columns of V4 and the two of V5, without
+     * RETURNING.
+     */
     private static final String ACT = "INSERT INTO dispatch.act "
         + "(tenant_id, scope_id, instance_id, sequence, task_id, kind, actor_subject, at, "
-        + "to_state, hold_reason, not_before, free_text_admitted) "
-        + "VALUES (?, ?, ?, ?, ?, ?, 'probe-subject', now(), ?, ?, ?, ?)";
+        + "to_state, hold_reason, not_before, human_required, answer_outcome) "
+        + "VALUES (?, ?, ?, ?, ?, ?, 'probe-subject', now(), ?, ?, ?, ?, ?)";
 
     /** A commission, without RETURNING. */
     private static final String COMMISSION = "INSERT INTO dispatch.commission "
@@ -203,25 +214,28 @@ class StoreLineIT {
     // -----------------------------------------------------------------------
 
     @Test
-    void the_line_builds_the_thirty_three_tables_on_an_empty_database_and_writes_no_row()
+    void the_line_builds_the_thirty_six_tables_on_an_empty_database_and_writes_no_row()
             throws SQLException {
         try (Connection c = harness.adminConnection(url)) {
             assertThat(scalar(c, "SELECT string_agg(version, ',' ORDER BY installed_rank) FROM "
                     + "dispatch." + HISTORY + " WHERE success AND version IS NOT NULL"))
-                .as("the line's four migrations are recorded as applied, V1 to V4 in order")
-                .isEqualTo("1,2,3,4");
+                .as("the line's five migrations are recorded as applied, V1 to V5 in order")
+                .isEqualTo("1,2,3,4,5");
         }
         Map<String, Long> expected = new TreeMap<>();
         TABLES.forEach(table -> expected.put(table, 0L));
         Map<String, Long> withoutHistory = new TreeMap<>(ROWS_AFTER_MIGRATION);
         withoutHistory.remove(HISTORY);
         assertThat(withoutHistory)
-            .as("the schema holds exactly the thirty-three tables of the orders, and none of them "
+            .as("the schema holds exactly the thirty-six tables of the orders, and none of them "
                 + "a row: selectors are declared later by a migration of the installation")
             .isEqualTo(expected);
         assertThat(ROWS_AFTER_MIGRATION.keySet())
             .as("hold, deferral and question no longer exist: V4 dropped them")
             .doesNotContainAnyElementsOf(DROPPED);
+        assertThat(ROWS_AFTER_MIGRATION.keySet())
+            .as("question_option and answer no longer exist: V5 dropped them")
+            .doesNotContainAnyElementsOf(DROPPED_BY_V5);
         assertThat(ROWS_AFTER_MIGRATION.get(HISTORY))
             .as("only the history of the migration tool carries rows")
             .isPositive();
@@ -262,8 +276,8 @@ class StoreLineIT {
                     JOIN pg_namespace n ON n.oid = k.connamespace
                     WHERE n.nspname = 'dispatch' AND k.contype = 'f'
                     """))
-                .as("the orders name seventy-four keys; a different count is a key missing or one "
-                    + "the orders do not name")
+                .as("the orders name eighty keys; a different count is a key missing or one the "
+                    + "orders do not name")
                 .isEqualTo(String.valueOf(FOREIGN_KEYS));
         }
     }
@@ -997,40 +1011,30 @@ class StoreLineIT {
             Chain chain = insertChain(c, tenant, scope, "act-payloads");
 
             assertThat(withAndWithoutCheck(c, "act", "ck_act_hold_kind", ACT,
-                    act(chain, "claim", "active", "dependency", null, null)))
+                    act(chain, "claim", "active", "dependency", null)))
                 .as("a claim with a hold reason is refused; RED STATE, observed: without the "
                     + "check it is taken")
                 .containsExactly("23514", NOT_REFUSED);
             assertThat(withAndWithoutCheck(c, "act", "ck_act_hold_kind", ACT,
-                    act(chain, "hold", "on_hold", null, null, null)))
+                    act(chain, "hold", "on_hold", null, null)))
                 .as("a hold without a hold reason is refused; RED STATE, observed: without the "
                     + "check it is taken")
                 .containsExactly("23514", NOT_REFUSED);
             assertThat(withAndWithoutCheck(c, "act", "ck_act_hold_reason", ACT,
-                    act(chain, "hold", "on_hold", "question", null, null)))
+                    act(chain, "hold", "on_hold", "question", null)))
                 .as("a hold reason other than dependency and external is refused; RED STATE, "
                     + "observed: without the check it is taken")
                 .containsExactly("23514", NOT_REFUSED);
             assertThat(withAndWithoutCheck(c, "act", "ck_act_not_before_kind", ACT,
-                    act(chain, "claim", "active", null, later, null)))
+                    act(chain, "claim", "active", null, later)))
                 .as("a claim with a not-before time is refused; RED STATE, observed: without "
                     + "the check it is taken")
                 .containsExactly("23514", NOT_REFUSED);
-            assertThat(withAndWithoutCheck(c, "act", "ck_act_free_text_kind", ACT,
-                    act(chain, "ask", "on_hold", null, null, null)))
-                .as("an ask that does not say whether free text is admitted is refused; RED "
-                    + "STATE, observed: without the check it is taken")
-                .containsExactly("23514", NOT_REFUSED);
-            assertThat(withAndWithoutCheck(c, "act", "ck_act_free_text_kind", ACT,
-                    act(chain, "claim", "active", null, null, true)))
-                .as("a claim that says whether free text is admitted is refused; RED STATE, "
-                    + "observed: without the check it is taken")
-                .containsExactly("23514", NOT_REFUSED);
 
             assertThat(List.of(
-                    refusal(c, ACT, act(chain, "hold", "on_hold", "dependency", null, null)),
-                    refusal(c, ACT, act(chain, "defer", "open", null, later, null)),
-                    refusal(c, ACT, act(chain, "ask", "on_hold", null, null, false))))
+                    refusal(c, ACT, act(chain, "hold", "on_hold", "dependency", null)),
+                    refusal(c, ACT, act(chain, "defer", "open", null, later)),
+                    refusal(c, ACT, act(chain, "ask", "on_hold", null, null))))
                 .as("while each payload on the act of its own kind is taken, so the refusals "
                     + "above are the pairing with the kind and not the row")
                 .containsOnly(NOT_REFUSED);
@@ -1162,23 +1166,31 @@ class StoreLineIT {
             bind(c, tenant);
             Chain chain = insertChain(c, tenant, scope, "answer-option");
             long asked = insertReturningId(c, ACT + " RETURNING id",
-                act(chain, 2, "ask", "on_hold", null, null, false));
-            long otherAsked = insertReturningId(c, ACT + " RETURNING id",
-                act(chain, 3, "ask", "on_hold", null, null, false));
+                act(chain, 2, "ask", "on_hold", null, null));
             long answering = insertReturningId(c, ACT + " RETURNING id",
-                act(chain, 4, "answer", "active", null, null, null));
-            long option = insertReturningId(c, "INSERT INTO dispatch.question_option "
-                + "(tenant_id, scope_id, ask_act_id, label, ordinal) VALUES (?, ?, ?, 'yes', 1) "
-                + "RETURNING id", tenant, scope, asked);
-            String answer = "INSERT INTO dispatch.answer "
-                + "(tenant_id, scope_id, act_id, ask_act_id, option_id) VALUES (?, ?, ?, ?, ?)";
+                act(chain, 3, "answer", "active", null, null));
+            String question = "INSERT INTO dispatch.elicitation_question (tenant_id, scope_id, "
+                + "ask_act_id, identifier, ordinal, selection, free_text_admitted, required) "
+                + "VALUES (?, ?, ?, ?, ?, 'one', false, true) RETURNING id";
+            long first = insertReturningId(c, question, tenant, scope, asked, "q1", 1);
+            long second = insertReturningId(c, question, tenant, scope, asked, "q2", 2);
+            long option = insertReturningId(c, "INSERT INTO dispatch.elicitation_option "
+                + "(tenant_id, scope_id, question_id, identifier, label, ordinal) "
+                + "VALUES (?, ?, ?, 'o1', 'yes', 1) RETURNING id", tenant, scope, first);
+            String answer = "INSERT INTO dispatch.elicitation_answer "
+                + "(tenant_id, scope_id, answer_act_id, question_id) VALUES (?, ?, ?, ?) "
+                + "RETURNING id";
+            long answerToFirst = insertReturningId(c, answer, tenant, scope, answering, first);
+            long answerToSecond = insertReturningId(c, answer, tenant, scope, answering, second);
+            String chosen = "INSERT INTO dispatch.elicitation_answer_option "
+                + "(tenant_id, scope_id, answer_id, question_id, option_id) VALUES (?, ?, ?, ?, ?)";
 
-            assertThat(refusal(c, answer, tenant, scope, answering, otherAsked, option))
+            assertThat(refusal(c, chosen, tenant, scope, answerToSecond, second, option))
                 .as("an answer choosing an option of another question is refused by the key "
-                    + "that carries the ask act")
+                    + "that carries the question")
                 .isEqualTo("23503");
-            assertThat(refusal(c, answer, tenant, scope, answering, asked, option))
-                .as("while the same answer to the option's own question is taken")
+            assertThat(refusal(c, chosen, tenant, scope, answerToFirst, first, option))
+                .as("while the same option chosen by the answer to its own question is taken")
                 .isEqualTo(NOT_REFUSED);
             c.rollback();
         }
@@ -1389,16 +1401,20 @@ class StoreLineIT {
 
     /** The arguments of {@link #ACT} for the second act of the chain, on its task. */
     private static Object[] act(Chain chain, String kind, String toState, String holdReason,
-                                OffsetDateTime notBefore, Boolean freeTextAdmitted) {
-        return act(chain, 2, kind, toState, holdReason, notBefore, freeTextAdmitted);
+                                OffsetDateTime notBefore) {
+        return act(chain, 2, kind, toState, holdReason, notBefore);
     }
 
-    /** The arguments of {@link #ACT} for an act of the chain at a sequence, on its task. */
+    /**
+     * The arguments of {@link #ACT} for an act of the chain at a sequence, on its task. An ask
+     * carries human_required false and an answer the outcome answered, every other kind
+     * neither, as V5 binds them to their kinds.
+     */
     private static Object[] act(Chain chain, int sequence, String kind, String toState,
-                                String holdReason, OffsetDateTime notBefore,
-                                Boolean freeTextAdmitted) {
+                                String holdReason, OffsetDateTime notBefore) {
         return new Object[] {chain.tenant(), chain.scope(), chain.instance(), sequence,
-            chain.task(), kind, toState, holdReason, notBefore, freeTextAdmitted};
+            chain.task(), kind, toState, holdReason, notBefore,
+            "ask".equals(kind) ? Boolean.FALSE : null, "answer".equals(kind) ? "answered" : null};
     }
 
     /**
