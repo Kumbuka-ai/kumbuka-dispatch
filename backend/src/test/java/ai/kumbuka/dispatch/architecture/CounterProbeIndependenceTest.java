@@ -76,7 +76,7 @@ class CounterProbeIndependenceTest {
 
             @CounterProbe
             class Planted {
-                Object kind = %1$s.domain.TaskState.OPEN;
+                Object kind = %1$s.domain.DispatchPermission.TASK_EXECUTE;
                 Object form = Form.STRING;
             }
             """.formatted(SourceTree.BASE);
@@ -86,7 +86,7 @@ class CounterProbeIndependenceTest {
                 + "package must each be reported, and a type of the test tree must not")
             .containsExactly(
                 "Planted imports " + SourceTree.BASE + ".surface.RefusalCode",
-                "Planted names " + SourceTree.BASE + ".domain.TaskState",
+                "Planted names " + SourceTree.BASE + ".domain.DispatchPermission",
                 "Planted uses Form of its own package");
     }
 
