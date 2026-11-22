@@ -10,17 +10,16 @@ package ai.kumbuka.dispatch.surface;
 import ai.kumbuka.dispatch.domain.DispatchPermission;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
- * The calls of the verb surface: what each is named, the permission it checks
+ * A call of the verb surface: what it is named, the permission it checks
  * about its caller, what it does and the arguments it takes.
  *
  * <p><strong>No call is declared yet.</strong> The service is rebuilt on the
- * store line, and a call is declared here in the same change that binds it to
- * the new kernel, never before: a call declared without a binding would be
- * offered and could not be made. Until the first one is, the tool list and the
- * declaration's {@code calls} are empty.
+ * store line, and a call is declared in the same change that binds it to the
+ * new kernel, never before: a call declared without a binding would be offered
+ * and could not be made. Until the first one is, {@link #values()} answers
+ * none, and the tool list and the declaration's {@code calls} are empty.
  *
  * <p><strong>This is the single source of the surface.</strong> The MCP tool
  * list, the input schemas and the declaration read from here. The shape is a
@@ -37,71 +36,55 @@ import java.util.function.Supplier;
  * Each is at most {@link SurfaceDeclaration#DESCRIPTION_BUDGET} characters,
  * and what explains one argument stands at that argument. Every text is in
  * {@code messages/tool.properties}, {@code argument.properties} and {@code
- * value.properties}; this enum holds the references to them and no text.
+ * value.properties}; a call holds the references to them and no text.
  */
-public enum ProcessVerb {
-    ;
+public interface ProcessVerb {
 
     /** The prefix every call carries on the assistant surface. */
-    public static final String PREFIX = "dispatch_";
+    String PREFIX = "dispatch_";
 
-    private final String verb;
-    private final List<DispatchPermission> permissions;
-    private final Supplier<String> description;
-    private final List<Argument> arguments;
-
-    ProcessVerb(String verb, List<DispatchPermission> permissions, Supplier<String> description,
-                List<Argument> arguments) {
-        this.verb = verb;
-        this.permissions = List.copyOf(permissions);
-        this.description = description;
-        this.arguments = List.copyOf(arguments);
+    /** The declared calls, in their order: none until the first call is bound. */
+    static ProcessVerb[] values() {
+        return new ProcessVerb[0];
     }
 
     /** The verb without a prefix: the name on REST. */
-    public String verb() {
-        return verb;
-    }
-
-    /** The name on the assistant surface: the verb, prefixed {@code dispatch_}. */
-    public String call() {
-        return PREFIX + verb;
-    }
-
-    /** The name this call goes by on one surface. */
-    public String on(Surface surface) {
-        return surface == Surface.MCP ? call() : verb;
-    }
+    String verb();
 
     /**
      * The permission this call checks about its caller, and nothing else
      * about the caller: one, or two of which the caller holds either.
      */
-    public List<DispatchPermission> permissions() {
-        return permissions;
-    }
+    List<DispatchPermission> permissions();
 
     /** What the call does, from its bundle (concept section 3.5, DEC-0043 R3 and R21). */
-    public String description() {
-        return description.get();
+    String description();
+
+    /** The arguments the call takes, in their declared order. */
+    List<Argument> arguments();
+
+    /** The name on the assistant surface: the verb, prefixed {@code dispatch_}. */
+    default String call() {
+        return PREFIX + verb();
     }
 
-    public List<Argument> arguments() {
-        return arguments;
+    /** The name this call goes by on one surface. */
+    default String on(Surface surface) {
+        return surface == Surface.MCP ? call() : verb();
     }
 
     /** The arguments that travel at the top level. */
-    public List<Argument> topArguments() {
-        return arguments.stream().filter(a -> !a.isField()).toList();
+    default List<Argument> topArguments() {
+        return arguments().stream().filter(a -> !a.isField()).toList();
     }
 
     /** The arguments that travel under {@code fields}. */
-    public List<Argument> fieldArguments() {
-        return arguments.stream().filter(Argument::isField).toList();
+    default List<Argument> fieldArguments() {
+        return arguments().stream().filter(Argument::isField).toList();
     }
 
     /** Whether this call carries a {@code fields} object at all. */
-    public boolean hasFields() {
+    default boolean hasFields() {
         return !fieldArguments().isEmpty();
     }
 }
