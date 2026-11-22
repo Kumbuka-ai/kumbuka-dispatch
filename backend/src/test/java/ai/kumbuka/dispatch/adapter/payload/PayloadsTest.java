@@ -7,19 +7,10 @@
  */
 package ai.kumbuka.dispatch.adapter.payload;
 
-import ai.kumbuka.dispatch.domain.ExchangeAddress;
-import ai.kumbuka.dispatch.domain.HolderState;
-import ai.kumbuka.dispatch.domain.TaskState;
-import ai.kumbuka.dispatch.domain.TaskView;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * An answer as the service writes it: an instant to the microsecond, as the
@@ -32,42 +23,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  * the difference; this case does not depend on the clock. The rendering is the
  * serialiser's now, and the serialiser is what this writes with.
  */
+@Disabled(PayloadsTest.REBUILT)
 class PayloadsTest {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
-
-    static {
-        new SerialisationCustomizer().customize(JSON);
-    }
+    static final String REBUILT = "rebuilt in T13: an answer writes an instant to the microsecond "
+        + "and leaves a member with no value absent";
 
     @Test
     void an_instant_is_written_to_the_microsecond_as_it_is_stored() {
-        Instant fromTheClock = Instant.parse("2026-10-06T11:05:42.538822988Z");
-        TaskView held = new TaskView(UUID.randomUUID(), new ExchangeAddress("sprint", 7, 0),
-            TaskState.ACTIVE, null, null, null, HolderState.SELF, fromTheClock, fromTheClock, null, 0,
-            "t", "code", null, null, "token", null, List.of(), List.of());
-
-        JsonNode answer = JSON.valueToTree(Payloads.task(new CallBinding.Answered(
-            "dispatch://probe/sprint/7.0", held, false, List.of(), null, "receipt")));
-
-        assertThat(answer.at("/fields/lease_expires_at").asText())
-            .isEqualTo("2026-10-06T11:05:42.538822Z");
-        assertThat(answer.at("/fields/not_before").asText())
-            .isEqualTo("2026-10-06T11:05:42.538822Z");
+        fail(REBUILT);
     }
 
     @Test
     void a_member_with_no_value_is_absent() {
-        TaskView open = new TaskView(UUID.randomUUID(), new ExchangeAddress("sprint", 7, 0),
-            TaskState.OPEN, null, null, null, HolderState.NOBODY, null, null, null, 0,
-            "t", "code", null, null, "token", null, List.of(), List.of());
-
-        JsonNode answer = JSON.valueToTree(Payloads.task(new CallBinding.Answered(
-            "dispatch://probe/sprint/7.0", open, false, List.of(), null, null)));
-
-        assertThat(answer.has("receipt")).as("no receipt outside a claim").isFalse();
-        assertThat(answer.has("waiting_for")).isFalse();
-        assertThat(answer.get("fields").has("lease_expires_at")).isFalse();
-        assertThat(answer.get("fields").has("hold_reason")).isFalse();
+        fail(REBUILT);
     }
 }

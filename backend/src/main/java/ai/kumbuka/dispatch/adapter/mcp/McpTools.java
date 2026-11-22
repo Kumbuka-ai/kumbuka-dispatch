@@ -7,7 +7,6 @@
  */
 package ai.kumbuka.dispatch.adapter.mcp;
 
-import ai.kumbuka.dispatch.adapter.payload.CallPayload;
 import ai.kumbuka.dispatch.adapter.payload.SchemaPayload;
 import ai.kumbuka.dispatch.adapter.payload.ToolPayload;
 import ai.kumbuka.dispatch.surface.Argument;
@@ -22,8 +21,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The twenty-seven tools of the assistant surface, generated from the
- * declaration (C4.2, ADR-0039).
+ * The tools of the assistant surface, generated from the declaration (C4.2,
+ * ADR-0039): one per declared call, and none while no call is bound.
  *
  * <p><strong>Generated, not written.</strong> Names, descriptions and schemas
  * are a projection of {@link ProcessVerb} into the shape {@code tools/list}
@@ -46,7 +45,7 @@ public final class McpTools {
     private McpTools() {
     }
 
-    /** The twenty-seven, in the order of the declaration. */
+    /** The declared calls as tools, in the order of the declaration. */
     public static List<ToolPayload> declared() {
         return Arrays.stream(ProcessVerb.values())
             .map(verb -> new ToolPayload(verb.call(), verb.description(), schemaOf(verb)))
@@ -69,9 +68,9 @@ public final class McpTools {
             }
         }
         if (verb.hasFields()) {
-            properties.put(CallPayload.FIELDS, fieldsSchema(verb));
+            properties.put(Argument.FIELDS, fieldsSchema(verb));
             if (verb.fieldArguments().stream().anyMatch(Argument::required)) {
-                required.add(CallPayload.FIELDS);
+                required.add(Argument.FIELDS);
             }
         }
         return closedObject(properties, required, null);

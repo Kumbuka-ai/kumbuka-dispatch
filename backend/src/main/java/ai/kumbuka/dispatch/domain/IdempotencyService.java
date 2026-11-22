@@ -16,13 +16,13 @@ import java.util.List;
 /**
  * What an idempotency key compares: a digest of the call's arguments.
  *
- * <p>The rule a key carries has three outcomes, and {@link TaskService} keeps
- * it on the task's own ledger: no key, or one nobody spent in this scope in
- * {@link SpentTaskKey#REMEMBERED_FOR}, and the call runs; the same key on the
- * same call with the same arguments, and the call answers what the first one
- * produced; the same key on another call or other arguments, and {@code
- * IDEMPOTENCY_KEY_REUSED}. What is left here is the comparison those outcomes
- * turn on. The ledger of the exchange went with the exchange.
+ * <p>The rule a key carries has three outcomes (C10.4): no key, or one the
+ * caller did not spend in this scope in the last twenty-four hours, and the
+ * call runs; the same key on the same call with the same arguments, and the
+ * call answers what the first one produced; the same key on another call or
+ * other arguments, and {@code IDEMPOTENCY_KEY_REUSED}. What is here is the
+ * comparison those outcomes turn on; the ledger that keeps them is the store
+ * line's {@code idempotency_key}.
  */
 public final class IdempotencyService {
 

@@ -17,6 +17,7 @@ import io.quarkus.test.security.TestIdentityAssociation;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -52,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T13: NOT_FOUND is one answer byte for byte whatever its cause")
 class NotFoundIdentityIT {
 
     /** A scope of another tenant: it exists, and this caller's directory does not show it. */

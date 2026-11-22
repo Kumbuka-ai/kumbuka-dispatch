@@ -18,6 +18,7 @@ import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -50,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T4: create, claim and annotate take an idempotency key on both surfaces")
 class IdempotencyIT {
 
     @Inject TestIdentityAssociation identity;

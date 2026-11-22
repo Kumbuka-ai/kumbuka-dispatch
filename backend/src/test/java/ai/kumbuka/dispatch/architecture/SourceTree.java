@@ -143,29 +143,32 @@ final class SourceTree {
     static final Pattern MIGRATION = Pattern.compile("V(\\d+)(?:_(\\d+))?__([^.]*)\\.sql");
 
     /**
-     * Every migration file of the service, in the order Flyway applies them:
+     * Every migration file of the old line, in the order Flyway applies them:
      * by the number of the version, not by the spelling, so V10 follows V9.
      * A file that does not have the form of a versioned migration is answered
      * too, last, so a guard can refuse it rather than never see it.
+     *
+     * <p>The old line lies in the test tree until the cut-over, where the
+     * tests of the cut-over build an old stock from it; it is read there.
      */
     static List<Path> migrations() {
-        return migrationsOf("migration");
+        return migrationsOf("test", "migration");
     }
 
     /**
      * Every migration file of the store line under {@code db/store}, in the
-     * same order. The line stands beside the service's own until the service
-     * is rebuilt against it, and is read on its own: its versions start again
-     * at 1 and are never sorted among those of {@link #migrations()}.
+     * same order. It is the line the service migrates, read from the main
+     * tree, and is read on its own: its versions start again at 1 and are
+     * never sorted among those of {@link #migrations()}.
      */
     static List<Path> storeMigrations() {
-        return migrationsOf("store");
+        return migrationsOf("main", "store");
     }
 
-    /** Every migration file of the line in the directory named under {@code db}. */
-    private static List<Path> migrationsOf(String line) {
-        Path direct = Paths.get("src", "main", "resources", "db", line);
-        Path fromRepoRoot = Paths.get("backend", "src", "main", "resources", "db", line);
+    /** Every migration file of the line in the directory named under {@code db} of a source set. */
+    private static List<Path> migrationsOf(String sourceSet, String line) {
+        Path direct = Paths.get("src", sourceSet, "resources", "db", line);
+        Path fromRepoRoot = Paths.get("backend", "src", sourceSet, "resources", "db", line);
         Path dir = Files.isDirectory(direct) ? direct : fromRepoRoot;
         assertThat(Files.isDirectory(dir))
             .as("migration directory %s must exist — run from the module directory", dir)

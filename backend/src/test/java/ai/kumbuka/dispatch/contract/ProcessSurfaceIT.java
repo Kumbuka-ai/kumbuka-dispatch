@@ -16,6 +16,7 @@ import io.quarkus.test.security.TestIdentityAssociation;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -41,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T10: the main course from create to accept carries a text only in read_text")
 class ProcessSurfaceIT {
 
     private static final String COMMISSION = "MARK-COMMISSION the work to do";

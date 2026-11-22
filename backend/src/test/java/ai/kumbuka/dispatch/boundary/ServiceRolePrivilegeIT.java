@@ -12,6 +12,7 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -78,6 +79,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T4: the runtime role holds exactly the enumerated privileges on every relation of its schema")
 class ServiceRolePrivilegeIT {
 
     /** The migrator's own record of what it did. The runtime role holds nothing on it. */

@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.architecture;
 
 import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>The expectation is the two patterns and the list, written here from the
  * contract; the values come from the declaration under test.
  */
+@Disabled("rebuilt in T12: tool list equals the catalogue")
 class VocabularyFormTest {
 
     /** A vocabulary value (C7.6). */

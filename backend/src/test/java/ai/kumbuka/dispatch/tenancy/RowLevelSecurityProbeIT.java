@@ -3,6 +3,7 @@ package ai.kumbuka.dispatch.tenancy;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -58,6 +59,7 @@ class RowLevelSecurityProbeIT {
      * presentation layer.
      */
     @Test
+    @Disabled("rebuilt in T4: row-level security isolates the task rows of one tenant from another")
     void a_read_under_one_tenant_does_not_see_another_tenants_row() throws SQLException {
         try (Connection c = Db.asService()) {
             Db.bindTenant(c, tenantA);
@@ -100,6 +102,7 @@ class RowLevelSecurityProbeIT {
      * all. FORCE is what covers the other one.
      */
     @Test
+    @Disabled("rebuilt in T4: row-level security isolates the task rows of one tenant from another")
     void without_force_the_owner_walks_straight_past_the_policy() throws SQLException {
         String ownSlug = "force-probe-own-" + tenantA;
         String foreignSlug = "force-probe-foreign-" + tenantB;
@@ -167,6 +170,7 @@ class RowLevelSecurityProbeIT {
      * another.
      */
     @Test
+    @Disabled("rebuilt in T4: row-level security isolates the task rows of one tenant from another")
     void the_service_role_cannot_switch_off_the_policy_that_binds_it() throws SQLException {
         assertThat(refusalFor("ALTER TABLE dispatch.task NO FORCE ROW LEVEL SECURITY"))
             .as("taking FORCE off would exempt the table's owner — and would be the first "

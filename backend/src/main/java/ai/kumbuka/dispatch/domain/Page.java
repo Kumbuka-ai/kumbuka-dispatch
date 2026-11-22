@@ -12,17 +12,18 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * What {@code query} answers: one page of heads, and where the listing goes
- * on.
+ * What a listing answers: one page of objects, and where the listing goes on
+ * (ADR-0049, C9.2).
  *
- * @param tasks      the heads of this page, in the order asked for
+ * @param objects    the objects of this page, in the order asked for
  * @param nextCursor the cursor of the next page; empty on the last page, which
  *                   is the only way a caller learns that it is the last
+ * @param <T>        what the listing lists
  */
-public record Page(List<TaskView> tasks, Optional<String> nextCursor) {
+public record Page<T>(List<T> objects, Optional<String> nextCursor) {
 
     public Page {
-        tasks = List.copyOf(tasks);
+        objects = List.copyOf(objects);
         Objects.requireNonNull(nextCursor, "nextCursor");
     }
 }

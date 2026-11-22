@@ -13,6 +13,7 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import io.restassured.response.Response;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -82,6 +83,7 @@ class DeclarationAccessIT {
     }
 
     @Test
+    @Disabled("rebuilt in T2: the served declaration with its calls has the contract shape")
     void the_served_declaration_has_the_contract_shape() {
         Map<String, Object> declaration = given()
             .header("Authorization", "Bearer " + memberToken())

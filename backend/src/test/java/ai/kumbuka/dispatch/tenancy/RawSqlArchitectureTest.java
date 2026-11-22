@@ -121,14 +121,6 @@ class RawSqlArchitectureTest {
         "repository.ScopeAccessRepository", new NativeUse(4, "reads the platform's "
             + "subject-filtered scope directory, a view no entity of this service maps, and "
             + "binds and reads the session settings app.subject and app.tenant_id"),
-        "repository.TaskRepository", new NativeUse(3, "the draw takes the first claimable "
-            + "task FOR UPDATE SKIP LOCKED, which JPQL cannot write; the addresses of curation "
-            + "targets join the platform's directory view; the idempotency key is serialised "
-            + "under a transaction-bound advisory lock"),
-        "repository.TagRepository", new NativeUse(3, "reads the platform's subject-filtered "
-            + "tag vocabulary, a view no entity of this service maps, for one token and for the "
-            + "tags a page carries; attaches a tag with ON CONFLICT DO NOTHING, which JPQL "
-            + "cannot write"),
         "tenancy.TenantDatabaseBinding", new NativeUse(1, "binds app.tenant_id for the "
             + "transaction with set_config: a session setting has no entity"),
         "tenancy.TenantMigrationCallback", new NativeUse(1, "binds app.tenant_id on the "
@@ -155,17 +147,17 @@ class RawSqlArchitectureTest {
     void the_check_reports_a_statement_more_and_a_class_out_of_place() {
         Map<String, Integer> found = new LinkedHashMap<>();
         NATIVE.forEach((name, use) -> found.put(name, use.statements()));
-        found.put("repository.TaskRepository", NATIVE.get("repository.TaskRepository")
-            .statements() + 1);
-        found.put("domain.TaskService", 1);
+        found.put("repository.ScopeAccessRepository",
+            NATIVE.get("repository.ScopeAccessRepository").statements() + 1);
+        found.put("domain.ActService", 1);
 
         assertThat(nativeOffences(found, NATIVE))
             .as("RED STATE, observed: one statement more than declared, and native SQL in "
                 + "the domain, must each be reported")
             .containsExactlyInAnyOrder(
-                "repository.TaskRepository issues 4 native statements; NATIVE declares 3",
-                "domain.TaskService issues native SQL outside repository",
-                "domain.TaskService issues native SQL and is not listed in NATIVE");
+                "repository.ScopeAccessRepository issues 5 native statements; NATIVE declares 4",
+                "domain.ActService issues native SQL outside repository",
+                "domain.ActService issues native SQL and is not listed in NATIVE");
     }
 
     static List<String> nativeOffences(Map<String, Integer> found,

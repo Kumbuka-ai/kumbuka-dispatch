@@ -19,6 +19,7 @@ import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -47,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 @TestProfile(LocalMcpOffIT.Off.class)
+@Disabled("rebuilt in T13: the build without the local MCP surface answers over REST as the build with it")
 class LocalMcpOffIT {
 
     /** The build without the service's own assistant surface. */

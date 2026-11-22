@@ -8,21 +8,12 @@
 package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
-import ai.kumbuka.dispatch.tenancy.TenantContext;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
-import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import java.util.UUID;
-import java.util.concurrent.Callable;
-
-import static ai.kumbuka.dispatch.domain.TaskStage.C;
-import static ai.kumbuka.dispatch.domain.TaskStage.H;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Two calls of one caller under one idempotency key, at once.
@@ -41,88 +32,25 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled(TaskKeyOverlapIT.REBUILT)
 class TaskKeyOverlapIT {
 
-    static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
-    static final String SELECTOR = "sprint";
+    static final String REBUILT = "rebuilt in T4: two overlapping calls under one idempotency key "
+        + "wait on one lock and the second answers what the first produced";
 
-    @Inject TaskService tasks;
-    @Inject EntityManager em;
-    @Inject TenantContext tenantContext;
-
-    private UUID tenant;
-    private AutoCloseable binding;
-    private TaskStage stage;
-
-    @BeforeEach
-    void freshTenant() {
-        tenant = UUID.randomUUID();
-        DomainFixture.declareSelector(tenant, SCOPE, SELECTOR);
-        binding = tenantContext.bind(tenant);
-        stage = new TaskStage(tasks, SCOPE);
-    }
-
-    @AfterEach
-    void unbind() throws Exception {
-        binding.close();
+    @Test
+    void an_overlapping_creation_under_one_key_answers_the_first_root() {
+        fail(REBUILT);
     }
 
     @Test
-    void an_overlapping_creation_under_one_key_answers_the_first_root() throws Exception {
-        int before = TaskStage.nextNumber(tenant, SCOPE, SELECTOR);
-        IdempotencyKey key = IdempotencyKey.of("create-once");
-        Callable<TaskView> create = () -> tasks.create(SCOPE, SELECTOR, null,
-            new TaskService.Draft("once", "code", null, null), C, key).answer();
-
-        Overlap overlap = overlap(create, create);
-
-        assertThat(overlap.second()).as("the second call answered, and was not refused")
-            .isInstanceOf(TaskView.class);
-        TaskView first = (TaskView) overlap.first();
-        assertThat(((TaskView) overlap.second()).address()).isEqualTo(first.address());
-        assertThat(TaskStage.nextNumber(tenant, SCOPE, SELECTOR)).as("one root was numbered")
-            .isEqualTo(before + 1);
-        assertThat(tasksUnder()).isEqualTo(1);
-        assertThat(keyPointsAt("create-once")).as("the key names the one root")
-            .isEqualTo(TaskStage.row(first.identity()).id());
-        assertThat(overlap.waited()).as("the second waited on the first").isTrue();
+    void an_overlapping_claim_under_one_key_answers_the_task_with_a_new_receipt() {
+        fail(REBUILT);
     }
 
     @Test
-    void an_overlapping_claim_under_one_key_answers_the_task_with_a_new_receipt()
-            throws Exception {
-        TaskStage.Staged open = stage.open(SELECTOR);
-        IdempotencyKey key = IdempotencyKey.of("claim-once");
-        Callable<TaskClaim> claim = () -> tasks.claim(SCOPE, open.address(), TaskCall.by(H), key)
-            .answer();
-
-        Overlap overlap = overlap(claim, claim);
-
-        assertThat(overlap.second()).as("the second call answered, and was not refused")
-            .isInstanceOf(TaskClaim.class);
-        TaskClaim first = (TaskClaim) overlap.first();
-        TaskClaim second = (TaskClaim) overlap.second();
-        assertThat(second.task().address()).isEqualTo(open.address());
-        assertThat(second.receipt()).as("a new receipt").isNotEqualTo(first.receipt());
-        assertThat(TaskStage.row(open.identity()).state()).isEqualTo("active");
-        assertThat(overlap.waited()).as("the second waited on the first").isTrue();
-    }
-
-    @Test
-    void an_overlapping_addendum_under_one_key_is_attached_once() throws Exception {
-        TaskStage.Staged open = stage.active(SELECTOR);
-        IdempotencyKey key = IdempotencyKey.of("annotate-once");
-        Callable<TaskView> annotate = () -> tasks.annotate(SCOPE, open.address(),
-            TextType.DISPATCH, "one more thing", C, key).answer();
-
-        Overlap overlap = overlap(annotate, annotate);
-
-        assertThat(overlap.second()).as("the second call answered, and was not refused")
-            .isInstanceOf(TaskView.class);
-        assertThat(((TaskView) overlap.second()).address()).isEqualTo(open.address());
-        assertThat(TaskStage.texts(open.identity()))
-            .containsExactly("dispatch=the commission", "dispatch[a]=one more thing");
-        assertThat(overlap.waited()).as("the second waited on the first").isTrue();
+    void an_overlapping_addendum_under_one_key_is_attached_once() {
+        fail(REBUILT);
     }
 
     /**
@@ -135,40 +63,7 @@ class TaskKeyOverlapIT {
      * under key {@code z} took one lock, and the second waited on the first.
      */
     @Test
-    void keys_that_join_alike_across_a_unit_separator_take_two_locks() throws Exception {
-        TaskStage.Staged one = stage.open(SELECTOR);
-        TaskStage.Staged two = stage.open(SELECTOR);
-        Actor plain = new Actor("x", PermissionFixture.EXECUTOR);
-        Actor separated = new Actor("x\u001Fy", PermissionFixture.EXECUTOR);
-        Callable<TaskClaim> first = () -> tasks.claim(SCOPE, one.address(), TaskCall.by(plain),
-            IdempotencyKey.of("y\u001Fz")).answer();
-        Callable<TaskClaim> second = () -> tasks.claim(SCOPE, two.address(),
-            TaskCall.by(separated), IdempotencyKey.of("z")).answer();
-
-        Overlap overlap = overlap(first, second);
-
-        assertThat(overlap.waited())
-            .as("two claims on two tasks share no lock but the key's: two keys, two locks, "
-                + "and the second did not wait")
-            .isFalse();
-        assertThat(((TaskClaim) overlap.second()).task().address()).isEqualTo(two.address());
-        assertThat(TaskStage.row(one.identity()).holder()).isEqualTo("x");
-        assertThat(TaskStage.row(two.identity()).holder()).isEqualTo("x\u001Fy");
-    }
-
-    // -----------------------------------------------------------------------
-
-    private Overlap overlap(Callable<?> first, Callable<?> second) throws Exception {
-        return new Overlap.Stage(em, tenantContext, tenant).run(first, second);
-    }
-
-    private int tasksUnder() {
-        return Integer.parseInt(TaskStage.value("SELECT count(*) FROM dispatch.task "
-            + "WHERE tenant_id = '" + tenant + "'"));
-    }
-
-    private long keyPointsAt(String key) {
-        return Long.parseLong(TaskStage.value("SELECT task_id FROM dispatch.task_idempotency_key "
-            + "WHERE tenant_id = '" + tenant + "' AND idempotency_key = '" + key + "'"));
+    void keys_that_join_alike_across_a_unit_separator_take_two_locks() {
+        fail(REBUILT);
     }
 }

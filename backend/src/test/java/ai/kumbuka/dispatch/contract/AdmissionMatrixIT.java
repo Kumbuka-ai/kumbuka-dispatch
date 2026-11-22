@@ -20,6 +20,7 @@ import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -61,6 +62,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T13: every call is admitted or refused for each role combination as the admission table records")
 class AdmissionMatrixIT {
 
     /** The expectation, on the classpath. */

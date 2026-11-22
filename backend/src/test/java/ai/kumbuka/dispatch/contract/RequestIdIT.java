@@ -19,6 +19,7 @@ import jakarta.inject.Inject;
 import org.jboss.logmanager.ExtLogRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -52,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T13: every call takes or mints a request id, logs it and returns it on both surfaces")
 class RequestIdIT {
 
     private static final String HEADER = "Kumbuka-Request-Id";

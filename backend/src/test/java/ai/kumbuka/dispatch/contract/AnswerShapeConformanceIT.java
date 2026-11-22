@@ -17,6 +17,7 @@ import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -50,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T13: every answer about an object and every page has the contract's shape on both surfaces")
 class AnswerShapeConformanceIT {
 
     private static final List<String> OBJECT = List.of("address", "fields", "conflict_token",

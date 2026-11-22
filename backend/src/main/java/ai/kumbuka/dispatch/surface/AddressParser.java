@@ -60,6 +60,10 @@ public final class AddressParser {
 
     private static final Pattern ID = Pattern.compile("(0|[1-9]\\d{0,8})\\.(0|[1-9]\\d{0,8})");
 
+    /** The argument a complete address travels in, as every call that names one declares it. */
+    private static final Argument ADDRESS =
+        Argument.top("address", Argument.STRING, () -> Texts.arguments().address());
+
     private AddressParser() {
     }
 
@@ -152,7 +156,6 @@ public final class AddressParser {
     }
 
     private static SurfaceException malformed() {
-        return new SurfaceException(Refusal.requestInvalid(
-            ArgumentPath.of(ProcessVerb.READ.declared("address", Argument.Placement.TOP))));
+        return new SurfaceException(Refusal.requestInvalid(ArgumentPath.of(ADDRESS)));
     }
 }

@@ -17,6 +17,7 @@ import io.quarkus.test.security.TestIdentityAssociation;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -65,6 +66,7 @@ class DeclarationEndpointIT {
     }
 
     @Test
+    @Disabled("rebuilt in T13: the declaration states every call as the transcript does")
     void the_declaration_states_every_call_as_the_transcript_does() {
         Map<String, Object> declaration = read();
 

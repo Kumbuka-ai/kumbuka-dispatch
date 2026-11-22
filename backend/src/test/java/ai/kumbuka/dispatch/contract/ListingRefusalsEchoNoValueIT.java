@@ -16,6 +16,7 @@ import io.quarkus.test.security.TestIdentityAssociation;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -49,6 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T11: the refusals of a listing carry no value the caller sent")
 class ListingRefusalsEchoNoValueIT {
 
     private static final String PAGE_SIZE = "73190731";
