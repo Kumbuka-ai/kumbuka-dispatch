@@ -7,16 +7,10 @@
  */
 package ai.kumbuka.dispatch.domain;
 
-import ai.kumbuka.dispatch.tenancy.StringUuidConverter;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
-import org.hibernate.annotations.TenantId;
-
-import java.util.UUID;
 
 /**
  * One numbered version of the process a selector declares: a row of {@code
@@ -29,20 +23,7 @@ import java.util.UUID;
 @Entity
 @Immutable
 @Table(name = "definition_version", schema = "dispatch")
-public class DefinitionVersion {
-
-    @Id
-    @Column(name = "id", nullable = false)
-    private Long id;
-
-    /** Read by the persistence provider alone, which filters every statement on it. */
-    @TenantId
-    @Convert(converter = StringUuidConverter.class)
-    @Column(name = "tenant_id", nullable = false)
-    private String tenantId;
-
-    @Column(name = "scope_id", nullable = false)
-    private UUID scopeId;
+public class DefinitionVersion extends DefinitionRow {
 
     @Column(name = "selector_id", nullable = false)
     private Long selectorId;
@@ -61,15 +42,6 @@ public class DefinitionVersion {
 
     @Column(name = "seed", nullable = false)
     private boolean seed;
-
-    /** For the persistence provider only. */
-    protected DefinitionVersion() {
-        // The provider fills every column from the row it reads.
-    }
-
-    public Long id() {
-        return id;
-    }
 
     /** The number of the version within its selector, from 1. */
     public int version() {

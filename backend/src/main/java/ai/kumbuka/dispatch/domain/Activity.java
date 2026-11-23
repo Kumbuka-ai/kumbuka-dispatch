@@ -7,16 +7,10 @@
  */
 package ai.kumbuka.dispatch.domain;
 
-import ai.kumbuka.dispatch.tenancy.StringUuidConverter;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
-import org.hibernate.annotations.TenantId;
-
-import java.util.UUID;
 
 /**
  * An activity a definition version declares: a row of {@code dispatch.activity}
@@ -30,20 +24,7 @@ import java.util.UUID;
 @Entity
 @Immutable
 @Table(name = "activity", schema = "dispatch")
-public class Activity {
-
-    @Id
-    @Column(name = "id", nullable = false)
-    private Long id;
-
-    /** Read by the persistence provider alone, which filters every statement on it. */
-    @TenantId
-    @Convert(converter = StringUuidConverter.class)
-    @Column(name = "tenant_id", nullable = false)
-    private String tenantId;
-
-    @Column(name = "scope_id", nullable = false)
-    private UUID scopeId;
+public class Activity extends DefinitionRow {
 
     @Column(name = "definition_version_id", nullable = false)
     private Long definitionVersionId;
@@ -65,15 +46,6 @@ public class Activity {
 
     @Column(name = "may_ask", nullable = false)
     private boolean mayAsk;
-
-    /** For the persistence provider only. */
-    protected Activity() {
-        // The provider fills every column from the row it reads.
-    }
-
-    public Long id() {
-        return id;
-    }
 
     public String name() {
         return name;

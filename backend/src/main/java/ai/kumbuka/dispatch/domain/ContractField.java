@@ -7,18 +7,13 @@
  */
 package ai.kumbuka.dispatch.domain;
 
-import ai.kumbuka.dispatch.tenancy.StringUuidConverter;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
-import org.hibernate.annotations.TenantId;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * A control field a contract names: a row of {@code dispatch.contract_field}
@@ -31,20 +26,7 @@ import java.util.UUID;
 @Entity
 @Immutable
 @Table(name = "contract_field", schema = "dispatch")
-public class ContractField {
-
-    @Id
-    @Column(name = "id", nullable = false)
-    private Long id;
-
-    /** Read by the persistence provider alone, which filters every statement on it. */
-    @TenantId
-    @Convert(converter = StringUuidConverter.class)
-    @Column(name = "tenant_id", nullable = false)
-    private String tenantId;
-
-    @Column(name = "scope_id", nullable = false)
-    private UUID scopeId;
+public class ContractField extends DefinitionRow {
 
     @Column(name = "definition_version_id", nullable = false)
     private Long definitionVersionId;
@@ -58,11 +40,6 @@ public class ContractField {
 
     @Column(name = "required", nullable = false)
     private boolean required;
-
-    /** For the persistence provider only. */
-    protected ContractField() {
-        // The provider fills every column from the row it reads.
-    }
 
     /** The activity whose result contract names the field; empty for the start contract. */
     public Optional<Long> activityId() {

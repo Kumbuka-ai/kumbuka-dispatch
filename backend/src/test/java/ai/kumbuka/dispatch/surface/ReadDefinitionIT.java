@@ -30,6 +30,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -371,7 +372,7 @@ class ReadDefinitionIT {
     }
 
     @Test
-    void every_system_enumeration_of_the_answer_is_the_value_set_of_its_check()
+    void every_system_enumeration_of_the_answer_is_the_values_of_its_check_in_their_order()
             throws SQLException {
         List<Map<String, Object>> answered = rest(plantedSelector(), "").jsonPath()
             .getList("fields.system_enumerations");
@@ -390,7 +391,8 @@ class ReadDefinitionIT {
                 checked(check.getValue().get(0), check.getValue().get(1))));
         }
         assertThat(offences)
-            .as("each system enumeration answers exactly the values its CHECK admits")
+            .as("each system enumeration answers exactly the values its CHECK admits, in the "
+                + "order of the CHECK")
             .isEmpty();
     }
 
@@ -411,7 +413,24 @@ class ReadDefinitionIT {
             .containsExactly("task_state leaves out 'recalled', which its CHECK admits");
     }
 
-    /** Where an answered enumeration and the values of its CHECK part. */
+    @Test
+    void the_comparison_reports_a_value_out_of_the_order_of_its_check() throws SQLException {
+        List<String> checked = checked("task", "ck_task_state");
+        List<String> swapped = new ArrayList<>(checked);
+        Collections.swap(swapped, 0, 1);
+
+        assertThat(differences("task_state", swapped, checked))
+            .as("RED STATE, observed: a constant with the values of its CHECK in another "
+                + "order is reported, at the first place the two part")
+            .containsExactly("task_state answers '" + checked.get(1) + "' at place 1, where "
+                + "its CHECK has '" + checked.get(0) + "'");
+    }
+
+    /**
+     * Where an answered enumeration and the values of its CHECK part: a value
+     * the CHECK does not admit, a value it admits that is left out, and, where
+     * the two hold the same values, the first place their order parts.
+     */
     static List<String> differences(String name, List<String> answered, List<String> checked) {
         List<String> found = new ArrayList<>();
         for (String value : answered) {
@@ -422,6 +441,15 @@ class ReadDefinitionIT {
         for (String value : checked) {
             if (!answered.contains(value)) {
                 found.add(name + " leaves out '" + value + "', which its CHECK admits");
+            }
+        }
+        if (found.isEmpty()) {
+            for (int place = 0; place < answered.size(); place++) {
+                if (!answered.get(place).equals(checked.get(place))) {
+                    found.add(name + " answers '" + answered.get(place) + "' at place "
+                        + (place + 1) + ", where its CHECK has '" + checked.get(place) + "'");
+                    break;
+                }
             }
         }
         return found;

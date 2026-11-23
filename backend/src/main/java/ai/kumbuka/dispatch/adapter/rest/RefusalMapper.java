@@ -80,17 +80,35 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
     }
 
     /**
-     * The call a request became, as its surface names it; empty where it
-     * became none, and where there is no request, as for a mapper handed an
-     * exception directly.
+     * The request a mapper answers, read once for the three mappers that word
+     * a refusal against the call the request became. Each part is absent where
+     * the mapper is handed an exception outside a request.
      */
-    static Optional<VerbName> callOf(@Nullable Request request, @Nullable UriInfo uri,
-                                     @Nullable HttpHeaders http) {
-        if (request == null || uri == null || http == null) {
-            return Optional.empty();
+    abstract static class OnTheRequest {
+
+        @Context @Nullable Request request;
+        @Context @Nullable UriInfo uri;
+        @Context @Nullable HttpHeaders http;
+
+        /** The call the request became, as its surface names it; empty where it became none. */
+        Optional<VerbName> call() {
+            if (request == null || uri == null || http == null) {
+                return Optional.empty();
+            }
+            Surface surface = surfaceOf(http);
+            return CustomMethod.of(request.getMethod(), uri.getPath())
+                .map(route -> VerbName.of(route.verb(), surface));
         }
-        return CustomMethod.of(request.getMethod(), uri.getPath())
-            .map(route -> VerbName.of(route.verb(), surfaceOf(http)));
+
+        /** The depth of the address the request names; empty where it names none. */
+        Optional<CustomMethod.Depth> depth() {
+            return uri == null ? Optional.empty() : CustomMethod.depthOf(uri.getPath());
+        }
+
+        /** The surface the caller came through; this one where no request is known. */
+        Surface surface() {
+            return http == null ? Surface.REST : surfaceOf(http);
+        }
     }
 
     /**
@@ -99,19 +117,14 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
      * said, and anything else is ours.
      */
     @Provider
-    public static class Domain implements ExceptionMapper<DispatchException> {
-
-        /** The request; absent where the mapper is handed an exception outside one. */
-        @Context @Nullable Request request;
-        @Context @Nullable UriInfo uri;
-        @Context @Nullable HttpHeaders http;
+    public static class Domain extends OnTheRequest implements ExceptionMapper<DispatchException> {
 
         @Override
         public Response toResponse(DispatchException e) {
             // DEBUG by its code, and WARN where the scope refused (C13.3): the
             // directory below logs nothing, so its line is written here.
             PlatformLog.domainRefused(e.reason());
-            Optional<VerbName> call = callOf(request, uri, http);
+            Optional<VerbName> call = call();
             if (call.isPresent()) {
                 return answer(CallRefusals.of(e, call.get()), null);
             }
@@ -131,16 +144,12 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
      * back as it is.
      */
     @Provider
-    public static class NotPermitted implements ExceptionMapper<ForbiddenException> {
-
-        /** The request; absent where the mapper is handed an exception outside one. */
-        @Context @Nullable Request request;
-        @Context @Nullable UriInfo uri;
-        @Context @Nullable HttpHeaders http;
+    public static class NotPermitted extends OnTheRequest
+        implements ExceptionMapper<ForbiddenException> {
 
         @Override
         public Response toResponse(ForbiddenException e) {
-            Optional<VerbName> call = callOf(request, uri, http);
+            Optional<VerbName> call = call();
             if (call.isEmpty()) {
                 return Response.status(Response.Status.FORBIDDEN).build();
             }
@@ -160,12 +169,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
      * defect on our side, logged once with a reference and answered with it.
      */
     @Provider
-    public static class Unexpected implements ExceptionMapper<Throwable> {
-
-        /** The request; absent where the mapper is handed an exception outside one. */
-        @Context @Nullable Request request;
-        @Context @Nullable UriInfo uri;
-        @Context @Nullable HttpHeaders http;
+    public static class Unexpected extends OnTheRequest implements ExceptionMapper<Throwable> {
 
         @Override
         public Response toResponse(Throwable failure) {
@@ -177,8 +181,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
                     default -> given;
                 };
             }
-            return answer(UnexpectedFailures.refuse(callOf(request, uri, http).orElse(null),
-                failure), null);
+            return answer(UnexpectedFailures.refuse(call().orElse(null), failure), null);
         }
 
         /**
@@ -188,9 +191,8 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
          * does not, the methods of the routes at that depth.
          */
         private Response methodNotCarried(Response given) {
-            Optional<CustomMethod.Depth> depth = uri == null ? Optional.empty()
-                : CustomMethod.depthOf(uri.getPath());
-            Surface surface = http == null ? Surface.REST : surfaceOf(http);
+            Optional<CustomMethod.Depth> depth = depth();
+            Surface surface = surface();
             String allow = given.getHeaderString(HttpHeaders.ALLOW);
             if (allow == null) {
                 allow = depth.flatMap(CustomMethod::allow).orElse(null);

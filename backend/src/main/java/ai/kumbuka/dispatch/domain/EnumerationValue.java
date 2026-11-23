@@ -7,16 +7,10 @@
  */
 package ai.kumbuka.dispatch.domain;
 
-import ai.kumbuka.dispatch.tenancy.StringUuidConverter;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
-import org.hibernate.annotations.TenantId;
-
-import java.util.UUID;
 
 /**
  * One value of an {@link Enumeration}, by its text and its place in the list:
@@ -27,20 +21,7 @@ import java.util.UUID;
 @Entity
 @Immutable
 @Table(name = "enumeration_value", schema = "dispatch")
-public class EnumerationValue {
-
-    @Id
-    @Column(name = "id", nullable = false)
-    private Long id;
-
-    /** Read by the persistence provider alone, which filters every statement on it. */
-    @TenantId
-    @Convert(converter = StringUuidConverter.class)
-    @Column(name = "tenant_id", nullable = false)
-    private String tenantId;
-
-    @Column(name = "scope_id", nullable = false)
-    private UUID scopeId;
+public class EnumerationValue extends DefinitionRow {
 
     @Column(name = "enumeration_id", nullable = false)
     private Long enumerationId;
@@ -50,11 +31,6 @@ public class EnumerationValue {
 
     @Column(name = "ordinal", nullable = false)
     private int ordinal;
-
-    /** For the persistence provider only. */
-    protected EnumerationValue() {
-        // The provider fills every column from the row it reads.
-    }
 
     /** The enumeration the value belongs to. */
     public Long enumerationId() {

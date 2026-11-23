@@ -23,9 +23,11 @@ import java.util.List;
  * closed task ({@code ck_task_resolution}), the reason of a hold ({@code
  * ck_task_hold_reason}), the status of a criterion ({@code
  * ck_delivery_criterion_status}) and the path of an act ({@code ck_act_path}).
- * They are constants here, and {@code SystemEnumerationIT} holds each against
- * the CHECK of the migrated store, so the expectation does not come from this
- * class.
+ * They are constants here, and {@code ReadDefinitionIT}, in its test {@code
+ * every_system_enumeration_of_the_answer_is_the_values_of_its_check_in_their_order},
+ * holds each, as {@code read_definition} answers it, against the literals of
+ * its CHECK read from {@code pg_constraint} of the migrated store, values and
+ * order alike, so the expectation does not come from this class.
  */
 public enum SystemEnumeration {
 
