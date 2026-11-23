@@ -68,6 +68,71 @@ class PageCursorTest {
     }
 
     @Test
+    void a_cursor_of_another_scope_sort_and_direction_is_refused_naming_each() {
+        PageCursor handedOut = new PageCursor(
+            PageCursor.Binding.of(SCOPE, "sprint", "state=open", FIRST),
+            new PageCursor.Position(1, 0, Instant.parse("2026-11-22T10:15:30Z")));
+        PageCursor.Binding elsewhere = PageCursor.Binding.of(
+            UUID.fromString("00000000-0000-0000-0000-000000000011"), "sprint", "state=open",
+            PageRequest.of(10L, "created_at", SortKey.Direction.DESC, null));
+
+        assertThatThrownBy(() -> handedOut.continuing(elsewhere, FILTERS))
+            .as("another scope, another sort key and another direction are each named, in the "
+                + "order of the listing's arguments; the filter, which is the same, is not")
+            .isInstanceOfSatisfying(DispatchException.class, refused ->
+                assertThat(refused.offenders()).containsExactly("scope", "sort", "direction"));
+    }
+
+    @Test
+    void a_cursor_sorted_by_creation_and_descending_comes_back_as_it_was_handed_out() {
+        PageRequest page = PageRequest.of(10L, "created_at", SortKey.Direction.DESC, null);
+        PageCursor.Binding listing = PageCursor.Binding.of(SCOPE, "sprint", "", page);
+        PageCursor.Position last = new PageCursor.Position(12, 0,
+            Instant.parse("2026-11-22T10:15:30Z"));
+
+        PageCursor read = PageCursor.decode(new PageCursor(listing, last).encode());
+
+        assertThat(read)
+            .as("sort key, direction and position travel and are read back as they were")
+            .isEqualTo(new PageCursor(listing, last));
+    }
+
+    @Test
+    void a_cursor_this_service_did_not_write_is_refused_naming_after_and_nothing_sent() {
+        String at = "2026-11-22T10:15:30Z";
+        List<String> unwritten = List.of(
+            "%%% not base64 %%%",
+            raw("v1|scope|sprint|filter|id|asc|1|0"),
+            raw("v2|scope|sprint|filter|id|asc|1|0|" + at),
+            raw("v1|scope|sprint|filter|id|asc|0|0|" + at),
+            raw("v1|scope|sprint|filter|id|asc|1|-1|" + at),
+            raw("v1||sprint|filter|id|asc|1|0|" + at),
+            raw("v1|scope||filter|id|asc|1|0|" + at),
+            raw("v1|scope|sprint||id|asc|1|0|" + at),
+            raw("v1|scope|sprint|filter|id|asc|one|0|" + at),
+            raw("v1|scope|sprint|filter|id|asc|1|0|yesterday"),
+            raw("v1|scope|sprint|filter|rank|asc|1|0|" + at),
+            raw("v1|scope|sprint|filter|id|sideways|1|0|" + at));
+
+        for (String cursor : unwritten) {
+            assertThatThrownBy(() -> PageCursor.decode(cursor))
+                .as("a cursor of a form this service never writes is malformed: %s", cursor)
+                .isInstanceOfSatisfying(DispatchException.class, refused -> {
+                    assertThat(refused.reason())
+                        .isEqualTo(DispatchException.Reason.CURSOR_MALFORMED);
+                    assertThat(refused.offenders()).containsExactly("after");
+                    assertThat(refused.getMessage()).doesNotContain(cursor);
+                });
+        }
+    }
+
+    /** A cursor's plain form as it travels, base64url without padding. */
+    private static String raw(String plain) {
+        return java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(plain.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
     void a_page_holds_its_objects_as_handed_and_says_where_the_listing_goes_on() {
         Page<String> page = new Page<>(new java.util.ArrayList<>(List.of("a", "b")),
             Optional.of("next"));
