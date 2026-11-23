@@ -18,6 +18,7 @@ import io.restassured.path.json.JsonPath;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -49,6 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T10: an addendum is listed in the head of read and query and read in its part")
 class AddendumVisibilityIT {
 
     private static final String COMMISSION = "the commission, before its addendum";

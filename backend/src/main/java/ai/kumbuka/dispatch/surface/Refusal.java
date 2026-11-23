@@ -7,11 +7,11 @@
  */
 package ai.kumbuka.dispatch.surface;
 
-import ai.kumbuka.dispatch.domain.TaskView;
 import ai.kumbuka.dispatch.surface.RefusalCode.Message;
 import org.jspecify.annotations.Nullable;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * A refusal as a caller is told it: a code, a message that explains itself,
@@ -65,8 +65,9 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
      * @param conflictToken the task's current token, for a stale one; absent elsewhere
      * @param reference     the identifier of an unexpected failure; absent elsewhere
      * @param address       the complete address, for a stale token; absent elsewhere
-     * @param current       the task as it stands, for a stale conflict token: its
-     *                      fields travel so that the caller can merge (DEC-0041);
+     * @param current       the fields of the object as it stands, for a stale
+     *                      conflict token, as the caller's own read answers them:
+     *                      they travel so that the caller can merge (DEC-0041);
      *                      absent elsewhere
      * @param service       the service that holds the task, for a stale token;
      *                      absent elsewhere
@@ -76,7 +77,7 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
                        @Nullable List<String> offenders, @Nullable List<String> accepts,
                        @Nullable List<String> children, @Nullable String confirmation,
                        @Nullable String conflictToken, @Nullable String reference,
-                       @Nullable String address, @Nullable TaskView current,
+                       @Nullable String address, @Nullable Map<String, Object> current,
                        @Nullable String service) {
 
         static Data attempted(@Nullable VerbName call) {
@@ -117,9 +118,11 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
                 service);
         }
 
-        Data current(String at, TaskView view, String token, String serviceName) {
+        Data current(String at, Map<String, Object> fields, String token, String serviceName) {
             return new Data(attempted, state, next, waitingFor, offenders, accepts, children,
-                confirmation, token, reference, at, view, serviceName);
+                confirmation, token, reference, at,
+                java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(fields)),
+                serviceName);
         }
 
         Data reference(String id) {
@@ -415,15 +418,17 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
     }
 
     /**
-     * The token presented is not the one the task holds. The task travels as
-     * it stands, under its address, its fields, its current token and the
-     * service that holds it (DEC-0041), so the caller can merge and repeat.
+     * The token presented is not the one the object holds. The object travels
+     * as it stands, under its address, its fields as the caller's read answers
+     * them, its current token and the service that holds it (DEC-0041), so the
+     * caller can merge and repeat.
      */
     public static Refusal conflictTokenStale(VerbName call, Situation at, String address,
-                                             TaskView current, String service) {
+                                             Map<String, Object> fields, String conflictToken,
+                                             String service) {
         return of(Message.CONFLICT_TOKEN_STALE, Texts.refusals().conflictTokenStale(call),
             Data.attempted(call).situation(at)
-                .current(address, current, current.conflictToken(), service));
+                .current(address, fields, conflictToken, service));
     }
 
     /** A call fenced by the conflict token arrived without one. */

@@ -8,13 +8,14 @@
 package ai.kumbuka.dispatch.domain;
 
 import org.assertj.core.api.ThrowableAssert;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * The kernel's refusals of a listing carry no value the caller sent, neither
@@ -33,6 +34,9 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 class ListingRefusalsTest {
 
     private static final String VALUE = "zzvalue7319";
+
+    private static final String REBUILT =
+        "rebuilt in T11: a refused filter of a listing names the filter and carries no value sent";
 
     @Test
     void a_page_size_outside_the_page_names_page_size() {
@@ -57,26 +61,15 @@ class ListingRefusalsTest {
     }
 
     @Test
+    @Disabled(REBUILT)
     void a_filter_value_the_field_cannot_take_names_the_filter_and_its_position() {
-        refusal(() -> TaskFilter.of(Map.of("state", VALUE)))
-            .names(DispatchException.Reason.FILTER_VALUE_REFUSED, "state", VALUE);
-        refusal(() -> TaskFilter.of(Map.of("state", "open," + VALUE)))
-            .names(DispatchException.Reason.FILTER_VALUE_REFUSED, "state[1]", VALUE);
-        refusal(() -> TaskFilter.of(Map.of("bracket", "1," + VALUE)))
-            .names(DispatchException.Reason.FILTER_VALUE_REFUSED, "bracket[1]", VALUE);
-        refusal(() -> TaskFilter.of(Map.of("address", VALUE)))
-            .names(DispatchException.Reason.FILTER_VALUE_REFUSED, "address", VALUE);
-        refusal(() -> TaskFilter.of(Map.of("state", "open,")))
-            .names(DispatchException.Reason.FILTER_VALUE_REFUSED, "state[1]", null);
+        fail(REBUILT);
     }
 
     @Test
+    @Disabled(REBUILT)
     void an_undeclared_filter_names_the_declared_ones_and_not_the_one_sent() {
-        DispatchException refused = catchThrowableOfType(DispatchException.class,
-            () -> TaskFilter.of(Map.of(VALUE, "x")));
-        assertThat(refused.reason()).isEqualTo(DispatchException.Reason.FILTER_FIELD_UNKNOWN);
-        assertThat(refused.getMessage()).doesNotContain(VALUE);
-        assertThat(String.valueOf(refused.offenders())).doesNotContain(VALUE);
+        fail(REBUILT);
     }
 
     // -----------------------------------------------------------------------

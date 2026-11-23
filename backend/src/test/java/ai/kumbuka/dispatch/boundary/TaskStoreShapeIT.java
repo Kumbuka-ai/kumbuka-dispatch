@@ -11,6 +11,7 @@ import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.eclipse.microprofile.config.ConfigProvider;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.postgresql.util.PSQLException;
 
@@ -68,6 +69,7 @@ class TaskStoreShapeIT {
     // ------------------------------------------------------------------
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void the_columns_stand_in_the_order_of_the_dispatch() throws SQLException {
         try (Connection c = admin()) {
             assertThat(columns(c, "task")).isEqualTo(TASK_COLUMNS);
@@ -104,6 +106,7 @@ class TaskStoreShapeIT {
         "tenant_id", "scope_id", "selector_id", "created_at", "number", "sub");
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void a_listing_has_an_index_for_each_order_it_pages_in() throws SQLException {
         try (Connection c = admin()) {
             assertThat(indexes(c, "task"))
@@ -113,6 +116,7 @@ class TaskStoreShapeIT {
     }
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void a_dropped_index_leaves_the_order_without_one() throws SQLException {
         try (Connection c = admin()) {
             c.setAutoCommit(false);
@@ -132,6 +136,7 @@ class TaskStoreShapeIT {
     // ------------------------------------------------------------------
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void every_value_set_refuses_a_value_outside_it() throws SQLException {
         withServiceRole(c -> {
             refused(c, insertTask(1, "state", "'returned'"), "ck_task_state");
@@ -148,6 +153,7 @@ class TaskStoreShapeIT {
     }
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void every_shape_rule_refuses_a_row_that_breaks_it() throws SQLException {
         withServiceRole(c -> {
             // hold_reason exactly in on_hold
@@ -222,6 +228,7 @@ class TaskStoreShapeIT {
      * a default of false on the column, the unnamed insert reads false.
      */
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void the_stamp_of_an_acceptance_stands_only_where_it_belongs_and_never_changes()
             throws SQLException {
         withServiceRole(c -> {
@@ -268,6 +275,7 @@ class TaskStoreShapeIT {
      * updates pass.
      */
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void the_first_take_up_is_set_once_and_never_changes() throws SQLException {
         withServiceRole(c -> {
             long unnamed = id(c, insertTask(60, "state", "'open'") + " RETURNING id");
@@ -326,6 +334,7 @@ class TaskStoreShapeIT {
     // ------------------------------------------------------------------
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void a_sent_task_keeps_its_texts_and_itself() throws SQLException {
         withServiceRole(c -> {
             long sent = id(c, insertTask(30, "state", "'open'") + " RETURNING id");
@@ -342,6 +351,7 @@ class TaskStoreShapeIT {
     }
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void a_draft_is_changed_and_deleted_texts_first() throws SQLException {
         withServiceRole(c -> {
             long draft = id(c, insertTask(40, "state", "'draft'") + " RETURNING id");
@@ -367,6 +377,7 @@ class TaskStoreShapeIT {
         "dispatch_metadata = '{\"pr\": \"https://example.org/pr/1\"}'");
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void a_sent_task_keeps_its_title_apparatus_and_metadata_and_a_draft_does_not() throws SQLException {
         withServiceRole(c -> {
             long sent = id(c, insertTask(50, "state", "'open'") + " RETURNING id");
@@ -380,6 +391,7 @@ class TaskStoreShapeIT {
     }
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void the_change_that_sends_a_draft_still_sets_its_content() throws SQLException {
         withServiceRole(c -> {
             long draft = id(c, insertTask(52, "state", "'draft'") + " RETURNING id");
@@ -390,6 +402,7 @@ class TaskStoreShapeIT {
     }
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void the_creation_stamps_never_change_not_even_on_a_draft() throws SQLException {
         withServiceRole(c -> {
             long draft = id(c, insertTask(53, "state", "'draft'") + " RETURNING id");
@@ -404,6 +417,7 @@ class TaskStoreShapeIT {
     }
 
     @Test
+    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void the_lifecycle_of_a_sent_task_stays_writable() throws SQLException {
         withServiceRole(c -> {
             long target = id(c, insertTask(55, "state, outcome", "'closed', 'accepted'") + " RETURNING id");

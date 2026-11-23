@@ -19,17 +19,19 @@ import java.sql.Statement;
 import java.util.Map;
 
 /**
- * Drives the service's real migration set against a container of the caller's
- * own, under a role of the caller's choosing.
+ * Drives a real migration line against a container of the caller's own, under
+ * a role of the caller's choosing: the store line the service ships, or the
+ * old line from the test tree that the tests of the cut-over build an old
+ * stock from.
  *
- * <p>Two probes need this and neither can use the ordinary test datasource.
+ * <p>The probes that use it cannot use the ordinary test datasource.
  * {@link MigrationCallbackWitnessIT} varies which callbacks are registered,
  * which is build-time configuration a running application cannot change.
  * {@link MigratorAttributeProbeIT} varies the ATTRIBUTES of the migrating
  * role, which is a property of a role the harness would otherwise have to
- * mutate underneath a booted service. Both therefore run Flyway directly —
- * over the same migration files the service ships, so what is observed is the
- * real migration set rather than a fixture resembling it.
+ * mutate underneath a booted service. They therefore run Flyway directly —
+ * over the real migration files, so what is observed is the real migration set
+ * rather than a fixture resembling it.
  *
  * <p>Each case migrates a database of its own. Sharing one would let whichever
  * ran first apply the set, and the second would find everything applied, do
@@ -96,8 +98,10 @@ final class MigrationHarness implements AutoCloseable {
     }
 
     /**
-     * Runs the service's migration set: the real files, the real placeholders,
-     * and exactly the callbacks the caller names.
+     * Runs the old line, {@code db/migration}: the real files, the real
+     * placeholders, and exactly the callbacks the caller names. The service no
+     * longer ships the line; it lies in the test tree until the cut-over, where
+     * the tests of the cut-over build an old stock from it.
      */
     void migrate(String url, String migrator, String password, Callback... callbacks) {
         migrateTo(url, migrator, password, null, callbacks);
@@ -134,13 +138,13 @@ final class MigrationHarness implements AutoCloseable {
     }
 
     /**
-     * Runs one migration line other than the service's own: the files at the
-     * location named, with exactly the callbacks the caller names.
+     * Runs one migration line by its location: the files there, with exactly
+     * the callbacks the caller names.
      *
-     * <p>A second line stands beside {@code db/migration} until the service
-     * is rebuilt against it, and is applied to a database of its own. It
-     * carries no placeholder, so none is set: one it did carry would fail
-     * here unresolved rather than be filled silently.
+     * <p>The store line, {@code db/store}, is the service's own and is applied
+     * this way to a database of its own. It carries no placeholder, so none is
+     * set: one it did carry would fail here unresolved rather than be filled
+     * silently.
      *
      * @param location the Flyway location of the line, e.g. {@code classpath:db/store}
      */

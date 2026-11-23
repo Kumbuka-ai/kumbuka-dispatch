@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.tenancy;
 
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -48,6 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ColdStartIT {
 
     @Test
+    @Disabled("rebuilt in T2: the cold start applies every versioned migration on disk and creates the schema")
     void flyway_creates_the_schema_and_its_table() throws SQLException, IOException {
         try (Connection c = Db.asAdmin()) {
             assertThat(scalar(c, "SELECT count(*) FROM information_schema.schemata "

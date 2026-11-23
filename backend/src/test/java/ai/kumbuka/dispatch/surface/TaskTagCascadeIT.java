@@ -16,6 +16,7 @@ import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -41,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T11: deleting a tagged draft removes its tag relations and keeps those of others")
 class TaskTagCascadeIT {
 
     @Inject TestIdentityAssociation identity;

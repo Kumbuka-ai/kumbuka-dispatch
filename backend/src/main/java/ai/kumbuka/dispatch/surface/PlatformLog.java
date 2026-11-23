@@ -8,20 +8,17 @@
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.DispatchException;
-import ai.kumbuka.dispatch.domain.Task;
-import ai.kumbuka.dispatch.domain.TaskState;
 import org.jboss.logging.Logger;
 
 import java.util.Collection;
-import java.util.UUID;
 
 /**
  * Every log line of the packages that serve a caller, and the only logger
  * they hold (DEC-0051, C4; C13.1 to C13.3).
  *
  * <p>A line carries the platform's vocabulary and nothing else: the call, the
- * technical address, the scope id, the state, the reason code, a count, the
- * reference and the class names of an unforeseen failure. Each line is one
+ * reason code, a count, the reference and the class names of an unforeseen
+ * failure. Each line is one
  * method here, with a constant message, and each parameter is a type the
  * service builds from what it holds itself, never from a {@code String}, a
  * number or a uuid a caller could have chosen. So a value a caller wrote -- a
@@ -45,75 +42,6 @@ public final class PlatformLog {
     private static final Logger LOG = Logger.getLogger(PlatformLog.class);
 
     private PlatformLog() {
-    }
-
-    // ======================================================================
-    // Writes: INFO per completed write, by the technical address (C13.3).
-    // The complete address carries the scope's name and the selector, which
-    // are the caller's words, so it never stands in a line. Written by the
-    // verb surface, which called the write; the domain logs nothing.
-    // ======================================================================
-
-    public static void created(TechnicalAddress entry, Status state) {
-        LOG.infof("create %s -> %s", entry, state);
-    }
-
-    public static void createdInScope(TechnicalAddress entry, ScopeId scope) {
-        LOG.infof("create %s in scope %s", entry, scope);
-    }
-
-    public static void updated(TechnicalAddress entry) {
-        LOG.infof("update %s", entry);
-    }
-
-    public static void deleted(TechnicalAddress entry) {
-        LOG.infof("delete %s", entry);
-    }
-
-    public static void tagAttached(TechnicalAddress entry) {
-        LOG.infof("tag_attach %s", entry);
-    }
-
-    public static void tagDetached(TechnicalAddress entry) {
-        LOG.infof("tag_detach %s", entry);
-    }
-
-    public static void annotated(TechnicalAddress entry) {
-        LOG.infof("annotate %s", entry);
-    }
-
-    public static void related(TechnicalAddress entry) {
-        LOG.infof("relate %s", entry);
-    }
-
-    public static void unrelated(TechnicalAddress entry) {
-        LOG.infof("unrelate %s", entry);
-    }
-
-    /** A transition or a take-up, with the state it entered. */
-    public static void transitioned(VerbName call, TechnicalAddress entry, Status state) {
-        LOG.infof("%s %s -> %s", call, entry, state);
-    }
-
-    /** A transition, with the scope it was made in. */
-    public static void transitionedInScope(VerbName call, TechnicalAddress entry,
-                                           ScopeId scope) {
-        LOG.infof("%s %s in scope %s", call, entry, scope);
-    }
-
-    /** A child closed along with its bracket root, before the root closes. */
-    public static void childWithdrawn(TechnicalAddress entry, Status state) {
-        LOG.infof("withdraw %s -> %s", entry, state);
-    }
-
-    /** A repeated take-up under its key: the same task, a new receipt, nothing else. */
-    public static void receiptReissued(VerbName call, TechnicalAddress entry) {
-        LOG.infof("%s %s repeated: receipt reissued", call, entry);
-    }
-
-    /** A listing, by the scope and how many heads it answered; never by its selector. */
-    public static void queried(ScopeId scope, Count heads) {
-        LOG.debugf("query in scope %s: %s head(s)", scope, heads);
     }
 
     // ======================================================================
@@ -227,69 +155,6 @@ public final class PlatformLog {
     // ======================================================================
     // The types a line takes
     // ======================================================================
-
-    /**
-     * A task by its technical address, {@code dispatch://<uuid>}: the durable
-     * identity the database drew at the insert, and no value its caller
-     * wrote. Built from the entity only. Never the complete address
-     * {@code dispatch://<scope>/<selector>/<number>.<sub>}, which carries the
-     * scope's name and the selector.
-     */
-    public static final class TechnicalAddress {
-
-        private final String address;
-
-        private TechnicalAddress(String address) {
-            this.address = address;
-        }
-
-        static TechnicalAddress of(Task entry) {
-            return new TechnicalAddress("dispatch://" + entry.uuid);
-        }
-
-        @Override
-        public String toString() {
-            return address;
-        }
-    }
-
-    /** The scope a call was made in, by the id the platform's directory resolved it to. */
-    public static final class ScopeId {
-
-        private final UUID scope;
-
-        private ScopeId(UUID scope) {
-            this.scope = scope;
-        }
-
-        static ScopeId of(UUID resolved) {
-            return new ScopeId(resolved);
-        }
-
-        @Override
-        public String toString() {
-            return scope.toString();
-        }
-    }
-
-    /** A state of the lifecycle, as the wire names it. */
-    public static final class Status {
-
-        private final TaskState state;
-
-        private Status(TaskState state) {
-            this.state = state;
-        }
-
-        public static Status of(TaskState state) {
-            return new Status(state);
-        }
-
-        @Override
-        public String toString() {
-            return state.wireName();
-        }
-    }
 
     /**
      * The reason code of a refusal, out of one of the service's closed sets:

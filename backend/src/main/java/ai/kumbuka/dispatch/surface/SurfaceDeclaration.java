@@ -29,13 +29,14 @@ import java.util.Objects;
  *
  * <p><strong>Where it lives.</strong> On the REST surface at {@code GET
  * /api/declaration} and nowhere else (C5.1), which the router reads to build
- * its surface (ADR-0039); it serves {@link #asMap()}. Per call it carries the identity {@code
- * dispatch_<verb>}, the effect class by the router's name, the arguments with
- * their names, types, requiredness, defaults and closed sets of values with a
- * description each, the shape of the answer with the fields of the task it
- * carries, the reasons a refusal may name,
- * and the texts the call addresses to a caller. Per reason it carries the
- * templates of its messages and its remedy. The whole carries a version.
+ * its surface (ADR-0039); it serves {@link #asMap()}. Per call it carries what
+ * {@link ProcessVerb} declares of it: the identity {@code dispatch_<verb>},
+ * the name on REST, the description, and the arguments with their names,
+ * types, requiredness, defaults and closed sets of values with a description
+ * each. No call is declared while the service is rebuilt on the store line,
+ * so {@code calls} is empty until the first call is bound. Per reason it
+ * carries the templates of its messages and its remedy. The whole carries a
+ * version.
  */
 public final class SurfaceDeclaration {
 
@@ -62,10 +63,7 @@ public final class SurfaceDeclaration {
     private SurfaceDeclaration() {
     }
 
-    /**
-     * The twenty-seven calls: the twenty-five in the order of TAR-0004 section
-     * 3, then the two on the tags of a task.
-     */
+    /** The declared calls, in the order of {@link ProcessVerb}; none while none is bound. */
     public static List<ProcessVerb> calls() {
         return List.of(ProcessVerb.values());
     }
@@ -124,27 +122,8 @@ public final class SurfaceDeclaration {
             call.put("identity", verb.call());
             call.put("call", verb.call());
             call.put("rest_name", verb.verb());
-            call.put("effect_class", verb.effectClass().name());
-            call.put("transition", verb.isTransition());
-            if (verb.role().isPresent()) {
-                // Only a restricted call carries a role (C5.4).
-                call.put("role", verb.roleName());
-            }
             call.put(DESCRIPTION, verb.description());
-            if (verb.isTransition()) {
-                call.put("next_step", NextList.does(verb.transition().orElseThrow()));
-            }
             call.put("arguments", argumentsAsMaps(verb));
-            Map<String, Object> answer = new LinkedHashMap<>();
-            answer.put("shape", verb.answerShape().name());
-            answer.put("members", verb.answerShape().members());
-            if (!verb.answerFields().isEmpty()) {
-                // What the member fields of the task carries: tags among them
-                // on a read, a listing and the two calls on the tags.
-                answer.put("fields", verb.answerFields());
-            }
-            call.put("answer", answer);
-            call.put("refusals", verb.refusals().stream().map(Enum::name).toList());
             calls.add(call);
         }
         return List.copyOf(calls);

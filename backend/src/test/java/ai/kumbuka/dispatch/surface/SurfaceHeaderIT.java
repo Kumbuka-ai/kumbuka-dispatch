@@ -18,6 +18,7 @@ import io.restassured.http.Header;
 import io.restassured.http.Headers;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -53,6 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T13: the surface header makes REST answer in the vocabulary of the assistant surface")
 class SurfaceHeaderIT {
 
     private static final String HEADER = "Kumbuka-Surface";

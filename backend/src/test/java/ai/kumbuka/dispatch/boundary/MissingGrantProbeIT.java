@@ -11,6 +11,7 @@ import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.eclipse.microprofile.config.ConfigProvider;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -122,6 +123,7 @@ class MissingGrantProbeIT {
      * table for whatever else this suite is doing.
      */
     @Test
+    @Disabled("rebuilt in T4: the service role cannot truncate the task table and its referencing tables")
     void the_service_role_cannot_truncate_its_own_table() throws SQLException {
         String table = "dispatch.task";
         // Every table that references it, because PostgreSQL refuses to

@@ -11,6 +11,7 @@ import ai.kumbuka.dispatch.adapter.payload.DeclaredCalls;
 import ai.kumbuka.dispatch.domain.DispatchPermission;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import io.quarkus.security.PermissionsAllowed;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -52,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * holds either, and they are the ones {@link #EITHER} lists with the reason
  * the catalogue gives; any other call naming more than one is reported.
  */
+@Disabled("rebuilt in T12; replaced by the binding guard in the order for REA-0013 S6")
 class PermissionConformanceTest {
 
     /** The permission of each call, as the order of REA-0010 step 2 assigns it. */

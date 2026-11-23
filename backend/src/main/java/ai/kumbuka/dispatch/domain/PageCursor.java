@@ -79,19 +79,24 @@ public record PageCursor(Binding binding, Position position) {
             Objects.requireNonNull(direction, "direction");
         }
 
-        /** The listing a call asks for. */
-        public static Binding of(UUID scopeId, String selector, TaskFilter filter,
+        /**
+         * The listing a call asks for.
+         *
+         * @param filter the canonical text of the call's filter, of which only
+         *               the fingerprint travels
+         */
+        public static Binding of(UUID scopeId, String selector, String filter,
                                  PageRequest page) {
-            return new Binding(mark(scopeId.toString()), selector, mark(filter.canonical()),
+            return new Binding(mark(scopeId.toString()), selector, mark(filter),
                 page.sort(), page.direction());
         }
 
         /**
          * What differs from another binding, as the declared arguments of a
-         * listing that carry it, in a fixed order: the four filters for a
+         * listing that carry it, in a fixed order: every filter argument for a
          * filter that differs, since its fingerprint does not say which.
          */
-        List<String> differences(Binding other) {
+        List<String> differences(Binding other, List<String> filters) {
             List<String> differ = new ArrayList<>();
             if (!scope.equals(other.scope)) {
                 differ.add("scope");
@@ -100,7 +105,7 @@ public record PageCursor(Binding binding, Position position) {
                 differ.add("selector");
             }
             if (!filter.equals(other.filter)) {
-                differ.addAll(TaskFilter.Field.wireNames());
+                differ.addAll(filters);
             }
             if (sort != other.sort) {
                 differ.add("sort");
@@ -113,18 +118,13 @@ public record PageCursor(Binding binding, Position position) {
     }
 
     /**
-     * The sort values of the last task of a page: what the next page starts
+     * The sort values of the last object of a page: what the next page starts
      * after.
      */
     public record Position(int number, int sub, Instant createdAt) {
 
         public Position {
             Objects.requireNonNull(createdAt, "createdAt");
-        }
-
-        /** The position of a task. */
-        public static Position of(Task task) {
-            return new Position(task.number, task.sub, task.createdAt);
         }
     }
 
@@ -173,10 +173,12 @@ public record PageCursor(Binding binding, Position position) {
      * The position this cursor continues from, where it belongs to the listing
      * {@code expected} describes.
      *
+     * @param filters the declared filter arguments of the listing, named where
+     *                the filter differs
      * @throws DispatchException {@code CURSOR_FOREIGN}, naming what differs
      */
-    public Position continuing(Binding expected) {
-        List<String> differ = binding.differences(expected);
+    public Position continuing(Binding expected, List<String> filters) {
+        List<String> differ = binding.differences(expected, filters);
         if (!differ.isEmpty()) {
             throw new DispatchException(DispatchException.Reason.CURSOR_FOREIGN,
                 "the cursor continues a listing with another " + String.join(", ", differ)

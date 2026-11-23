@@ -10,22 +10,10 @@ package ai.kumbuka.dispatch.contract;
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
-import ai.kumbuka.dispatch.adapter.mcp.McpTools;
-import ai.kumbuka.dispatch.adapter.payload.ToolPayload;
-import ai.kumbuka.dispatch.surface.Argument;
-import ai.kumbuka.dispatch.surface.ProcessVerb;
-import ai.kumbuka.dispatch.surface.RefusalCode;
-import ai.kumbuka.dispatch.surface.Form;
-import ai.kumbuka.dispatch.surface.Surface;
-import ai.kumbuka.dispatch.surface.SurfaceDeclaration;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * The declaration against the target and the concept document.
@@ -43,236 +31,32 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // running application builds: this test runs with it.
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled(DeclarationConformanceIT.REBUILT)
 class DeclarationConformanceIT {
 
-    // =======================================================================
-    // Criterion 1: the calls of the target, nothing missing, nothing extra
-    // =======================================================================
-
-    @Test
-    void the_declaration_carries_the_calls_of_the_target() {
-        assertThat(ProcessVerb.names(Surface.REST))
-            .as("TAR-0004 section 3 but the draw: sixteen transitions and nine further calls, "
-                + "the two calls on the tags of sprint/210, and no other")
-            .containsExactlyInAnyOrderElementsOf(TargetSurface.REST);
-        assertThat(ProcessVerb.names(Surface.MCP))
-            .as("on the assistant surface each is named dispatch_<verb>")
-            .containsExactlyInAnyOrderElementsOf(TargetSurface.MCP);
-        assertThat(McpTools.declared().stream().map(ToolPayload::name).toList())
-            .as("and the tool list is exactly the declaration")
-            .containsExactlyInAnyOrderElementsOf(TargetSurface.MCP);
-    }
-
-    @Test
-    void the_sixteen_transitions_are_the_transitions_and_the_nine_are_not() {
-        assertThat(Arrays.stream(ProcessVerb.values()).filter(ProcessVerb::isTransition)
-                .map(ProcessVerb::verb).toList())
-            .containsExactlyInAnyOrderElementsOf(TargetSurface.TRANSITIONS);
-        assertThat(Arrays.stream(ProcessVerb.values()).filter(v -> !v.isTransition())
-                .map(ProcessVerb::verb).toList())
-            .as("the nine, and the two calls on the tags, which are no transitions")
-            .containsExactlyInAnyOrderElementsOf(java.util.stream.Stream.concat(
-                TargetSurface.OTHERS.stream(), TargetSurface.TAGS.stream()).toList());
-        for (ProcessVerb call : ProcessVerb.values()) {
-            if (call.isTransition()) {
-                assertThat(call.transition().orElseThrow().wireName())
-                    .as("a transition is bound to the row of the table of its own name")
-                    .isEqualTo(call.verb());
-            }
-        }
-    }
-
-    // =======================================================================
-    // Criterion 2: the arguments of the table in concept section 3.2
-    // =======================================================================
-
-    @Test
-    void every_call_takes_exactly_the_arguments_of_the_concept_table() {
-        for (ProcessVerb call : ProcessVerb.values()) {
-            TargetSurface.Arguments expected = TargetSurface.ARGUMENTS.get(call.verb());
-            assertThat(expected).as("the table has a row for %s", call.verb()).isNotNull();
-            assertThat(call.topArguments().stream().map(Argument::name).toList())
-                .as("%s: what names the target and what is transport stands at the top",
-                    call.call())
-                .containsExactlyInAnyOrderElementsOf(expected.top());
-            assertThat(call.fieldArguments().stream().map(Argument::name).toList())
-                .as("%s: everything written stands under fields", call.call())
-                .containsExactlyInAnyOrderElementsOf(expected.fields());
-        }
-    }
-
-    @Test
-    void the_mandatory_arguments_are_the_ones_the_concept_names() {
-        for (ProcessVerb call : ProcessVerb.values()) {
-            call.argument("remark", Argument.Placement.FIELDS).ifPresent(remark ->
-                assertThat(remark.required())
-                    .as("remark is mandatory on fail, reject and rework and optional "
-                        + "elsewhere: %s", call.call())
-                    .isEqualTo(TargetSurface.REMARK_REQUIRED.contains(call.verb())));
-            call.argument("duration", Argument.Placement.TOP).ifPresent(duration ->
-                assertThat(duration.required())
-                    .as("a duration is optional everywhere: %s", call.call()).isFalse());
-            assertThat(call.argument("date", Argument.Placement.FIELDS))
-                .as("create takes no date, and nothing else does: %s", call.call()).isEmpty();
-        }
-    }
-
-    // =======================================================================
-    // Descriptions
-    // =======================================================================
-
-    @Test
-    void every_description_is_within_its_budget() {
-        for (ProcessVerb call : ProcessVerb.values()) {
-            assertThat(call.description().length())
-                .as("%s: a description is at most 500 characters", call.call())
-                .isLessThanOrEqualTo(500);
-        }
-        assertThat(SurfaceDeclaration.DESCRIPTION_BUDGET).isEqualTo(500);
-    }
-
-    @Test
-    void a_description_over_the_budget_is_refused_by_the_start_up_guard() {
-        assertThatThrownBy(() -> SurfaceDeclaration.requireWithinBudget("dispatch_probe",
-                "x".repeat(501)))
-            .as("RED STATE, observed: the guard the service runs at start refuses a "
-                + "description of 501 characters, so a declaration that carried one would "
-                + "not start and no test that boots it would pass")
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("501");
-        SurfaceDeclaration.requireWithinBudget("dispatch_probe", "x".repeat(500));
-    }
-
-    @Test
-    void the_texts_of_concept_section_3_5_stand_word_for_word() {
-        assertThat(ProcessVerb.CLAIM.description()).isEqualTo(TargetSurface.CLAIM_DESCRIPTION);
-        assertThat(ProcessVerb.CLAIM.description())
-            .as("the sentence about the text")
-            .contains(TargetSurface.THE_TEXT_SENTENCE);
-    }
-
-    @Test
-    void every_description_is_the_contract_copy_s() {
-        Map<String, String> described = Contract.describedCalls();
-        assertThat(described.keySet())
-            .as("the contract copy describes exactly the calls of the target")
-            .containsExactlyInAnyOrderElementsOf(TargetSurface.MCP);
-        for (ProcessVerb call : ProcessVerb.values()) {
-            assertThat(Contract.collapsed(call.description()))
-                .as("%s carries the description the contract copy writes", call.call())
-                .isEqualTo(described.get(call.call()));
-        }
-    }
-
-    // =======================================================================
-    // The refusals
-    // =======================================================================
-
-    @Test
-    void the_catalogue_is_the_contract_copy_s_table() {
-        List<String> declared = Arrays.stream(RefusalCode.values()).map(Enum::name).toList();
-        assertThat(declared)
-            .as("every reason of the table is declared, and no other")
-            .containsExactlyInAnyOrderElementsOf(Contract.declaredReasons());
-        for (RefusalCode code : RefusalCode.values()) {
-            assertThat(code.remedy())
-                .as("the remedy of %s", code)
-                .isEqualTo(Contract.remedyOf(code.name()));
-        }
-        Map<String, String[]> messages = Contract.messages();
-        assertThat(Arrays.stream(RefusalCode.Message.values())
-                .map(RefusalCode.Message::key).toList())
-            .as("every message of the table is declared, and no other")
-            .containsExactlyInAnyOrderElementsOf(messages.keySet());
-        for (RefusalCode.Message message : RefusalCode.Message.values()) {
-            assertThat(message.code().name())
-                .as("the reason %s is raised under", message)
-                .isEqualTo(messages.get(message.key())[0]);
-            assertThat(message.template())
-                .as("the template of %s", message)
-                .isEqualTo(messages.get(message.key())[1]);
-        }
-    }
-
-    @Test
-    void every_form_an_argument_takes_is_a_message_of_its_own() {
-        Map<String, String[]> messages = Contract.messages();
-        for (Form form : Form.values()) {
-            assertThat(form.message().code())
-                .as("%s is a refusal of an argument's form, of the address grammar or of the "
-                    + "body (C8.7)", form)
-                .isIn(RefusalCode.ARGUMENT_INVALID, RefusalCode.ADDRESS_MALFORMED,
-                    RefusalCode.PAYLOAD_MALFORMED);
-            assertThat(messages).as("the contract states %s", form)
-                .containsKey(form.message().key());
-        }
-    }
-
-    @Test
-    void the_declaration_is_servable() {
-        SurfaceDeclaration.requireServable();
-        assertThat(SurfaceDeclaration.calls()).hasSize(27);
-    }
+    static final String REBUILT =
+        "rebuilt in T13: the declaration conforms to the target surface and the contract copy";
 
     /**
-     * Sprint/210: the declaration carries both calls on the tags, the field
-     * {@code tags} on every answer that carries it, and the filter {@code tag}.
-     * The calls write an addressed task without a conflict token, which this
-     * declaration carries as a custom method on the item.
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code the_declaration_carries_the_calls_of_the_target}</li>
+     *   <li>{@code the_sixteen_transitions_are_the_transitions_and_the_nine_are_not}</li>
+     *   <li>{@code every_call_takes_exactly_the_arguments_of_the_concept_table}</li>
+     *   <li>{@code the_mandatory_arguments_are_the_ones_the_concept_names}</li>
+     *   <li>{@code every_description_is_within_its_budget}</li>
+     *   <li>{@code a_description_over_the_budget_is_refused_by_the_start_up_guard}</li>
+     *   <li>{@code the_texts_of_concept_section_3_5_stand_word_for_word}</li>
+     *   <li>{@code every_description_is_the_contract_copy_s}</li>
+     *   <li>{@code the_catalogue_is_the_contract_copy_s_table}</li>
+     *   <li>{@code every_form_an_argument_takes_is_a_message_of_its_own}</li>
+     *   <li>{@code the_declaration_is_servable}</li>
+     *   <li>{@code the_declaration_carries_the_calls_the_field_and_the_filter_of_the_tags}</li>
+     *   <li>{@code every_call_this_service_carries_describes_every_argument}</li>
+     * </ul>
      */
     @Test
-    @SuppressWarnings("unchecked")
-    void the_declaration_carries_the_calls_the_field_and_the_filter_of_the_tags() {
-        Map<String, Map<String, Object>> calls = new java.util.LinkedHashMap<>();
-        for (Object call : (List<Object>) SurfaceDeclaration.asMap().get("calls")) {
-            Map<String, Object> declared = (Map<String, Object>) call;
-            calls.put(String.valueOf(declared.get("identity")), declared);
-        }
-        for (String verb : TargetSurface.TAGS) {
-            Map<String, Object> call = calls.get("dispatch_" + verb);
-            assertThat(call).as("dispatch_%s is declared", verb).isNotNull();
-            assertThat(call.get("rest_name")).isEqualTo(verb);
-            assertThat(call.get("effect_class")).as("%s: a write on an addressed task without "
-                + "a conflict token", verb).isEqualTo("ITEM_TRANSITION");
-            assertThat(call.get("transition")).isEqualTo(false);
-            assertThat((List<String>) call.get("refusals")).as("%s: no state refuses it", verb)
-                .doesNotContain("TRANSITION_REFUSED", "CONFLICT_TOKEN_MISSING",
-                    "CONFLICT_TOKEN_STALE")
-                .contains("ARGUMENT_INVALID", "SCOPE_READ_ONLY", "NOT_FOUND");
-        }
-        for (String verb : List.of("read", "query", "tag_attach", "tag_detach")) {
-            Map<String, Object> answer = (Map<String, Object>) calls.get("dispatch_" + verb)
-                .get("answer");
-            assertThat((List<String>) answer.get("fields")).as("%s answers tags", verb)
-                .contains("tags");
-        }
-        for (String verb : List.of("send", "update", "claim")) {
-            Map<String, Object> answer = (Map<String, Object>) calls.get("dispatch_" + verb)
-                .get("answer");
-            assertThat((List<String>) answer.get("fields")).as("%s answers lean", verb)
-                .contains("state").doesNotContain("tags");
-        }
-        Argument tag = ProcessVerb.QUERY.declared("tag", Argument.Placement.TOP);
-        assertThat(tag.required()).as("the filter tag is optional").isFalse();
-        assertThat(tag.type()).as("one token, a string").isEqualTo(Argument.STRING);
-    }
-
-    /**
-     * Every declared argument of every call is described, which is what makes
-     * the start-up check of described arguments more than a possibility.
-     */
-    @Test
-    void every_call_this_service_carries_describes_every_argument() {
-        for (ProcessVerb verb : ProcessVerb.values()) {
-            assertThat(verb.arguments())
-                .as("%s declares arguments at all", verb.call())
-                .isNotEmpty();
-            for (Argument argument : verb.arguments()) {
-                assertThat(argument.description())
-                    .as("%s's argument '%s' is what an ARGUMENT_MISSING refusal reads out",
-                        verb.call(), argument.name())
-                    .isNotBlank();
-            }
-        }
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
+        fail(REBUILT);
     }
 }

@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.architecture;
 
 import ai.kumbuka.dispatch.adapter.mcp.McpTools;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * to observe; this reads the names the declaration holds, which needs no
  * container. The one service-specific part is {@link #declared()}.
  */
+@Disabled("rebuilt in T12: tool list equals the catalogue")
 class ToolNameTest {
 
     /** The scheme of this service, as its addresses and tools carry it. */

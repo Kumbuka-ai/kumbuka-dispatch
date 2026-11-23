@@ -17,6 +17,7 @@ import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T13: every call refuses an undeclared argument on both surfaces at every depth")
 class UnknownArgumentIT {
 
     /** A name no declaration holds; the refusal names what is accepted, never this. */

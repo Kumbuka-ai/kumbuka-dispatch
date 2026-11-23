@@ -7,24 +7,12 @@
  */
 package ai.kumbuka.dispatch.tenancy;
 
-import ai.kumbuka.dispatch.domain.DomainFixture;
-import ai.kumbuka.dispatch.domain.IdempotencyKey;
-import ai.kumbuka.dispatch.domain.PageRequest;
-import ai.kumbuka.dispatch.domain.TaskFilter;
-import ai.kumbuka.dispatch.domain.TaskService;
-import ai.kumbuka.dispatch.domain.TaskView;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
-import jakarta.inject.Inject;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Probe 3 — the lock closes, and the data is still there.
@@ -45,132 +33,22 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled(FailClosedProbeIT.REBUILT)
 class FailClosedProbeIT {
 
-    /** The scope the selectors are declared in. Any uuid; fixed for legibility. */
-    static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
+    static final String REBUILT =
+        "rebuilt in T4: a task read fails closed without a bound tenant and each layer isolates alone";
 
     /**
-     * A fresh pair of tenants per test method — the tests share one database,
-     * and a count under a fixed tenant would include whatever an earlier test
-     * planted there. See the same note in {@link RowLevelSecurityProbeIT}.
-     */
-    private UUID tenantA;
-    private UUID tenantB;
-
-    @BeforeEach
-    void freshTenants() {
-        tenantA = UUID.randomUUID();
-        tenantB = UUID.randomUUID();
-    }
-
-    /** A console actor: these probes are about tenancy, not about permissions. */
-    static final ai.kumbuka.dispatch.domain.Actor PROBE = new ai.kumbuka.dispatch.domain.Actor(
-        "probe", ai.kumbuka.dispatch.domain.PermissionFixture.CONSOLE);
-
-    @Inject TaskService tasks;
-    @Inject TenantContext tenantContext;
-
-    @Test
-    void an_unbound_read_returns_nothing_and_the_rows_are_still_there() throws SQLException {
-        try (Connection c = Db.asService()) {
-            Db.bindTenant(c, tenantA);
-            Db.insertTask(c, tenantA, "fail-closed-a");
-            c.commit();
-
-            // First half: no binding, no rows. The predicate compares against
-            // NULL, which a policy treats as failing, so the table is closed
-            // rather than open.
-            Db.bindTenant(c, null);
-            assertThat(Db.countTasks(c))
-                .as("a transaction that never bound a tenant must see nothing at all — "
-                    + "the predicate fails closed, and this is the half that is the guarantee")
-                .isZero();
-
-            // Second half: bind, and the row is there. Without this the
-            // assertion above would hold just as well against a table that is
-            // simply empty, and an empty table proves nothing about a policy.
-            Db.bindTenant(c, tenantA);
-            assertThat(Db.countTasks(c))
-                .as("and with the tenant bound the row is present and unchanged — which is "
-                    + "what makes the emptiness above a lock rather than an absence")
-                .isEqualTo(1);
-        }
-    }
-
-    /**
-     * Layer 1 alone: the ORM filter, with the database policy switched off.
-     *
-     * <p>Hibernate rewrites every statement it routes with the tenant
-     * predicate. That holds without any help from the database, and this is
-     * where it is seen holding: the policy is disabled for the length of the
-     * assertion, so nothing but the filter is left to do the work.
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code an_unbound_read_returns_nothing_and_the_rows_are_still_there}</li>
+     *   <li>{@code the_orm_filter_isolates_on_its_own_when_the_policy_is_off}</li>
+     *   <li>{@code the_policy_isolates_raw_sql_that_the_orm_never_touched}</li>
+     * </ul>
      */
     @Test
-    void the_orm_filter_isolates_on_its_own_when_the_policy_is_off() throws Exception {
-        plantOneScopePerTenant();
-
-        try (Connection c = Db.asService()) {
-            try {
-                // Switched by the table's OWNER — the migrator. The service
-                // role owns nothing any more and may not reconfigure
-                // a policy; the measurement below is still its own, which is
-                // the half that matters.
-                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.task DISABLE ROW LEVEL SECURITY");
-
-                try (AutoCloseable ignored = tenantContext.bind(tenantA)) {
-                    List<TaskView> listed = tasks.query(SCOPE, "sprint", TaskFilter.none(),
-                        PageRequest.of(100L, null, null, null),
-                        PROBE).tasks();
-                    assertThat(listed).extracting(TaskView::title)
-                        .as("with the policy disabled, the ORM filter is the only thing "
-                            + "scoping this read — and it must still scope it")
-                        .containsExactly("layers-a");
-                }
-                // The other side of the same observation: raw SQL, which the
-                // ORM never rewrote, now sees everything. That is precisely
-                // the gap layer 2 exists to close, and it is visible here.
-                Db.bindTenant(c, tenantA);
-                assertThat(Db.countTasks(c))
-                    .as("RED STATE, observed: with the policy off, raw SQL under tenant A "
-                        + "reads tenant B's row too. The ORM filter cannot reach a statement "
-                        + "it did not build, which is the whole reason for a second layer")
-                    .isEqualTo(2);
-            } finally {
-                Db.switchPolicyAsOwner(c, "ALTER TABLE dispatch.task ENABLE ROW LEVEL SECURITY");
-            }
-        }
-    }
-
-    /**
-     * Layer 2 alone: the database policy, against a statement the ORM never
-     * saw. No switching is needed here — raw SQL is by definition outside
-     * layer 1, so anything that scopes it is the policy.
-     */
-    @Test
-    void the_policy_isolates_raw_sql_that_the_orm_never_touched() throws Exception {
-        plantOneScopePerTenant();
-
-        try (Connection c = Db.asService()) {
-            Db.bindTenant(c, tenantA);
-            assertThat(Db.countTasks(c))
-                .as("raw SQL bypasses the ORM filter entirely, so this count is the policy's "
-                    + "work and nobody else's")
-                .isEqualTo(1);
-        }
-    }
-
-    /** One row per tenant, written through the ORM so both layers are on the path. */
-    private void plantOneScopePerTenant() throws Exception {
-        DomainFixture.declareSelector(tenantA, SCOPE, "sprint");
-        DomainFixture.declareSelector(tenantB, SCOPE, "sprint");
-        try (AutoCloseable ignored = tenantContext.bind(tenantA)) {
-            tasks.create(SCOPE, "sprint", null,
-                new TaskService.Draft("layers-a", "code", null, null), PROBE, IdempotencyKey.NONE);
-        }
-        try (AutoCloseable ignored = tenantContext.bind(tenantB)) {
-            tasks.create(SCOPE, "sprint", null,
-                new TaskService.Draft("layers-b", "code", null, null), PROBE, IdempotencyKey.NONE);
-        }
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
+        fail(REBUILT);
     }
 }

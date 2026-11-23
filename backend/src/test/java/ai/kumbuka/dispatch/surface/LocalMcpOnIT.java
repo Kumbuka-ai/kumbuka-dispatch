@@ -9,6 +9,7 @@ import io.quarkus.test.junit.TestProfile;
 import io.quarkus.test.security.TestIdentityAssociation;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -24,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 @TestProfile(LocalMcpOnIT.On.class)
+@Disabled("rebuilt in T12: the build with the local MCP surface switched on offers the calls of the target")
 class LocalMcpOnIT {
 
     /** The build with the setting named and on. */

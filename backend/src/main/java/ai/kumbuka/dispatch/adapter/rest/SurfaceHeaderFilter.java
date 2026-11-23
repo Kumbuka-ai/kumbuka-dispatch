@@ -42,6 +42,17 @@ public class SurfaceHeaderFilter implements ContainerRequestFilter {
     /** The base path of the REST surface (C3.1), as a request's path begins. */
     private static final String REST_BASE = "api";
 
+    /**
+     * Names the surface the caller came through, where that is not this one.
+     * A router that publishes the calls as assistant tools and reaches this
+     * service over REST says so here. It decides nothing else: who calls, and
+     * what that caller may do, come from the verified identity as always.
+     */
+    static final String SURFACE = "Kumbuka-Surface";
+
+    /** The one value {@link #SURFACE} takes: the assistant surface. */
+    static final String ASSISTANT = "assistant";
+
     @Inject SecurityIdentity identity;
 
     @Override
@@ -49,8 +60,8 @@ public class SurfaceHeaderFilter implements ContainerRequestFilter {
         if (!readsTheHeader(request.getUriInfo().getPath()) || identity.isAnonymous()) {
             return;
         }
-        List<String> named = request.getHeaders().get(TaskResource.SURFACE);
-        if (named != null && !named.isEmpty() && !List.of(TaskResource.ASSISTANT).equals(named)) {
+        List<String> named = request.getHeaders().get(SURFACE);
+        if (named != null && !named.isEmpty() && !List.of(ASSISTANT).equals(named)) {
             throw new SurfaceException(Refusal.headerInvalid());
         }
     }

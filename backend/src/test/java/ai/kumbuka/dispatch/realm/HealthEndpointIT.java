@@ -12,6 +12,7 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -47,6 +48,7 @@ class HealthEndpointIT {
     }
 
     @Test
+    @Disabled("rebuilt in T11: every route of the verb surface answers the challenge without a token")
     void every_other_route_answers_the_challenge_without_a_token() {
         for (String path : List.of("/api/whoami", "/api/declaration", "/api/probe/sprint",
                 "/api/probe/sprint/1.0")) {

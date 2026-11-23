@@ -64,10 +64,9 @@ class ForeignKeyTenantGuardIT {
                     + "tenant, because the key is checked with row-level security bypassed")
                 .isEmpty();
             assertThat(foreignKeyCount(c))
-                .as("the schema declares eight keys, three on the exchange store, four on "
-                    + "the task store and one from the tags of a task (V24); finding none would "
-                    + "mean the check reads the wrong schema and passes because of it")
-                .isEqualTo(8);
+                .as("the schema declares the eighty keys of the store line, V1 to V5; finding "
+                    + "none would mean the check reads the wrong schema and passes because of it")
+                .isEqualTo(80);
         }
     }
 

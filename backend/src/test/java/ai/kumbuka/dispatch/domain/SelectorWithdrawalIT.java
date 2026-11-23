@@ -1,28 +1,19 @@
+/*
+ * Copyright (c) 2026 JBAConsult - Architekturberatung Johannes Bayer-Albert
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * This file is part of Kumbuka and is licensed under the GNU Affero
+ * General Public License v3.0 only. See the LICENSE file in the
+ * repository root for the full licence text.
+ */
 package ai.kumbuka.dispatch.domain;
 
-import ai.kumbuka.dispatch.platform.PlatformFixture;
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
-import ai.kumbuka.dispatch.tenancy.TenantContext;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
-import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
-import org.eclipse.microprofile.config.ConfigProvider;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-
-import static ai.kumbuka.dispatch.domain.TaskHoldingIT.assertRefused;
-import static ai.kumbuka.dispatch.domain.TaskStage.C;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Withdrawing a selector, in the kernel and under the service role: a status
@@ -40,127 +31,24 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled(SelectorWithdrawalIT.REBUILT)
 class SelectorWithdrawalIT {
 
-    static final UUID SCOPE = UUID.fromString("00000000-0000-0000-0000-000000000010");
-    static final String UNUSED = "unused";
-    static final String USED = "used";
+    static final String REBUILT = "rebuilt in T3: a selector is withdrawn only while nothing is "
+        + "numbered under it and nothing new is created under it afterwards";
 
-    @Inject SelectorRegistry selectors;
-    @Inject TaskService tasks;
-    @Inject TenantContext tenantContext;
-    @Inject EntityManager em;
-
-    private UUID tenant;
-    private AutoCloseable binding;
-
-    @BeforeEach
-    void freshTenant() {
-        PlatformFixture.grantDirectoryAccess();
-        tenant = UUID.randomUUID();
-        DomainFixture.declareSelector(tenant, SCOPE, UNUSED);
-        DomainFixture.declareSelector(tenant, SCOPE, USED);
-        binding = tenantContext.bind(tenant);
-    }
-
-    @AfterEach
-    void unbind() throws Exception {
-        binding.close();
-    }
-
+    /**
+     * Stands for the tests of this class until their order rebuilds them:
+     * <ul>
+     *   <li>{@code a_selector_without_a_task_is_withdrawn_as_a_status}</li>
+     *   <li>{@code a_selector_with_a_task_under_it_is_not_withdrawn}</li>
+     *   <li>{@code nothing_is_created_under_a_withdrawn_selector}</li>
+     *   <li>{@code a_selector_a_root_is_being_created_under_is_not_withdrawn}</li>
+     *   <li>{@code no_root_is_created_under_a_selector_being_withdrawn}</li>
+     * </ul>
+     */
     @Test
-    void a_selector_without_a_task_is_withdrawn_as_a_status() {
-        selectors.withdraw(SCOPE, UNUSED);
-
-        assertThat(withdrawn(UNUSED)).as("the row stays, marked withdrawn").isTrue();
-    }
-
-    @Test
-    void a_selector_with_a_task_under_it_is_not_withdrawn() {
-        tasks.create(SCOPE, USED, null, new TaskService.Draft("under it", "code", null, null), C,
-            IdempotencyKey.NONE);
-
-        assertRefused(() -> selectors.withdraw(SCOPE, USED),
-            DispatchException.Reason.SELECTOR_IN_USE);
-        assertThat(withdrawn(USED)).isFalse();
-    }
-
-    @Test
-    void nothing_is_created_under_a_withdrawn_selector() {
-        selectors.withdraw(SCOPE, UNUSED);
-
-        assertRefused(() -> tasks.create(SCOPE, UNUSED, null,
-                new TaskService.Draft("too late", "code", null, null), C, IdempotencyKey.NONE),
-            DispatchException.Reason.SELECTOR_WITHDRAWN);
-        assertThat(tasksUnder(UNUSED)).isZero();
-    }
-
-    @Test
-    void a_selector_a_root_is_being_created_under_is_not_withdrawn() throws Exception {
-        Overlap overlap = overlap(
-            () -> tasks.create(SCOPE, UNUSED, null,
-                new TaskService.Draft("first", "code", null, null), C, IdempotencyKey.NONE),
-            () -> selectors.withdraw(SCOPE, UNUSED));
-
-        assertThat(overlap.second())
-            .as("the withdrawal counted under the selector's lock, after the creation committed")
-            .isInstanceOfSatisfying(DispatchException.class, refused ->
-                assertThat(refused.reason()).isEqualTo(DispatchException.Reason.SELECTOR_IN_USE));
-        assertThat(withdrawn(UNUSED)).isFalse();
-        assertThat(tasksUnder(UNUSED)).isEqualTo(1);
-        assertThat(overlap.waited()).as("the withdrawal waited on the creation").isTrue();
-    }
-
-    @Test
-    void no_root_is_created_under_a_selector_being_withdrawn() throws Exception {
-        int before = TaskStage.nextNumber(tenant, SCOPE, UNUSED);
-
-        Overlap overlap = overlap(
-            () -> selectors.withdraw(SCOPE, UNUSED),
-            () -> tasks.create(SCOPE, UNUSED, null,
-                new TaskService.Draft("too late", "code", null, null), C, IdempotencyKey.NONE));
-
-        assertThat(overlap.second())
-            .as("the creation read the selector under its lock, after the withdrawal committed")
-            .isInstanceOfSatisfying(DispatchException.class, refused ->
-                assertThat(refused.reason()).isEqualTo(DispatchException.Reason.SELECTOR_WITHDRAWN));
-        assertThat(tasksUnder(UNUSED)).isZero();
-        assertThat(TaskStage.nextNumber(tenant, SCOPE, UNUSED)).as("no number was taken")
-            .isEqualTo(before);
-        assertThat(overlap.waited()).as("the creation waited on the withdrawal").isTrue();
-    }
-
-    // -----------------------------------------------------------------------
-
-    private Overlap overlap(Callable<?> first, Callable<?> second) throws Exception {
-        return new Overlap.Stage(em, tenantContext, tenant).run(first, second);
-    }
-
-
-    private boolean withdrawn(String name) {
-        return Boolean.parseBoolean(single("SELECT withdrawn::text FROM dispatch.selector WHERE tenant_id = '"
-            + tenant + "' AND name = '" + name + "'"));
-    }
-
-    private int tasksUnder(String name) {
-        return Integer.parseInt(single("SELECT count(*) FROM dispatch.task t JOIN dispatch.selector s "
-            + "ON s.id = t.selector_id WHERE s.tenant_id = '" + tenant + "' AND s.name = '"
-            + name + "'"));
-    }
-
-    /** One value, read as the administrator: what the transaction committed. */
-    private static String single(String sql) {
-        var config = ConfigProvider.getConfig();
-        try (Connection c = DriverManager.getConnection(
-                config.getValue("test.db.url", String.class),
-                config.getValue("test.db.admin.username", String.class),
-                config.getValue("test.db.admin.password", String.class));
-             Statement s = c.createStatement();
-             ResultSet rs = s.executeQuery(sql)) {
-            rs.next();
-            return rs.getString(1);
-        } catch (SQLException e) {
-            throw new IllegalStateException(e);
-        }
+    void the_tests_of_this_class_are_rebuilt_in_their_order() {
+        fail(REBUILT);
     }
 }

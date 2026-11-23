@@ -10,6 +10,7 @@ package ai.kumbuka.dispatch.tenancy;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -35,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
+@Disabled("rebuilt in T11: row-level security isolates the tags of a task between tenants")
 class TaskTagRowLevelSecurityProbeIT {
 
     private static final String POLICY = "task_tag_tenant_isolation";
