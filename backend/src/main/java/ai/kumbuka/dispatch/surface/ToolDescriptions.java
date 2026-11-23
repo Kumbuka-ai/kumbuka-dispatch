@@ -98,4 +98,7 @@ public interface ToolDescriptions {
 
     @Message
     String tagDetach();
+
+    @Message
+    String readDefinition();
 }

@@ -28,16 +28,17 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Every refusal of the REST surface while no call is offered: in the envelope
- * of the contract, with the status of its code (C8.2 to C8.4, C3.3).
+ * Every refusal of the REST surface outside a call: in the envelope of the
+ * contract, with the status of its code (C8.2 to C8.4, C3.3).
  *
- * <p>No refusal is raised under a call yet, so the mappers answer without a
- * call context: a domain refusal is {@code NOT_FOUND} or ours, a 403 of the
+ * <p>The mappers are handed the exception outside a request, so they answer
+ * without a call: a domain refusal is {@code NOT_FOUND} or ours, a 403 of the
  * security layer goes back bare, the framework's 404 is the envelope of
  * {@code NOT_FOUND} and its 405 is {@code VERB_NOT_CARRIED} with the route's
  * {@code Allow} and nothing accepted, and everything else is {@code
- * UNEXPECTED_FAILURE} with a reference. The statuses and codes are written
- * here from the shared code table of the contract.
+ * UNEXPECTED_FAILURE} with a reference. The refusals under the one call the
+ * service offers are observed in {@code ReadDefinitionIT}. The statuses and
+ * codes are written here from the shared code table of the contract.
  *
  * <p>Runs in the service, because the messages are the bundles' and the
  * bundles exist only in a running application; the mappers are handed the
@@ -112,7 +113,7 @@ class RefusalMapperIT {
         assertThat(refused.reason()).isEqualTo("VERB_NOT_CARRIED");
         assertThat(refused.data()).isNotNull();
         assertThat(refused.data().accepts())
-            .as("no call is carried anywhere, so the address accepts none").isEmpty();
+            .as("outside a request no address is known, so none is accepted").isEmpty();
         assertThat(notAllowed.getHeaderString(HttpHeaders.ALLOW))
             .as("the route's methods, as the framework names them").isEqualTo("GET");
 
@@ -137,7 +138,9 @@ class RefusalMapperIT {
 
     @Test
     void a_path_no_route_serves_answers_not_found_in_the_envelope_over_http() {
-        given().when().get("/api/probe-scope/sprint")
+        // An item: no call is carried there yet. The collection above it carries
+        // read_definition and answers its own refusals.
+        given().when().get("/api/probe-scope/sprint/1.0")
             .then().statusCode(404)
             .body("reason", org.hamcrest.Matchers.equalTo("NOT_FOUND"));
     }

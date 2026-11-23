@@ -333,6 +333,16 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
     }
 
     /**
+     * The caller sees the scope and does not hold the one permission the call
+     * declares (ADR-0053/C10). Carries the call alone: the call names no
+     * object whose calls could be listed.
+     */
+    public static Refusal ofPermission(VerbName call) {
+        return of(Message.ROLE_PERMISSION, Texts.refusals().rolePermission(call),
+            Data.attempted(call));
+    }
+
+    /**
      * The call is the holder's and the caller does not hold the task.
      *
      * @param reading whether the call reads the text, which an executor may
@@ -688,6 +698,7 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
             case OBJECT -> refusals.invalidObject(call, at);
             case BOOLEAN -> refusals.invalidBoolean(call, at);
             case WHOLE_NUMBER -> refusals.invalidWholeNumber(call, at);
+            case WHOLE_NUMBER_FROM_ONE -> refusals.invalidWholeNumberFromOne(call, at);
             case PARENT_ELSEWHERE -> refusals.invalidParentElsewhere(call, at);
             case PARENT_NOT_A_ROOT -> refusals.invalidParentNotARoot(call, at);
             case APPARATUS_PATTERN -> refusals.invalidApparatusPattern(call, at);

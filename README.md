@@ -26,16 +26,25 @@ addressed as `dispatch://<scope>/<selector>/<number>.<sub>`; every change of
 its control is an **act**, appended and never changed, with who made it, by
 which permission and by which path (`interface` or `console`).
 
-**The service offers no call yet.** The calls are rebuilt one family at a time
-in the changes that follow, each declared, bound and offered together. Until
-then:
+**The service offers one call, `read_definition`.** The calls are rebuilt one
+family at a time in the changes that follow, each declared, bound and offered
+together. `read_definition` reads a seeded version of the process a selector
+declares: the head of the version, its schema of control fields with the
+enumerations of its choice fields, its activities with their result
+contracts, its start contract, and the enumerations of the platform's system
+fields in the same form. Without `version` it reads the active version; a
+selector or a version the scope does not hold, and a version that is not
+seeded, are one `NOT_FOUND`. It checks the permission `dispatch.instance.read`
+and writes nothing. Versions enter the store only as seeds, never by a call.
 
-- **REST** under `/api` answers `GET /api/declaration`, the declaration, which
-  lists no call, and `GET /api/whoami`, the caller's view. No route stands
-  under `/api/{scope}`.
+- **REST** under `/api` answers `GET /api/{scope}/{selector}` with the
+  optional query `version`, which is `read_definition`; `GET /api/declaration`,
+  the declaration, which lists that one call; and `GET /api/whoami`, the
+  caller's view.
 - **MCP** at `POST /mcp`, JSON-RPC 2.0, answers `initialize` and `ping`, lists
-  no tool, and answers every `tools/call` as a call to an unknown tool. Present
-  unless the build sets `kumbuka.local-mcp.enabled=false`.
+  the one tool `dispatch_read_definition`, and answers a `tools/call` of any
+  other name as a call to an unknown tool. Present unless the build sets
+  `kumbuka.local-mcp.enabled=false`.
 
 What every request carries already:
 

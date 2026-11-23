@@ -206,3 +206,12 @@ description, section 3.3, the argument `apparatus` of the draw, goes with it, an
 `invalidApparatusUnbounded`, which only the draw raised, leaves the table of messages. The reason
 `DRAW_EMPTY`, its remedy and its message `nothingToTake` leave the tables with it, since no call
 raises the code any more; the platform's code table keeps the code whatever the service answers.
+
+## The amendment of 2026-11-23: `read_definition` (REA-0010 S5, second order)
+
+From REA-0010 S5 and its catalogue as revised on 2026-11-23: `read_definition` declares the one
+permission `instance.read` and takes a version as a whole number from 1. Two messages join the
+table, both written with this surface and the service's proposal: `rolePermission`, under
+`ROLE_INSUFFICIENT`, for a caller that sees the scope and does not hold the one permission a call
+declares (ADR-0053/C10), where no message of a part fits, since the call belongs to no part of a
+task; and `invalidWholeNumberFromOne`, under `ARGUMENT_INVALID`, for a version outside its bound.

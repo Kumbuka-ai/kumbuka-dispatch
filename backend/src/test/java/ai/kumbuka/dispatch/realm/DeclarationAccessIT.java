@@ -13,7 +13,7 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import io.restassured.response.Response;
-import org.junit.jupiter.api.Disabled;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -83,7 +83,6 @@ class DeclarationAccessIT {
     }
 
     @Test
-    @Disabled("rebuilt in T2: the served declaration with its calls has the contract shape")
     void the_served_declaration_has_the_contract_shape() {
         Map<String, Object> declaration = given()
             .header("Authorization", "Bearer " + memberToken())
@@ -95,6 +94,11 @@ class DeclarationAccessIT {
             .as("the declaration, as served, against the schema of C5.3 and C5.4 held in the "
                 + "test tree")
             .isEmpty();
+        assertThat(declaration.get("calls"))
+            .as("with the one call the service offers, read_definition")
+            .asInstanceOf(InstanceOfAssertFactories.list(Map.class))
+            .extracting(call -> call.get("identity"))
+            .containsExactly("dispatch_read_definition");
     }
 
     private static String memberToken() {

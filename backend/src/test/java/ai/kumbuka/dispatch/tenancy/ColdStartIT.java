@@ -9,7 +9,6 @@ package ai.kumbuka.dispatch.tenancy;
 
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -49,7 +48,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ColdStartIT {
 
     @Test
-    @Disabled("rebuilt in T2: the cold start applies every versioned migration on disk and creates the schema")
     void flyway_creates_the_schema_and_its_table() throws SQLException, IOException {
         try (Connection c = Db.asAdmin()) {
             assertThat(scalar(c, "SELECT count(*) FROM information_schema.schemata "
@@ -58,9 +56,11 @@ class ColdStartIT {
                 .isEqualTo("1");
 
             assertThat(scalar(c, "SELECT count(*) FROM information_schema.tables "
-                + "WHERE table_schema = 'dispatch' AND table_name = 'exchange'"))
-                .as("V4 must have created the exchange table")
-                .isEqualTo("1");
+                + "WHERE table_schema = 'dispatch' AND table_name IN "
+                + "('definition_version', 'instance', 'act', 'elicitation_question')"))
+                .as("V1 of the store line must have created the definition, instance and act "
+                    + "tables, and V5 the elicitation complex")
+                .isEqualTo("4");
 
             // The expectation is counted from the migration directory rather
             // than written here as a number. A literal would have to be
@@ -176,9 +176,9 @@ class ColdStartIT {
      * edit that gets forgotten produces a failure describing the wrong thing.
      */
     private static List<String> versionedMigrationFiles() throws IOException {
-        Path dir = Files.isDirectory(Paths.get("src/main/resources/db/migration"))
-            ? Paths.get("src/main/resources/db/migration")
-            : Paths.get("backend/src/main/resources/db/migration");
+        Path dir = Files.isDirectory(Paths.get("src/main/resources/db/store"))
+            ? Paths.get("src/main/resources/db/store")
+            : Paths.get("backend/src/main/resources/db/store");
         Pattern versioned = Pattern.compile("V(\\d+)(?:_(\\d+))?__.*\\.sql");
         try (Stream<Path> files = Files.list(dir)) {
             return files.map(f -> versioned.matcher(f.getFileName().toString()))

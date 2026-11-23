@@ -31,12 +31,12 @@ import java.util.Objects;
  * /api/declaration} and nowhere else (C5.1), which the router reads to build
  * its surface (ADR-0039); it serves {@link #asMap()}. Per call it carries what
  * {@link ProcessVerb} declares of it: the identity {@code dispatch_<verb>},
- * the name on REST, the description, and the arguments with their names,
- * types, requiredness, defaults and closed sets of values with a description
- * each. No call is declared while the service is rebuilt on the store line,
- * so {@code calls} is empty until the first call is bound. Per reason it
- * carries the templates of its messages and its remedy. The whole carries a
- * version.
+ * the name on REST, the effect class by the router's name, the description,
+ * the arguments with their names, types, requiredness, defaults and closed
+ * sets of values with a description each, the shape of the answer with its
+ * members and what its {@code fields} carry, and the reasons a refusal may
+ * name. Per reason it carries the templates of its messages and its remedy.
+ * The whole carries a version.
  */
 public final class SurfaceDeclaration {
 
@@ -63,7 +63,7 @@ public final class SurfaceDeclaration {
     private SurfaceDeclaration() {
     }
 
-    /** The declared calls, in the order of {@link ProcessVerb}; none while none is bound. */
+    /** The declared calls, in the order of {@link ProcessVerb}. */
     public static List<ProcessVerb> calls() {
         return List.of(ProcessVerb.values());
     }
@@ -122,8 +122,15 @@ public final class SurfaceDeclaration {
             call.put("identity", verb.call());
             call.put("call", verb.call());
             call.put("rest_name", verb.verb());
+            call.put("effect_class", verb.effectClass().name());
             call.put(DESCRIPTION, verb.description());
             call.put("arguments", argumentsAsMaps(verb));
+            Map<String, Object> answer = new LinkedHashMap<>();
+            answer.put("shape", verb.answerShape().name());
+            answer.put("members", verb.answerShape().members());
+            answer.put("fields", verb.answerShape().fields());
+            call.put("answer", answer);
+            call.put("refusals", verb.refusals().stream().map(Enum::name).toList());
             calls.add(call);
         }
         return List.copyOf(calls);

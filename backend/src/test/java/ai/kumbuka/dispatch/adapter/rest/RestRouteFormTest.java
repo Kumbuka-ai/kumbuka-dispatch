@@ -8,17 +8,23 @@
 package ai.kumbuka.dispatch.adapter.rest;
 
 import ai.kumbuka.dispatch.surface.AddressParser;
+import ai.kumbuka.dispatch.surface.EffectClass;
+import ai.kumbuka.dispatch.surface.ProcessVerb;
+import ai.kumbuka.dispatch.surface.RefusalCode;
+import ai.kumbuka.dispatch.surface.Surface;
+import ai.kumbuka.dispatch.surface.VerbName;
 import jakarta.ws.rs.Path;
-import org.junit.jupiter.api.Disabled;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Every REST route of this service has the HTTP form its declared effect
@@ -30,8 +36,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * collection, PATCH on an item, DELETE on an item, a custom method in colon
  * notation on an item by POST or by GET, and on a collection by POST.
  *
- * <p>RED STATE, observed 2026-10-15: {@code dispatch_relate} declared as
- * {@code GRAPH_ADD_OR_REMOVE} for the run turns this red on that call alone.
+ * <p>The red state of the form is observed on every build: the same check,
+ * handed the one call as declared under another class, reports it.
  *
  * <p>Two clauses of the service contract stand beside it. C3.2: the REST
  * surface has two literal paths, {@code /api/declaration} and {@code
@@ -44,26 +50,66 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class RestRouteFormTest {
 
-    private static final String REBUILT =
-        "rebuilt in T2: every route of a call has the form of its effect class and accepts its verbs";
+    @Test
+    void every_route_has_the_form_of_its_effect_class() {
+        assertThat(formOffences(List.of(CustomMethod.values())))
+            .as("every route has the HTTP form the router builds for its call's effect class")
+            .isEmpty();
+        assertThat(Arrays.stream(CustomMethod.values()).map(CustomMethod::verb).distinct().count())
+            .as("every call has its route").isEqualTo(ProcessVerb.values().length);
+    }
+
+    @Test
+    void the_check_reports_a_route_whose_form_is_not_that_of_its_effect_class() {
+        assertThat(formOffences(List.of(CustomMethod.values()), EffectClass.ITEM_READ))
+            .as("RED STATE, observed: dispatch_read_definition declared as ITEM_READ, for the "
+                + "check, turns it red on that call: its route is a GET on a collection, and "
+                + "ITEM_READ is a GET on an item")
+            .containsExactly("dispatch_read_definition is declared ITEM_READ and routed "
+                + "GET COLLECTION, where the class takes GET ITEM");
+    }
 
     /**
-     * Stands for the checks of the routes of the calls until their order rebuilds them:
-     * <ul>
-     *   <li>{@code every_route_has_the_form_of_its_effect_class}</li>
-     *   <li>{@code a_verb_not_carried_at_an_address_answers_405_listing_what_the_address_carries}</li>
-     *   <li>{@code the_check_reports_accepts_that_are_not_what_the_address_carries}</li>
-     * </ul>
+     * The routes whose form is not the one their call's effect class names.
+     * The form of each class is written here from the router's definitions,
+     * not read from either side.
      */
-    @Test
-    @Disabled(REBUILT)
-    void the_routes_of_the_calls_are_rebuilt_in_their_order() {
-        fail(REBUILT);
+    static List<String> formOffences(List<CustomMethod> routes) {
+        return formOffences(routes, null);
+    }
+
+    /**
+     * As above, with every call taken as declared under {@code planted} where
+     * one is given, so that the check can be seen reporting a mismatch.
+     */
+    static List<String> formOffences(List<CustomMethod> routes, @Nullable EffectClass planted) {
+        List<String> offences = new ArrayList<>();
+        for (CustomMethod route : routes) {
+            ProcessVerb verb = route.verb();
+            EffectClass declared = planted == null ? verb.effectClass() : planted;
+            String form = route.method() + " " + route.depth() + (route.custom() ? " :call" : "");
+            String expected = switch (declared) {
+                case ITEM_READ -> "GET ITEM";
+                case COLLECTION_READ -> "GET COLLECTION";
+                case CREATE -> "POST COLLECTION";
+                case FIELD_WRITE -> "PATCH ITEM";
+                case ITEM_DELETE -> "DELETE ITEM";
+                case ITEM_TRANSITION -> "POST ITEM :call";
+                case ITEM_READ_CALL -> "GET ITEM :call";
+                case COLLECTION_COMPOUND -> "POST COLLECTION :call";
+                default -> "a class this service declares for no call";
+            };
+            if (!form.equals(expected)) {
+                offences.add(verb.call() + " is declared " + declared + " and routed " + form
+                    + ", where the class takes " + expected);
+            }
+        }
+        return offences;
     }
 
     /** The resources of the REST surface, by the class a test can load. */
-    private static final List<Class<?>> RESOURCES = List.of(DeclarationResource.class,
-        WhoamiResource.class);
+    private static final List<Class<?>> RESOURCES = List.of(ProcessResource.class,
+        DeclarationResource.class, WhoamiResource.class);
 
     /** C3.2: the two literal paths, as the contract names them. */
     private static final Set<String> LITERAL = Set.of("/api/declaration", "/api/whoami");
@@ -113,6 +159,56 @@ class RestRouteFormTest {
         return literals.stream().map(path -> path.substring("/api/".length()))
             .filter(name -> AddressParser.scopeOf(name).isPresent())
             .sorted().toList();
+    }
+
+    @Test
+    void a_verb_not_carried_at_an_address_answers_405_listing_what_the_address_carries() {
+        assertThat(RefusalCode.VERB_NOT_CARRIED.status()).as("C3.3").isEqualTo(405);
+        assertThat(RefusalCode.VERB_NOT_CARRIED.messages())
+            .as("the unknown verb and the method no route takes are refused under the one code")
+            .extracting(RefusalCode.Message::key)
+            .contains("callUnknown", "methodNotCarried");
+        for (CustomMethod.Depth depth : CustomMethod.Depth.values()) {
+            assertThat(names(CustomMethod.accepts(depth, Surface.REST)))
+                .as("data.accepts at %s lists the verbs carried there", depth)
+                .isEqualTo(carriedAt(depth));
+        }
+        assertThat(carriedAt(CustomMethod.Depth.COLLECTION))
+            .as("a collection carries read_definition, the call the declaration names")
+            .containsExactly("read_definition");
+        assertThat(CustomMethod.allow(CustomMethod.Depth.COLLECTION))
+            .as("and is reached there with GET").contains("GET");
+        assertThat(CustomMethod.allow(CustomMethod.Depth.ITEM))
+            .as("an item carries no call yet, so it names no method").isEmpty();
+    }
+
+    @Test
+    void the_check_reports_accepts_that_are_not_what_the_address_carries() {
+        Set<String> planted = new TreeSet<>(carriedAt(CustomMethod.Depth.COLLECTION));
+        planted.add("send");
+        assertThat(planted)
+            .as("RED STATE, observed: a list of accepts that names a verb the address does not "
+                + "carry is not the set the address carries")
+            .isNotEqualTo(carriedAt(CustomMethod.Depth.COLLECTION));
+    }
+
+    /** The verbs carried at one depth, read from the routes, by their REST names. */
+    private static Set<String> carriedAt(CustomMethod.Depth depth) {
+        Set<String> carried = new TreeSet<>();
+        for (CustomMethod route : CustomMethod.values()) {
+            if (route.depth() == depth) {
+                carried.add(route.call());
+            }
+        }
+        return carried;
+    }
+
+    private static Set<String> names(List<VerbName> verbs) {
+        Set<String> names = new TreeSet<>();
+        verbs.forEach(verb -> names.add(verb.toString()));
+        assertThat(names).allSatisfy(name ->
+            assertThat(ProcessVerb.byName(Surface.REST, name)).isPresent());
+        return names;
     }
 
     static List<String> pathOffences(List<String> paths) {
