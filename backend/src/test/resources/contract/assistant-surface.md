@@ -429,6 +429,7 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `roleAuthor` | `ROLE_INSUFFICIENT` | `{call} is the call of the identity that wrote the text it supplements.` |
 | `roleOtherThanTheDeliverer` | `ROLE_INSUFFICIENT` | `{call} is the commissioner's call, made by an identity other than the one that delivered the answer.` |
 | `roleCapacity` | `ROLE_INSUFFICIENT` | `{call} needs a caller holding the commissioning or the executing capacity, and exactly one of them.` |
+| `rolePermission` | `ROLE_INSUFFICIENT` | `{call} needs the permission the declaration names for it, and you do not hold it in this scope.` |
 | `holderOther` | `CLAIM_HELD` | `{call} is the holder's call, and another executor holds this task.` |
 | `holderNobody` | `CLAIM_ABSENT` | `{call} is the holder's call, and nobody holds this task.` |
 | `holderLapsed` | `CLAIM_ABSENT` | `{call} is the holder's call, and your lease on this task ended.` |
@@ -465,6 +466,7 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `invalidObject` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is an object.` |
 | `invalidBoolean` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is true or false.` |
 | `invalidWholeNumber` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is a whole number.` |
+| `invalidWholeNumberFromOne` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it is a whole number from 1.` |
 | `invalidParentElsewhere` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it names another scope or bracket kind than the call does, and a child is created in its root's bracket.` |
 | `invalidParentNotARoot` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a parent is a bracket root, the <number>.0 of its bracket.` |
 | `invalidApparatusPattern` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a pattern is one or more of A-Z, a-z, 0-9, '+', '-' and '*', and '*' is the only wildcard; the underscore and the percent sign carry a meaning of their own in the comparison and are excluded.` |

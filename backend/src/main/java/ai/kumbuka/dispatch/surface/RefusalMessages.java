@@ -66,6 +66,9 @@ public interface RefusalMessages {
     String roleCapacity(VerbName call);
 
     @Message
+    String rolePermission(VerbName call);
+
+    @Message
     String holderOther(VerbName call);
 
     @Message
@@ -163,6 +166,9 @@ public interface RefusalMessages {
 
     @Message
     String invalidWholeNumber(VerbName call, ArgumentPath path);
+
+    @Message
+    String invalidWholeNumberFromOne(VerbName call, ArgumentPath path);
 
     @Message
     String invalidParentElsewhere(VerbName call, ArgumentPath path);

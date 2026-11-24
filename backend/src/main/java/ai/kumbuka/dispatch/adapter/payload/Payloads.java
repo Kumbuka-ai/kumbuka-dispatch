@@ -7,18 +7,19 @@
  */
 package ai.kumbuka.dispatch.adapter.payload;
 
+import ai.kumbuka.dispatch.domain.DefinitionView;
 import ai.kumbuka.dispatch.surface.NextList;
 import ai.kumbuka.dispatch.surface.Refusal;
 
 import java.util.List;
 
 /**
- * Every refusal of the verb surface, as the record both surfaces put on the
- * wire (C7.1).
+ * Every answer and every refusal of the verb surface, as the record both
+ * surfaces put on the wire (C7.1).
  *
  * <p>The answers of the calls are built here as each call is bound to the
- * kernel of the store line; no call is bound yet. No answer names the
- * identity of an actor.
+ * kernel of the store line: {@code read_definition} is the first. No answer
+ * names the identity of an actor.
  */
 public final class Payloads {
 
@@ -45,5 +46,33 @@ public final class Payloads {
     /** The calls open to a caller, each with the sentence that says what it does. */
     public static List<NextStepPayload> next(List<NextList.Step> steps) {
         return steps.stream().map(step -> new NextStepPayload(step.call(), step.does())).toList();
+    }
+
+    /** A seeded definition version, as {@code read_definition} answers it. */
+    public static DefinitionPayload definition(DefinitionView view) {
+        return new DefinitionPayload(new DefinitionFieldsPayload(view.selector(), view.version(),
+            view.state(), view.verdictRequired(), view.outcomeRequired(), view.outcomeLabels(),
+            view.schema().stream()
+                .map(field -> new SchemaFieldPayload(field.name(), field.type(),
+                    field.enumeration()))
+                .toList(),
+            enumerations(view.enumerations()),
+            view.activities().stream()
+                .map(activity -> new ActivityPayload(activity.name(), activity.verdictRequired(),
+                    activity.outcomeRequired(), activity.criteriaRequired(),
+                    activity.outcomeLabels(), contract(activity.resultContract()),
+                    activity.inputKind(), activity.mayAsk()))
+                .toList(),
+            contract(view.startContract()),
+            enumerations(view.systemEnumerations())));
+    }
+
+    private static List<EnumerationPayload> enumerations(List<DefinitionView.NamedValues> named) {
+        return named.stream().map(e -> new EnumerationPayload(e.name(), e.values())).toList();
+    }
+
+    private static List<ContractFieldPayload> contract(List<DefinitionView.ContractEntry> rows) {
+        return rows.stream().map(row -> new ContractFieldPayload(row.field(), row.required()))
+            .toList();
     }
 }

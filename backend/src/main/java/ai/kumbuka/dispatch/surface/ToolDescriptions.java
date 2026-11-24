@@ -14,88 +14,13 @@ import io.quarkus.qute.i18n.MessageBundle;
  * The description of every call on the assistant surface, at most {@link
  * SurfaceDeclaration#DESCRIPTION_BUDGET} characters each, worded as the act
  * (DEC-0043 R3, R21).
+ *
+ * <p>One per declared call, and none for a call the service does not offer: a
+ * call's description comes back with the change that declares it.
  */
 @MessageBundle("tool")
 public interface ToolDescriptions {
 
     @Message
-    String send();
-
-    @Message
-    String recall();
-
-    @Message
-    String claim();
-
-    @Message
-    String release();
-
-    @Message
-    String defer();
-
-    @Message
-    String renew();
-
-    @Message
-    String ask();
-
-    @Message
-    String answer();
-
-    @Message
-    String hold();
-
-    @Message
-    String resume();
-
-    @Message
-    String deliver();
-
-    @Message
-    String rework();
-
-    @Message
-    String accept();
-
-    @Message
-    String reject();
-
-    @Message
-    String fail();
-
-    @Message
-    String withdraw();
-
-    @Message
-    String create();
-
-    @Message
-    String update();
-
-    @Message
-    String delete();
-
-    @Message
-    String read();
-
-    @Message
-    String readText();
-
-    @Message
-    String query();
-
-    @Message
-    String annotate();
-
-    @Message
-    String relate();
-
-    @Message
-    String unrelate();
-
-    @Message
-    String tagAttach();
-
-    @Message
-    String tagDetach();
+    String readDefinition();
 }

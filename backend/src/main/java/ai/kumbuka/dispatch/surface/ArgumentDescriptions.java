@@ -155,4 +155,7 @@ public interface ArgumentDescriptions {
 
     @Message
     String tagDetachTag();
+
+    @Message
+    String readDefinitionVersion();
 }
