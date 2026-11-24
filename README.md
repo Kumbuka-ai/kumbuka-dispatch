@@ -26,24 +26,46 @@ addressed as `dispatch://<scope>/<selector>/<number>.<sub>`; every change of
 its control is an **act**, appended and never changed, with who made it, by
 which permission and by which path (`interface` or `console`).
 
-**The service offers one call, `read_definition`.** The calls are rebuilt one
-family at a time in the changes that follow, each declared, bound and offered
-together. `read_definition` reads a seeded version of the process a selector
-declares: the head of the version, its schema of control fields with the
-enumerations of its choice fields, its activities with their result
-contracts, its start contract, and the enumerations of the platform's system
-fields in the same form. Without `version` it reads the active version; a
-selector or a version the scope does not hold, and a version that is not
-seeded, are one `NOT_FOUND`. It checks the permission `dispatch.instance.read`
-and writes nothing. Versions enter the store only as seeds, never by a call.
+**The service offers six calls: `read_definition` and the five acts on an
+instance.** The calls are rebuilt one family at a time in the changes that
+follow, each declared, bound and offered together. `read_definition` reads a
+seeded version of the process a selector declares: the head of the version,
+its schema of control fields with the enumerations of its choice fields, its
+activities with their result contracts, its start contract, and the
+enumerations of the platform's system fields in the same form. Without
+`version` it reads the active version; a selector or a version the scope does
+not hold, and a version that is not seeded, are one `NOT_FOUND`. It checks the
+permission `dispatch.instance.read` and writes nothing. Versions enter the
+store only as seeds, never by a call.
+
+The acts on an instance, each checking one permission:
+
+- `start` (`dispatch.instance.start`) starts an instance of a selector, bound
+  to its active seeded version, numbered from the selector's counter, with its
+  title, an input text, a trigger reference, references to worklist items and
+  other objects, and the field values of the start contract, each checked
+  against the contract and the schema; it answers the instance
+  `dispatch://<scope>/<selector>/<number>`.
+- `conclude` (`dispatch.instance.conclude`) and `withdraw`
+  (`dispatch.instance.withdraw`) close a running instance with its return: a
+  text, and the verdict and outcome label the version requires, a label with
+  its translation basis. Both take the instance's conflict token, the time of
+  its last act. With unfinished tasks the first call is refused with a
+  confirmation computed from them; the call with it withdraws them and closes
+  the instance in one transaction. `withdraw` takes the address of an instance.
+- `reference_attach` and `reference_detach` (`dispatch.instance.refer`) set
+  and end a reference of a running instance, of the kind `item` or
+  `reference`; an ended reference stays with the act that ended it.
 
 - **REST** under `/api` answers `GET /api/{scope}/{selector}` with the
-  optional query `version`, which is `read_definition`; `GET /api/declaration`,
-  the declaration, which lists that one call; and `GET /api/whoami`, the
-  caller's view.
+  optional query `version`, which is `read_definition`; `POST
+  /api/{scope}/{selector}:start`; `POST
+  /api/{scope}/{selector}/{number}:<call>` for the four calls on an instance,
+  the conflict token in `If-Match`; `GET /api/declaration`, the declaration,
+  which lists the six calls; and `GET /api/whoami`, the caller's view.
 - **MCP** at `POST /mcp`, JSON-RPC 2.0, answers `initialize` and `ping`, lists
-  the one tool `dispatch_read_definition`, and answers a `tools/call` of any
-  other name as a call to an unknown tool. Present unless the build sets
+  the six tools `dispatch_<call>`, and answers a `tools/call` of any other name
+  as a call to an unknown tool. Present unless the build sets
   `kumbuka.local-mcp.enabled=false`.
 
 What every request carries already:
@@ -57,9 +79,11 @@ What every request carries already:
 
 The first part of the new kernel is the writer of acts: it appends an act to
 an instance and gives it the next number of the instance's sequence, under a
-lock on the instance's row, so two writers never take the same number. It
-records the permission and the path it is handed; the store refuses an
-authentication level on any path but `console`.
+lock on the instance's row, so two writers never take the same number, and a
+time that rises strictly within the instance, one microsecond past its last
+act where the clock has not moved on. It records the permission and the path
+it is handed; the store refuses an authentication level on any path but
+`console`.
 
 Permissions are named `dispatch.<object>.<act>`. Until the platform hands them
 to the identity, the service reads them off the two realm roles of the token,

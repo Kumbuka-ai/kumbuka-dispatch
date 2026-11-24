@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
+import ai.kumbuka.dispatch.domain.InstanceAddress;
 
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -59,6 +60,9 @@ public final class AddressParser {
     private static final Pattern SELECTOR = Pattern.compile("[a-z0-9]([a-z0-9-]*[a-z0-9])?");
 
     private static final Pattern ID = Pattern.compile("(0|[1-9]\\d{0,8})\\.(0|[1-9]\\d{0,8})");
+
+    /** The number of an instance within its selector, from 1. */
+    private static final Pattern NUMBER = Pattern.compile("[1-9]\\d{0,17}");
 
     /** The argument a complete address travels in, as every call that names one declares it. */
     private static final Argument ADDRESS =
@@ -120,6 +124,37 @@ public final class AddressParser {
             return Optional.empty();
         }
         return Optional.of(new Parts(parts[0], parts[1], parts[2]));
+    }
+
+    /**
+     * The instance a scope, a selector and a number name, where each is in
+     * the grammar; empty otherwise.
+     */
+    public static Optional<InstanceAddress> instanceOf(String rawScope, String rawSelector,
+                                                       String rawNumber) {
+        if (scopeOf(rawScope).isEmpty() || selectorOf(rawSelector).isEmpty()
+                || !present(rawNumber) || !NUMBER.matcher(rawNumber).matches()) {
+            return Optional.empty();
+        }
+        return Optional.of(new InstanceAddress(rawScope, rawSelector, Long.parseLong(rawNumber)));
+    }
+
+    /**
+     * The instance a complete address {@code dispatch://<scope>/<selector>/<number>}
+     * names, where every part is in the grammar; empty otherwise. A trailing
+     * slash changes nothing about what is addressed and is tolerated.
+     */
+    public static Optional<InstanceAddress> instanceOf(String raw) {
+        String prefix = SCHEME + "://";
+        if (!present(raw) || !raw.startsWith(prefix)) {
+            return Optional.empty();
+        }
+        String rest = raw.substring(prefix.length());
+        if (rest.endsWith("/")) {
+            rest = rest.substring(0, rest.length() - 1);
+        }
+        String[] parts = rest.split("/", -1);
+        return parts.length == 3 ? instanceOf(parts[0], parts[1], parts[2]) : Optional.empty();
     }
 
     // ======================================================================

@@ -7,17 +7,36 @@
  */
 package ai.kumbuka.dispatch.surface;
 
+import ai.kumbuka.dispatch.domain.InstanceCall;
+
+import java.util.List;
+
 /**
  * The calls open to a caller, with one sentence each (TAR-0004 section 7).
  *
  * <p>A step is what {@code next} carries in an answer and in a refusal: the
  * call by its name on the caller's surface, and what it does. Which calls are
- * open on an object is the kernel's to decide, and is built where the kernel
- * that decides it is bound; this class holds the shape of one step.
+ * open on an object is the kernel's to decide; this class names them in the
+ * vocabulary of the caller's surface.
  */
 public final class NextList {
 
     private NextList() {
+    }
+
+    /** The calls the kernel names as open on an instance, as one surface names them. */
+    public static List<Step> of(List<InstanceCall> open, Surface surface) {
+        NextStepTexts texts = Texts.next();
+        return open.stream().map(call -> switch (call) {
+            case CONCLUDE -> new Step(VerbName.of(ProcessVerb.CONCLUDE, surface),
+                texts.conclude());
+            case WITHDRAW -> new Step(VerbName.of(ProcessVerb.WITHDRAW, surface),
+                texts.withdrawInstance());
+            case REFERENCE_ATTACH -> new Step(VerbName.of(ProcessVerb.REFERENCE_ATTACH, surface),
+                texts.referenceAttach());
+            case REFERENCE_DETACH -> new Step(VerbName.of(ProcessVerb.REFERENCE_DETACH, surface),
+                texts.referenceDetach());
+        }).toList();
     }
 
     /** One open call: its name on the caller's surface, and what it does. */

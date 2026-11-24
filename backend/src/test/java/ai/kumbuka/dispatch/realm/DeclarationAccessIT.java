@@ -95,10 +95,12 @@ class DeclarationAccessIT {
                 + "test tree")
             .isEmpty();
         assertThat(declaration.get("calls"))
-            .as("with the one call the service offers, read_definition")
+            .as("with the six calls the service offers: read_definition and the acts on an "
+                + "instance")
             .asInstanceOf(InstanceOfAssertFactories.list(Map.class))
             .extracting(call -> call.get("identity"))
-            .containsExactly("dispatch_read_definition");
+            .containsExactly("dispatch_read_definition", "dispatch_start", "dispatch_conclude",
+                "dispatch_withdraw", "dispatch_reference_attach", "dispatch_reference_detach");
     }
 
     private static String memberToken() {

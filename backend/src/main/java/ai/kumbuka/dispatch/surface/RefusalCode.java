@@ -202,6 +202,11 @@ public enum RefusalCode {
             case CONFLICT_TOKEN_MISSING -> CONFLICT_TOKEN_MISSING;
             case CONFLICT_TOKEN_STALE -> CONFLICT_TOKEN_STALE;
             case SESSION_NOT_BOUND -> UNEXPECTED_FAILURE;
+            case CONTRACT_FIELD_MISSING, RETURN_PART_MISSING -> ARGUMENT_MISSING;
+            case CONTRACT_FIELD_UNDECLARED -> ARGUMENT_UNKNOWN;
+            case CONTRACT_FIELD_MISTYPED, CONTRACT_VALUE_UNENUMERATED, RETURN_OUTCOME_UNDECLARED,
+                 REFERENCE_ABSENT -> ARGUMENT_INVALID;
+            case INSTANCE_CLOSED -> TRANSITION_REFUSED;
         };
     }
 
@@ -376,7 +381,19 @@ public enum RefusalCode {
         ROUTE_DELETE(RefusalCode.VERB_NOT_CARRIED, "routeDelete"),
         ROUTE_ON_A_TASK(RefusalCode.VERB_NOT_CARRIED, "routeOnATask"),
         UNEXPECTED_FAILURE(RefusalCode.UNEXPECTED_FAILURE, "unexpectedFailure"),
-        UNEXPECTED_FAILURE_OF_REQUEST(RefusalCode.UNEXPECTED_FAILURE, "unexpectedFailureOfRequest");
+        UNEXPECTED_FAILURE_OF_REQUEST(RefusalCode.UNEXPECTED_FAILURE, "unexpectedFailureOfRequest"),
+        INSTANCE_CLOSED(RefusalCode.TRANSITION_REFUSED, "instanceClosed"),
+        TASKS_UNFINISHED(RefusalCode.CHILDREN_UNFINISHED, "tasksUnfinished"),
+        TASKS_CONFIRMATION_STALE(RefusalCode.CHILDREN_UNFINISHED, "tasksConfirmationStale"),
+        INSTANCE_TOKEN_STALE(RefusalCode.CONFLICT_TOKEN_STALE, "instanceTokenStale"),
+        CONTRACT_FIELD_MISSING(RefusalCode.ARGUMENT_MISSING, "contractFieldMissing"),
+        CONTRACT_FIELD_UNDECLARED(RefusalCode.ARGUMENT_UNKNOWN, "contractFieldUndeclared"),
+        CONTRACT_FIELD_MISTYPED(RefusalCode.ARGUMENT_INVALID, "contractFieldMistyped"),
+        CONTRACT_VALUE_UNENUMERATED(RefusalCode.ARGUMENT_INVALID, "contractValueUnenumerated"),
+        RETURN_PART_MISSING(RefusalCode.ARGUMENT_MISSING, "returnPartMissing"),
+        RETURN_OUTCOME_UNDECLARED(RefusalCode.ARGUMENT_INVALID, "returnOutcomeUndeclared"),
+        REFERENCE_ABSENT(RefusalCode.ARGUMENT_INVALID, "referenceAbsent"),
+        INVALID_INSTANCE_ADDRESS(RefusalCode.ADDRESS_MALFORMED, "invalidInstanceAddress");
 
         private final RefusalCode code;
         private final String key;

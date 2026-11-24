@@ -37,7 +37,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * notation on an item by POST or by GET, and on a collection by POST.
  *
  * <p>The red state of the form is observed on every build: the same check,
- * handed the one call as declared under another class, reports it.
+ * handed every call as declared under another class, reports each call whose
+ * route has another form.
  *
  * <p>Two clauses of the service contract stand beside it. C3.2: the REST
  * surface has two literal paths, {@code /api/declaration} and {@code
@@ -61,12 +62,16 @@ class RestRouteFormTest {
 
     @Test
     void the_check_reports_a_route_whose_form_is_not_that_of_its_effect_class() {
-        assertThat(formOffences(List.of(CustomMethod.values()), EffectClass.ITEM_READ))
-            .as("RED STATE, observed: dispatch_read_definition declared as ITEM_READ, for the "
-                + "check, turns it red on that call: its route is a GET on a collection, and "
-                + "ITEM_READ is a GET on an item")
-            .containsExactly("dispatch_read_definition is declared ITEM_READ and routed "
-                + "GET COLLECTION, where the class takes GET ITEM");
+        assertThat(formOffences(List.of(CustomMethod.values()), EffectClass.ITEM_TRANSITION))
+            .as("RED STATE, observed: every call declared as ITEM_TRANSITION, for the check, "
+                + "turns it red on the two calls of a collection: read_definition is a GET on a "
+                + "collection and start a custom method on one, and ITEM_TRANSITION is a custom "
+                + "method on an item; the four calls on an instance are one and pass")
+            .containsExactly(
+                "dispatch_read_definition is declared ITEM_TRANSITION and routed "
+                    + "GET COLLECTION, where the class takes POST ITEM :call",
+                "dispatch_start is declared ITEM_TRANSITION and routed "
+                    + "POST COLLECTION :call, where the class takes POST ITEM :call");
     }
 
     /**
@@ -174,12 +179,15 @@ class RestRouteFormTest {
                 .isEqualTo(carriedAt(depth));
         }
         assertThat(carriedAt(CustomMethod.Depth.COLLECTION))
-            .as("a collection carries read_definition, the call the declaration names")
-            .containsExactly("read_definition");
+            .as("a collection carries read_definition and start")
+            .containsExactly("read_definition", "start");
         assertThat(CustomMethod.allow(CustomMethod.Depth.COLLECTION))
-            .as("and is reached there with GET").contains("GET");
+            .as("and is reached there with GET and POST").contains("GET, POST");
+        assertThat(carriedAt(CustomMethod.Depth.ITEM))
+            .as("an instance carries its two closings and the two calls on a reference")
+            .containsExactly("conclude", "reference_attach", "reference_detach", "withdraw");
         assertThat(CustomMethod.allow(CustomMethod.Depth.ITEM))
-            .as("an item carries no call yet, so it names no method").isEmpty();
+            .as("and is reached there with POST").contains("POST");
     }
 
     @Test

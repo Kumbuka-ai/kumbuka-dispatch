@@ -158,4 +158,52 @@ public interface ArgumentDescriptions {
 
     @Message
     String readDefinitionVersion();
+
+    @Message
+    String startTitle();
+
+    @Message
+    String startInput();
+
+    @Message
+    String startTrigger();
+
+    @Message
+    String startItems();
+
+    @Message
+    String startReferences();
+
+    @Message
+    String startValues();
+
+    @Message
+    String instanceAddress();
+
+    @Message
+    String instanceConflictToken();
+
+    @Message
+    String instanceConfirmation();
+
+    @Message
+    String returnText();
+
+    @Message
+    String returnVerdict();
+
+    @Message
+    String returnOutcome();
+
+    @Message
+    String returnTranslationBasis();
+
+    @Message
+    String referenceKind();
+
+    @Message
+    String attachValue();
+
+    @Message
+    String detachValue();
 }

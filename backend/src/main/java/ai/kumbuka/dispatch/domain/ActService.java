@@ -15,6 +15,8 @@ import jakarta.transaction.Transactional;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
@@ -27,11 +29,20 @@ import java.util.UUID;
  * for the first and continues after it. The instance carries no counter; the
  * sequence is read off its acts under the lock.
  *
+ * <p><strong>The time of an act rises strictly within its instance.</strong>
+ * It is the service's clock's (C20.1), at microsecond precision, the precision
+ * the store keeps; where that is not later than the time of the instance's
+ * last act, it is that time and one microsecond. It is decided under the same
+ * lock as the number. The time of an object's last act is its conflict token,
+ * so a token never returns to an earlier value and two acts within one
+ * microsecond still leave two tokens (C10.1, in the form the operator decided
+ * on 2026-11-24: the time of the last act takes the place of an {@code
+ * updated_at} the store does not hold).
+ *
  * <p>Nothing here decides whether the act is admissible. The writer records
  * the kind, the state the act leads to and the provenance it is handed, the
  * permission among them, as it is handed; which acts a call may write, and who
- * may make the call, are the calls' to decide. The time is the service's
- * clock's (C20.1).
+ * may make the call, are the calls' to decide.
  *
  * <p>Logs nothing (DEC-0051, C4).
  */
@@ -65,11 +76,43 @@ public class ActService {
     @Transactional
     public Act write(UUID scopeId, long instanceId, Act.Kind kind, Act.State toState,
                      @Nullable Long taskId, Provenance provenance) {
+        return write(scopeId, instanceId, kind, toState, taskId, provenance, null);
+    }
+
+    /**
+     * Appends an act another act caused, and answers it as written: as {@link
+     * #write(UUID, long, Act.Kind, Act.State, Long, Provenance)}, with the act
+     * that caused it in its column.
+     *
+     * @param refersToActId the act of the same instance that caused this one;
+     *                      absent on an act a call writes on its own account
+     */
+    @Transactional
+    public Act write(UUID scopeId, long instanceId, Act.Kind kind, Act.State toState,
+                     @Nullable Long taskId, Provenance provenance,
+                     @Nullable Long refersToActId) {
         Instance instance = acts.lockInstance(scopeId, instanceId)
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
                 "no instance is there to write an act to."));
         int next = acts.lastSequence(scopeId, instanceId) + 1;
-        return acts.append(Act.of(instance, next, kind, toState, taskId, provenance,
-            clock.instant()));
+        Instant at = timeAfter(clock.instant(), acts.lastAt(scopeId, instanceId).orElse(null));
+        return acts.append(Act.of(instance, next, kind, toState, taskId, provenance, at,
+            refersToActId));
+    }
+
+    /**
+     * The time of the next act of an instance: the clock's, at the precision
+     * the store keeps, and one microsecond after the last act where the clock
+     * has not moved past it.
+     *
+     * @param last the time of the instance's last act; absent where it has none
+     */
+    static Instant timeAfter(Instant now, @Nullable Instant last) {
+        Instant stored = now.truncatedTo(ChronoUnit.MICROS);
+        if (last == null) {
+            return stored;
+        }
+        Instant earliest = last.plus(1, ChronoUnit.MICROS);
+        return earliest.isAfter(stored) ? earliest : stored;
     }
 }

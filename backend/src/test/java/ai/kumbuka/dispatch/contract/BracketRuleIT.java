@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.contract;
 
 import ai.kumbuka.dispatch.platform.PlatformFixture;
+import ai.kumbuka.dispatch.surface.InstanceWire;
 import ai.kumbuka.dispatch.surface.Mcp;
 import ai.kumbuka.dispatch.surface.SurfaceFixture;
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,40 +30,100 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The bracket rule and the rule on an addendum after delivery (TAR-0004
- * sections 2 and 3, concept section 2.5), on both surfaces.
+ * The rule of the instance, rebuilt from the bracket rule of the old kernel
+ * (TAR-0004 2.3, REA-0010 S5): a closed instance takes no further act. Each of
+ * the four calls on its address -- {@code conclude}, {@code withdraw}, {@code
+ * reference_attach} and {@code reference_detach} -- is refused on both
+ * surfaces as {@code TRANSITION_REFUSED} 409 with {@code attempted}, the state
+ * {@code closed} and no call open, and writes nothing. The codes, statuses and
+ * members are written here from the contract (C8.7), not read from the
+ * catalogue.
  *
- * <p>A child is created only under a root that is neither in {@code draft}
- * nor {@code closed}: under a draft root {@code ROOT_UNSENT} 409, under a
- * closed one {@code ROOT_CLOSED} 409, each with {@code attempted} and nothing
- * more. A draft root under which any task stands is not deleted: {@code
- * CHILDREN_PRESENT} 409 with {@code attempted} and the complete address of
- * each child, and nothing is deleted. No call makes that bracket any more, so
- * the case plants the child directly in the database. A task in {@code
- * delivered} takes no addendum to its commission: {@code TRANSITION_REFUSED}
- * 409 whose {@code next} names {@code rework}; in {@code active} it still
- * does. The codes, statuses and members are written here from the target, not
- * read from the catalogue.
- *
- * <p>RED STATE, observed against the kernel before the rule: a child was
- * created under the draft root, the creation under the closed root was
- * refused as {@code TRANSITION_REFUSED}, the draft root was deleted with its
- * child left behind, and the addendum to the delivered task was attached.
+ * <p>The cases of the old bracket that a later order rebuilds stand below,
+ * deactivated with the order that rebuilds them: a task created under or
+ * deleted from an instance belongs to {@code create} and {@code delete} (T4),
+ * the addendum after delivery to {@code annotate} (T11). Their bodies are the
+ * old kernel's, kept for that order.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
-@Disabled("rebuilt in T3: the bracket rule and the rule on an addendum after delivery hold on both surfaces")
 class BracketRuleIT {
+
+    private static final String T4 = "rebuilt in T4: a task is created and deleted only under "
+        + "an instance whose state admits it";
+    private static final String T11 = "rebuilt in T11: a delivered task takes no addendum to its "
+        + "commission and names rework";
+
+    private static final String PREFIX = "dispatch_";
+    private static final String START = "start";
+    private static final String CONCLUDE = "conclude";
+    private static final String ATTACH = "reference_attach";
+    private static final String CLOSED = "closed";
+    private static final String ACTS = "SELECT count(*) FROM dispatch.act WHERE instance_id = ?";
 
     @Inject TestIdentityAssociation identity;
 
     @BeforeEach
     void stage() {
-        SurfaceFixture.stage();
-        SurfaceFixture.asConsole(identity);
+        PlatformFixture.grantDirectoryAccess();
+        InstanceWire.as(identity, InstanceWire.CONSOLE);
     }
 
     @Test
+    void a_closed_instance_refuses_each_call_on_its_address_on_both_surfaces() {
+        Map<String, Object> started = InstanceWire.answer(InstanceWire.mcp(PREFIX + START,
+            InstanceWire.startArguments(InstanceWire.plant(CLOSED).selector(),
+                InstanceWire.minimalFields("an instance to close"))));
+        String address = String.valueOf(started.get(InstanceWire.ADDRESS));
+        Map<String, Object> closing = Map.of("text", "done");
+        Map<String, Object> reference = Map.of("kind", "item", "value", "item-1");
+        String current = InstanceWire.token(InstanceWire.answer(InstanceWire.mcp(
+            PREFIX + ATTACH, Map.of(InstanceWire.ADDRESS, address, InstanceWire.FIELDS,
+                reference))));
+
+        assertThat(InstanceWire.answer(InstanceWire.mcp(PREFIX + CONCLUDE, Map.of(
+                InstanceWire.ADDRESS, address, InstanceWire.TOKEN, current, InstanceWire.FIELDS,
+                closing))).get(InstanceWire.FIELDS))
+            .as("RED STATE, observed: the instance runs, and its first conclude closes it")
+            .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+            .containsEntry(InstanceWire.STATE, CLOSED);
+        long acts = InstanceWire.single(ACTS, InstanceWire.instanceId(address));
+
+        Map<String, Map<String, Object>> calls = new LinkedHashMap<>();
+        calls.put(CONCLUDE, Map.of(InstanceWire.TOKEN, current, InstanceWire.FIELDS, closing));
+        calls.put("withdraw", Map.of(InstanceWire.TOKEN, current, InstanceWire.FIELDS, closing));
+        calls.put(ATTACH, Map.of(InstanceWire.FIELDS, Map.of("kind", "item", "value", "x")));
+        calls.put("reference_detach", Map.of(InstanceWire.FIELDS, reference));
+        for (Map.Entry<String, Map<String, Object>> call : calls.entrySet()) {
+            Map<String, Object> arguments = new LinkedHashMap<>(call.getValue());
+            arguments.put(InstanceWire.ADDRESS, address);
+            Map<String, Object> overMcp = InstanceWire.refusal(InstanceWire.mcp(
+                PREFIX + call.getKey(), arguments));
+            assertClosed(overMcp, PREFIX + call.getKey());
+
+            Map<String, Object> body = new LinkedHashMap<>(call.getValue());
+            Object fence = body.remove(InstanceWire.TOKEN);
+            Response overRest = InstanceWire.rest(address, call.getKey(), body,
+                fence == null ? null : String.valueOf(fence));
+            assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(409);
+            assertClosed(InstanceWire.object(overRest, "$"), call.getKey());
+        }
+        assertThat(InstanceWire.single(ACTS, InstanceWire.instanceId(address)))
+            .as("and nothing was written").isEqualTo(acts);
+    }
+
+    private static void assertClosed(Map<String, Object> refusal, String call) {
+        assertThat(refusal.get(InstanceWire.REASON)).as(String.valueOf(refusal))
+            .isEqualTo(InstanceWire.TRANSITION_REFUSED);
+        assertThat(InstanceWire.data(refusal)).as("the call, the state, and no call open")
+            .containsOnlyKeys(InstanceWire.ATTEMPTED, InstanceWire.STATE, InstanceWire.NEXT)
+            .containsEntry(InstanceWire.ATTEMPTED, call)
+            .containsEntry(InstanceWire.STATE, CLOSED)
+            .containsEntry(InstanceWire.NEXT, List.of());
+    }
+
+    @Test
+    @Disabled(T4)
     void a_child_under_a_draft_root_is_root_unsent_409() {
         String root = SurfaceFixture.address(SurfaceFixture.idOf(SurfaceFixture.create(Map.of(
             "title", "an unsent root", "apparatus", "code"))));
@@ -76,6 +138,7 @@ class BracketRuleIT {
     }
 
     @Test
+    @Disabled(T4)
     void a_child_under_a_closed_root_is_root_closed_409() {
         String root = SurfaceFixture.address(SurfaceFixture.open("a closed root", "code"));
         Mcp.answer(Mcp.call("dispatch_withdraw", Map.of("address", root,
@@ -91,6 +154,7 @@ class BracketRuleIT {
     }
 
     @Test
+    @Disabled(T4)
     void a_draft_root_with_a_child_is_children_present_409_and_nothing_is_deleted() {
         String id = SurfaceFixture.idOf(SurfaceFixture.create(Map.of(
             "title", "a draft root", "apparatus", "code")));
@@ -117,6 +181,7 @@ class BracketRuleIT {
     }
 
     @Test
+    @Disabled(T11)
     void a_delivered_task_takes_no_addendum_to_its_commission_and_names_rework() {
         String address = SurfaceFixture.address(SurfaceFixture.open("delivered", "code"));
         Map<String, Object> addendum = Map.of("address", address,

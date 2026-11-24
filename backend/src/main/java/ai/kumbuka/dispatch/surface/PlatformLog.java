@@ -8,9 +8,12 @@
 package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.DispatchException;
+import ai.kumbuka.dispatch.domain.InstanceView;
+import ai.kumbuka.dispatch.platform.ScopeDirectory;
 import org.jboss.logging.Logger;
 
 import java.util.Collection;
+import java.util.UUID;
 
 /**
  * Every log line of the packages that serve a caller, and the only logger
@@ -115,6 +118,15 @@ public final class PlatformLog {
         LOG.debug("whoami");
     }
 
+    /**
+     * INFO, one line per completed write (C13.3): the call, the object's
+     * technical address and the scope's id. Never the scope's name, the
+     * selector, a title, a label, a value or a text (DEC-0051 C1, C7; D23).
+     */
+    public static void written(VerbName call, TechnicalAddress object, ScopeId scope) {
+        LOG.infof("written: %s on %s in scope %s", call, object, scope);
+    }
+
     // ======================================================================
     // Start
     // ======================================================================
@@ -179,6 +191,48 @@ public final class PlatformLog {
         @Override
         public String toString() {
             return code.name();
+        }
+    }
+
+    /**
+     * The technical address of an object a write changed: its surrogate in
+     * the store, which no caller chose and which names nothing of the tenant.
+     */
+    public static final class TechnicalAddress {
+
+        private final long instance;
+
+        private TechnicalAddress(long instance) {
+            this.instance = instance;
+        }
+
+        /** The instance an act on it answered. */
+        public static TechnicalAddress of(InstanceView written) {
+            return new TechnicalAddress(written.id());
+        }
+
+        @Override
+        public String toString() {
+            return "instance " + instance;
+        }
+    }
+
+    /** The id of a scope the directory resolved, never its name. */
+    public static final class ScopeId {
+
+        private final UUID id;
+
+        private ScopeId(UUID id) {
+            this.id = id;
+        }
+
+        public static ScopeId of(ScopeDirectory.ScopeAccess resolved) {
+            return new ScopeId(resolved.scopeId());
+        }
+
+        @Override
+        public String toString() {
+            return id.toString();
         }
     }
 

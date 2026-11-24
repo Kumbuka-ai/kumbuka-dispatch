@@ -295,13 +295,56 @@ public class DispatchException extends RuntimeException {
          * A tag the platform withdrew was to be attached: a withdrawn tag takes
          * no further task, and the tasks that carry it keep it.
          */
-        TAG_WITHDRAWN
+        TAG_WITHDRAWN,
+
+        /**
+         * A field the start contract of the version marks required did not
+         * arrive (DEC-0056/C7). The offenders name the field by its path.
+         */
+        CONTRACT_FIELD_MISSING,
+
+        /**
+         * A field arrived that the start contract of the version does not name
+         * (DEC-0056/C7, D9). Its name is the caller's and is not repeated: the
+         * offenders name the fields the contract names instead.
+         */
+        CONTRACT_FIELD_UNDECLARED,
+
+        /** A field value of another type than its field's (DEC-0056/C7, D8). */
+        CONTRACT_FIELD_MISTYPED,
+
+        /** A choice outside the enumeration of its field (DEC-0056/C7). */
+        CONTRACT_VALUE_UNENUMERATED,
+
+        /**
+         * A part of an instance's return the version requires, or a label
+         * requires, did not arrive: the verdict, the outcome label, or the
+         * translation basis of a label. The offenders name the part.
+         */
+        RETURN_PART_MISSING,
+
+        /** An outcome label that is no label of the instance's version. */
+        RETURN_OUTCOME_UNDECLARED,
+
+        /**
+         * A reference was to be ended that the instance does not carry, or
+         * carries no longer: a reference ends once, and its ending stays.
+         */
+        REFERENCE_ABSENT,
+
+        /** An act on an instance that is closed: a closed instance takes none. */
+        INSTANCE_CLOSED
     }
 
     private final transient Reason reason;
     private final transient List<String> offenders;
     /** The confirmation this refusal hands out; absent on every refusal but one. */
     private final transient @Nullable String confirmation;
+    /**
+     * The instance the refusal concerns, as it stands, for a refusal that
+     * names its state and the calls open on it; absent on every other.
+     */
+    private final transient @Nullable InstanceView standing;
 
     public DispatchException(Reason reason, String message) {
         this(reason, message, List.of());
@@ -314,16 +357,30 @@ public class DispatchException extends RuntimeException {
     /**
      * A refusal that hands out a confirmation.
      *
-     * <p>Only {@link Reason#CONFIRMATION_REQUIRED} carries one: the value the
-     * caller repeats its call with to confirm that the named children are to
-     * be withdrawn.
+     * <p>Only {@link Reason#CONFIRMATION_REQUIRED} and {@link
+     * Reason#CONFIRMATION_STALE} carry one: the value the caller repeats its
+     * call with to confirm that the named tasks are to be withdrawn.
      */
     public DispatchException(Reason reason, String message, List<String> offenders,
                              @Nullable String confirmation) {
+        this(reason, message, offenders, confirmation, null);
+    }
+
+    /**
+     * A refusal about an instance that names it as it stands: its address, its
+     * state, its conflict token and the calls open on it.
+     */
+    public DispatchException(Reason reason, String message, InstanceView standing) {
+        this(reason, message, List.of(), null, standing);
+    }
+
+    private DispatchException(Reason reason, String message, List<String> offenders,
+                              @Nullable String confirmation, @Nullable InstanceView standing) {
         super(message);
         this.reason = reason;
         this.offenders = List.copyOf(offenders);
         this.confirmation = confirmation;
+        this.standing = standing;
     }
 
     public Reason reason() {
@@ -346,5 +403,10 @@ public class DispatchException extends RuntimeException {
     /** The confirmation this refusal hands out, where it hands one out. */
     public java.util.Optional<String> confirmation() {
         return java.util.Optional.ofNullable(confirmation);
+    }
+
+    /** The instance the refusal concerns, as it stands, where the refusal names it. */
+    public java.util.Optional<InstanceView> standing() {
+        return java.util.Optional.ofNullable(standing);
     }
 }

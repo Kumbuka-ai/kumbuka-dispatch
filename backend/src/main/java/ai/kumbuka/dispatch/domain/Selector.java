@@ -10,21 +10,35 @@ package ai.kumbuka.dispatch.domain;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.DynamicUpdate;
 
 /**
  * A selector of a scope: a row of {@code dispatch.selector} of the store line,
- * read so that a definition is found by the name a caller gives.
+ * read so that a definition is found by the name a caller gives, and the
+ * counter its instances are numbered from.
  *
- * <p>Mapped read-only and with the columns the read of a definition joins on:
- * no call writes a selector, a migration of the installation declares it. The
- * name is read by the queries of the repository and by nothing else.
+ * <p>No call writes a selector, a migration of the installation declares it.
+ * Its counter is the one column a call changes: {@code start} takes the next
+ * number under a lock of the selector's row and moves the counter on, so two
+ * starts under one selector never take one number and leave no gap. The
+ * update names that column alone, the only one the runtime role may change.
  */
 @Entity
-@Immutable
+@DynamicUpdate
 @Table(name = "selector", schema = "dispatch")
 public class Selector extends DefinitionRow {
 
-    @Column(name = "name", nullable = false)
+    @Column(name = "name", nullable = false, updatable = false)
     private String name;
+
+    @Column(name = "next_number", nullable = false)
+    private long nextNumber;
+
+    /**
+     * The number the next instance of this selector takes, handed out once:
+     * the counter moves on. Called only on the row as it stands under its lock.
+     */
+    long takeNumber() {
+        return nextNumber++;
+    }
 }

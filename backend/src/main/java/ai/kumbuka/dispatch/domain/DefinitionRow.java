@@ -21,7 +21,7 @@ import java.util.UUID;
  * and its scope. The head of the read-only entities of a definition version --
  * selector, version, activity, outcome label, enumeration, enumeration value,
  * control field and contract field -- which a read of a definition maps and no
- * call writes.
+ * call writes, the counter of a selector apart, which {@code start} moves on.
  *
  * <p>The tenant is read by the persistence provider alone, which filters every
  * statement on it; the scope by the queries of the repository, which name it

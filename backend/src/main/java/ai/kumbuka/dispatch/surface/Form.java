@@ -49,7 +49,8 @@ public enum Form {
     IDEMPOTENCY_KEY(RefusalCode.Message.INVALID_IDEMPOTENCY_KEY),
     TAG_UNKNOWN(RefusalCode.Message.INVALID_TAG_UNKNOWN),
     TAG_WITHDRAWN(RefusalCode.Message.INVALID_TAG_WITHDRAWN),
-    TAG_FILTER(RefusalCode.Message.INVALID_TAG_FILTER);
+    TAG_FILTER(RefusalCode.Message.INVALID_TAG_FILTER),
+    INSTANCE_ADDRESS(RefusalCode.Message.INVALID_INSTANCE_ADDRESS);
 
     private final RefusalCode.Message message;
 

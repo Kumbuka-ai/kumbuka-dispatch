@@ -115,6 +115,53 @@ class ActServiceModuleTest {
     }
 
     @Test
+    void two_acts_within_one_microsecond_take_two_rising_times() {
+        when(repository.lastSequence(SCOPE, INSTANCE)).thenReturn(1);
+        when(repository.lastAt(SCOPE, INSTANCE)).thenReturn(Optional.of(NOW));
+        Provenance provenance = new Provenance("ada", null, DispatchPermission.INSTANCE_REFER,
+            Provenance.Path.INTERFACE, null);
+
+        Act second = writer.write(SCOPE, INSTANCE, Act.Kind.REFER, Act.State.RUNNING, null,
+            provenance);
+
+        assertThat(second.at())
+            .as("the clock stands at the time of the instance's last act, so the act takes "
+                + "that time and one microsecond: the conflict token rises (C10.1, operator "
+                + "2026-11-24)")
+            .isEqualTo(Instant.parse("2026-11-22T10:15:30.123457Z"));
+        assertThat(ActService.timeAfter(NOW, null))
+            .as("RED STATE, observed: without the time of the last act the clock's own instant "
+                + "is taken, which is the time the last act already carries, so the two acts "
+                + "would share one token")
+            .isEqualTo(NOW);
+    }
+
+    @Test
+    void the_time_of_an_act_is_the_clock_at_the_precision_of_the_store_once_it_moved_on() {
+        Instant later = Instant.parse("2026-11-22T10:15:31.000000999Z");
+        assertThat(ActService.timeAfter(later, NOW))
+            .as("a clock past the last act gives its own instant, cut to microseconds")
+            .isEqualTo(Instant.parse("2026-11-22T10:15:31Z"));
+        assertThat(ActService.timeAfter(NOW.minusSeconds(5), NOW))
+            .as("a clock behind the last act gives the last act's time and one microsecond")
+            .isEqualTo(NOW.plusNanos(1000));
+    }
+
+    @Test
+    void an_act_another_act_caused_names_it() {
+        when(repository.lastSequence(SCOPE, INSTANCE)).thenReturn(3);
+
+        Act cascaded = writer.write(SCOPE, INSTANCE, Act.Kind.WITHDRAW, Act.State.CLOSED, 9L,
+            new Provenance("ada", null, DispatchPermission.INSTANCE_CONCLUDE,
+                Provenance.Path.INTERFACE, null), 77L);
+
+        assertThat(List.of(cascaded.refersToActId().orElseThrow(), cascaded.kind(),
+                cascaded.taskId().orElseThrow(), cascaded.permission().orElseThrow()))
+            .as("a withdraw a closing cascades names the closing act and its permission")
+            .containsExactly(77L, "withdraw", 9L, "dispatch.instance.conclude");
+    }
+
+    @Test
     void an_instance_the_scope_does_not_hold_for_the_tenant_is_not_found_and_nothing_is_written() {
         when(repository.lockInstance(SCOPE, 99L)).thenReturn(Optional.empty());
         Provenance provenance = new Provenance("ada", null, DispatchPermission.INSTANCE_START,

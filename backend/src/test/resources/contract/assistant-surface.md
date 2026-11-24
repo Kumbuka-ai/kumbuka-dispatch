@@ -514,6 +514,18 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `routeOnATask` | `VERB_NOT_CARRIED` | `{call} is a call on a task: POST /api/<scope>/<selector>/<number>.<sub>:{call}.` |
 | `unexpectedFailure` | `UNEXPECTED_FAILURE` | `{call} failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |
 | `unexpectedFailureOfRequest` | `UNEXPECTED_FAILURE` | `The request failed unexpectedly. This is a defect, not a rule. Nothing was changed. Report the reference in data.reference.` |
+| `instanceClosed` | `TRANSITION_REFUSED` | `{call} is not possible on this instance: it is closed and finished. Nothing further can be done with it.` |
+| `tasksUnfinished` | `CHILDREN_UNFINISHED` | `{call} would close an instance while tasks of it are unfinished; data.children lists them. Repeat the call with data.confirmation to withdraw them and close the instance.` |
+| `tasksConfirmationStale` | `CHILDREN_UNFINISHED` | `{call} carries a confirmation that no longer holds: it was handed out for another set of unfinished tasks or for another call, and data.children lists the unfinished tasks now. Repeat the call with the one in data.confirmation.` |
+| `instanceTokenStale` | `CONFLICT_TOKEN_STALE` | `{call} carries a conflict token that is not the one the instance holds: an act changed it since you read it. Its current token is in data.conflict_token.` |
+| `contractFieldMissing` | `ARGUMENT_MISSING` | `{call} needs the field data.offenders names: the start contract of the version requires it.` |
+| `contractFieldUndeclared` | `ARGUMENT_UNKNOWN` | `{call} carries under fields.values a field the start contract of the version does not name; data.accepts lists the fields it names.` |
+| `contractFieldMistyped` | `ARGUMENT_INVALID` | `{call} carries a value of another type than its field's for the field data.offenders names; the read of the definition gives the type of each field.` |
+| `contractValueUnenumerated` | `ARGUMENT_INVALID` | `{call} carries a value outside the enumeration of the field data.offenders names; the read of the definition lists its values.` |
+| `returnPartMissing` | `ARGUMENT_MISSING` | `{call} needs the part of the return data.offenders names: the version requires it, or an outcome label requires its translation basis.` |
+| `returnOutcomeUndeclared` | `ARGUMENT_INVALID` | `{call} names an outcome label the version does not declare; the read of the definition lists its labels under outcome_labels.` |
+| `referenceAbsent` | `ARGUMENT_INVALID` | `{call} names a reference the instance does not carry, or carries no longer: a reference ends once.` |
+| `invalidInstanceAddress` | `ADDRESS_MALFORMED` | `{path} is not valid for {call}: an instance's address is written dispatch://<scope>/<selector>/<number>.` |
 
 ## 6. The declaration
 

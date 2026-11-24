@@ -266,12 +266,12 @@ class ReadDefinitionIT {
         assertThat(verb.statusCode()).as("a colon verb a collection does not carry")
             .isEqualTo(405);
         assertThat(reason(verb)).isEqualTo("VERB_NOT_CARRIED");
-        assertThat(verb.jsonPath().getList("data.accepts")).containsExactly(CALL);
-        assertThat(verb.header("Allow")).isEqualTo("GET");
+        assertThat(verb.jsonPath().getList("data.accepts")).containsExactly(CALL, "start");
+        assertThat(verb.header("Allow")).isEqualTo("GET, POST");
         Response method = given().post(collection(SLUG, selector));
-        assertThat(method.statusCode()).as("a method no route at a collection takes")
+        assertThat(method.statusCode()).as("a POST at a collection without the colon verb")
             .isEqualTo(405);
-        assertThat(method.jsonPath().getList("data.accepts")).containsExactly(CALL);
+        assertThat(method.jsonPath().getList("data.accepts")).containsExactly(CALL, "start");
 
         assertThat(mcpReason(Map.of(SELECTOR_ARG, selector))).as("a scope missing")
             .isEqualTo("ARGUMENT_MISSING");
@@ -299,13 +299,14 @@ class ReadDefinitionIT {
     // -----------------------------------------------------------------------
 
     @Test
-    void the_tool_list_carries_exactly_the_one_tool_and_the_declaration_the_one_call() {
+    void the_tool_list_and_the_declaration_carry_the_call_first_with_its_arguments() {
         assertThat(rpc("tools/list", Map.of()).jsonPath().getList("result.tools.name"))
-            .as("tools/list offers dispatch_read_definition and nothing else")
-            .containsExactly(TOOL);
+            .as("tools/list offers dispatch_read_definition first; the acts on an instance "
+                + "follow it, which InstanceCallsIT holds")
+            .startsWith(TOOL).doesNotHaveDuplicates();
         Response declaration = given().get("/api/declaration");
         assertThat(declaration.jsonPath().getList("calls.identity"))
-            .as("the declaration names the one call").containsExactly(TOOL);
+            .as("the declaration names the call first").startsWith(TOOL);
         assertThat(declaration.jsonPath().getList("calls[0].arguments.name"))
             .as("with its arguments").containsExactly(SCOPE_ARG, SELECTOR_ARG, VERSION_ARG);
         assertThat(declaration.jsonPath().getString("calls[0].effect_class"))

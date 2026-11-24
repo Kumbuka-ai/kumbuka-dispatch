@@ -23,4 +23,19 @@ public interface ToolDescriptions {
 
     @Message
     String readDefinition();
+
+    @Message
+    String start();
+
+    @Message
+    String conclude();
+
+    @Message
+    String withdraw();
+
+    @Message
+    String referenceAttach();
+
+    @Message
+    String referenceDetach();
 }
