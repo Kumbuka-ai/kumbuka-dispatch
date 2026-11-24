@@ -64,14 +64,21 @@ class RestRouteFormTest {
     void the_check_reports_a_route_whose_form_is_not_that_of_its_effect_class() {
         assertThat(formOffences(List.of(CustomMethod.values()), EffectClass.ITEM_TRANSITION))
             .as("RED STATE, observed: every call declared as ITEM_TRANSITION, for the check, "
-                + "turns it red on the two calls of a collection: read_definition is a GET on a "
-                + "collection and start a custom method on one, and ITEM_TRANSITION is a custom "
-                + "method on an item; the four calls on an instance are one and pass")
+                + "turns it red on the three calls of a collection -- read_definition a GET on "
+                + "a collection, start a custom method on one, create the plain POST on one -- "
+                + "and on the plain PATCH and DELETE of a task; ITEM_TRANSITION is a custom "
+                + "method on an item, so the four calls on an instance and send pass")
             .containsExactly(
                 "dispatch_read_definition is declared ITEM_TRANSITION and routed "
                     + "GET COLLECTION, where the class takes POST ITEM :call",
                 "dispatch_start is declared ITEM_TRANSITION and routed "
-                    + "POST COLLECTION :call, where the class takes POST ITEM :call");
+                    + "POST COLLECTION :call, where the class takes POST ITEM :call",
+                "dispatch_create is declared ITEM_TRANSITION and routed "
+                    + "POST COLLECTION, where the class takes POST ITEM :call",
+                "dispatch_update is declared ITEM_TRANSITION and routed "
+                    + "PATCH ITEM, where the class takes POST ITEM :call",
+                "dispatch_delete is declared ITEM_TRANSITION and routed "
+                    + "DELETE ITEM, where the class takes POST ITEM :call");
     }
 
     /**
@@ -179,15 +186,17 @@ class RestRouteFormTest {
                 .isEqualTo(carriedAt(depth));
         }
         assertThat(carriedAt(CustomMethod.Depth.COLLECTION))
-            .as("a collection carries read_definition and start")
-            .containsExactly("read_definition", "start");
+            .as("a collection carries read_definition, start and create")
+            .containsExactly("create", "read_definition", "start");
         assertThat(CustomMethod.allow(CustomMethod.Depth.COLLECTION))
             .as("and is reached there with GET and POST").contains("GET, POST");
         assertThat(carriedAt(CustomMethod.Depth.ITEM))
-            .as("an instance carries its two closings and the two calls on a reference")
-            .containsExactly("conclude", "reference_attach", "reference_detach", "withdraw");
+            .as("an instance carries its two closings and the two calls on a reference, and a "
+                + "task update, delete and send")
+            .containsExactly("conclude", "delete", "reference_attach", "reference_detach",
+                "send", "update", "withdraw");
         assertThat(CustomMethod.allow(CustomMethod.Depth.ITEM))
-            .as("and is reached there with POST").contains("POST");
+            .as("and is reached there with POST, PATCH and DELETE").contains("POST, PATCH, DELETE");
     }
 
     @Test

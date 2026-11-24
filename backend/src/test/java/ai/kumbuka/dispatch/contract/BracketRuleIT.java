@@ -11,6 +11,7 @@ import ai.kumbuka.dispatch.platform.PlatformFixture;
 import ai.kumbuka.dispatch.surface.InstanceWire;
 import ai.kumbuka.dispatch.surface.Mcp;
 import ai.kumbuka.dispatch.surface.SurfaceFixture;
+import ai.kumbuka.dispatch.surface.TaskWire;
 import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -39,18 +40,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * members are written here from the contract (C8.7), not read from the
  * catalogue.
  *
- * <p>The cases of the old bracket that a later order rebuilds stand below,
- * deactivated with the order that rebuilds them: a task created under or
- * deleted from an instance belongs to {@code create} and {@code delete} (T4),
- * the addendum after delivery to {@code annotate} (T11). Their bodies are the
- * old kernel's, kept for that order.
+ * <p>A task is created only under a running instance of the scope and the
+ * selector the call names, and a task its instance's closing withdrew is no
+ * draft and is not deleted. The case of the old bracket that a later order
+ * rebuilds stands below, deactivated with that order: the addendum after
+ * delivery belongs to {@code annotate} (T11). Its body is the old kernel's,
+ * kept for that order.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class BracketRuleIT {
 
-    private static final String T4 = "rebuilt in T4: a task is created and deleted only under "
-        + "an instance whose state admits it";
     private static final String T11 = "rebuilt in T11: a delivered task takes no addendum to its "
         + "commission and names rework";
 
@@ -122,62 +122,79 @@ class BracketRuleIT {
             .containsEntry(InstanceWire.NEXT, List.of());
     }
 
+    /**
+     * A task is created only in a running instance: under a closed one the
+     * create is {@code TRANSITION_REFUSED} 409 on both surfaces, with the
+     * instance's state and no call open, and nothing is created.
+     */
     @Test
-    @Disabled(T4)
-    void a_child_under_a_draft_root_is_root_unsent_409() {
-        String root = SurfaceFixture.address(SurfaceFixture.idOf(SurfaceFixture.create(Map.of(
-            "title", "an unsent root", "apparatus", "code"))));
+    void a_task_under_a_closed_instance_is_refused_409_and_nothing_is_created() {
+        TaskWire.Planted planted = TaskWire.plant("closed-parent", "review");
+        String address = TaskWire.started(planted.selector());
+        Map<String, Object> create = TaskWire.create(planted.selector(), address,
+            Map.of("title", "a task"));
+        assertThat(InstanceWire.mcp(TaskWire.CREATE, create).jsonPath()
+                .getBoolean("result.isError"))
+            .as("RED STATE, observed: the running instance takes the task").isFalse();
+        close(address);
+        long tasks = tasksOf(address);
 
-        Response overMcp = Mcp.call("dispatch_create", child(root));
-        assertRefusal(Mcp.refusal(overMcp), "ROOT_UNSENT", List.of("attempted"));
-        Response overRest = given().contentType(ContentType.JSON).body(childOverRest(root))
-            .post(SurfaceFixture.collection());
+        assertClosed(InstanceWire.refusal(InstanceWire.mcp(TaskWire.CREATE, create)),
+            TaskWire.CREATE);
+        Response overRest = given().contentType(ContentType.JSON)
+            .body(Map.of("parent", address, InstanceWire.FIELDS, Map.of("title", "a task")))
+            .post(COLLECTION + InstanceWire.SLUG + "/" + planted.selector());
         assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(409);
-        assertRefusal(overRest.jsonPath().getMap("$"), "ROOT_UNSENT", List.of("attempted"));
-        assertThat(childrenOf(root)).as("no child was created").isZero();
+        assertClosed(InstanceWire.object(overRest, "$"), "create");
+        assertThat(tasksOf(address)).as("no task was created").isEqualTo(tasks);
     }
 
+    /**
+     * A parent names an instance of the scope and the selector the call
+     * names: one of another selector is refused by its form, before any scope
+     * is read, and nothing is created.
+     */
     @Test
-    @Disabled(T4)
-    void a_child_under_a_closed_root_is_root_closed_409() {
-        String root = SurfaceFixture.address(SurfaceFixture.open("a closed root", "code"));
-        Mcp.answer(Mcp.call("dispatch_withdraw", Map.of("address", root,
-            "conflict_token", token(root))));
+    void a_parent_of_another_selector_is_argument_invalid_400() {
+        TaskWire.Planted planted = TaskWire.plant("parent-here", "review");
+        TaskWire.Planted other = TaskWire.plant("parent-there", "review");
+        String elsewhere = TaskWire.started(other.selector());
 
-        assertRefusal(Mcp.refusal(Mcp.call("dispatch_create", child(root))), "ROOT_CLOSED",
-            List.of("attempted"));
-        Response overRest = given().contentType(ContentType.JSON).body(childOverRest(root))
-            .post(SurfaceFixture.collection());
-        assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(409);
-        assertRefusal(overRest.jsonPath().getMap("$"), "ROOT_CLOSED", List.of("attempted"));
-        assertThat(childrenOf(root)).as("no child was created").isZero();
+        Response overMcp = InstanceWire.mcp(TaskWire.CREATE, TaskWire.create(planted.selector(),
+            elsewhere, Map.of("title", "a task")));
+        Map<String, Object> refusal = InstanceWire.refusal(overMcp);
+        assertThat(refusal.get(InstanceWire.REASON)).isEqualTo("ARGUMENT_INVALID");
+        assertThat(InstanceWire.data(refusal).get("offenders")).isEqualTo(List.of("parent"));
+        assertThat(tasksOf(elsewhere)).as("nothing was created").isZero();
+        assertThat(InstanceWire.mcp(TaskWire.CREATE, TaskWire.create(other.selector(),
+                elsewhere, Map.of("title", "a task"))).jsonPath().getBoolean("result.isError"))
+            .as("RED STATE, observed: under its own selector the parent is taken").isFalse();
     }
 
+    /**
+     * A draft whose instance was closed was withdrawn with it, and is no
+     * draft any more: its delete is {@code TRANSITION_REFUSED} 409 on both
+     * surfaces, with the state {@code closed} and no call open, and nothing is
+     * deleted.
+     */
     @Test
-    @Disabled(T4)
-    void a_draft_root_with_a_child_is_children_present_409_and_nothing_is_deleted() {
-        String id = SurfaceFixture.idOf(SurfaceFixture.create(Map.of(
-            "title", "a draft root", "apparatus", "code")));
-        String root = SurfaceFixture.address(id);
-        String child = plantChild(root);
+    void a_task_withdrawn_with_its_instance_is_not_deleted_409() {
+        TaskWire.Planted planted = TaskWire.plant("closed-draft", "review");
+        String address = TaskWire.started(planted.selector());
+        Map<String, Object> draft = TaskWire.drafted(planted.selector(), address, "a draft");
+        close(address);
+        String task = String.valueOf(draft.get(InstanceWire.ADDRESS));
 
-        Map<String, Object> overMcp = Mcp.refusal(Mcp.call("dispatch_delete",
-            Map.of("address", root, "conflict_token", token(root))));
-        assertRefusal(overMcp, "CHILDREN_PRESENT", List.of("attempted", "children"));
-        assertThat(data(overMcp).get("children")).as("complete addresses, each of them")
-            .isEqualTo(List.of(child));
-
-        Response overRest = given().header("If-Match", "\"" + token(root) + "\"")
-            .delete(SurfaceFixture.item(id));
+        assertClosed(InstanceWire.refusal(InstanceWire.mcp(TaskWire.DELETE,
+            TaskWire.on(draft, Map.of()))), TaskWire.DELETE);
+        Response overRest = TaskWire.rest("DELETE", task, null, Map.of(),
+            String.valueOf(draft.get(InstanceWire.TOKEN)));
         assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(409);
-        assertRefusal(overRest.jsonPath().getMap("$"), "CHILDREN_PRESENT",
-            List.of("attempted", "children"));
-        assertThat(overRest.jsonPath().getList("data.children", String.class))
-            .containsExactly(child);
-
-        assertThat(Mcp.field(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", root))),
-            "state")).as("the root stands").isEqualTo("draft");
-        assertThat(childrenOf(root)).as("nothing was deleted along").isEqualTo(1);
+        assertClosed(InstanceWire.object(overRest, "$"), "delete");
+        assertThat(InstanceWire.rows("SELECT state, resolution FROM dispatch.task WHERE id = ?",
+                TaskWire.taskId(task)))
+            .as("the task stands, withdrawn with its instance")
+            .containsExactly(Map.of(InstanceWire.STATE, CLOSED, "resolution", "withdrawn"));
     }
 
     @Test
@@ -220,44 +237,25 @@ class BracketRuleIT {
 
     // -----------------------------------------------------------------------
 
-    private static Map<String, Object> child(String root) {
-        return Map.of("scope", SurfaceFixture.SCOPE, "selector", SurfaceFixture.SELECTOR,
-            "parent", root, "fields", Map.of("title", "a child", "apparatus", "code"));
-    }
-
-    /** The same child over REST, whose path names the scope and the bracket kind. */
-    private static Map<String, Object> childOverRest(String root) {
-        return Map.of("parent", root, "fields", Map.of("title", "a child", "apparatus", "code"));
-    }
-
-    /** The task's current conflict token, as its read hands it out. */
-    private static String token(String address) {
-        return String.valueOf(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", address)))
-            .get("conflict_token"));
-    }
-
-    private static String identityOf(String address) {
-        return Mcp.field(Mcp.answer(Mcp.call("dispatch_read", Map.of("address", address))),
-            "identity").substring("dispatch://".length());
-    }
-
     /**
-     * Writes a child under a root as the administrator: the bracket no call
-     * makes any more. Answers the child's complete address.
+     * Concludes an instance: under the token of its last answer, and where
+     * tasks of it are unfinished with the confirmation the first call hands
+     * out, which withdraws them.
      */
-    private static String plantChild(String root) {
-        PlatformFixture.run("INSERT INTO dispatch.task (tenant_id, scope_id, selector_id, number, "
-            + "sub, title, apparatus, updated_at) SELECT tenant_id, scope_id, selector_id, number, "
-            + "1, 'a planted child', 'code', now() FROM dispatch.task WHERE uuid = '"
-            + identityOf(root) + "'");
-        return root.substring(0, root.length() - ".0".length()) + ".1";
-    }
-
-    private static int childrenOf(String root) {
-        String number = root.substring(root.lastIndexOf('/') + 1, root.lastIndexOf('.'));
-        Response listed = given().queryParam("bracket", number).get(SurfaceFixture.collection());
-        return (int) listed.jsonPath().getList("objects.address", String.class).stream()
-            .filter(a -> !a.equals(root)).count();
+    private static void close(String address) {
+        Map<String, Object> current = InstanceWire.answer(InstanceWire.mcp(PREFIX + ATTACH,
+            Map.of(InstanceWire.ADDRESS, address, InstanceWire.FIELDS,
+                Map.of("kind", "item", "value", "item-" + InstanceWire.suffix()))));
+        Map<String, Object> closing = new LinkedHashMap<>();
+        closing.put(InstanceWire.ADDRESS, address);
+        closing.put(InstanceWire.TOKEN, InstanceWire.token(current));
+        closing.put(InstanceWire.FIELDS, Map.of("text", "done"));
+        Response first = InstanceWire.mcp(PREFIX + CONCLUDE, closing);
+        if (Boolean.TRUE.equals(first.jsonPath().get("result.isError"))) {
+            closing.put("confirmation", InstanceWire.data(InstanceWire.refusal(first))
+                .get("confirmation"));
+            InstanceWire.answer(InstanceWire.mcp(PREFIX + CONCLUDE, closing));
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -265,12 +263,10 @@ class BracketRuleIT {
         return (Map<String, Object>) refusal.get("data");
     }
 
-    private static void assertRefusal(Map<String, Object> refusal, String code,
-                                      List<String> members) {
-        assertThat(refusal.get("reason")).as(String.valueOf(refusal)).isEqualTo(code);
-        assertThat(data(refusal)).as("%s carries its members and no other", code)
-            .containsOnlyKeys(members);
-        assertThat(data(refusal).get("attempted")).as("the call, as the surface names it")
-            .isNotNull();
+    private static long tasksOf(String instance) {
+        return InstanceWire.single("SELECT count(*) FROM dispatch.task WHERE instance_id = ?",
+            InstanceWire.instanceId(instance));
     }
+
+    private static final String COLLECTION = "/api/";
 }

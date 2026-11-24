@@ -39,7 +39,21 @@ public enum AnswerShape {
      * instance, the title only where its start gave one.
      */
     INSTANCE(List.of("address", "fields", "conflict_token", "next"), List.of("selector",
-        "number", "version", "title", "state", "resolution"));
+        "number", "version", "title", "state", "resolution")),
+
+    /**
+     * A task, as {@code create}, {@code update} and {@code send} answer it
+     * (C6.1): its complete address, its place and its state under {@code
+     * fields}, its conflict token, the calls open to the caller under {@code
+     * next}, and what it waits for under {@code waiting_for} where none is open
+     * and it is unfinished. The resolution stands only on a closed task. No
+     * writing call answers with a text.
+     */
+    TASK(List.of("address", "fields", "conflict_token", "next", "waiting_for"),
+        List.of("selector", "number", "sub", "state", "resolution")),
+
+    /** The address a deleted draft had, and nothing else. */
+    ADDRESS(List.of("address"), List.of());
 
     private final List<String> members;
     private final List<String> fields;

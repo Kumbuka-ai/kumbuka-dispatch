@@ -22,15 +22,18 @@ import java.util.function.Supplier;
  * about its caller, the form its HTTP request takes, what it answers and the
  * arguments it takes.
  *
- * <p><strong>Six calls are declared.</strong> The service is rebuilt on the
+ * <p><strong>Ten calls are declared.</strong> The service is rebuilt on the
  * store line, and a call is declared in the same change that binds it to the
  * new kernel, never before: a call declared without a binding would be offered
  * and could not be made. {@code read_definition} came first; the acts on an
  * instance follow it -- {@code start}, {@code conclude}, {@code withdraw},
  * {@code reference_attach} and {@code reference_detach} (REA-0010, catalogue
- * "Acts on an instance"). {@code withdraw} is the call of the catalogue for an
- * instance and for a task; it takes the address of an instance alone until
- * the order that binds it for a task.
+ * "Acts on an instance") -- and then the draft and the commission of a task:
+ * {@code create}, {@code update}, {@code delete} and {@code send} (catalogues
+ * "Calls that are not transitions" and "Transitions of a task"). {@code
+ * withdraw} is the call of the catalogue for an instance and for a task; it
+ * takes the address of an instance alone until the order that binds it for a
+ * task.
  *
  * <p><strong>This is the single source of the surface.</strong> The MCP tool
  * list, the input schemas, the closure of every call's arguments and the
@@ -108,7 +111,70 @@ public enum ProcessVerb {
     REFERENCE_DETACH("reference_detach", DispatchPermission.INSTANCE_REFER,
         EffectClass.ITEM_TRANSITION, AnswerShape.INSTANCE,
         () -> Texts.tools().referenceDetach(),
-        reference(() -> Texts.arguments().detachValue()));
+        reference(() -> Texts.arguments().detachValue())),
+
+    /**
+     * Creates a task as a draft: in a running instance with a parent, or
+     * without one as the first task of an instance it starts. Writes no act.
+     */
+    CREATE("create", DispatchPermission.TASK_COMMISSION, EffectClass.CREATE, AnswerShape.TASK,
+        () -> Texts.tools().create(),
+        List.of(
+            Argument.top("scope", Argument.STRING, () -> Texts.arguments().scope()),
+            Argument.top("selector", Argument.STRING, () -> Texts.arguments().selector()),
+            Argument.top("parent", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().createParent()),
+            Argument.top("idempotency_key", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().createIdempotencyKey()),
+            Argument.field("title", Argument.STRING, () -> Texts.arguments().createTitle()),
+            Argument.field("apparatus", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().createApparatus()),
+            Argument.field("activity", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().createActivity()),
+            Argument.field("concerns", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().createConcerns()),
+            Argument.fieldList("criteria", Argument.REFERENCE_PATTERN,
+                () -> Texts.arguments().createCriteria()),
+            Argument.field("free_fields", Argument.OBJECT, Argument.UNSET,
+                () -> Texts.arguments().createFreeFields()),
+            Argument.field("text", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().createText()),
+            Argument.field("trigger", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().createTrigger()),
+            Argument.fieldList("references", Argument.REFERENCE_PATTERN,
+                () -> Texts.arguments().createReferences()))),
+
+    /** Changes the draft of a task, under its conflict token, with {@code clear} (C7.7). */
+    UPDATE("update", DispatchPermission.TASK_COMMISSION, EffectClass.FIELD_WRITE,
+        AnswerShape.TASK, () -> Texts.tools().update(),
+        List.of(
+            Argument.top("address", Argument.STRING, () -> Texts.arguments().address()),
+            Argument.top("conflict_token", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().draftConflictToken()),
+            Argument.topList("clear", Argument.CLEAR_PATTERN, Argument.UNSET,
+                () -> Texts.arguments().updateClear()),
+            Argument.field("title", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().updateTitle()),
+            Argument.field("apparatus", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().updateApparatus()),
+            Argument.field("activity", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().updateActivity()),
+            Argument.field("concerns", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().updateConcerns()),
+            Argument.fieldList("criteria", Argument.REFERENCE_PATTERN,
+                () -> Texts.arguments().updateCriteria()),
+            Argument.field("free_fields", Argument.OBJECT, Argument.UNSET,
+                () -> Texts.arguments().updateFreeFields()),
+            Argument.field("text", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().updateText()))),
+
+    /** Deletes a task in draft outright, under its conflict token (DEC-0015). */
+    DELETE("delete", DispatchPermission.TASK_COMMISSION, EffectClass.ITEM_DELETE,
+        AnswerShape.ADDRESS, () -> Texts.tools().delete(), onADraft()),
+
+    /** Sends a task in draft: its draft becomes its commission, by the act send. */
+    SEND("send", DispatchPermission.TASK_COMMISSION, EffectClass.ITEM_TRANSITION,
+        AnswerShape.TASK, () -> Texts.tools().send(), onADraft());
 
     /** The prefix every call carries on the assistant surface. */
     public static final String PREFIX = "dispatch_";
@@ -148,6 +214,14 @@ public enum ProcessVerb {
                 () -> Texts.arguments().returnOutcome()),
             Argument.field("translation_basis", Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().returnTranslationBasis()));
+    }
+
+    /** The arguments of {@code delete} and {@code send}: the task's address and its token. */
+    private static List<Argument> onADraft() {
+        return List.of(
+            Argument.top("address", Argument.STRING, () -> Texts.arguments().address()),
+            Argument.top("conflict_token", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().draftConflictToken()));
     }
 
     /** The arguments of the two calls on a reference: the address, its kind and its value. */
@@ -275,6 +349,14 @@ public enum ProcessVerb {
         if (this == CONCLUDE || this == WITHDRAW) {
             refusals.addAll(EnumSet.of(RefusalCode.CONFLICT_TOKEN_MISSING,
                 RefusalCode.CONFLICT_TOKEN_STALE, RefusalCode.CHILDREN_UNFINISHED));
+        }
+        if (this == CREATE) {
+            refusals.addAll(EnumSet.of(RefusalCode.TRANSITION_REFUSED,
+                RefusalCode.IDEMPOTENCY_KEY_REUSED));
+        }
+        if (this == UPDATE || this == DELETE || this == SEND) {
+            refusals.addAll(EnumSet.of(RefusalCode.TRANSITION_REFUSED,
+                RefusalCode.CONFLICT_TOKEN_MISSING, RefusalCode.CONFLICT_TOKEN_STALE));
         }
         return Collections.unmodifiableSet(refusals);
     }

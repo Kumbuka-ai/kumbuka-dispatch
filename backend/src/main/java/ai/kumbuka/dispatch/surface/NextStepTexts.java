@@ -82,4 +82,10 @@ public interface NextStepTexts {
 
     @Message
     String referenceDetach();
+
+    @Message
+    String update();
+
+    @Message
+    String delete();
 }

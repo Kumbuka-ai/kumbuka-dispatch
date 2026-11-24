@@ -25,6 +25,8 @@ class CustomMethodTest {
             .as("without the leading slash and with a trailing one alike")
             .contains(CustomMethod.READ_DEFINITION);
         assertThat(CustomMethod.of("POST", "/api/probe/sprint"))
+            .as("the plain POST on a collection is create").contains(CustomMethod.CREATE);
+        assertThat(CustomMethod.of("PUT", "/api/probe/sprint"))
             .as("another method on a collection").isEmpty();
         assertThat(CustomMethod.of("GET", "/api/probe/sprint:read_definition"))
             .as("the call in colon notation, which it does not take").isEmpty();

@@ -16,6 +16,9 @@ import ai.kumbuka.dispatch.domain.InstanceAddress;
 import ai.kumbuka.dispatch.domain.InstanceService;
 import ai.kumbuka.dispatch.domain.InstanceView;
 import ai.kumbuka.dispatch.domain.Provenance;
+import ai.kumbuka.dispatch.domain.TaskAddress;
+import ai.kumbuka.dispatch.domain.TaskService;
+import ai.kumbuka.dispatch.domain.TaskView;
 import ai.kumbuka.dispatch.platform.Access;
 import ai.kumbuka.dispatch.platform.ScopeDirectory;
 import ai.kumbuka.dispatch.tenancy.TenantBound;
@@ -39,8 +42,9 @@ import java.util.UUID;
  * {@link ProcessVerb}; a call is never offered before it is bound here.
  * {@code read_definition} writes nothing, and so writes no log line of a
  * completed write. Every act on an instance writes one, naming the call, the
- * instance's technical address and the scope's id, and nothing a caller or a
- * tenant chose (C13.3, D23). The lines of the refusals carry their codes
+ * instance's technical address and the scope's id, and every call on a task
+ * one naming the task's technical address, and nothing a caller or a tenant
+ * chose (C13.3, D23). The lines of the refusals carry their codes
  * alone, so no title, label, field name, value or text reaches the log
  * (DEC-0051).
  *
@@ -57,6 +61,7 @@ public class VerbSurface {
 
     @Inject DefinitionService definitions;
     @Inject InstanceService instances;
+    @Inject TaskService tasks;
     @Inject ScopeDirectory scopes;
 
     /**
@@ -114,6 +119,41 @@ public class VerbSurface {
             resolved.scopeId(), kind, value, provenance(actor, ProcessVerb.REFERENCE_DETACH)));
     }
 
+    /** {@code create}: a task in draft, in a running instance or the first of a new one. */
+    @Transactional
+    public TaskView create(Actor actor, String scope, String selector, TaskService.Create create) {
+        ScopeDirectory.ScopeAccess resolved = resolve(actor, scope, Access.WRITE);
+        return written(ProcessVerb.CREATE, resolved, tasks.create(actor, scope,
+            resolved.scopeId(), selector, create, provenance(actor, ProcessVerb.CREATE)));
+    }
+
+    /** {@code update}: changes the draft of a task. */
+    @Transactional
+    public TaskView update(Actor actor, TaskAddress address, TaskService.Update update) {
+        ScopeDirectory.ScopeAccess resolved = resolve(actor, address.instance().scope(),
+            Access.WRITE);
+        return written(ProcessVerb.UPDATE, resolved,
+            tasks.update(actor, address, resolved.scopeId(), update));
+    }
+
+    /** {@code delete}: deletes a task in draft; answers it as it stood. */
+    @Transactional
+    public TaskView delete(Actor actor, TaskAddress address, @Nullable String conflictToken) {
+        ScopeDirectory.ScopeAccess resolved = resolve(actor, address.instance().scope(),
+            Access.WRITE);
+        return written(ProcessVerb.DELETE, resolved,
+            tasks.delete(actor, address, resolved.scopeId(), conflictToken));
+    }
+
+    /** {@code send}: makes the draft of a task its commission. */
+    @Transactional
+    public TaskView send(Actor actor, TaskAddress address, @Nullable String conflictToken) {
+        ScopeDirectory.ScopeAccess resolved = resolve(actor, address.instance().scope(),
+            Access.WRITE);
+        return written(ProcessVerb.SEND, resolved, tasks.send(actor, address,
+            resolved.scopeId(), conflictToken, provenance(actor, ProcessVerb.SEND)));
+    }
+
     /**
      * Resolves a scope a call names, for reading, and makes no call: for the
      * check order, which answers a scope the caller may not see before the
@@ -153,6 +193,14 @@ public class VerbSurface {
         PlatformLog.written(VerbName.of(verb, Surface.MCP),
             PlatformLog.TechnicalAddress.of(instance), PlatformLog.ScopeId.of(scope));
         return instance;
+    }
+
+    /** The line of a completed write, and the task it wrote. */
+    private static TaskView written(ProcessVerb verb, ScopeDirectory.ScopeAccess scope,
+                                    TaskView task) {
+        PlatformLog.written(VerbName.of(verb, Surface.MCP),
+            PlatformLog.TechnicalAddress.of(task), PlatformLog.ScopeId.of(scope));
+        return task;
     }
 
     /** Where the acts of a call come from: its actor, its permission, its path. */

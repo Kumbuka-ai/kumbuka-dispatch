@@ -11,7 +11,6 @@ import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.eclipse.microprofile.config.ConfigProvider;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -123,42 +122,41 @@ class MissingGrantProbeIT {
      * table for whatever else this suite is doing.
      */
     @Test
-    @Disabled("rebuilt in T4: the service role cannot truncate the task table and its referencing tables")
     void the_service_role_cannot_truncate_its_own_table() throws SQLException {
-        String table = "dispatch.task";
-        // Every table that references it, because PostgreSQL refuses to
-        // truncate a table another one has a foreign key into unless both are
-        // named. The texts and the ledger of V17 are such tables, and without
-        // them here the granted half of this probe would fail on the FOREIGN
-        // KEY rather than run — which would read as "the grant did not work"
-        // and is the opposite of what the probe is measuring. The grant is
-        // still the only variable: both halves name the same tables. The tags of
-        // V24 reference the task too.
-        String referencing = "dispatch.task_text, dispatch.task_idempotency_key, "
-            + "dispatch.task_tag";
+        // The task with every table that references it, directly or through
+        // the act, the draft or the commission: PostgreSQL truncates a table
+        // another has a foreign key into only together with it, and CASCADE
+        // names them all. Without them the granted half of this probe would
+        // fail on the FOREIGN KEY rather than run — which would read as "the
+        // grant did not work" and is the opposite of what the probe is
+        // measuring. The grant is still the only variable: both halves run the
+        // same statement, and the granted half grants on every table of the
+        // schema, so that the cascade meets no table it may not truncate.
+        String statement = "dispatch.task CASCADE";
+        String everyTable = "ALL TABLES IN SCHEMA dispatch";
         String role = SubstrateDatabaseResource.SERVICE_ROLE;
         String password = SubstrateDatabaseResource.SERVICE_PASSWORD;
 
-        assertThat(attemptTruncate(role, password, table + ", " + referencing))
-            .as("GREEN STATE: TRUNCATE is not among the privileges V8 and V17 grant, and no "
-                + "ownership hands it over implicitly any more. It is the one privilege "
+        assertThat(attemptTruncate(role, password, statement))
+            .as("GREEN STATE: TRUNCATE is not among the privileges V1 to V6 of the store line "
+                + "grant, and no ownership hands it over implicitly. It is the one privilege "
                 + "row-level security cannot moderate, so the only place it can be stopped "
                 + "is the grant that does not exist")
             .isInstanceOf(Refused.class);
 
         try {
-            asAdmin("GRANT TRUNCATE ON " + table + ", " + referencing + " TO " + role);
+            asAdmin("GRANT TRUNCATE ON " + everyTable + " TO " + role);
 
-            assertThat(attemptTruncate(role, password, table + ", " + referencing))
+            assertThat(attemptTruncate(role, password, statement))
                 .as("RED STATE, observed: with TRUNCATE granted the same role runs the same "
                     + "statement and the database carries it out. So the refusal above was "
                     + "the missing privilege and not a missing table or a locked one")
                 .isNotInstanceOf(Refused.class);
         } finally {
-            asAdmin("REVOKE TRUNCATE ON " + table + ", " + referencing + " FROM " + role);
+            asAdmin("REVOKE TRUNCATE ON " + everyTable + " FROM " + role);
         }
 
-        assertThat(attemptTruncate(role, password, table + ", " + referencing))
+        assertThat(attemptTruncate(role, password, statement))
             .as("and closed again, so the red state was that grant and nothing else")
             .isInstanceOf(Refused.class);
     }

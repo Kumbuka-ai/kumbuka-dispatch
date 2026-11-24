@@ -12,7 +12,6 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -79,47 +78,95 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
-@Disabled("rebuilt in T4: the runtime role holds exactly the enumerated privileges on every relation of its schema")
 class ServiceRolePrivilegeIT {
 
     /** The migrator's own record of what it did. The runtime role holds nothing on it. */
     private static final String HISTORY_TABLE = "flyway_schema_history";
 
-    /** What a domain table of this schema grants the runtime role. */
-    private static final Set<String> DOMAIN_PRIVILEGES = Set.of("SELECT", "INSERT", "UPDATE");
-
-    /** What a table of the rebuilt store grants: the domain set and DELETE. */
-    private static final Set<String> TASK_PRIVILEGES =
-        Set.of("SELECT", "INSERT", "UPDATE", "DELETE");
+    /**
+     * What an insert-only table of the store line grants the runtime role on
+     * the whole table: reading and appending, and no UPDATE, which the store
+     * line grants by column where it grants it at all (V1 to V6).
+     */
+    private static final Set<String> APPEND = Set.of("SELECT", "INSERT");
 
     /**
-     * The entitlement, relation by relation. Every relation of this schema
-     * appears, including the one whose entitlement is nothing at all — an
-     * absence stated is checkable, an absence omitted is not.
-     *
-     * <p>No DELETE on the exchange store. No code of the service reads or
-     * writes it any longer; it stays in the schema, with the grants V8 and V14
-     * wrote, until the release after the switch removes it, and this
-     * expectation keeps those grants checked until then.
+     * What a table grants whose rows the service deletes: a draft never sent,
+     * the draft workspace, and since V6 an expired idempotency key.
      */
-    private static final Map<String, Set<String>> EXPECTED = Map.of(
-        "exchange", DOMAIN_PRIVILEGES,
-        "selector", DOMAIN_PRIVILEGES,
-        // The idempotency ledger (V14). The same three and no DELETE: an entry
-        // past its 24-hour window is overwritten in place by the next call
-        // under that key, which is an UPDATE. This is the check F-note-grant
-        // is named after — a new relation that nobody granted is a 500 on the
-        // first call that touches it, and mocked tests stay green through it.
-        "idempotency_key", DOMAIN_PRIVILEGES,
-        // The store of the rebuilt lifecycle (V17). DELETE joins the three,
-        // because a draft is hard-deleted; the guard trigger of V17 confines
-        // it to drafts, which TaskStoreShapeIT proves in plain SQL.
-        "task", TASK_PRIVILEGES,
-        "task_text", TASK_PRIVILEGES,
-        "task_idempotency_key", TASK_PRIVILEGES,
-        // The tags a task carries (V24): DELETE is what detaching a tag is.
-        "task_tag", TASK_PRIVILEGES,
-        HISTORY_TABLE, Set.of());
+    private static final Set<String> DELETING = Set.of("SELECT", "INSERT", "DELETE");
+
+    /**
+     * The entitlement on the whole table, relation by relation. Every relation
+     * of this schema appears, including the one whose entitlement is nothing
+     * at all — an absence stated is checkable, an absence omitted is not.
+     */
+    private static final Map<String, Set<String>> EXPECTED = Map.ofEntries(
+        Map.entry("selector", APPEND),
+        Map.entry("definition_version", APPEND),
+        Map.entry("definition_act", APPEND),
+        Map.entry("definition_tag", APPEND),
+        Map.entry("activity", APPEND),
+        Map.entry("outcome_label", APPEND),
+        Map.entry("instance", APPEND),
+        // A draft never sent is deleted outright (DEC-0015); the key of act
+        // refuses the delete of a task with an act.
+        Map.entry("task", DELETING),
+        Map.entry("act", APPEND),
+        Map.entry("commission", APPEND),
+        Map.entry("commission_criterion", APPEND),
+        Map.entry("holding", APPEND),
+        Map.entry("receipt", APPEND),
+        Map.entry("lease", APPEND),
+        Map.entry("delivery", APPEND),
+        Map.entry("delivery_criterion", APPEND),
+        Map.entry("instance_return", APPEND),
+        Map.entry("external_reference", APPEND),
+        // An expired key of a caller is deleted when that caller next writes
+        // one (V6, REA-0010 D30); a row is never changed.
+        Map.entry("idempotency_key", DELETING),
+        Map.entry("free_fields", APPEND),
+        Map.entry("content", APPEND),
+        // The draft workspace, emptied when its draft is sent or deleted.
+        Map.entry("draft", DELETING),
+        Map.entry("draft_criterion", DELETING),
+        Map.entry("draft_free_fields", DELETING),
+        Map.entry("draft_text", DELETING),
+        Map.entry("enumeration", APPEND),
+        Map.entry("enumeration_value", APPEND),
+        Map.entry("control_field", APPEND),
+        Map.entry("contract_field", APPEND),
+        Map.entry("field_value", APPEND),
+        Map.entry("instance_field_value", APPEND),
+        Map.entry("elicitation_question", APPEND),
+        Map.entry("elicitation_option", APPEND),
+        Map.entry("elicitation_answer", APPEND),
+        Map.entry("elicitation_answer_option", APPEND),
+        Map.entry("elicitation_content", APPEND),
+        Map.entry(HISTORY_TABLE, Set.of()));
+
+    /**
+     * The columns the runtime role may UPDATE, relation by relation, as V1 to
+     * V6 grant them: the projections, the counters and the draft workspace.
+     * A relation not named here takes no UPDATE on any column.
+     */
+    private static final Map<String, Set<String>> UPDATE_COLUMNS = Map.ofEntries(
+        Map.entry("selector", Set.of("next_number")),
+        Map.entry("definition_version", Set.of("state")),
+        Map.entry("instance", Set.of("next_sub", "definition_version_id", "state",
+            "resolution")),
+        Map.entry("task", Set.of("title", "activity_id", "concerns_task_id", "state",
+            "hold_reason", "resolution", "not_before", "parked", "addressed_role")),
+        Map.entry("holding", Set.of("ended_by_act_id")),
+        Map.entry("external_reference", Set.of("ended_by_act_id")),
+        // V6 adds changed_at, the conflict token of a draft (D29).
+        Map.entry("draft", Set.of("title", "activity_id", "concerns_task_id", "bound_task_id",
+            "addressed_role", "changed_at")),
+        Map.entry("draft_criterion", Set.of("identifier", "ordinal")),
+        Map.entry("draft_free_fields", Set.of("document")),
+        Map.entry("draft_text", Set.of("media_type", "body")),
+        Map.entry("instance_field_value", Set.of("field_value_id", "accepted_by_act_id",
+            "boolean_value", "number_value", "date_value", "text_value", "choice_value_id")));
 
     /**
      * Everything {@code has_table_privilege} can be asked about a table.
@@ -161,6 +208,7 @@ class ServiceRolePrivilegeIT {
      */
     private static List<String> migratedRelations;
     private static List<String> migratedDefects;
+    private static List<String> migratedColumnDefects;
     private static String migratedSchemaOwner;
     private static List<String> migratedForeignOwned;
     private static boolean migratedSchemaUsage;
@@ -172,6 +220,7 @@ class ServiceRolePrivilegeIT {
         try (Connection c = admin()) {
             migratedRelations = relationsIn(c, schema());
             migratedDefects = privilegeDefects(c);
+            migratedColumnDefects = updateColumnDefects(c);
             migratedSchemaOwner = schemaOwner(c);
             migratedForeignOwned =
                 relationsNotOwnedBy(c, SubstrateDatabaseResource.MIGRATOR_ROLE);
@@ -222,12 +271,47 @@ class ServiceRolePrivilegeIT {
             .containsExactlyInAnyOrderElementsOf(new TreeSet<>(EXPECTED.keySet()));
 
         assertThat(migratedDefects)
-            .as("the runtime role %s may hold exactly %s on a domain table of schema %s and "
-                + "nothing whatever on %s. TRUNCATE in particular bypasses row-level "
-                + "security independently of every policy, so a role holding it crosses the "
-                + "tenant boundary without any part of the isolation apparatus seeing it",
-                role(), DOMAIN_PRIVILEGES, schema(), HISTORY_TABLE)
+            .as("the runtime role %s may hold exactly %s, or with DELETE %s, on a table of "
+                + "schema %s and nothing whatever on %s. TRUNCATE in particular bypasses "
+                + "row-level security independently of every policy, so a role holding it "
+                + "crosses the tenant boundary without any part of the isolation apparatus "
+                + "seeing it", role(), APPEND, DELETING, schema(), HISTORY_TABLE)
             .isEmpty();
+
+        assertThat(migratedColumnDefects)
+            .as("and UPDATE on exactly the columns V1 to V6 name: a projection, a counter, "
+                + "the draft workspace, and since V6 the token of a draft")
+            .isEmpty();
+    }
+
+    /**
+     * A column-level UPDATE missing, or one too many. Without this direction a
+     * migration that forgot the grant of a new column -- the token of a draft
+     * -- would pass the probe of the whole tables and fail on the first update
+     * of a draft.
+     */
+    @Test
+    void the_probe_reports_an_update_column_that_is_missing_or_held_too_many() throws SQLException {
+        String draft = schema() + ".draft";
+        try (Connection c = admin()) {
+            try {
+                exec(c, "REVOKE UPDATE (changed_at) ON " + draft + " FROM " + role());
+                exec(c, "GRANT UPDATE (task_id) ON " + draft + " TO " + role());
+
+                assertThat(updateColumnDefects(c))
+                    .as("RED STATE, observed: the token of a draft without its grant, and a "
+                        + "column the role must not change with one, are each reported")
+                    .anySatisfy(defect -> assertThat(defect).contains("draft.changed_at")
+                        .contains("lacks"))
+                    .anySatisfy(defect -> assertThat(defect).contains("draft.task_id")
+                        .contains("holds"));
+            } finally {
+                exec(c, "REVOKE UPDATE (task_id) ON " + draft + " FROM " + role());
+                exec(c, "GRANT UPDATE (changed_at) ON " + draft + " TO " + role());
+            }
+
+            assertThat(updateColumnDefects(c)).as("and restored").isEmpty();
+        }
     }
 
     /**
@@ -334,10 +418,12 @@ class ServiceRolePrivilegeIT {
             } finally {
                 exec(c, "ALTER TABLE " + table + " OWNER TO "
                     + SubstrateDatabaseResource.MIGRATOR_ROLE);
-                // The owner change carries the implicit ACL with it and drops
-                // the explicit grants, so they are re-issued exactly as V8
-                // and V17 write them.
-                exec(c, "GRANT SELECT, INSERT, UPDATE, DELETE ON " + table + " TO " + role());
+                // The owner change carries the implicit ACL with it, so the
+                // explicit grants are re-issued exactly as V1 and V4 write them.
+                exec(c, "GRANT SELECT, INSERT, DELETE ON " + table + " TO " + role());
+                exec(c, "GRANT UPDATE (title, activity_id, concerns_task_id, state, hold_reason, "
+                    + "resolution, not_before, parked, addressed_role) ON " + table + " TO "
+                    + role());
             }
 
             assertThat(relationsNotOwnedBy(c, SubstrateDatabaseResource.MIGRATOR_ROLE))
@@ -392,15 +478,16 @@ class ServiceRolePrivilegeIT {
         String table = schema() + ".task";
         try (Connection c = admin()) {
             try {
-                exec(c, "REVOKE UPDATE ON " + table + " FROM " + role());
+                exec(c, "REVOKE DELETE ON " + table + " FROM " + role());
 
                 assertThat(privilegeDefects(c))
-                    .as("RED STATE, observed: a missing UPDATE is a defect too")
+                    .as("RED STATE, observed: a missing DELETE is a defect too: a draft could "
+                        + "no longer be deleted")
                     .anySatisfy(defect -> assertThat(defect)
                         .contains(".task:")
-                        .contains("UPDATE"));
+                        .contains("DELETE"));
             } finally {
-                exec(c, "GRANT UPDATE ON " + table + " TO " + role());
+                exec(c, "GRANT DELETE ON " + table + " TO " + role());
             }
 
             assertThat(privilegeDefects(c))
@@ -471,6 +558,61 @@ class ServiceRolePrivilegeIT {
             }
         }
         return defects;
+    }
+
+    /**
+     * Every deviation from the enumerated column-level UPDATE, one string per
+     * relation and column, in both directions, read from {@code
+     * has_column_privilege} over every column of every relation the
+     * expectation names.
+     */
+    private static List<String> updateColumnDefects(Connection c) throws SQLException {
+        List<String> defects = new ArrayList<>();
+        for (String relation : new TreeSet<>(EXPECTED.keySet())) {
+            Set<String> permitted = UPDATE_COLUMNS.getOrDefault(relation, Set.of());
+            for (String column : columnsOf(c, relation)) {
+                boolean held = holdsOnColumn(c, relation, column);
+                boolean expected = permitted.contains(column);
+                if (held && !expected) {
+                    defects.add(relation + "." + column + ": holds UPDATE and must not");
+                } else if (!held && expected) {
+                    defects.add(relation + "." + column + ": lacks UPDATE and must hold it");
+                }
+            }
+        }
+        return defects;
+    }
+
+    private static List<String> columnsOf(Connection c, String relation) throws SQLException {
+        List<String> out = new ArrayList<>();
+        try (var st = c.prepareStatement("""
+                SELECT a.attname FROM pg_attribute a
+                WHERE a.attrelid = (? || '.' || ?)::regclass AND a.attnum > 0
+                  AND NOT a.attisdropped
+                ORDER BY a.attnum
+                """)) {
+            st.setString(1, schema());
+            st.setString(2, relation);
+            try (ResultSet rs = st.executeQuery()) {
+                while (rs.next()) {
+                    out.add(rs.getString(1));
+                }
+            }
+        }
+        return out;
+    }
+
+    private static boolean holdsOnColumn(Connection c, String relation, String column)
+            throws SQLException {
+        try (var st = c.prepareStatement("SELECT has_column_privilege(?, ?, ?, 'UPDATE')")) {
+            st.setString(1, role());
+            st.setString(2, schema() + "." + relation);
+            st.setString(3, column);
+            try (ResultSet rs = st.executeQuery()) {
+                rs.next();
+                return rs.getBoolean(1);
+            }
+        }
     }
 
     /**

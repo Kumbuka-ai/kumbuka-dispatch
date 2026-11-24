@@ -86,6 +86,10 @@ public class Instance {
     @Column(name = "title", updatable = false)
     private @Nullable String title;
 
+    /** The sub the next task of the instance takes: from 1, never 0 (D24). */
+    @Column(name = "next_sub")
+    private int nextSub;
+
     @Column(name = "state")
     private String state;
 
@@ -95,7 +99,7 @@ public class Instance {
 
     /**
      * An instance of a selector under the number its counter handed out,
-     * bound to the version in force, running.
+     * bound to the version in force, running, with no task yet.
      */
     static Instance started(UUID scopeId, long selectorId, long number, long versionId,
                             String title) {
@@ -105,8 +109,20 @@ public class Instance {
         instance.number = number;
         instance.definitionVersionId = versionId;
         instance.title = title;
+        instance.nextSub = 1;
         instance.state = State.RUNNING.wireName();
         return instance;
+    }
+
+    /**
+     * Hands out the sub of the next task and moves the counter on. Called
+     * under the lock of the instance's row, so two tasks created at once take
+     * two subs, one after the other, without a gap.
+     */
+    int takeSub() {
+        int sub = nextSub;
+        nextSub = sub + 1;
+        return sub;
     }
 
     /** Closes the instance: its state and its resolution, which the closing act names. */

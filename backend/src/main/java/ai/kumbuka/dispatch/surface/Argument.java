@@ -160,6 +160,23 @@ public record Argument(String name, String type, boolean required, Placement pla
     }
 
     /**
+     * An optional top-level list of strings, every element of which obeys one
+     * pattern, and the value it takes when left out or null.
+     */
+    public static Argument topList(String name, String itemPattern, String fallback,
+                                   Supplier<String> description) {
+        return new Argument(name, ARRAY, false, Placement.TOP, description, itemPattern,
+            List.of(), fallback);
+    }
+
+    /**
+     * The pattern of a path in {@code clear} (C7.7): one of the fields of a
+     * draft an update may empty. The title of a task stays.
+     */
+    public static final String CLEAR_PATTERN =
+        "^fields\\.(apparatus|activity|concerns|criteria|free_fields|text)$";
+
+    /**
      * An optional list of strings under {@code fields}, every element of which
      * obeys one pattern; left out or null, the list is empty.
      */

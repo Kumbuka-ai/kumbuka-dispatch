@@ -218,6 +218,25 @@ public class McpAdapter {
                     ? calls.referenceAttach(actor, refer, Surface.MCP)
                     : calls.referenceDetach(actor, refer, Surface.MCP);
             }
+            case CREATE -> {
+                CallForm.Create create = CallForm.create(Surface.MCP, arguments);
+                Actor actor = caller.current();
+                verbs.resolveScopeToWrite(actor, create.scope());
+                yield calls.create(actor, create, Surface.MCP);
+            }
+            case UPDATE -> {
+                CallForm.Update update = CallForm.update(Surface.MCP, arguments);
+                Actor actor = caller.current();
+                verbs.resolveScopeToWrite(actor, update.address().instance().scope());
+                yield calls.update(actor, update, Surface.MCP);
+            }
+            case DELETE, SEND -> {
+                CallForm.OnADraft onADraft = CallForm.onADraft(verb, Surface.MCP, arguments);
+                Actor actor = caller.current();
+                verbs.resolveScopeToWrite(actor, onADraft.address().instance().scope());
+                yield verb == ProcessVerb.DELETE ? calls.delete(actor, onADraft)
+                    : calls.send(actor, onADraft, Surface.MCP);
+            }
         };
     }
 

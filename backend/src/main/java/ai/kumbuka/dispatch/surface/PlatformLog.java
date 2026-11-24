@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.domain.InstanceView;
+import ai.kumbuka.dispatch.domain.TaskView;
 import ai.kumbuka.dispatch.platform.ScopeDirectory;
 import org.jboss.logging.Logger;
 
@@ -200,20 +201,27 @@ public final class PlatformLog {
      */
     public static final class TechnicalAddress {
 
-        private final long instance;
+        private final String kind;
+        private final long id;
 
-        private TechnicalAddress(long instance) {
-            this.instance = instance;
+        private TechnicalAddress(String kind, long id) {
+            this.kind = kind;
+            this.id = id;
         }
 
         /** The instance an act on it answered. */
         public static TechnicalAddress of(InstanceView written) {
-            return new TechnicalAddress(written.id());
+            return new TechnicalAddress("instance", written.id());
+        }
+
+        /** The task a call on it answered, or deleted. */
+        public static TechnicalAddress of(TaskView written) {
+            return new TechnicalAddress("task", written.id());
         }
 
         @Override
         public String toString() {
-            return "instance " + instance;
+            return kind + " " + id;
         }
     }
 

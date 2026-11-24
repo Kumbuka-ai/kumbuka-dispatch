@@ -206,4 +206,40 @@ public interface ArgumentDescriptions {
 
     @Message
     String detachValue();
+
+    @Message
+    String createActivity();
+
+    @Message
+    String createConcerns();
+
+    @Message
+    String createCriteria();
+
+    @Message
+    String createFreeFields();
+
+    @Message
+    String createTrigger();
+
+    @Message
+    String createReferences();
+
+    @Message
+    String updateActivity();
+
+    @Message
+    String updateConcerns();
+
+    @Message
+    String updateCriteria();
+
+    @Message
+    String updateFreeFields();
+
+    @Message
+    String updateClear();
+
+    @Message
+    String draftConflictToken();
 }

@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.DefinitionView;
 import ai.kumbuka.dispatch.domain.InstanceView;
+import ai.kumbuka.dispatch.domain.TaskView;
 import ai.kumbuka.dispatch.surface.NextList;
 import ai.kumbuka.dispatch.surface.Refusal;
 import ai.kumbuka.dispatch.surface.Surface;
@@ -20,8 +21,9 @@ import java.util.List;
  * surfaces put on the wire (C7.1).
  *
  * <p>The answers of the calls are built here as each call is bound to the
- * kernel of the store line: {@code read_definition} answers a version, and
- * every act on an instance answers the instance. No answer names the identity
+ * kernel of the store line: {@code read_definition} answers a version, every
+ * act on an instance answers the instance, a call on a task answers the task,
+ * and {@code delete} the address the draft had. No answer names the identity
  * of an actor.
  */
 public final class Payloads {
@@ -77,6 +79,22 @@ public final class Payloads {
     public static InstancePayload instance(InstanceView view, Surface surface) {
         return new InstancePayload(view.address().complete(), view.fields(),
             view.conflictToken(), next(NextList.of(view.open(), surface)));
+    }
+
+    /**
+     * A task, as {@code create}, {@code update} and {@code send} answer it,
+     * with the calls open to the caller named on the surface the caller came
+     * through (C6.2), and what it waits for where none is open.
+     */
+    public static TaskPayload task(TaskView view, Surface surface) {
+        List<NextList.Step> next = NextList.ofTask(view.open(), surface);
+        return new TaskPayload(view.address().complete(), view.fields(), view.conflictToken(),
+            next(next), NextList.waitingFor(view, next));
+    }
+
+    /** The address a deleted draft had, as {@code delete} answers it. */
+    public static AddressPayload deleted(TaskView view) {
+        return new AddressPayload(view.address().complete());
     }
 
     private static List<EnumerationPayload> enumerations(List<DefinitionView.NamedValues> named) {

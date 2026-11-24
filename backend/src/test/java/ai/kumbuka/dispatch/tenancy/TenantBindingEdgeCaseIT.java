@@ -7,19 +7,20 @@
  */
 package ai.kumbuka.dispatch.tenancy;
 
+import ai.kumbuka.dispatch.domain.TaskService;
 import io.quarkus.hibernate.orm.PersistenceUnitExtension;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import org.flywaydb.core.api.callback.Event;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * The paths the tenancy machinery takes when something is wrong.
@@ -48,9 +49,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class TenantBindingEdgeCaseIT {
 
-    private static final String REBUILT =
-        "rebuilt in T4: a write through the ORM carries the bound tenant and reads back what it wrote";
-
+    @Inject TaskService tasks;
+    @Inject EntityManager em;
     @Inject TenantContext tenantContext;
     @Inject TenantDatabaseBinding binding;
     @Inject TenantResolver resolver;
@@ -191,10 +191,37 @@ class TenantBindingEdgeCaseIT {
     // The repository's count, which the fail-closed probe asserts on
     // -----------------------------------------------------------------------
 
+    /**
+     * A write through the ORM carries the bound tenant, and a read through it
+     * reads back what it wrote under that tenant and nothing under another:
+     * the count the fail-closed probe asserts on is a count of this tenant's
+     * rows.
+     */
     @Test
-    @Disabled(REBUILT)
-    void the_orm_read_is_scoped_to_the_bound_tenant() {
-        fail(REBUILT);
+    void the_orm_read_is_scoped_to_the_bound_tenant() throws Exception {
+        UUID scope = UUID.randomUUID();
+        UUID tenant = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        TenantTasks.plant(tenant, scope);
+        try (AutoCloseable ignored = tenantContext.bind(tenant)) {
+            tasks.create(TenantTasks.ACTOR, "probe", scope, TenantTasks.SELECTOR,
+                TenantTasks.create("written under the tenant", null), TenantTasks.PROVENANCE);
+            assertThat(tasksIn(scope)).as("the write carried the bound tenant and reads back")
+                .isEqualTo(1);
+        }
+        try (AutoCloseable ignored = tenantContext.bind(other)) {
+            assertThat(tasksIn(scope))
+                .as("RED STATE, observed: under another tenant the same read finds nothing, so "
+                    + "the one above was the tenant's row")
+                .isZero();
+        }
+    }
+
+    private long tasksIn(UUID scope) {
+        return QuarkusTransaction.requiringNew().call(() -> em.createQuery(
+                "SELECT count(t) FROM Task t WHERE t.scopeId = :scope", Long.class)
+            .setParameter("scope", scope)
+            .getSingleResult());
     }
 
     // -----------------------------------------------------------------------

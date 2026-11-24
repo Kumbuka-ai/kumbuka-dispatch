@@ -50,7 +50,11 @@ public enum Form {
     TAG_UNKNOWN(RefusalCode.Message.INVALID_TAG_UNKNOWN),
     TAG_WITHDRAWN(RefusalCode.Message.INVALID_TAG_WITHDRAWN),
     TAG_FILTER(RefusalCode.Message.INVALID_TAG_FILTER),
-    INSTANCE_ADDRESS(RefusalCode.Message.INVALID_INSTANCE_ADDRESS);
+    INSTANCE_ADDRESS(RefusalCode.Message.INVALID_INSTANCE_ADDRESS),
+    APPARATUS(RefusalCode.Message.INVALID_APPARATUS),
+    CLEAR(RefusalCode.Message.INVALID_CLEAR),
+    CLEAR_AND_VALUE(RefusalCode.Message.INVALID_CLEAR_AND_VALUE),
+    ONLY_WITHOUT_PARENT(RefusalCode.Message.INVALID_ONLY_WITHOUT_PARENT);
 
     private final RefusalCode.Message message;
 

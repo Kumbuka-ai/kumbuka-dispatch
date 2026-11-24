@@ -31,8 +31,9 @@ import jakarta.inject.Inject;
  * by then, so a scope the caller may not see has already answered {@code
  * NOT_FOUND} (C1.3).
  *
- * <p>An act on an instance answers the instance, with the calls open on it
- * named on the surface the caller came through (C6.2).
+ * <p>An act on an instance answers the instance, and a call on a task the
+ * task, each with the calls open on it named on the surface the caller came
+ * through (C6.2); {@code delete} answers the address the draft had.
  */
 @ApplicationScoped
 public class DeclaredCalls {
@@ -79,5 +80,30 @@ public class DeclaredCalls {
     public InstancePayload referenceDetach(Actor actor, CallForm.Refer call, Surface surface) {
         return Payloads.instance(
             verbs.detach(actor, call.address(), call.kind(), call.value()), surface);
+    }
+
+    /** {@code create}, with and without a parent, under {@code dispatch.task.commission}. */
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public TaskPayload create(Actor actor, CallForm.Create call, Surface surface) {
+        return Payloads.task(verbs.create(actor, call.scope(), call.selector(), call.create()),
+            surface);
+    }
+
+    /** {@code update}, under {@code dispatch.task.commission}. */
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public TaskPayload update(Actor actor, CallForm.Update call, Surface surface) {
+        return Payloads.task(verbs.update(actor, call.address(), call.update()), surface);
+    }
+
+    /** {@code delete}, under {@code dispatch.task.commission}. */
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public AddressPayload delete(Actor actor, CallForm.OnADraft call) {
+        return Payloads.deleted(verbs.delete(actor, call.address(), call.conflictToken()));
+    }
+
+    /** {@code send}, under {@code dispatch.task.commission}. */
+    @PermissionsAllowed(DispatchPermission.Name.TASK_COMMISSION)
+    public TaskPayload send(Actor actor, CallForm.OnADraft call, Surface surface) {
+        return Payloads.task(verbs.send(actor, call.address(), call.conflictToken()), surface);
     }
 }
