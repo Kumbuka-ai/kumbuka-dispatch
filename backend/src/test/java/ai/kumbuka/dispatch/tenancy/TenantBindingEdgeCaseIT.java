@@ -9,14 +9,16 @@ package ai.kumbuka.dispatch.tenancy;
 
 import ai.kumbuka.dispatch.domain.TaskService;
 import io.quarkus.hibernate.orm.PersistenceUnitExtension;
-import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
 import org.flywaydb.core.api.callback.Event;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,7 +52,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TenantBindingEdgeCaseIT {
 
     @Inject TaskService tasks;
-    @Inject EntityManager em;
     @Inject TenantContext tenantContext;
     @Inject TenantDatabaseBinding binding;
     @Inject TenantResolver resolver;
@@ -206,22 +207,29 @@ class TenantBindingEdgeCaseIT {
         try (AutoCloseable ignored = tenantContext.bind(tenant)) {
             tasks.create(TenantTasks.ACTOR, "probe", scope, TenantTasks.SELECTOR,
                 TenantTasks.create("written under the tenant", null), TenantTasks.PROVENANCE);
-            assertThat(tasksIn(scope)).as("the write carried the bound tenant and reads back")
-                .isEqualTo(1);
         }
-        try (AutoCloseable ignored = tenantContext.bind(other)) {
-            assertThat(tasksIn(scope))
-                .as("RED STATE, observed: under another tenant the same read finds nothing, so "
-                    + "the one above was the tenant's row")
-                .isZero();
-        }
+        assertThat(tasksIn(scope, tenant))
+            .as("the write carried the bound tenant: read back under it by the service role")
+            .isEqualTo(1);
+        assertThat(tasksIn(scope, other))
+            .as("RED STATE, observed: under another tenant the same read finds nothing, so the "
+                + "one above was the tenant's row")
+            .isZero();
     }
 
-    private long tasksIn(UUID scope) {
-        return QuarkusTransaction.requiringNew().call(() -> em.createQuery(
-                "SELECT count(t) FROM Task t WHERE t.scopeId = :scope", Long.class)
-            .setParameter("scope", scope)
-            .getSingleResult());
+    /** The tasks of a scope the service role reads with a tenant bound, past the ORM. */
+    private static long tasksIn(UUID scope, UUID tenant) throws SQLException {
+        try (Connection c = Db.asService()) {
+            Db.bindTenant(c, tenant);
+            try (PreparedStatement st = c.prepareStatement(
+                    "SELECT count(*) FROM dispatch.task WHERE scope_id = ?")) {
+                st.setObject(1, scope);
+                try (ResultSet rs = st.executeQuery()) {
+                    rs.next();
+                    return rs.getLong(1);
+                }
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
