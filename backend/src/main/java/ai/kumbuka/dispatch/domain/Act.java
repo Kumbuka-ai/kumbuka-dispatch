@@ -115,13 +115,18 @@ public class Act {
     @Column(name = "to_state", nullable = false, updatable = false)
     private String toState;
 
+    /** Absent but on an act another act caused: a withdraw a closing cascades. */
+    @Column(name = "refers_to_act_id", updatable = false)
+    private @Nullable Long refersToActId;
+
     /** For the persistence provider only. */
     protected Act() {
         // The provider fills every column from the row it reads.
     }
 
     private Act(Instance instance, int sequence, Kind kind, State toState,
-                @Nullable Long taskId, Provenance provenance, Instant at) {
+                @Nullable Long taskId, Provenance provenance, Instant at,
+                @Nullable Long refersToActId) {
         this.scopeId = instance.scopeId;
         this.instanceId = instance.id;
         this.sequence = sequence;
@@ -134,6 +139,7 @@ public class Act {
         this.path = provenance.path().wireName();
         this.authenticationLevel = provenance.authenticationLevel();
         this.at = at;
+        this.refersToActId = refersToActId;
     }
 
     /**
@@ -141,12 +147,15 @@ public class Act {
      * out under the instance's lock. The tenant is the bound one, set by the
      * persistence provider from the tenant context.
      *
-     * @param taskId the task the act is about; absent on an act about the
-     *               instance alone
+     * @param taskId        the task the act is about; absent on an act about the
+     *                      instance alone
+     * @param refersToActId the act that caused this one; absent on an act a
+     *                      call wrote on its own account
      */
     static Act of(Instance instance, int sequence, Kind kind, State toState,
-                  @Nullable Long taskId, Provenance provenance, Instant at) {
-        return new Act(instance, sequence, kind, toState, taskId, provenance, at);
+                  @Nullable Long taskId, Provenance provenance, Instant at,
+                  @Nullable Long refersToActId) {
+        return new Act(instance, sequence, kind, toState, taskId, provenance, at, refersToActId);
     }
 
     /** The act's surrogate, drawn by the store at the insert. */
@@ -213,5 +222,10 @@ public class Act {
     /** The authentication level of the session; empty where the call carried none. */
     public Optional<String> authenticationLevel() {
         return Optional.ofNullable(authenticationLevel);
+    }
+
+    /** The act that caused this one; empty on an act a call wrote on its own account. */
+    public Optional<Long> refersToActId() {
+        return Optional.ofNullable(refersToActId);
     }
 }

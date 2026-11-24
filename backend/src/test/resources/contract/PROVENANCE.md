@@ -215,3 +215,26 @@ table, both written with this surface and the service's proposal: `rolePermissio
 `ROLE_INSUFFICIENT`, for a caller that sees the scope and does not hold the one permission a call
 declares (ADR-0053/C10), where no message of a part fits, since the call belongs to no part of a
 task; and `invalidWholeNumberFromOne`, under `ARGUMENT_INVALID`, for a version outside its bound.
+
+## The amendment of 2026-11-24: the acts on an instance (REA-0010 S5, third order)
+
+From REA-0010 S5 and its catalogue "Acts on an instance" (platform-specs `e858bb1`), TAR-0004
+section 2.3, DEC-0056/C7 and C21, and the operator's answers of 2026-11-24 to the questions of this
+order: `start`, `conclude`, `withdraw`, `reference_attach` and `reference_detach` join
+`read_definition`. Twelve messages join the table, each written with this surface and the
+service's proposal; no code joins the catalogue, each is raised under a code the table names.
+`instanceClosed`, under `TRANSITION_REFUSED`, for an act on a closed instance. `tasksUnfinished`
+and `tasksConfirmationStale`, under `CHILDREN_UNFINISHED`, for a closing of an instance with
+unfinished tasks, which hands out a confirmation computed from their set and their closing, and
+names each task under `data.children`. `instanceTokenStale`, under `CONFLICT_TOKEN_STALE`, for a
+closing under a token that is not the time of the instance's last act. The four refusals of the
+start contract name the rule by their message and the field by its path, never its value:
+`contractFieldMissing` under `ARGUMENT_MISSING`, `contractFieldUndeclared` under
+`ARGUMENT_UNKNOWN` with the fields the contract names under `data.accepts`, since the name the
+caller sent is not repeated, and `contractFieldMistyped` and `contractValueUnenumerated` under
+`ARGUMENT_INVALID`. `returnPartMissing` under `ARGUMENT_MISSING` and `returnOutcomeUndeclared`
+under `ARGUMENT_INVALID` for the return of a closing; `referenceAbsent` under `ARGUMENT_INVALID`
+for ending a reference the instance does not carry; and `invalidInstanceAddress` under
+`ADDRESS_MALFORMED` for an address outside the form `dispatch://<scope>/<selector>/<number>`.
+`VALUE_UNDECLARED` stays a code this service does not carry: a value of the version's vocabulary
+outside it is `ARGUMENT_INVALID`, as `SharedCodeTableTest` records.

@@ -8,8 +8,10 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.DefinitionView;
+import ai.kumbuka.dispatch.domain.InstanceView;
 import ai.kumbuka.dispatch.surface.NextList;
 import ai.kumbuka.dispatch.surface.Refusal;
+import ai.kumbuka.dispatch.surface.Surface;
 
 import java.util.List;
 
@@ -18,8 +20,9 @@ import java.util.List;
  * surfaces put on the wire (C7.1).
  *
  * <p>The answers of the calls are built here as each call is bound to the
- * kernel of the store line: {@code read_definition} is the first. No answer
- * names the identity of an actor.
+ * kernel of the store line: {@code read_definition} answers a version, and
+ * every act on an instance answers the instance. No answer names the identity
+ * of an actor.
  */
 public final class Payloads {
 
@@ -65,6 +68,15 @@ public final class Payloads {
                 .toList(),
             contract(view.startContract()),
             enumerations(view.systemEnumerations())));
+    }
+
+    /**
+     * An instance, as every act on it answers it, with the calls open to the
+     * caller named on the surface the caller came through (C6.2).
+     */
+    public static InstancePayload instance(InstanceView view, Surface surface) {
+        return new InstancePayload(view.address().complete(), view.fields(),
+            view.conflictToken(), next(NextList.of(view.open(), surface)));
     }
 
     private static List<EnumerationPayload> enumerations(List<DefinitionView.NamedValues> named) {

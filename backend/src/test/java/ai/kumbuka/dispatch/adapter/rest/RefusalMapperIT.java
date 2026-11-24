@@ -138,9 +138,9 @@ class RefusalMapperIT {
 
     @Test
     void a_path_no_route_serves_answers_not_found_in_the_envelope_over_http() {
-        // An item: no call is carried there yet. The collection above it carries
-        // read_definition and answers its own refusals.
-        given().when().get("/api/probe-scope/sprint/1.0")
+        // A path below an object: no route serves it. The collection and the
+        // object above it carry calls and answer their own refusals.
+        given().when().get("/api/probe-scope/sprint/1/more")
             .then().statusCode(404)
             .body("reason", org.hamcrest.Matchers.equalTo("NOT_FOUND"));
     }

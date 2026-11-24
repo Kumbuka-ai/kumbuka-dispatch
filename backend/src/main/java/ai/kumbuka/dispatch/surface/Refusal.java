@@ -448,6 +448,83 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
     }
 
     // ======================================================================
+    // The ones about an instance the caller may see
+    // ======================================================================
+
+    /**
+     * An act on an instance that is closed: {@code TRANSITION_REFUSED} with
+     * its state and the calls open on it, which are none, since a closed
+     * instance is finished.
+     */
+    public static Refusal instanceClosed(VerbName call, Situation at) {
+        return of(Message.INSTANCE_CLOSED, Texts.refusals().instanceClosed(call),
+            Data.attempted(call).situation(at));
+    }
+
+    /**
+     * A closing of an instance with unfinished tasks. Carries the call, the
+     * tasks and the confirmation handed out now, which the call is repeated
+     * with to withdraw them and close the instance (TAR-0004 2.3).
+     *
+     * @param tasks        the complete address of each unfinished task
+     * @param confirmation the confirmation handed out now; never one sent
+     * @param stale        whether the call carried a confirmation that does not
+     *                     hold for this set of tasks and this call
+     */
+    public static Refusal tasksUnfinished(VerbName call, List<String> tasks, String confirmation,
+                                          boolean stale) {
+        Data data = Data.attempted(call).children(tasks, confirmation);
+        return stale
+            ? of(Message.TASKS_CONFIRMATION_STALE, Texts.refusals().tasksConfirmationStale(call),
+                data)
+            : of(Message.TASKS_UNFINISHED, Texts.refusals().tasksUnfinished(call), data);
+    }
+
+    /**
+     * The token presented is not the one the instance holds. The instance
+     * travels as it stands, under its address, with its fields, its current
+     * token and the service that holds it (DEC-0041).
+     */
+    public static Refusal instanceTokenStale(VerbName call, Situation at, String address,
+                                             Map<String, Object> fields, String conflictToken,
+                                             String service) {
+        return of(Message.INSTANCE_TOKEN_STALE, Texts.refusals().instanceTokenStale(call),
+            Data.attempted(call).situation(at).current(address, fields, conflictToken, service));
+    }
+
+    /**
+     * A refusal of the start contract or of the return of a closing, by the
+     * rule it broke: the field or the part by its path in {@code
+     * data.offenders}, or for a field the contract does not name the fields it
+     * names in {@code data.accepts}. Never the value, and never the name of a
+     * field the caller sent outside the contract (DEC-0056/C21).
+     *
+     * @param paths the paths the kernel gives, the declared names of the
+     *              version's fields and the call's parts
+     */
+    public static Refusal ofContract(VerbName call, Message rule, List<String> paths) {
+        RefusalMessages refusals = Texts.refusals();
+        Data data = Data.attempted(call);
+        return switch (rule) {
+            case CONTRACT_FIELD_MISSING -> of(rule, refusals.contractFieldMissing(call),
+                data.offenders(paths));
+            case CONTRACT_FIELD_UNDECLARED -> of(rule, refusals.contractFieldUndeclared(call),
+                data.accepts(paths));
+            case CONTRACT_FIELD_MISTYPED -> of(rule, refusals.contractFieldMistyped(call),
+                data.offenders(paths));
+            case CONTRACT_VALUE_UNENUMERATED -> of(rule,
+                refusals.contractValueUnenumerated(call), data.offenders(paths));
+            case RETURN_PART_MISSING -> of(rule, refusals.returnPartMissing(call),
+                data.offenders(paths));
+            case RETURN_OUTCOME_UNDECLARED -> of(rule, refusals.returnOutcomeUndeclared(call),
+                data.offenders(paths));
+            case REFERENCE_ABSENT -> of(rule, refusals.referenceAbsent(call),
+                data.offenders(paths));
+            default -> throw new IllegalArgumentException(rule + " is no rule of a contract");
+        };
+    }
+
+    // ======================================================================
     // The ones decided before a task is resolved: no state travels, because
     // naming one would tell a task the caller may see from one it may not
     // ======================================================================
@@ -723,6 +800,7 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
             case TAG_UNKNOWN -> refusals.invalidTagUnknown(call, at);
             case TAG_WITHDRAWN -> refusals.invalidTagWithdrawn(call, at);
             case TAG_FILTER -> refusals.invalidTagFilter(call, at);
+            case INSTANCE_ADDRESS -> refusals.invalidInstanceAddress(call, at);
         };
     }
 }

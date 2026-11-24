@@ -95,14 +95,41 @@ public class DefinitionRepository {
      */
     @Transactional
     public Optional<Declared> seeded(UUID scopeId, String selector, @Nullable Integer version) {
-        return seededVersion(scopeId, selector, version)
-            .map(found -> new Declared(found,
-                activities(scopeId, found.id()),
-                labels(scopeId, found.id()),
-                enumerations(scopeId, found.id()),
-                values(scopeId, found.id()),
-                fields(scopeId, found.id()),
-                contracts(scopeId, found.id())));
+        return seededVersion(scopeId, selector, version).map(found -> declared(scopeId, found));
+    }
+
+    /**
+     * The version an instance is bound to, with everything it declares, by
+     * its surrogate; empty where the scope holds none. The binding of an
+     * instance names a version of its own selector, which the store holds by
+     * its key.
+     */
+    @Transactional
+    public Optional<Declared> bound(UUID scopeId, long versionId) {
+        return version(scopeId, versionId).map(found -> declared(scopeId, found));
+    }
+
+    /** A version by its surrogate, without what it declares; empty where the scope holds none. */
+    @Transactional
+    public Optional<DefinitionVersion> version(UUID scopeId, long versionId) {
+        return em.createQuery("""
+                SELECT v FROM DefinitionVersion v WHERE v.scopeId = :scope AND v.id = :version
+                """, DefinitionVersion.class)
+            .setParameter(P_SCOPE, scopeId)
+            .setParameter(P_VERSION, versionId)
+            .getResultList()
+            .stream()
+            .findFirst();
+    }
+
+    private Declared declared(UUID scopeId, DefinitionVersion found) {
+        return new Declared(found,
+            activities(scopeId, found.id()),
+            labels(scopeId, found.id()),
+            enumerations(scopeId, found.id()),
+            values(scopeId, found.id()),
+            fields(scopeId, found.id()),
+            contracts(scopeId, found.id()));
     }
 
     private Optional<DefinitionVersion> seededVersion(UUID scopeId, String selector,

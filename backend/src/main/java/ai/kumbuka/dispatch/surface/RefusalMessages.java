@@ -317,4 +317,40 @@ public interface RefusalMessages {
 
     @Message
     String unexpectedFailureOfRequest();
+
+    @Message
+    String instanceClosed(VerbName call);
+
+    @Message
+    String tasksUnfinished(VerbName call);
+
+    @Message
+    String tasksConfirmationStale(VerbName call);
+
+    @Message
+    String instanceTokenStale(VerbName call);
+
+    @Message
+    String contractFieldMissing(VerbName call);
+
+    @Message
+    String contractFieldUndeclared(VerbName call);
+
+    @Message
+    String contractFieldMistyped(VerbName call);
+
+    @Message
+    String contractValueUnenumerated(VerbName call);
+
+    @Message
+    String returnPartMissing(VerbName call);
+
+    @Message
+    String returnOutcomeUndeclared(VerbName call);
+
+    @Message
+    String referenceAbsent(VerbName call);
+
+    @Message
+    String invalidInstanceAddress(VerbName call, ArgumentPath path);
 }

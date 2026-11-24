@@ -24,23 +24,26 @@ import static org.assertj.core.api.Assertions.assertThat;
  * realm roles {@code dispatch-console} and {@code dispatch-executor} holds
  * once the source has seen it.
  *
- * <p>The expectation is the table of the order of this step, written here
- * name by name, and read back from the identity the way the checks read it,
- * through {@code checkPermission}: never from the source's own table.
+ * <p>The expectation is the table "The interim mapping of step 2" of
+ * REA-0010, written here name by name, and read back from the identity the
+ * way the checks read it, through {@code checkPermission}: never from the
+ * source's own table. {@code dispatch.instance.refer} is the console's there
+ * and not the executor's.
  */
 class InterimRolePermissionsTest {
 
-    /** Every permission of the catalogue, by name, as the order lists it. */
+    /** Every permission of the catalogue, by name, as REA-0010 lists it. */
     private static final List<String> CATALOGUE = List.of(
         "dispatch.task.commission", "dispatch.task.execute", "dispatch.task.decide",
         "dispatch.task.confirm", "dispatch.task.withdraw", "dispatch.task.tag",
         "dispatch.instance.start", "dispatch.instance.conclude", "dispatch.instance.withdraw",
-        "dispatch.instance.read", "dispatch.instance.read-metadata",
+        "dispatch.instance.refer", "dispatch.instance.read", "dispatch.instance.read-metadata",
         "dispatch.instance.read-text", "dispatch.instance.read-text-as-holder",
         "dispatch.instance.read-text-as-commissioner");
 
     private static final Set<String> CONSOLE = Set.of(
         "dispatch.instance.start", "dispatch.instance.conclude", "dispatch.instance.withdraw",
+        "dispatch.instance.refer",
         "dispatch.task.commission", "dispatch.task.decide", "dispatch.task.confirm",
         "dispatch.task.withdraw", "dispatch.task.tag", "dispatch.instance.read",
         "dispatch.instance.read-metadata", "dispatch.instance.read-text");

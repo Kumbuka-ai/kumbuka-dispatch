@@ -16,10 +16,10 @@ package ai.kumbuka.dispatch.domain;
  * grants which is decided outside the service. The service reads the
  * permissions off the identity it is handed and stores none.
  *
- * <p>{@code instance.start}, {@code instance.conclude} and {@code
- * instance.withdraw} are in the catalogue and checked by no call yet: they
- * belong to the instances of a declared process, which this service does not
- * carry yet.
+ * <p>{@code instance.start}, {@code instance.conclude}, {@code
+ * instance.withdraw} and {@code instance.refer} are checked by the acts on an
+ * instance: its start, its two closings, and the setting and ending of its
+ * references (REA-0010, catalogue "Acts on an instance").
  */
 public enum DispatchPermission {
 
@@ -32,6 +32,7 @@ public enum DispatchPermission {
     INSTANCE_START(Name.INSTANCE_START),
     INSTANCE_CONCLUDE(Name.INSTANCE_CONCLUDE),
     INSTANCE_WITHDRAW(Name.INSTANCE_WITHDRAW),
+    INSTANCE_REFER(Name.INSTANCE_REFER),
     INSTANCE_READ(Name.INSTANCE_READ),
     INSTANCE_READ_METADATA(Name.INSTANCE_READ_METADATA),
     INSTANCE_READ_TEXT(Name.INSTANCE_READ_TEXT),
@@ -53,6 +54,7 @@ public enum DispatchPermission {
         public static final String INSTANCE_START = "dispatch.instance.start";
         public static final String INSTANCE_CONCLUDE = "dispatch.instance.conclude";
         public static final String INSTANCE_WITHDRAW = "dispatch.instance.withdraw";
+        public static final String INSTANCE_REFER = "dispatch.instance.refer";
         public static final String INSTANCE_READ = "dispatch.instance.read";
         public static final String INSTANCE_READ_METADATA = "dispatch.instance.read-metadata";
         public static final String INSTANCE_READ_TEXT = "dispatch.instance.read-text";

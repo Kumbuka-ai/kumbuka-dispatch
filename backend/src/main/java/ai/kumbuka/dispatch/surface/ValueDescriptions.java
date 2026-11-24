@@ -60,4 +60,19 @@ public interface ValueDescriptions {
 
     @Message
     String directionDesc();
+
+    @Message
+    String verdictGreen();
+
+    @Message
+    String verdictRed();
+
+    @Message
+    String verdictQuestion();
+
+    @Message
+    String referenceKindItem();
+
+    @Message
+    String referenceKindReference();
 }

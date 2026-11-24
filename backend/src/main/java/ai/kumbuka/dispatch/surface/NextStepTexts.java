@@ -70,4 +70,16 @@ public interface NextStepTexts {
 
     @Message
     String readTheAnswer();
+
+    @Message
+    String conclude();
+
+    @Message
+    String withdrawInstance();
+
+    @Message
+    String referenceAttach();
+
+    @Message
+    String referenceDetach();
 }

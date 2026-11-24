@@ -9,6 +9,8 @@ package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DispatchPermission;
+import ai.kumbuka.dispatch.surface.ProcessVerb;
+import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.VerbSurface;
 import io.quarkus.security.PermissionsAllowed;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -28,6 +30,9 @@ import jakarta.inject.Inject;
  * adapter's edge answers as {@code ROLE_INSUFFICIENT}: the scope is resolved
  * by then, so a scope the caller may not see has already answered {@code
  * NOT_FOUND} (C1.3).
+ *
+ * <p>An act on an instance answers the instance, with the calls open on it
+ * named on the surface the caller came through (C6.2).
  */
 @ApplicationScoped
 public class DeclaredCalls {
@@ -39,5 +44,40 @@ public class DeclaredCalls {
     public DefinitionPayload readDefinition(Actor actor, CallForm.ReadDefinition call) {
         return Payloads.definition(
             verbs.readDefinition(actor, call.scope(), call.selector(), call.version()));
+    }
+
+    /** {@code start}, under {@code dispatch.instance.start}. */
+    @PermissionsAllowed(DispatchPermission.Name.INSTANCE_START)
+    public InstancePayload start(Actor actor, CallForm.Start call, Surface surface) {
+        return Payloads.instance(
+            verbs.start(actor, call.scope(), call.selector(), call.start()), surface);
+    }
+
+    /** {@code conclude}, under {@code dispatch.instance.conclude}. */
+    @PermissionsAllowed(DispatchPermission.Name.INSTANCE_CONCLUDE)
+    public InstancePayload conclude(Actor actor, CallForm.Close call, Surface surface) {
+        return Payloads.instance(
+            verbs.close(actor, ProcessVerb.CONCLUDE, call.address(), call.closing()), surface);
+    }
+
+    /** {@code withdraw} of an instance, under {@code dispatch.instance.withdraw}. */
+    @PermissionsAllowed(DispatchPermission.Name.INSTANCE_WITHDRAW)
+    public InstancePayload withdraw(Actor actor, CallForm.Close call, Surface surface) {
+        return Payloads.instance(
+            verbs.close(actor, ProcessVerb.WITHDRAW, call.address(), call.closing()), surface);
+    }
+
+    /** {@code reference_attach}, under {@code dispatch.instance.refer}. */
+    @PermissionsAllowed(DispatchPermission.Name.INSTANCE_REFER)
+    public InstancePayload referenceAttach(Actor actor, CallForm.Refer call, Surface surface) {
+        return Payloads.instance(
+            verbs.attach(actor, call.address(), call.kind(), call.value()), surface);
+    }
+
+    /** {@code reference_detach}, under {@code dispatch.instance.refer}. */
+    @PermissionsAllowed(DispatchPermission.Name.INSTANCE_REFER)
+    public InstancePayload referenceDetach(Actor actor, CallForm.Refer call, Surface surface) {
+        return Payloads.instance(
+            verbs.detach(actor, call.address(), call.kind(), call.value()), surface);
     }
 }

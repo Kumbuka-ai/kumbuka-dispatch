@@ -43,6 +43,11 @@ public class DefinitionVersion extends DefinitionRow {
     @Column(name = "seed", nullable = false)
     private boolean seed;
 
+    /** The selector whose process the version declares. */
+    public long selectorId() {
+        return selectorId;
+    }
+
     /** The number of the version within its selector, from 1. */
     public int version() {
         return version;

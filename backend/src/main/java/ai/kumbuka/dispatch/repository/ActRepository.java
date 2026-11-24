@@ -16,6 +16,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -70,6 +71,33 @@ public class ActRepository {
             .setParameter(P_SCOPE, scopeId)
             .getSingleResult();
         return last == null ? 0 : last;
+    }
+
+    /** The time of the last act of an instance; empty where it has none. */
+    @Transactional
+    public Optional<Instant> lastAt(UUID scopeId, long instanceId) {
+        return Optional.ofNullable(em.createQuery("""
+                SELECT MAX(a.at) FROM Act a
+                WHERE a.instanceId = :instance AND a.scopeId = :scope
+                """, Instant.class)
+            .setParameter(P_INSTANCE, instanceId)
+            .setParameter(P_SCOPE, scopeId)
+            .getSingleResult());
+    }
+
+    /**
+     * The time of the last act on an instance itself, about no task of it: the
+     * instance's conflict token. Empty where none stands.
+     */
+    @Transactional
+    public Optional<Instant> lastInstanceAt(UUID scopeId, long instanceId) {
+        return Optional.ofNullable(em.createQuery("""
+                SELECT MAX(a.at) FROM Act a
+                WHERE a.instanceId = :instance AND a.scopeId = :scope AND a.taskId IS NULL
+                """, Instant.class)
+            .setParameter(P_INSTANCE, instanceId)
+            .setParameter(P_SCOPE, scopeId)
+            .getSingleResult());
     }
 
     /** Appends an act and writes it at once, so a refusal of the store falls in this call. */

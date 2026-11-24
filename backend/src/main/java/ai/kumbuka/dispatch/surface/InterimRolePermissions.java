@@ -53,6 +53,7 @@ public class InterimRolePermissions implements SecurityIdentityAugmentor {
             DispatchPermission.INSTANCE_START,
             DispatchPermission.INSTANCE_CONCLUDE,
             DispatchPermission.INSTANCE_WITHDRAW,
+            DispatchPermission.INSTANCE_REFER,
             DispatchPermission.TASK_COMMISSION,
             DispatchPermission.TASK_DECIDE,
             DispatchPermission.TASK_CONFIRM,

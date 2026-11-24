@@ -177,7 +177,7 @@ public class McpAdapter {
             // DEBUG by its code, and WARN where the scope refused (C13.3): the
             // directory below logs nothing, so its line is written here.
             PlatformLog.domainRefused(refused.reason());
-            return refusal(id, CallRefusals.of(refused, call));
+            return refusal(id, CallRefusals.of(refused, call, Surface.MCP));
         } catch (WebApplicationException framework) {
             throw framework;
         } catch (RuntimeException failure) {
@@ -196,6 +196,27 @@ public class McpAdapter {
                 Actor actor = caller.current();
                 verbs.resolveScope(actor, read.scope());
                 yield calls.readDefinition(actor, read);
+            }
+            case START -> {
+                CallForm.Start start = CallForm.start(Surface.MCP, arguments);
+                Actor actor = caller.current();
+                verbs.resolveScopeToWrite(actor, start.scope());
+                yield calls.start(actor, start, Surface.MCP);
+            }
+            case CONCLUDE, WITHDRAW -> {
+                CallForm.Close close = CallForm.close(verb, Surface.MCP, arguments);
+                Actor actor = caller.current();
+                verbs.resolveScopeToWrite(actor, close.address().scope());
+                yield verb == ProcessVerb.CONCLUDE ? calls.conclude(actor, close, Surface.MCP)
+                    : calls.withdraw(actor, close, Surface.MCP);
+            }
+            case REFERENCE_ATTACH, REFERENCE_DETACH -> {
+                CallForm.Refer refer = CallForm.refer(verb, Surface.MCP, arguments);
+                Actor actor = caller.current();
+                verbs.resolveScopeToWrite(actor, refer.address().scope());
+                yield verb == ProcessVerb.REFERENCE_ATTACH
+                    ? calls.referenceAttach(actor, refer, Surface.MCP)
+                    : calls.referenceDetach(actor, refer, Surface.MCP);
             }
         };
     }

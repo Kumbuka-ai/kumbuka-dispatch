@@ -29,7 +29,17 @@ public enum AnswerShape {
      */
     DEFINITION(List.of("fields"), List.of("selector", "version", "state", "verdict_required",
         "outcome_required", "outcome_labels", "schema", "enumerations", "activities",
-        "start_contract", "system_enumerations"));
+        "start_contract", "system_enumerations")),
+
+    /**
+     * An instance, as every act on it answers it (C6.1): its complete address,
+     * its head under {@code fields}, its conflict token, and the calls open to
+     * the caller under {@code next}. A closed instance has none open and is
+     * finished, so it waits for nothing. The resolution stands only on a closed
+     * instance, the title only where its start gave one.
+     */
+    INSTANCE(List.of("address", "fields", "conflict_token", "next"), List.of("selector",
+        "number", "version", "title", "state", "resolution"));
 
     private final List<String> members;
     private final List<String> fields;

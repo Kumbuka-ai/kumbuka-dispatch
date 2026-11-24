@@ -159,6 +159,23 @@ public record Argument(String name, String type, boolean required, Placement pla
             List.of(), null);
     }
 
+    /**
+     * An optional list of strings under {@code fields}, every element of which
+     * obeys one pattern; left out or null, the list is empty.
+     */
+    public static Argument fieldList(String name, String itemPattern,
+                                     Supplier<String> description) {
+        return new Argument(name, ARRAY, false, Placement.FIELDS, description, itemPattern,
+            List.of(), UNSET);
+    }
+
+    /**
+     * The pattern of a reference to an object outside the service: any text
+     * with a character that is no white space. The service stores it and never
+     * resolves it (D4, D12), so its form is the caller's.
+     */
+    public static final String REFERENCE_PATTERN = "\\S";
+
     /** A string that takes one of a closed set of values; fallback null where it is required. */
     public static Argument oneOf(String name, Placement placement, @Nullable String fallback,
                                  List<Value> values, Supplier<String> description) {

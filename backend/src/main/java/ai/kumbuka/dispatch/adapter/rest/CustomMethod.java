@@ -10,6 +10,7 @@ package ai.kumbuka.dispatch.adapter.rest;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Surface;
 import ai.kumbuka.dispatch.surface.VerbName;
+import jakarta.ws.rs.HttpMethod;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Arrays;
@@ -30,21 +31,39 @@ import java.util.Optional;
  * <h2>The path form</h2>
  *
  * {@code /api/{scope}/{selector}} for a collection, {@code
- * /api/{scope}/{selector}/{number}.{sub}} for one object, and a call that is
- * not the plain read, write or delete of what the path names as a custom
- * method in colon notation after the last segment. A path template takes the
- * whole segment it appears in, so the colon is split off by {@link #split}
- * rather than routed by the framework.
+ * /api/{scope}/{selector}/{number}} for an instance and {@code
+ * /api/{scope}/{selector}/{number}.{sub}} for a task, and a call that is not
+ * the plain read, write or delete of what the path names as a custom method in
+ * colon notation after the last segment. A path template takes the whole
+ * segment it appears in, so the colon is split off by {@link #split} rather
+ * than routed by the framework.
  */
 public enum CustomMethod {
 
-    READ_DEFINITION("read_definition", "GET", Depth.COLLECTION, false);
+    READ_DEFINITION("read_definition", HttpMethod.GET, Depth.COLLECTION, false),
+
+    /**
+     * A custom method on the collection: the plain POST on it stays for
+     * {@code create}, which starts an instance with its first task.
+     */
+    START("start", HttpMethod.POST, Depth.COLLECTION, true),
+
+    CONCLUDE("conclude", HttpMethod.POST, Depth.ITEM, true),
+    WITHDRAW("withdraw", HttpMethod.POST, Depth.ITEM, true),
+
+    /**
+     * A custom method on the instance rather than a POST or DELETE on a
+     * collection of references: an ended reference stays with the act that
+     * ended it, and a DELETE would promise that it goes.
+     */
+    REFERENCE_ATTACH("reference_attach", HttpMethod.POST, Depth.ITEM, true),
+    REFERENCE_DETACH("reference_detach", HttpMethod.POST, Depth.ITEM, true);
 
     /** Where a route acts. */
     public enum Depth {
         /** {@code /api/{scope}/{selector}}: a selector in a scope. */
         COLLECTION,
-        /** {@code /api/{scope}/{selector}/{id}}: one object. */
+        /** {@code /api/{scope}/{selector}/{id}}: one object, an instance or a task. */
         ITEM
     }
 

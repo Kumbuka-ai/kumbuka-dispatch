@@ -126,7 +126,7 @@ public class RefusalMapper implements ExceptionMapper<SurfaceException> {
             PlatformLog.domainRefused(e.reason());
             Optional<VerbName> call = call();
             if (call.isPresent()) {
-                return answer(CallRefusals.of(e, call.get()), null);
+                return answer(CallRefusals.of(e, call.get(), surface()), null);
             }
             return answer(RefusalCode.of(e.reason()) == RefusalCode.NOT_FOUND
                 ? Refusal.notFound()
