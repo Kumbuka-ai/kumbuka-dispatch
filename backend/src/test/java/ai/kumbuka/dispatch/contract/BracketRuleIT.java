@@ -106,8 +106,7 @@ class BracketRuleIT {
             Response overRest = InstanceWire.rest(address, call.getKey(), body,
                 fence == null ? null : String.valueOf(fence));
             assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(409);
-            assertClosed(overRest.jsonPath().getMap("$", String.class, Object.class),
-                call.getKey());
+            assertClosed(InstanceWire.object(overRest, "$"), call.getKey());
         }
         assertThat(InstanceWire.single(ACTS, InstanceWire.instanceId(address)))
             .as("and nothing was written").isEqualTo(acts);

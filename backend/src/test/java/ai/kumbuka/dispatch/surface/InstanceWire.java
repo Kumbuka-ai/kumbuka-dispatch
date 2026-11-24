@@ -176,7 +176,7 @@ public final class InstanceWire {
         if (Boolean.TRUE.equals(mcp.jsonPath().get(IS_ERROR))) {
             throw new AssertionError("the call was refused: " + mcp.asString());
         }
-        return mcp.jsonPath().getMap(STRUCTURED, String.class, Object.class);
+        return object(mcp, STRUCTURED);
     }
 
     /** The envelope of a tool call that was refused. */
@@ -184,7 +184,16 @@ public final class InstanceWire {
         if (!Boolean.TRUE.equals(mcp.jsonPath().get(IS_ERROR))) {
             throw new AssertionError("the call was answered: " + mcp.asString());
         }
-        return mcp.jsonPath().getMap(STRUCTURED, String.class, Object.class);
+        return object(mcp, STRUCTURED);
+    }
+
+    /**
+     * The JSON object at a path of a response, its values as the body holds
+     * them: the typed form of the path reader would convert each value.
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> object(Response response, String path) {
+        return (Map<String, Object>) (Map<?, ?>) response.jsonPath().getMap(path);
     }
 
     /** The {@code data} of a refusal's envelope. */

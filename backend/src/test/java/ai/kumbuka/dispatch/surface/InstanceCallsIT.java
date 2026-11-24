@@ -237,7 +237,7 @@ class InstanceCallsIT {
         if (rest) {
             assertThat(response.statusCode()).as("%s over REST: %s", call, response.asString())
                 .isIn(200, 201);
-            return response.jsonPath().getMap("$", String.class, Object.class);
+            return InstanceWire.object(response, "$");
         }
         return InstanceWire.answer(response);
     }
