@@ -173,7 +173,7 @@ public class InstanceService {
                 instance.definitionVersionId())
             .orElseThrow(() -> new IllegalStateException("an instance is bound to a version"));
         int version = declared.version().version();
-        requireToken(actor, address, scopeId, instance, version, closing.conflictToken());
+        requireToken(actor, address, instance, version, closing.conflictToken());
         ContractCheck.Return checked = ContractCheck.closing(declared, closing.verdict(),
             closing.outcome(), closing.translationBasis());
 
@@ -259,8 +259,8 @@ public class InstanceService {
         return instance;
     }
 
-    private void requireToken(Actor actor, InstanceAddress address, UUID scopeId,
-                              Instance instance, int version, @Nullable String presented) {
+    private void requireToken(Actor actor, InstanceAddress address, Instance instance,
+                              int version, @Nullable String presented) {
         if (presented == null) {
             throw new DispatchException(DispatchException.Reason.CONFLICT_TOKEN_MISSING,
                 "a closing is fenced by the conflict token.");
