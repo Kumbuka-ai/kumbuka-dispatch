@@ -123,7 +123,7 @@ final class CutoverStock {
         return url;
     }
 
-    /** The line db/store, V1 to V5, in the empty schema dispatch after the rename. */
+    /** The line db/store, V1 to its latest version, in the empty schema dispatch after the rename. */
     static void newStore(MigrationHarness harness, String url) {
         harness.migrateLine(url, MIGRATOR, MIGRATOR_PASSWORD, "classpath:db/store",
             new TenantMigrationCallback());

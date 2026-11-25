@@ -17,12 +17,14 @@ import io.quarkus.test.security.TestIdentityAssociation;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * The free fields of a task -- the caller's own keys, stored and returned and
@@ -33,8 +35,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>The successor of the cardinality of the metadata of the old kernel: the
  * service no longer checks the values, so what is proven is that the store
- * keeps their shape. The executor's free fields on a delivery are proven with
- * the order that binds the delivery.
+ * keeps their shape. The executor's free fields on a delivery stand below,
+ * deactivated with the order that binds the delivery (T9).
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -93,5 +95,11 @@ class TaskMetadataIT {
                 Map.of("title", "a title", FREE_FIELDS, Map.of("k", List.of("v"))))).jsonPath()
                 .getBoolean("result.isError"))
             .as("RED STATE, observed: an object is taken").isFalse();
+    }
+
+    @Test
+    @Disabled("rebuilt in T9: the executor's free fields on a delivery keep their shape")
+    void the_executor_s_free_fields_keep_their_shape_too() {
+        fail("rebuilt in T9");
     }
 }

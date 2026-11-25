@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.tenancy;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -146,6 +147,52 @@ class CutoverRefusalIT {
             assertThat(planted.stream().filter(refused::contains).toList())
                 .as("the refusal carries no title, text or metadata value of the stock")
                 .isEmpty();
+        }
+    }
+
+    /**
+     * The copy runs on the store line from V5 on, the line being additive
+     * from V6 (REA-0010): a line that stands below V5 is refused before
+     * anything is written. The line under 5 is the full line with V5 and V6
+     * recorded as not applied, so that the history alone stands below 5 and
+     * the check of the version is the one that refuses.
+     */
+    @Test
+    void the_copy_refuses_a_store_line_below_version_5_and_takes_the_current_one()
+            throws SQLException {
+        String url = CutoverStock.oldStore(harness, "refusal_store_line_below_5");
+        try (Connection admin = harness.adminConnection(url)) {
+            CutoverStock.stage(admin, TENANT_A, SCOPE_A, "a");
+        }
+        try (Connection owner = CutoverStock.asMigrator(url)) {
+            assertThat(CutoverStock.outcome(owner, CutoverStock.RENAME)).as("the rename ran")
+                .isEqualTo(NOT_REFUSED);
+        }
+        CutoverStock.newStore(harness, url);
+
+        try (Connection admin = harness.adminConnection(url)) {
+            setApplied(admin, false);
+            Map<String, String> before = CutoverStock.rows(admin, OLD_SCHEMA);
+            String refused = CutoverStock.copy(admin, ACTOR);
+            assertThat(refused).as("a line below 5 is refused")
+                .isEqualTo("cutover copy refused: the store line stands at version 4, "
+                    + "expected 5 or later");
+            assertThat(CutoverStock.rows(admin, OLD_SCHEMA)).as("and nothing was written")
+                .isEqualTo(before);
+
+            setApplied(admin, true);
+            assertThat(CutoverStock.copy(admin, ACTOR))
+                .as("RED STATE, observed: the current line, above 5, is taken")
+                .isEqualTo(NOT_REFUSED);
+        }
+    }
+
+    /** Records V5 and V6 of the store line as applied, or as not applied. */
+    private static void setApplied(Connection admin, boolean applied) throws SQLException {
+        try (var st = admin.prepareStatement("UPDATE dispatch.flyway_schema_history "
+                + "SET success = ? WHERE version IN ('5', '6')")) {
+            st.setBoolean(1, applied);
+            st.executeUpdate();
         }
     }
 }
