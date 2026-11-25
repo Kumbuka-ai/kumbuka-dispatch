@@ -70,6 +70,8 @@ public final class CallForm {
     private static final String CRITERIA = "criteria";
     private static final String FREE_FIELDS = "free_fields";
     private static final String TEXT = "text";
+    private static final String TRIGGER = "trigger";
+    private static final String REFERENCES = "references";
 
     /** An idempotency key: 1 to 255 printable ASCII characters, from the space to the tilde. */
     private static final Pattern KEY_FORM = Pattern.compile("[\\x20-\\x7E]{1,255}");
@@ -140,8 +142,8 @@ public final class CallForm {
             AddressParser::selectorOf);
         Fields fields = fields(verb, call, present);
         return new Start(scope, selector, new InstanceService.Start(
-            fields.text("title"), fields.optionalText("input"), fields.optionalText("trigger"),
-            fields.list("items"), fields.list("references"), fields.object("values")));
+            fields.text(TITLE), fields.optionalText("input"), fields.optionalText(TRIGGER),
+            fields.list("items"), fields.list(REFERENCES), fields.object("values")));
     }
 
     /** Reads the arguments of {@code conclude} or {@code withdraw}, or refuses their form. */
@@ -151,9 +153,9 @@ public final class CallForm {
         InstanceAddress address = address(verb, call, present);
         Fields fields = fields(verb, call, present);
         return new Close(verb, address, new InstanceService.Closing(
-            optionalTop(verb, call, present, "conflict_token"),
+            optionalTop(verb, call, present, CONFLICT_TOKEN),
             optionalTop(verb, call, present, "confirmation"),
-            fields.text("text"), fields.optionalOneOf("verdict"),
+            fields.text(TEXT), fields.optionalOneOf("verdict"),
             fields.optionalText("outcome"), fields.optionalText("translation_basis")));
     }
 
@@ -188,7 +190,7 @@ public final class CallForm {
             fields.apparatus(), fields.optionalText(ACTIVITY), fields.task(CONCERNS),
             fields.list(CRITERIA), fields.optionalObject(FREE_FIELDS), fields.optionalText(TEXT));
         if (parent != null) {
-            for (String instanceOnly : List.of("trigger", "references")) {
+            for (String instanceOnly : List.of(TRIGGER, REFERENCES)) {
                 if (fields.has(instanceOnly)) {
                     throw new SurfaceException(Refusal.argumentInvalid(call,
                         ArgumentPath.of(verb.declaredField(instanceOnly)),
@@ -197,7 +199,7 @@ public final class CallForm {
             }
         }
         return new Create(scope, selector, new TaskService.Create(parent, drafting,
-            fields.optionalText("trigger"), fields.list("references"), key));
+            fields.optionalText(TRIGGER), fields.list(REFERENCES), key));
     }
 
     /**

@@ -27,9 +27,9 @@ public enum AnswerShape {
      * carries no address and no conflict token: a version is no object of the
      * address form, and no call writes one.
      */
-    DEFINITION(List.of("fields"), List.of("selector", "version", "state", "verdict_required",
-        "outcome_required", "outcome_labels", "schema", "enumerations", "activities",
-        "start_contract", "system_enumerations")),
+    DEFINITION(List.of(Member.FIELDS), List.of(Member.SELECTOR, Member.VERSION, Member.STATE,
+        "verdict_required", "outcome_required", "outcome_labels", "schema", "enumerations",
+        "activities", "start_contract", "system_enumerations")),
 
     /**
      * An instance, as every act on it answers it (C6.1): its complete address,
@@ -38,8 +38,9 @@ public enum AnswerShape {
      * finished, so it waits for nothing. The resolution stands only on a closed
      * instance, the title only where its start gave one.
      */
-    INSTANCE(List.of("address", "fields", "conflict_token", "next"), List.of("selector",
-        "number", "version", "title", "state", "resolution")),
+    INSTANCE(List.of(Member.ADDRESS, Member.FIELDS, Member.CONFLICT_TOKEN, Member.NEXT),
+        List.of(Member.SELECTOR, Member.NUMBER, Member.VERSION, "title", Member.STATE,
+            Member.RESOLUTION)),
 
     /**
      * A task, as {@code create}, {@code update} and {@code send} answer it
@@ -49,11 +50,29 @@ public enum AnswerShape {
      * and it is unfinished. The resolution stands only on a closed task. No
      * writing call answers with a text.
      */
-    TASK(List.of("address", "fields", "conflict_token", "next", "waiting_for"),
-        List.of("selector", "number", "sub", "state", "resolution")),
+    TASK(List.of(Member.ADDRESS, Member.FIELDS, Member.CONFLICT_TOKEN, Member.NEXT,
+        "waiting_for"),
+        List.of(Member.SELECTOR, Member.NUMBER, "sub", Member.STATE, Member.RESOLUTION)),
 
     /** The address a deleted draft had, and nothing else. */
-    ADDRESS(List.of("address"), List.of());
+    ADDRESS(List.of(Member.ADDRESS), List.of());
+
+    /** The names of the members several answers carry, each written once. */
+    private static final class Member {
+
+        static final String ADDRESS = "address";
+        static final String FIELDS = "fields";
+        static final String CONFLICT_TOKEN = "conflict_token";
+        static final String NEXT = "next";
+        static final String SELECTOR = "selector";
+        static final String NUMBER = "number";
+        static final String VERSION = "version";
+        static final String STATE = "state";
+        static final String RESOLUTION = "resolution";
+
+        private Member() {
+        }
+    }
 
     private final List<String> members;
     private final List<String> fields;

@@ -51,6 +51,7 @@ public class TaskRepository {
     private static final String P_DRAFT = "draft";
     private static final String P_TASK = "task";
     private static final String P_CALLER = "caller";
+    private static final String P_INSTANCE = "instance";
 
     @Inject EntityManager em;
 
@@ -77,7 +78,7 @@ public class TaskRepository {
                 SELECT i FROM Instance i WHERE i.scopeId = :scope AND i.id = :instance
                 """, Instance.class)
             .setParameter(P_SCOPE, scopeId)
-            .setParameter("instance", instanceId)
+            .setParameter(P_INSTANCE,instanceId)
             .getResultList()
             .stream()
             .findFirst();
@@ -104,7 +105,7 @@ public class TaskRepository {
                 WHERE t.scopeId = :scope AND t.instanceId = :instance AND t.sub = :sub
                 """, Task.class)
             .setParameter(P_SCOPE, scopeId)
-            .setParameter("instance", instanceId)
+            .setParameter(P_INSTANCE,instanceId)
             .setParameter("sub", sub)
             .getResultList()
             .stream()
@@ -136,7 +137,7 @@ public class TaskRepository {
                 WHERE t.scopeId = :scope AND t.instanceId = :instance AND t.sub = :sub
                 """, Task.class)
             .setParameter(P_SCOPE, scopeId)
-            .setParameter("instance", instanceId)
+            .setParameter(P_INSTANCE,instanceId)
             .setParameter("sub", sub)
             .setLockMode(LockModeType.PESSIMISTIC_WRITE)
             .getResultList()

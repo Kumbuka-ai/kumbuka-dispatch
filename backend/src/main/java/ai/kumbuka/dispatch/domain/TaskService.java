@@ -275,7 +275,7 @@ public class TaskService {
         if (spent.isEmpty()) {
             return Optional.empty();
         }
-        Task task = spent.filter(record -> record.sameArguments(digest))
+        Task task = spent.filter(held -> held.sameArguments(digest))
             .flatMap(IdempotencyRecord::taskId)
             .flatMap(id -> tasks.task(scopeId, id))
             .orElseThrow(() -> new DispatchException(
@@ -314,11 +314,8 @@ public class TaskService {
         Draft.Control was = draft.control();
         Draft.Control control = new Draft.Control(
             update.title() == null ? was.title() : update.title(),
-            update.clear().contains(Clearable.ACTIVITY) ? null : update.activity() == null
-                ? was.activityId() : activity(boundTo(scopeId, instance), update.activity()),
-            update.clear().contains(Clearable.CONCERNS) ? null : update.concerns() == null
-                ? was.concernsTaskId()
-                : concerns(scopeId, instance, address.instance(), update.concerns(), task.id()),
+            updatedActivity(scopeId, instance, update, was),
+            updatedConcerns(scopeId, instance, address, task, update, was),
             changed(update, Clearable.APPARATUS, update.apparatus(), was.addressedRole()));
         boolean changed = !control.equals(was);
         changed |= replaceCriteria(scopeId, draft, update.clear().contains(Clearable.CRITERIA)
@@ -441,6 +438,30 @@ public class TaskService {
             return null;
         }
         return given == null ? was : given;
+    }
+
+    /** The activity of a draft after an update: cleared, named, or as it was. */
+    private @Nullable Long updatedActivity(UUID scopeId, Instance instance, Update update,
+                                           Draft.Control was) {
+        if (update.clear().contains(Clearable.ACTIVITY)) {
+            return null;
+        }
+        if (update.activity() == null) {
+            return was.activityId();
+        }
+        return activity(boundTo(scopeId, instance), update.activity());
+    }
+
+    /** The task a draft concerns after an update: cleared, named, or as it was. */
+    private @Nullable Long updatedConcerns(UUID scopeId, Instance instance, TaskAddress address,
+                                           Task task, Update update, Draft.Control was) {
+        if (update.clear().contains(Clearable.CONCERNS)) {
+            return null;
+        }
+        if (update.concerns() == null) {
+            return was.concernsTaskId();
+        }
+        return concerns(scopeId, instance, address.instance(), update.concerns(), task.id());
     }
 
     private DefinitionRepository.Declared boundTo(UUID scopeId, Instance instance) {

@@ -66,8 +66,8 @@ public enum ProcessVerb {
         EffectClass.COLLECTION_READ, AnswerShape.DEFINITION,
         () -> Texts.tools().readDefinition(),
         List.of(
-            Argument.top("scope", Argument.STRING, () -> Texts.arguments().scope()),
-            Argument.top("selector", Argument.STRING, () -> Texts.arguments().selector()),
+            Argument.top(Name.SCOPE, Argument.STRING, () -> Texts.arguments().scope()),
+            Argument.top(Name.SELECTOR, Argument.STRING, () -> Texts.arguments().selector()),
             Argument.top("version", Argument.INTEGER, Argument.UNSET,
                 () -> Texts.arguments().readDefinitionVersion()))),
 
@@ -79,9 +79,9 @@ public enum ProcessVerb {
     START("start", DispatchPermission.INSTANCE_START, EffectClass.COLLECTION_COMPOUND,
         AnswerShape.INSTANCE, () -> Texts.tools().start(),
         List.of(
-            Argument.top("scope", Argument.STRING, () -> Texts.arguments().scope()),
-            Argument.top("selector", Argument.STRING, () -> Texts.arguments().selector()),
-            Argument.field("title", Argument.STRING, () -> Texts.arguments().startTitle()),
+            Argument.top(Name.SCOPE, Argument.STRING, () -> Texts.arguments().scope()),
+            Argument.top(Name.SELECTOR, Argument.STRING, () -> Texts.arguments().selector()),
+            Argument.field(Name.TITLE, Argument.STRING, () -> Texts.arguments().startTitle()),
             Argument.field("input", Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().startInput()),
             Argument.field("trigger", Argument.STRING, Argument.UNSET,
@@ -120,13 +120,13 @@ public enum ProcessVerb {
     CREATE("create", DispatchPermission.TASK_COMMISSION, EffectClass.CREATE, AnswerShape.TASK,
         () -> Texts.tools().create(),
         List.of(
-            Argument.top("scope", Argument.STRING, () -> Texts.arguments().scope()),
-            Argument.top("selector", Argument.STRING, () -> Texts.arguments().selector()),
+            Argument.top(Name.SCOPE, Argument.STRING, () -> Texts.arguments().scope()),
+            Argument.top(Name.SELECTOR, Argument.STRING, () -> Texts.arguments().selector()),
             Argument.top("parent", Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().createParent()),
             Argument.top("idempotency_key", Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().createIdempotencyKey()),
-            Argument.field("title", Argument.STRING, () -> Texts.arguments().createTitle()),
+            Argument.field(Name.TITLE, Argument.STRING, () -> Texts.arguments().createTitle()),
             Argument.field("apparatus", Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().createApparatus()),
             Argument.field("activity", Argument.STRING, Argument.UNSET,
@@ -137,7 +137,7 @@ public enum ProcessVerb {
                 () -> Texts.arguments().createCriteria()),
             Argument.field("free_fields", Argument.OBJECT, Argument.UNSET,
                 () -> Texts.arguments().createFreeFields()),
-            Argument.field("text", Argument.STRING, Argument.UNSET,
+            Argument.field(Name.TEXT, Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().createText()),
             Argument.field("trigger", Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().createTrigger()),
@@ -148,12 +148,12 @@ public enum ProcessVerb {
     UPDATE("update", DispatchPermission.TASK_COMMISSION, EffectClass.FIELD_WRITE,
         AnswerShape.TASK, () -> Texts.tools().update(),
         List.of(
-            Argument.top("address", Argument.STRING, () -> Texts.arguments().address()),
-            Argument.top("conflict_token", Argument.STRING, Argument.UNSET,
+            Argument.top(Name.ADDRESS, Argument.STRING, () -> Texts.arguments().address()),
+            Argument.top(Name.CONFLICT_TOKEN, Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().draftConflictToken()),
             Argument.topList("clear", Argument.CLEAR_PATTERN, Argument.UNSET,
                 () -> Texts.arguments().updateClear()),
-            Argument.field("title", Argument.STRING, Argument.UNSET,
+            Argument.field(Name.TITLE, Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().updateTitle()),
             Argument.field("apparatus", Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().updateApparatus()),
@@ -165,7 +165,7 @@ public enum ProcessVerb {
                 () -> Texts.arguments().updateCriteria()),
             Argument.field("free_fields", Argument.OBJECT, Argument.UNSET,
                 () -> Texts.arguments().updateFreeFields()),
-            Argument.field("text", Argument.STRING, Argument.UNSET,
+            Argument.field(Name.TEXT, Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().updateText()))),
 
     /** Deletes a task in draft outright, under its conflict token (DEC-0015). */
@@ -178,6 +178,20 @@ public enum ProcessVerb {
 
     /** The prefix every call carries on the assistant surface. */
     public static final String PREFIX = "dispatch_";
+
+    /** The names of the arguments several calls take, each written once. */
+    private static final class Name {
+
+        static final String SCOPE = "scope";
+        static final String SELECTOR = "selector";
+        static final String ADDRESS = "address";
+        static final String CONFLICT_TOKEN = "conflict_token";
+        static final String TITLE = "title";
+        static final String TEXT = "text";
+
+        private Name() {
+        }
+    }
 
     private final String verb;
     private final DispatchPermission permission;
@@ -199,12 +213,12 @@ public enum ProcessVerb {
     /** The arguments of the two closings: the address, the fences, and the return. */
     private static List<Argument> closing() {
         return List.of(
-            Argument.top("address", Argument.STRING, () -> Texts.arguments().instanceAddress()),
-            Argument.top("conflict_token", Argument.STRING, Argument.UNSET,
+            Argument.top(Name.ADDRESS, Argument.STRING, () -> Texts.arguments().instanceAddress()),
+            Argument.top(Name.CONFLICT_TOKEN, Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().instanceConflictToken()),
             Argument.top("confirmation", Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().instanceConfirmation()),
-            Argument.field("text", Argument.STRING, () -> Texts.arguments().returnText()),
+            Argument.field(Name.TEXT, Argument.STRING, () -> Texts.arguments().returnText()),
             Argument.oneOf("verdict", Argument.Placement.FIELDS, Argument.UNSET, List.of(
                     Argument.value("green", () -> Texts.values().verdictGreen()),
                     Argument.value("red", () -> Texts.values().verdictRed()),
@@ -219,15 +233,15 @@ public enum ProcessVerb {
     /** The arguments of {@code delete} and {@code send}: the task's address and its token. */
     private static List<Argument> onADraft() {
         return List.of(
-            Argument.top("address", Argument.STRING, () -> Texts.arguments().address()),
-            Argument.top("conflict_token", Argument.STRING, Argument.UNSET,
+            Argument.top(Name.ADDRESS, Argument.STRING, () -> Texts.arguments().address()),
+            Argument.top(Name.CONFLICT_TOKEN, Argument.STRING, Argument.UNSET,
                 () -> Texts.arguments().draftConflictToken()));
     }
 
     /** The arguments of the two calls on a reference: the address, its kind and its value. */
     private static List<Argument> reference(Supplier<String> value) {
         return List.of(
-            Argument.top("address", Argument.STRING, () -> Texts.arguments().instanceAddress()),
+            Argument.top(Name.ADDRESS, Argument.STRING, () -> Texts.arguments().instanceAddress()),
             Argument.oneOf("kind", Argument.Placement.FIELDS, null, List.of(
                     Argument.value("item", () -> Texts.values().referenceKindItem()),
                     Argument.value("reference", () -> Texts.values().referenceKindReference())),

@@ -95,9 +95,21 @@ public class ProcessResource {
     /** The method of a field write. */
     private static final String METHOD_PATCH = "PATCH";
 
+    /** The argument and path parameter of the scope. */
+    private static final String SCOPE = "scope";
+
+    /** The argument and path parameter of the selector. */
+    private static final String SELECTOR = "selector";
+
+    /** The path parameter of an object in a collection. */
+    private static final String ID = "id";
+
+    /** The argument of an object's address; on this surface the path carries it. */
+    private static final String ADDRESS = "address";
+
     /** The arguments the path or a header carries on this surface, never the body. */
-    private static final java.util.Set<String> PATH_OR_HEADER = java.util.Set.of("scope",
-        "selector", "address", CONFLICT_TOKEN, IDEMPOTENCY_KEY);
+    private static final java.util.Set<String> PATH_OR_HEADER = java.util.Set.of(SCOPE,
+        SELECTOR, ADDRESS, CONFLICT_TOKEN, IDEMPOTENCY_KEY);
 
     /** A body read as the arguments of a call: a JSON object. */
     private static final TypeReference<Map<String, Object>> OBJECT = new TypeReference<>() {
@@ -111,8 +123,8 @@ public class ProcessResource {
     /** GET on a collection: {@code read_definition}, the one call carried there. */
     @GET
     @Path("{selector}")
-    public DefinitionPayload collectionGet(@PathParam("scope") String scope,
-                                           @PathParam("selector") String segment,
+    public DefinitionPayload collectionGet(@PathParam(SCOPE) String scope,
+                                           @PathParam(SELECTOR) String segment,
                                            @Context HttpHeaders http, @Context UriInfo uri) {
         Surface surface = RefusalMapper.surfaceOf(http);
         String[] at = CustomMethod.split(segment);
@@ -122,8 +134,8 @@ public class ProcessResource {
         VerbName call = VerbName.of(verb, surface);
 
         Map<String, Object> arguments = new LinkedHashMap<>();
-        arguments.put("scope", scope);
-        arguments.put("selector", at[0]);
+        arguments.put(SCOPE, scope);
+        arguments.put(SELECTOR, at[0]);
         uri.getQueryParameters().forEach((name, values) -> {
             if (arguments.containsKey(name) || values.size() > 1) {
                 throw new SurfaceException(verb.argument(name)
@@ -150,8 +162,8 @@ public class ProcessResource {
      */
     @POST
     @Path("{selector}")
-    public Response collectionPost(@PathParam("scope") String scope,
-                                   @PathParam("selector") String segment,
+    public Response collectionPost(@PathParam(SCOPE) String scope,
+                                   @PathParam(SELECTOR) String segment,
                                    @Nullable String body, @Context HttpHeaders http,
                                    @Context UriInfo uri) {
         Surface surface = RefusalMapper.surfaceOf(http);
@@ -167,8 +179,8 @@ public class ProcessResource {
             closedOutsideTheBody(verb, call, arguments, uri);
             key(call, verb, http.getRequestHeader(IDEMPOTENCY_KEY_HEADER))
                 .ifPresent(key -> arguments.put(IDEMPOTENCY_KEY, key));
-            once(verb, call, arguments, "scope", scope);
-            once(verb, call, arguments, "selector", at[0]);
+            once(verb, call, arguments, SCOPE, scope);
+            once(verb, call, arguments, SELECTOR, at[0]);
             CallForm.Create create = CallForm.create(surface, arguments);
             actor = caller.current();
             verbs.resolveScopeToWrite(actor, create.scope());
@@ -178,8 +190,8 @@ public class ProcessResource {
                 .entity(created)
                 .build();
         }
-        once(verb, call, arguments, "scope", scope);
-        once(verb, call, arguments, "selector", at[0]);
+        once(verb, call, arguments, SCOPE, scope);
+        once(verb, call, arguments, SELECTOR, at[0]);
 
         CallForm.Start start = CallForm.start(surface, arguments);
         actor = caller.current();
@@ -200,9 +212,9 @@ public class ProcessResource {
      */
     @PATCH
     @Path("{selector}/{id}")
-    public Response itemPatch(@PathParam("scope") String scope,
-                              @PathParam("selector") String selector,
-                              @PathParam("id") String segment,
+    public Response itemPatch(@PathParam(SCOPE) String scope,
+                              @PathParam(SELECTOR) String selector,
+                              @PathParam(ID) String segment,
                               @Nullable String body, @Context HttpHeaders http,
                               @Context UriInfo uri) {
         Surface surface = RefusalMapper.surfaceOf(http);
@@ -210,8 +222,8 @@ public class ProcessResource {
         CustomMethod route = CustomMethod.find(METHOD_PATCH, CustomMethod.Depth.ITEM, at[1])
             .orElseThrow(() -> notHere(surface, CustomMethod.Depth.ITEM));
         ProcessVerb verb = route.verb();
-        Map<String, Object> arguments = onATask(verb, surface, scope, selector, at[0], body,
-            http, uri);
+        Map<String, Object> arguments = onATask(verb, surface,
+            address(scope, selector, at[0]), body, http, uri);
 
         CallForm.Update update = CallForm.update(surface, arguments);
         Actor actor = caller.current();
@@ -228,17 +240,17 @@ public class ProcessResource {
      */
     @DELETE
     @Path("{selector}/{id}")
-    public AddressPayload itemDelete(@PathParam("scope") String scope,
-                                     @PathParam("selector") String selector,
-                                     @PathParam("id") String segment,
+    public AddressPayload itemDelete(@PathParam(SCOPE) String scope,
+                                     @PathParam(SELECTOR) String selector,
+                                     @PathParam(ID) String segment,
                                      @Context HttpHeaders http, @Context UriInfo uri) {
         Surface surface = RefusalMapper.surfaceOf(http);
         String[] at = CustomMethod.split(segment);
         CustomMethod route = CustomMethod.find(HttpMethod.DELETE, CustomMethod.Depth.ITEM, at[1])
             .orElseThrow(() -> notHere(surface, CustomMethod.Depth.ITEM));
         ProcessVerb verb = route.verb();
-        Map<String, Object> arguments = onATask(verb, surface, scope, selector, at[0], null,
-            http, uri);
+        Map<String, Object> arguments = onATask(verb, surface,
+            address(scope, selector, at[0]), null, http, uri);
 
         CallForm.OnADraft delete = CallForm.onADraft(verb, surface, arguments);
         Actor actor = caller.current();
@@ -255,9 +267,9 @@ public class ProcessResource {
      */
     @POST
     @Path("{selector}/{id}")
-    public Response itemPost(@PathParam("scope") String scope,
-                             @PathParam("selector") String selector,
-                             @PathParam("id") String segment,
+    public Response itemPost(@PathParam(SCOPE) String scope,
+                             @PathParam(SELECTOR) String selector,
+                             @PathParam(ID) String segment,
                              @Nullable String body, @Context HttpHeaders http,
                              @Context UriInfo uri) {
         Surface surface = RefusalMapper.surfaceOf(http);
@@ -266,8 +278,8 @@ public class ProcessResource {
             .orElseThrow(() -> notHere(surface, CustomMethod.Depth.ITEM));
         ProcessVerb verb = route.verb();
         if (verb == ProcessVerb.SEND) {
-            Map<String, Object> arguments = onATask(verb, surface, scope, selector, at[0], body,
-                http, uri);
+            Map<String, Object> arguments = onATask(verb, surface,
+                address(scope, selector, at[0]), body, http, uri);
             CallForm.OnADraft send = CallForm.onADraft(verb, surface, arguments);
             Actor actor = caller.current();
             verbs.resolveScopeToWrite(actor, send.address().instance().scope());
@@ -277,8 +289,7 @@ public class ProcessResource {
         VerbName call = VerbName.of(verb, surface);
 
         Map<String, Object> arguments = body(call, body);
-        once(verb, call, arguments, "address",
-            AddressParser.SCHEME + "://" + scope + "/" + selector + "/" + at[0]);
+        once(verb, call, arguments, ADDRESS, address(scope, selector, at[0]));
         String fence = http.getHeaderString(HttpHeaders.IF_MATCH);
         if (fence != null && verb.argument(CONFLICT_TOKEN).isPresent()) {
             once(verb, call, arguments, CONFLICT_TOKEN, unquoted(fence));
@@ -310,19 +321,22 @@ public class ProcessResource {
      * of {@code If-Match}. A query is refused, since the call takes nothing
      * there.
      */
-    private Map<String, Object> onATask(ProcessVerb verb, Surface surface, String scope,
-                                        String selector, String id, @Nullable String body,
-                                        HttpHeaders http, UriInfo uri) {
+    private Map<String, Object> onATask(ProcessVerb verb, Surface surface, String address,
+                                        @Nullable String body, HttpHeaders http, UriInfo uri) {
         VerbName call = VerbName.of(verb, surface);
         Map<String, Object> arguments = body(call, body);
         closedOutsideTheBody(verb, call, arguments, uri);
-        once(verb, call, arguments, "address",
-            AddressParser.SCHEME + "://" + scope + "/" + selector + "/" + id);
+        once(verb, call, arguments, ADDRESS, address);
         String fence = http.getHeaderString(HttpHeaders.IF_MATCH);
         if (fence != null) {
             once(verb, call, arguments, CONFLICT_TOKEN, unquoted(fence));
         }
         return arguments;
+    }
+
+    /** The address of the object the path names. */
+    private static String address(String scope, String selector, String id) {
+        return AddressParser.SCHEME + "://" + scope + "/" + selector + "/" + id;
     }
 
     /**
