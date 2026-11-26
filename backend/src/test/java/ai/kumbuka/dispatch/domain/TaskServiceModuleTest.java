@@ -42,8 +42,7 @@ import static org.mockito.Mockito.when;
  * The draft and the commission of a task against mocked repositories and a
  * mocked writer of acts: what each call writes, what it refuses before it
  * writes anything, and that a draft writes no act. That the rows stand in the
- * store as written, under the service role, is {@code TaskDraftIT}'s and
- * {@code TaskSendIT}'s.
+ * store as written, under the service role, is {@code TaskCallsIT}'s.
  *
  * <p>Every expectation is written here from the order: the subs from 1, the
  * identifiers of the criteria as the service gives them, the token of a draft
@@ -98,6 +97,7 @@ class TaskServiceModuleTest {
             }
             return row;
         });
+        when(tasks.spendKey(any())).thenAnswer(call -> inserted.add(call.getArgument(0)));
         declare(activity(ONLY, "review"));
     }
 
@@ -154,7 +154,7 @@ class TaskServiceModuleTest {
         InOrder order = Mockito.inOrder(tasks);
         order.verify(tasks).spentKey(SCOPE, "ada", "once", NOW.minus(TaskService.KEY_LIFE));
         order.verify(tasks).deleteExpiredKeys(SCOPE, "ada", NOW.minus(TaskService.KEY_LIFE));
-        order.verify(tasks).insert(any(IdempotencyRecord.class));
+        order.verify(tasks).spendKey(any(IdempotencyRecord.class));
         assertThat(inserted).filteredOn(IdempotencyRecord.class::isInstance).singleElement()
             .satisfies(row -> assertThat(((IdempotencyRecord) row).sameArguments(
                 TaskService.digest(SLUG, SELECTOR, create(drafting(), IdempotencyKey.of("once")))))
@@ -190,6 +190,18 @@ class TaskServiceModuleTest {
             .isInstanceOfSatisfying(DispatchException.class, refused -> assertThat(
                 refused.reason()).isEqualTo(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED));
         assertThat(inserted).isEmpty();
+    }
+
+    @Test
+    void a_key_another_call_spent_meanwhile_is_refused_as_reused() {
+        when(tasks.spendKey(any())).thenReturn(false);
+
+        assertThatThrownBy(() -> service.create(CONSOLE, SLUG, SCOPE, SELECTOR,
+                create(drafting(), IdempotencyKey.of("once")), PROVENANCE))
+            .as("the store holds the key already, written after this call read the ledger "
+                + "unspent: a typed refusal, whose transaction is rolled back")
+            .isInstanceOfSatisfying(DispatchException.class, refused -> assertThat(
+                refused.reason()).isEqualTo(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED));
     }
 
     @Test

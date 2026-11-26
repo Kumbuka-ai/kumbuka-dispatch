@@ -15,6 +15,7 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -34,6 +35,12 @@ import static org.junit.jupiter.api.Assertions.fail;
  * instance's for a create with a parent and the selector's for the short form.
  * The second decides on the key under that lock, after the first committed,
  * and answers what the first created, as a repeat after the commit does.
+ *
+ * <p>With the same key and other arguments -- another parent, or the short form
+ * beside a create with a parent -- the two may take different locks. The
+ * second then waits at the store's one key per caller and scope, is refused
+ * with {@code IDEMPOTENCY_KEY_REUSED} once the first committed, and leaves no
+ * row.
  *
  * <p>The red state of each case is the read the lock replaces, observed while
  * the first is open: a read of the ledger without the lock finds no key, and a
@@ -117,6 +124,49 @@ class TaskKeyOverlapIT {
     }
 
     @Test
+    void an_overlapping_create_under_one_key_with_another_parent_is_refused_as_reused()
+            throws Exception {
+        String selector = TaskWire.plant("key-parents", "review").selector();
+        InstanceAddress one = start(selector);
+        InstanceAddress other = start(selector);
+        String key = "parents-" + InstanceWire.suffix();
+
+        Overlap overlap = stage().run(() -> {
+            TaskView first = create(selector, new TaskService.Create(one, drafting(), null,
+                List.of(), IdempotencyKey.of(key)));
+            assertThat(InstanceWire.single("SELECT count(*) FROM dispatch.idempotency_key "
+                    + "WHERE idempotency_key = ?", key))
+                .as("RED STATE, observed: while the first create is open, the second, under "
+                    + "the lock of another instance, finds the key unspent and goes on to "
+                    + "write it a second time")
+                .isZero();
+            return first;
+        }, () -> create(selector, new TaskService.Create(other, drafting(), null, List.of(),
+            IdempotencyKey.of(key))));
+
+        assertReused(overlap, key, other);
+    }
+
+    @Test
+    void an_overlapping_short_form_under_the_key_of_a_create_with_parent_is_refused_as_reused()
+            throws Exception {
+        String selector = TaskWire.plant("key-forms", "review").selector();
+        InstanceAddress parent = start(selector);
+        String key = "forms-" + InstanceWire.suffix();
+
+        Overlap overlap = stage().run(
+            () -> create(selector, new TaskService.Create(parent, drafting(), null, List.of(),
+                IdempotencyKey.of(key))),
+            () -> create(selector, new TaskService.Create(null, drafting(), null, List.of(),
+                IdempotencyKey.of(key))));
+
+        assertReused(overlap, key, null);
+        assertThat(InstanceWire.single("SELECT count(*) FROM dispatch.instance i JOIN "
+                + "dispatch.selector s ON s.id = i.selector_id WHERE s.name = ?", selector))
+            .as("the short form refused started no instance").isEqualTo(1);
+    }
+
+    @Test
     @Disabled("rebuilt in T5: an overlapping claim under one key answers the task with a new "
         + "receipt")
     void an_overlapping_claim_under_one_key_answers_the_task_with_a_new_receipt() {
@@ -130,6 +180,29 @@ class TaskKeyOverlapIT {
     }
 
     // -----------------------------------------------------------------------
+
+    /**
+     * The first created its task and spent the key; the second waited on it,
+     * was refused as a reuse of the key, and left no row: no task in the
+     * instance it named, where it named one, and the one key the first wrote.
+     */
+    private static void assertReused(Overlap overlap, String key,
+                                     @Nullable InstanceAddress second) {
+        assertThat(overlap.waited()).as("the second waited on the first").isTrue();
+        assertThat(overlap.first()).as("the first created its task").isInstanceOf(TaskView.class);
+        assertThat(overlap.second())
+            .as("the second is refused as a reuse of the key, not failed")
+            .isInstanceOfSatisfying(DispatchException.class, refused -> assertThat(
+                refused.reason()).isEqualTo(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED));
+        assertThat(InstanceWire.single("SELECT count(*) FROM dispatch.idempotency_key "
+                + "WHERE idempotency_key = ?", key))
+            .as("one key stands, the first's").isEqualTo(1);
+        if (second != null) {
+            assertThat(InstanceWire.single("SELECT count(*) FROM dispatch.task "
+                    + "WHERE instance_id = ?", InstanceWire.instanceId(second.complete())))
+                .as("the instance the second named holds no task").isZero();
+        }
+    }
 
     private Overlap.Stage stage() {
         return new Overlap.Stage(em, tenantContext, InstanceWire.TENANT);

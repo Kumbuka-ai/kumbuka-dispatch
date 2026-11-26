@@ -64,8 +64,13 @@ import java.util.UUID;
  * call created and writes nothing, also after its send; with other arguments,
  * or once the draft is deleted, it is refused. A repeat is decided under the
  * lock the create itself takes first -- the instance's, or for the short form
- * the selector's -- so a second call under one key waits for the first and
- * answers what it created.
+ * the selector's. Two calls with the same arguments take the same lock, so the
+ * second waits for the first and answers what it created. Two calls with
+ * other arguments may take different locks and both find the key unspent;
+ * then the second waits at the store's one key per caller and scope until the
+ * first ends, and where the first wrote the key, the second is refused with
+ * {@code IDEMPOTENCY_KEY_REUSED} and its transaction is rolled back, so it
+ * leaves no row.
  *
  * <p>Nothing here checks the caller's permission: the call checked it before
  * it was made, and the provenance it hands in names it. The actor is read for
@@ -252,8 +257,10 @@ public class TaskService {
         if (create.key() instanceof IdempotencyKey.Given given) {
             Instant now = clock.instant();
             tasks.deleteExpiredKeys(scopeId, actor.subject(), now.minus(KEY_LIFE));
-            tasks.insert(new IdempotencyRecord(scopeId, actor.subject(), given.value(), task.id(),
-                digest, now));
+            if (!tasks.spendKey(new IdempotencyRecord(scopeId, actor.subject(), given.value(),
+                    task.id(), digest, now))) {
+                throw reused();
+            }
         }
         return view(actor, scopeId, new TaskAddress(address, sub), task, draft);
     }
@@ -278,15 +285,19 @@ public class TaskService {
         Task task = spent.filter(held -> held.sameArguments(digest))
             .flatMap(IdempotencyRecord::taskId)
             .flatMap(id -> tasks.task(scopeId, id))
-            .orElseThrow(() -> new DispatchException(
-                DispatchException.Reason.IDEMPOTENCY_KEY_REUSED,
-                "the key was spent on other arguments, or on a draft since deleted."));
+            .orElseThrow(TaskService::reused);
         Instance instance = tasks.instance(scopeId, task.instanceId())
             .orElseThrow(() -> new IllegalStateException("a task belongs to an instance"));
         TaskAddress address = new TaskAddress(new InstanceAddress(scope, selector,
             instance.number()), task.sub());
         return Optional.of(view(actor, scopeId, address, task,
             tasks.draft(scopeId, task.id()).orElse(null)));
+    }
+
+    /** The refusal of a key spent on other arguments, or on a draft since deleted. */
+    private static DispatchException reused() {
+        return new DispatchException(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED,
+            "the key was spent on other arguments, or on a draft since deleted.");
     }
 
     // ======================================================================
@@ -652,7 +663,10 @@ public class TaskService {
     /**
      * A value of the caller's document in one form whatever the order of its
      * keys: an object with its keys sorted, a list in its order, every leaf
-     * with its type.
+     * with its type. It is written by hand for its numbers, compared as exact
+     * decimals without trailing zeros: Jackson with sorted keys keeps the scale
+     * of a decimal, so 2.50 and 2.5 would differ, and RFC 8785 writes every
+     * number as a double, so 9007199254740993 and 9007199254740992 would be one.
      */
     static String canonical(@Nullable Object value) {
         if (value instanceof Map<?, ?> map) {

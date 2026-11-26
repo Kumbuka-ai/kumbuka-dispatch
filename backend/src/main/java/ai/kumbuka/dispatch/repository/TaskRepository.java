@@ -19,7 +19,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceException;
 import jakarta.transaction.Transactional;
+import org.hibernate.exception.ConstraintViolationException;
 
 import java.time.Instant;
 import java.util.List;
@@ -52,6 +54,9 @@ public class TaskRepository {
     private static final String P_TASK = "task";
     private static final String P_CALLER = "caller";
     private static final String P_INSTANCE = "instance";
+
+    /** The constraint of the store that holds one key per caller and scope. */
+    private static final String KEY_OF_THE_CALLER = "uq_idempotency_key_caller_key";
 
     @Inject EntityManager em;
 
@@ -316,6 +321,29 @@ public class TaskRepository {
     }
 
     /**
+     * Writes the key a caller spends, and flushes at once. False where the
+     * caller holds the key in the scope already: another transaction wrote it
+     * after this one read the ledger, and the store's {@code
+     * uq_idempotency_key_caller_key} refused the second row. The insert waits
+     * for that transaction to end, so the key it meets is committed. The
+     * caller's transaction cannot go on after the refusal and is to be rolled
+     * back; every other refusal of the store is thrown as it came.
+     */
+    @Transactional
+    public boolean spendKey(IdempotencyRecord key) {
+        try {
+            em.persist(key);
+            em.flush();
+            return true;
+        } catch (PersistenceException refused) {
+            if (refusedBy(refused, KEY_OF_THE_CALLER)) {
+                return false;
+            }
+            throw refused;
+        }
+    }
+
+    /**
      * Writes a row and flushes at once, so a refusal of the store falls in
      * this call and the row has its surrogate.
      */
@@ -330,6 +358,17 @@ public class TaskRepository {
     @Transactional
     public void flush() {
         em.flush();
+    }
+
+    /** Whether the store refused a statement by the constraint named, anywhere in its causes. */
+    private static boolean refusedBy(Throwable refused, String constraint) {
+        for (Throwable cause = refused; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violated
+                    && constraint.equals(violated.getConstraintName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** The row as it stands under the lock just taken, also where this transaction read it before. */
