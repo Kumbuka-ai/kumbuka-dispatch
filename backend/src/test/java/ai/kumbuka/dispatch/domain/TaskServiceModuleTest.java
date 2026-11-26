@@ -18,6 +18,7 @@ import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -442,6 +443,13 @@ class TaskServiceModuleTest {
         other.put("b", List.of("x", 2.5));
         other.put("a", 1L);
         assertThat(TaskService.canonical(one)).isEqualTo(TaskService.canonical(other));
+        BigDecimal scaled = new BigDecimal("2.50");
+        BigDecimal plain = new BigDecimal("2.5");
+        assertThat(scaled).as("the witness: two decimals that differ in their scale alone")
+            .isNotEqualTo(plain);
+        assertThat(TaskService.canonical(Map.of("a", 1, "b", List.of("x", scaled))))
+            .as("a decimal is held without its trailing zeros")
+            .isEqualTo(TaskService.canonical(Map.of("a", 1, "b", List.of("x", plain))));
         assertThat(TaskService.same(one, Map.of("a", 2))).as("RED STATE, observed: another value "
             + "is another document").isFalse();
         assertThat(TaskService.digest(SLUG, SELECTOR, create(new TaskService.Drafting("t", null,

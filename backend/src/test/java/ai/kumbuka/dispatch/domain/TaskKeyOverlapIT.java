@@ -42,9 +42,11 @@ import static org.junit.jupiter.api.Assertions.fail;
  * with {@code IDEMPOTENCY_KEY_REUSED} once the first committed, and leaves no
  * row.
  *
- * <p>The red state of each case is the read the lock replaces, observed while
- * the first is open: a read of the ledger without the lock finds no key, and a
- * second create deciding on it would create a second task under the key.
+ * <p>The red state of each case under one key is the read the lock replaces,
+ * observed while the first is open: a read of the ledger without the lock
+ * finds no key, and a second create deciding on it would create a second task
+ * under the key. The case under two keys observes its red state against the
+ * case under one: two keys are two calls, and two tasks stand.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -95,8 +97,16 @@ class TaskKeyOverlapIT {
         TaskService.Create create = new TaskService.Create(null, drafting(), null, List.of(),
             IdempotencyKey.of(key));
 
-        Overlap overlap = stage().run(() -> create(selector, create), () -> create(selector,
-            create));
+        Overlap overlap = stage().run(() -> {
+            TaskView first = create(selector, create);
+            assertThat(InstanceWire.single("SELECT count(*) FROM dispatch.idempotency_key "
+                    + "WHERE idempotency_key = ?", key))
+                .as("RED STATE, observed: while the first short form is open, a read of the "
+                    + "ledger without the lock finds no key, and a short form deciding on it "
+                    + "would start a second instance")
+                .isZero();
+            return first;
+        }, () -> create(selector, create));
 
         assertThat(overlap.waited()).as("the second waited on the lock of the selector").isTrue();
         assertThat(((TaskView) overlap.second()).address())
@@ -154,11 +164,17 @@ class TaskKeyOverlapIT {
         InstanceAddress parent = start(selector);
         String key = "forms-" + InstanceWire.suffix();
 
-        Overlap overlap = stage().run(
-            () -> create(selector, new TaskService.Create(parent, drafting(), null, List.of(),
-                IdempotencyKey.of(key))),
-            () -> create(selector, new TaskService.Create(null, drafting(), null, List.of(),
-                IdempotencyKey.of(key))));
+        Overlap overlap = stage().run(() -> {
+            TaskView first = create(selector, new TaskService.Create(parent, drafting(), null,
+                List.of(), IdempotencyKey.of(key)));
+            assertThat(InstanceWire.single("SELECT count(*) FROM dispatch.idempotency_key "
+                    + "WHERE idempotency_key = ?", key))
+                .as("RED STATE, observed: while the create with a parent is open, the short "
+                    + "form finds the key unspent and goes on to write it a second time")
+                .isZero();
+            return first;
+        }, () -> create(selector, new TaskService.Create(null, drafting(), null, List.of(),
+            IdempotencyKey.of(key))));
 
         assertReused(overlap, key, null);
         assertThat(InstanceWire.single("SELECT count(*) FROM dispatch.instance i JOIN "
