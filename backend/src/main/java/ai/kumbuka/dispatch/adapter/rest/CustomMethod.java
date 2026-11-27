@@ -73,7 +73,12 @@ public enum CustomMethod {
     /** The plain DELETE on the address of a task: the draft goes. */
     DELETE("delete", HttpMethod.DELETE, Depth.ITEM, false),
 
-    SEND("send", HttpMethod.POST, Depth.ITEM, true);
+    SEND("send", HttpMethod.POST, Depth.ITEM, true),
+
+    CLAIM("claim", HttpMethod.POST, Depth.ITEM, true),
+    RENEW("renew", HttpMethod.POST, Depth.ITEM, true),
+    RELEASE("release", HttpMethod.POST, Depth.ITEM, true),
+    DEFER("defer", HttpMethod.POST, Depth.ITEM, true);
 
     /** Where a route acts. */
     public enum Depth {

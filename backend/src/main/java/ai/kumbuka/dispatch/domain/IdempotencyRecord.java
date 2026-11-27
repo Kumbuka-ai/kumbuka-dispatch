@@ -22,9 +22,10 @@ import java.util.UUID;
  * dispatch.idempotency_key} of the store line (C10.4, data model "Idempotency
  * keys", REA-0010 D30).
  *
- * <p>Mapped with what a {@code create} writes: the caller, the key, the task
- * the call created, the digest of the call's canonical arguments and the
- * instant it was first spent. A row is never changed. It hangs on the task and
+ * <p>Mapped with what a {@code create} and a {@code claim} write: the caller,
+ * the key, the task a create created or the act {@code claim} a claim wrote,
+ * the digest of the call's canonical arguments and the instant it was first
+ * spent. A row is never changed. It hangs on the task and
  * not on its draft, so a repeat after the send still finds the task; the
  * delete of a draft empties {@code task_id} by the store's own key, and an
  * empty task means the draft the first call created is gone. A row older than
@@ -42,9 +43,13 @@ public class IdempotencyRecord extends RuntimeRow {
     @Column(name = "idempotency_key", nullable = false, updatable = false)
     private String idempotencyKey;
 
-    /** Absent once the draft the first call created was deleted. */
+    /** Absent once the draft the first call created was deleted, and on the key of a claim. */
     @Column(name = "task_id", updatable = false)
     private @Nullable Long taskId;
+
+    /** Absent but on the key of a claim: the act {@code claim} the first call wrote. */
+    @Column(name = "act_id", updatable = false)
+    private @Nullable Long actId;
 
     /** Absent on a row written before the digest existed; this service writes it always. */
     @Column(name = "argument_digest", updatable = false)
@@ -60,17 +65,39 @@ public class IdempotencyRecord extends RuntimeRow {
 
     IdempotencyRecord(UUID scopeId, String callerSubject, String key, long taskId,
                       String argumentDigest, Instant createdAt) {
+        this(scopeId, callerSubject, key, argumentDigest, createdAt);
+        this.taskId = taskId;
+    }
+
+    private IdempotencyRecord(UUID scopeId, String callerSubject, String key,
+                              String argumentDigest, Instant createdAt) {
         super(scopeId);
         this.callerSubject = callerSubject;
         this.idempotencyKey = key;
-        this.taskId = taskId;
         this.argumentDigest = argumentDigest;
         this.createdAt = createdAt;
     }
 
-    /** The task the first call created; empty once that draft was deleted. */
+    /**
+     * The key of a claim, hung on the act {@code claim} the first call wrote
+     * (TAR-0004 2.8, D30), with the digest of its arguments.
+     */
+    static IdempotencyRecord ofClaim(UUID scopeId, String callerSubject, String key, long actId,
+                                     String argumentDigest, Instant createdAt) {
+        IdempotencyRecord claimKey = new IdempotencyRecord(scopeId, callerSubject, key,
+            argumentDigest, createdAt);
+        claimKey.actId = actId;
+        return claimKey;
+    }
+
+    /** The task the first call created; empty once that draft was deleted, and for a claim. */
     public Optional<Long> taskId() {
         return Optional.ofNullable(taskId);
+    }
+
+    /** The act {@code claim} the first call wrote; empty but on the key of a claim. */
+    public Optional<Long> actId() {
+        return Optional.ofNullable(actId);
     }
 
     /** Whether the arguments of a repeat are the ones of the first call. */

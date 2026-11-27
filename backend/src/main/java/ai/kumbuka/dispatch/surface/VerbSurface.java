@@ -11,6 +11,7 @@ import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.domain.DefinitionService;
 import ai.kumbuka.dispatch.domain.DefinitionView;
 import ai.kumbuka.dispatch.domain.ExternalReference;
+import ai.kumbuka.dispatch.domain.HoldingService;
 import ai.kumbuka.dispatch.domain.Instance;
 import ai.kumbuka.dispatch.domain.InstanceAddress;
 import ai.kumbuka.dispatch.domain.InstanceService;
@@ -44,7 +45,8 @@ import java.util.UUID;
  * completed write. Every act on an instance writes one, naming the call, the
  * instance's technical address and the scope's id, and every call on a task
  * one naming the task's technical address, and nothing a caller or a tenant
- * chose (C13.3, D23). The lines of the refusals carry their codes
+ * chose (C13.3, D23): no receipt, no remark, no title, no role. The lines of
+ * the refusals carry their codes
  * alone, so no title, label, field name, value or text reaches the log
  * (DEC-0051).
  *
@@ -62,6 +64,7 @@ public class VerbSurface {
     @Inject DefinitionService definitions;
     @Inject InstanceService instances;
     @Inject TaskService tasks;
+    @Inject HoldingService holdings;
     @Inject ScopeDirectory scopes;
 
     /**
@@ -152,6 +155,42 @@ public class VerbSurface {
             Access.WRITE);
         return written(ProcessVerb.SEND, resolved, tasks.send(actor, address,
             resolved.scopeId(), conflictToken, provenance(actor, ProcessVerb.SEND)));
+    }
+
+    /** {@code claim}: takes an open task up, with a receipt and a lease. */
+    @Transactional
+    public TaskView claim(Actor actor, TaskAddress address, HoldingService.Claim claim) {
+        ScopeDirectory.ScopeAccess resolved = resolve(actor, address.instance().scope(),
+            Access.WRITE);
+        return written(ProcessVerb.CLAIM, resolved, holdings.claim(actor, address,
+            resolved.scopeId(), claim, provenance(actor, ProcessVerb.CLAIM)));
+    }
+
+    /** {@code renew}: extends the holder's lease. */
+    @Transactional
+    public TaskView renew(Actor actor, TaskAddress address, HoldingService.Renew renew) {
+        ScopeDirectory.ScopeAccess resolved = resolve(actor, address.instance().scope(),
+            Access.WRITE);
+        return written(ProcessVerb.RENEW, resolved, holdings.renew(actor, address,
+            resolved.scopeId(), renew, provenance(actor, ProcessVerb.RENEW)));
+    }
+
+    /** {@code release}: gives the task back. */
+    @Transactional
+    public TaskView release(Actor actor, TaskAddress address, HoldingService.Release release) {
+        ScopeDirectory.ScopeAccess resolved = resolve(actor, address.instance().scope(),
+            Access.WRITE);
+        return written(ProcessVerb.RELEASE, resolved, holdings.release(actor, address,
+            resolved.scopeId(), release, provenance(actor, ProcessVerb.RELEASE)));
+    }
+
+    /** {@code defer}: gives the task back until an instant. */
+    @Transactional
+    public TaskView defer(Actor actor, TaskAddress address, HoldingService.Defer defer) {
+        ScopeDirectory.ScopeAccess resolved = resolve(actor, address.instance().scope(),
+            Access.WRITE);
+        return written(ProcessVerb.DEFER, resolved, holdings.defer(actor, address,
+            resolved.scopeId(), defer, provenance(actor, ProcessVerb.DEFER)));
     }
 
     /**

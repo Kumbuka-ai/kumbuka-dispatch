@@ -24,8 +24,9 @@ import java.util.UUID;
  * the start act (D19), and the return text of a closing act with the
  * translation basis of its outcome label -- and the two a send writes: the
  * text of the commission, and the text of each of its criteria, hung on the
- * criterion by its column. Each is plain text; supplements are the kind of
- * another act and are mapped by the change that writes them.
+ * criterion by its column -- and the remark a {@code release} or a {@code
+ * defer} may carry. Each is plain text; supplements are the kind of another
+ * act and are mapped by the change that writes them.
  */
 @Entity
 @Immutable
@@ -34,7 +35,8 @@ public class Content extends RuntimeRow {
 
     /** The kinds of content the acts of this service write, as the store names them. */
     public enum Kind {
-        INSTANCE_INPUT, INSTANCE_RETURN, INSTANCE_TRANSLATION_BASIS, COMMISSION, CRITERION;
+        INSTANCE_INPUT, INSTANCE_RETURN, INSTANCE_TRANSLATION_BASIS, COMMISSION, CRITERION,
+        REMARK;
 
         /** The kind as the store writes it. */
         public String wireName() {

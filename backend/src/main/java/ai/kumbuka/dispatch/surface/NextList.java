@@ -49,6 +49,10 @@ public final class NextList {
             case UPDATE -> new Step(VerbName.of(ProcessVerb.UPDATE, surface), texts.update());
             case DELETE -> new Step(VerbName.of(ProcessVerb.DELETE, surface), texts.delete());
             case SEND -> new Step(VerbName.of(ProcessVerb.SEND, surface), texts.send());
+            case CLAIM -> new Step(VerbName.of(ProcessVerb.CLAIM, surface), texts.claim());
+            case RENEW -> new Step(VerbName.of(ProcessVerb.RENEW, surface), texts.renew());
+            case RELEASE -> new Step(VerbName.of(ProcessVerb.RELEASE, surface), texts.release());
+            case DEFER -> new Step(VerbName.of(ProcessVerb.DEFER, surface), texts.defer());
         }).toList();
     }
 
@@ -60,8 +64,25 @@ public final class NextList {
         if (!next.isEmpty() || task.closed()) {
             return null;
         }
-        return "draft".equals(task.state())
-            ? Texts.notices().waitingDraft() : Texts.notices().waitingOpen();
+        Notices notices = Texts.notices();
+        TaskView.Standing standing = task.standing();
+        return switch (task.state()) {
+            case "draft" -> notices.waitingDraft();
+            case "active" -> notices.waitingActive();
+            case "on_hold" -> onHold(notices, standing);
+            case "delivered" -> notices.waitingDelivered();
+            default -> standing.deferralPending() ? notices.waitingDeferred()
+                : notices.waitingOpen();
+        };
+    }
+
+    /** What a task on hold waits for: a person where its lapses parked it, else by its reason. */
+    private static String onHold(Notices notices, TaskView.Standing standing) {
+        if (standing.parked()) {
+            return notices.waitingParked();
+        }
+        return "question".equals(standing.holdReason()) ? notices.waitingQuestion()
+            : notices.waitingResume();
     }
 
     /** Where a task stands, for a refusal about it: its state, the calls open, what it waits for. */

@@ -26,9 +26,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * refuses it as {@code ARGUMENT_INVALID}; it is never read as no key, which
  * would let the call run without the idempotency its caller asked for. The
  * refusal itself, on both surfaces, is observed on the wire in {@code
- * IdempotencyIT}. {@code create} is the one call of this service that takes a
- * key so far; {@code claim} and {@code annotate} take one with the orders that
- * bind them.
+ * IdempotencyIT}. {@code create} and {@code claim} take a key; {@code
+ * annotate} takes one with the order that binds it.
  */
 class IdempotencyKeyHeaderTest {
 
@@ -61,10 +60,20 @@ class IdempotencyKeyHeaderTest {
     }
 
     @Test
-    @Disabled("rebuilt in T5: the REST surface reads an empty Idempotency-Key header on claim "
-        + "as an empty key")
     void an_empty_header_is_an_empty_key_on_claim() {
-        fail("rebuilt in T5");
+        VerbName claim = VerbName.of(ProcessVerb.CLAIM, Surface.REST);
+        for (String sent : List.of("", " ")) {
+            assertThat(ProcessResource.key(claim, ProcessVerb.CLAIM, List.of(sent)))
+                .as("an empty Idempotency-Key header on claim is an empty key, for the form "
+                    + "check to refuse")
+                .contains("");
+        }
+        assertThat(ProcessResource.key(claim, ProcessVerb.CLAIM, List.of("claim-once")))
+            .contains("claim-once");
+        assertThat(ProcessResource.key(VerbName.of(ProcessVerb.RENEW, Surface.REST),
+                ProcessVerb.RENEW, List.of("")))
+            .as("a holder's call takes no key and does not read the header")
+            .isEqualTo(Optional.empty());
     }
 
     @Test

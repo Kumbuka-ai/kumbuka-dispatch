@@ -192,9 +192,9 @@ class RestRouteFormTest {
             .as("and is reached there with GET and POST").contains("GET, POST");
         assertThat(carriedAt(CustomMethod.Depth.ITEM))
             .as("an instance carries its two closings and the two calls on a reference, and a "
-                + "task update, delete and send")
-            .containsExactly("conclude", "delete", "reference_attach", "reference_detach",
-                "send", "update", "withdraw");
+                + "task update, delete, send, and claim, renew, release and defer")
+            .containsExactly("claim", "conclude", "defer", "delete", "reference_attach",
+                "reference_detach", "release", "renew", "send", "update", "withdraw");
         assertThat(CustomMethod.allow(CustomMethod.Depth.ITEM))
             .as("and is reached there with POST, PATCH and DELETE").contains("POST, PATCH, DELETE");
     }

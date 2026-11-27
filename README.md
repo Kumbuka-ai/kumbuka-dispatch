@@ -26,8 +26,9 @@ addressed as `dispatch://<scope>/<selector>/<number>.<sub>`; every change of
 its control is an **act**, appended and never changed, with who made it, by
 which permission and by which path (`interface` or `console`).
 
-**The service offers ten calls: `read_definition`, the five acts on an
-instance, and the four calls of the draft and the commission of a task.** The
+**The service offers fourteen calls: `read_definition`, the five acts on an
+instance, the four calls of the draft and the commission of a task, and the
+four calls that hold a task.** The
 calls are rebuilt one family at a time in the changes that
 follow, each declared, bound and offered together. `read_definition` reads a
 seeded version of the process a selector declares: the head of the version,
@@ -86,6 +87,32 @@ draft's `changed_at`, moved on at every change as the later of the clock and
 the previous value plus one microsecond; from the send on, the time of the
 task's last act.
 
+The holding of a task, each checking `dispatch.task.execute`:
+
+- `claim` takes an open task up and makes the caller its holder: the act
+  `claim`, a holding, a receipt and a lease, and the task `active`. It takes
+  an optional `duration`, a positive ISO-8601 duration, 30 minutes where none
+  is named, and no conflict token. It answers the task with the receipt --
+  32 random bytes in base64url, of which the store keeps the SHA-256 alone --
+  and the end of the lease under `fields.lease_expires_at`. A task another
+  holds is refused as `CLAIM_HELD`, a deferred one before its instant as
+  `DEFERRAL_PENDING`. An optional idempotency key belongs to its caller for 24
+  hours: a repeat with the same arguments, while the caller holds the task by
+  that claim, answers the task with a new receipt, and the earlier one no
+  longer matches; otherwise the repeat takes nothing.
+- `renew` extends the holder's lease from the time of its act, 30 minutes or
+  the duration named.
+- `release` gives the task back, `open`, with an optional remark.
+- `defer` gives the task back, `open`, until the instant in
+  `fields.not_before`; it is not taken up before it.
+
+Each of the three is the holder's and presents the youngest receipt of its
+holding; `renew` and `defer` take the task's conflict token, `release` none.
+A lease lapses when its end is reached while the task is `active`, and the
+lapse is derived when a task is read or a call is checked, never written: the
+task reads `open` without a holder, and from its third lapse on `on_hold`,
+`external`, parked. The former holder is then refused as `CLAIM_ABSENT`.
+
 - **REST** under `/api` answers `GET /api/{scope}/{selector}` with the
   optional query `version`, which is `read_definition`; `POST
   /api/{scope}/{selector}:start`; `POST
@@ -94,10 +121,13 @@ task's last act.
   `create`, its key in the header `Idempotency-Key`; `PATCH` and `DELETE` on
   `/api/{scope}/{selector}/{number}.{sub}`, which are `update` and `delete`,
   and `POST /api/{scope}/{selector}/{number}.{sub}:send`, the conflict token in
-  `If-Match`; `GET /api/declaration`, the declaration, which lists the ten
-  calls; and `GET /api/whoami`, the caller's view.
+  `If-Match`; `POST /api/{scope}/{selector}/{number}.{sub}:<call>` for
+  `claim`, its key in the header `Idempotency-Key`, and for `renew`,
+  `release` and `defer`, the conflict token in `If-Match`; `GET
+  /api/declaration`, the declaration, which lists the fourteen calls; and `GET
+  /api/whoami`, the caller's view.
 - **MCP** at `POST /mcp`, JSON-RPC 2.0, answers `initialize` and `ping`, lists
-  the ten tools `dispatch_<call>`, and answers a `tools/call` of any other name
+  the fourteen tools `dispatch_<call>`, and answers a `tools/call` of any other name
   as a call to an unknown tool. Present unless the build sets
   `kumbuka.local-mcp.enabled=false`.
 

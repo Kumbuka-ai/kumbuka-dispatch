@@ -631,7 +631,8 @@ public class TaskService {
         String token = draft != null ? draft.changedAt().toString()
             : actRows.lastTaskAt(scopeId, task.id()).map(Object::toString).orElse("");
         return new TaskView(task.id(), address, task.state(), task.resolution().orElse(null),
-            token, TaskCall.openTo(actor, task.draft()));
+            token, TaskCall.openTo(actor, task.state(), false,
+                task.notBefore().filter(clock.instant()::isBefore).isPresent()));
     }
 
     /**

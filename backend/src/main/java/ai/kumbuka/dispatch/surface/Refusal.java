@@ -420,10 +420,10 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
 
     /**
      * A claim on a task deferred until an instant that has not come. The
-     * instant is named by the read that shows it, never in the refusal.
+     * instant stays out of the refusal; it is the task's, and a read shows it.
      */
-    public static Refusal deferralPending(VerbName call, VerbName read, Situation at) {
-        return of(Message.DEFERRAL_PENDING, Texts.refusals().deferralPending(call, read),
+    public static Refusal deferralPending(VerbName call, Situation at) {
+        return of(Message.DEFERRAL_PENDING, Texts.refusals().deferralPending(call),
             Data.attempted(call).situation(at));
     }
 

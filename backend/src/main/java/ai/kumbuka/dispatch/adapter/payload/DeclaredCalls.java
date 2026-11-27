@@ -106,4 +106,28 @@ public class DeclaredCalls {
     public TaskPayload send(Actor actor, CallForm.OnADraft call, Surface surface) {
         return Payloads.task(verbs.send(actor, call.address(), call.conflictToken()), surface);
     }
+
+    /** {@code claim}, under {@code dispatch.task.execute}. */
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public TaskPayload claim(Actor actor, CallForm.Claim call, Surface surface) {
+        return Payloads.task(verbs.claim(actor, call.address(), call.claim()), surface);
+    }
+
+    /** {@code renew}, under {@code dispatch.task.execute}. */
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public TaskPayload renew(Actor actor, CallForm.Renew call, Surface surface) {
+        return Payloads.task(verbs.renew(actor, call.address(), call.renew()), surface);
+    }
+
+    /** {@code release}, under {@code dispatch.task.execute}. */
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public TaskPayload release(Actor actor, CallForm.Release call, Surface surface) {
+        return Payloads.task(verbs.release(actor, call.address(), call.release()), surface);
+    }
+
+    /** {@code defer}, under {@code dispatch.task.execute}. */
+    @PermissionsAllowed(DispatchPermission.Name.TASK_EXECUTE)
+    public TaskPayload defer(Actor actor, CallForm.Defer call, Surface surface) {
+        return Payloads.task(verbs.defer(actor, call.address(), call.defer()), surface);
+    }
 }

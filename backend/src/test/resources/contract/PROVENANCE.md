@@ -261,3 +261,19 @@ call on a task outside draft is refused with the messages of the state that stan
 stale token of a draft with `conflictTokenStale`, which carries the task as it stands (DEC-0041).
 A repeat under a spent key with other arguments, or after the draft was deleted, is
 `idempotencyKeyReused`.
+
+## The amendment of 2026-11-27: the holding of a task (REA-0010 S5, fifth order)
+
+From REA-0010 S5, its catalogue "Transitions of a task" and the parameters of the wave, TAR-0004
+sections 2.5, 2.8 and 4, DEC-0041 C1, the data model A.5, ADR-0002 and C10.4, C10.5, C11.1 and
+C11.2: `claim`, `renew`, `release` and `defer` join the ten calls, each under
+`dispatch.task.execute`, each a custom method on a task. Their descriptions in the bundle are
+those of section 3.1 here. Their answers are those of section 4: `fields` with the state and its
+attributes, `hold_reason` and `not_before`, and for the holder `lease_expires_at`, and the receipt
+beside them in the answer of a claim. No code and no message joins the catalogue; each refusal is
+raised under a code and a message the table names: `holderOther`, `holderNobody`,
+`holderLapsed`, `receiptWrong`, `deferralPending`, `claimDurationInvalid`, `invalidLeaseEnd`,
+`invalidInstant` and `invalidInstantRange`. One message changes: `deferralPending` named the read
+of a task, which the service does not offer before T10, as the call that shows the instant; it
+now says that the task is deferred until an instant that has not come, and names no call but the
+refused one.

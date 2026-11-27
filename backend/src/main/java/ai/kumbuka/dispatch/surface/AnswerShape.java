@@ -43,16 +43,25 @@ public enum AnswerShape {
             Member.RESOLUTION)),
 
     /**
-     * A task, as {@code create}, {@code update} and {@code send} answer it
-     * (C6.1): its complete address, its place and its state under {@code
-     * fields}, its conflict token, the calls open to the caller under {@code
-     * next}, and what it waits for under {@code waiting_for} where none is open
-     * and it is unfinished. The resolution stands only on a closed task. No
-     * writing call answers with a text.
+     * A task, as {@code create}, {@code update}, {@code send} and the calls of
+     * its holder answer it (C6.1): its complete address, its place, its state
+     * and the attributes of its state under {@code fields}, its conflict token,
+     * the calls open to the caller under {@code next}, and what it waits for
+     * under {@code waiting_for} where none is open and it is unfinished. The
+     * hold reason stands only on a task on hold, the instant of a deferral only
+     * on a deferred task, the end of the lease only for its holder, and the
+     * resolution only on a closed task. No writing call answers with a text.
      */
     TASK(List.of(Member.ADDRESS, Member.FIELDS, Member.CONFLICT_TOKEN, Member.NEXT,
-        "waiting_for"),
-        List.of(Member.SELECTOR, Member.NUMBER, "sub", Member.STATE, Member.RESOLUTION)),
+        Member.WAITING_FOR), Member.TASK_FIELDS),
+
+    /**
+     * A task as {@code claim} answers it: as {@link #TASK}, and the receipt
+     * the claim handed out at the top level, which the store does not keep
+     * (C6.3, C10.5).
+     */
+    CLAIMED(List.of(Member.ADDRESS, Member.FIELDS, Member.CONFLICT_TOKEN, Member.NEXT,
+        Member.WAITING_FOR, "receipt"), Member.TASK_FIELDS),
 
     /** The address a deleted draft had, and nothing else. */
     ADDRESS(List.of(Member.ADDRESS), List.of());
@@ -69,6 +78,11 @@ public enum AnswerShape {
         static final String VERSION = "version";
         static final String STATE = "state";
         static final String RESOLUTION = "resolution";
+        static final String WAITING_FOR = "waiting_for";
+
+        /** What {@code fields} of a task carries, in its order. */
+        static final List<String> TASK_FIELDS = List.of(SELECTOR, NUMBER, "sub", STATE,
+            "hold_reason", "not_before", "lease_expires_at", RESOLUTION);
 
         private Member() {
         }

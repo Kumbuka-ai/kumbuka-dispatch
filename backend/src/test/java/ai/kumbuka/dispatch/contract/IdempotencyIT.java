@@ -46,8 +46,14 @@ import static org.junit.jupiter.api.Assertions.fail;
  * or once the draft is deleted, it is refused with {@code
  * IDEMPOTENCY_KEY_REUSED} and writes nothing. A key older than 24 hours counts
  * as absent; the expired keys of a caller are deleted when that caller next
- * writes a key, and the same key is then spent anew. {@code claim} and {@code
- * annotate} take a key with the orders that bind them.
+ * writes a key, and the same key is then spent anew.
+ *
+ * <p>{@code claim} takes a key the same way. A repeat with the same arguments
+ * while its caller holds the task answers the same task with a new receipt
+ * and writes one row {@code receipt} and nothing else; with other arguments,
+ * or under a key spent on {@code create}, it is refused as a reuse; an empty
+ * key, and an empty header, are refused as outside the key's form. {@code
+ * annotate} takes a key with the order that binds it.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -57,6 +63,8 @@ class IdempotencyIT {
     private static final String KEY = "Idempotency-Key";
     private static final String KEY_ARGUMENT = "idempotency_key";
     private static final String REUSED = "IDEMPOTENCY_KEY_REUSED";
+    private static final String CLAIM = "dispatch_claim";
+    private static final String RECEIPT = "receipt";
 
     @Inject TestIdentityAssociation identity;
 
@@ -284,10 +292,81 @@ class IdempotencyIT {
     }
 
     @Test
-    @Disabled("rebuilt in T5: a repeated claim answers the same task and a new receipt, on both "
-        + "surfaces, and an empty key on claim is refused")
     void a_repeated_claim_answers_the_same_task_and_a_new_receipt() {
-        fail("rebuilt in T5");
+        InstanceWire.as(identity, InstanceWire.CONSOLE, InstanceWire.EXECUTOR);
+        Map<String, Object> overMcp = new LinkedHashMap<>();
+        overMcp.put(InstanceWire.ADDRESS, sentTask("claimed over mcp"));
+        overMcp.put(KEY_ARGUMENT, fresh("claim-mcp"));
+        Map<String, Object> first = InstanceWire.answer(InstanceWire.mcp(CLAIM, overMcp));
+        Map<String, Long> before = DefinitionFixture.rowCounts();
+
+        Map<String, Object> again = InstanceWire.answer(InstanceWire.mcp(CLAIM, overMcp));
+
+        assertThat(address(again)).isEqualTo(address(first));
+        assertThat(again.get(RECEIPT)).as("a new receipt").isNotNull()
+            .isNotEqualTo(first.get(RECEIPT));
+        assertOneReceiptMore(before);
+
+        String task = sentTask("claimed over rest");
+        String key = fresh("claim-rest");
+        Response firstOverRest = restClaim(task, key);
+        Map<String, Long> beforeRest = DefinitionFixture.rowCounts();
+        Response againOverRest = restClaim(task, key);
+        assertThat(firstOverRest.statusCode()).as(firstOverRest.asString()).isEqualTo(200);
+        assertThat(againOverRest.statusCode()).as(againOverRest.asString()).isEqualTo(200);
+        assertThat(againOverRest.jsonPath().getString(InstanceWire.ADDRESS)).isEqualTo(task);
+        assertThat(againOverRest.jsonPath().getString(RECEIPT)).as("a new receipt over rest")
+            .isNotEqualTo(firstOverRest.jsonPath().getString(RECEIPT));
+        assertOneReceiptMore(beforeRest);
+    }
+
+    @Test
+    void a_claim_key_with_other_arguments_or_spent_on_another_call_is_refused() {
+        InstanceWire.as(identity, InstanceWire.CONSOLE, InstanceWire.EXECUTOR);
+        String key = fresh("claim-other");
+        String task = sentTask("claimed under a key");
+        InstanceWire.answer(InstanceWire.mcp(CLAIM, Map.of(InstanceWire.ADDRESS, task,
+            KEY_ARGUMENT, key)));
+        Map<String, Long> before = DefinitionFixture.rowCounts();
+
+        Response otherArguments = InstanceWire.mcp(CLAIM, Map.of(InstanceWire.ADDRESS, task,
+            KEY_ARGUMENT, key, "duration", "PT1H"));
+        assertThat(InstanceWire.refusal(otherArguments).get("reason")).isEqualTo(REUSED);
+        assertThat(otherArguments.asString()).as("the refusal repeats nothing of the call")
+            .doesNotContain(key);
+
+        String createKey = fresh("create-then-claim");
+        InstanceWire.answer(InstanceWire.mcp(TaskWire.CREATE, createUnder(createKey,
+            "created under the key")));
+        Map<String, Long> created = DefinitionFixture.rowCounts();
+        Response anotherCall = InstanceWire.mcp(CLAIM, Map.of(InstanceWire.ADDRESS,
+            sentTask("claimed under a create's key"), KEY_ARGUMENT, createKey));
+        assertThat(InstanceWire.refusal(anotherCall).get("reason"))
+            .as("a key spent on create is another call's").isEqualTo(REUSED);
+
+        assertThat(created.get("receipt")).as("the refused repeat wrote no receipt")
+            .isEqualTo(before.get("receipt"));
+        assertThat(created.get("act")).isEqualTo(before.get("act"));
+    }
+
+    @Test
+    void an_empty_key_and_an_empty_header_on_claim_are_refused() {
+        InstanceWire.as(identity, InstanceWire.CONSOLE, InstanceWire.EXECUTOR);
+        String task = sentTask("claimed with an empty key");
+        Map<String, Long> before = DefinitionFixture.rowCounts();
+
+        Map<String, Object> overMcp = InstanceWire.refusal(InstanceWire.mcp(CLAIM,
+            Map.of(InstanceWire.ADDRESS, task, KEY_ARGUMENT, "")));
+        assertThat(overMcp.get("reason")).isEqualTo("ARGUMENT_INVALID");
+        assertThat(InstanceWire.data(overMcp).get("offenders")).isEqualTo(List.of(KEY_ARGUMENT));
+
+        Response overRest = restClaim(task, "");
+        assertThat(overRest.statusCode()).as(overRest.asString()).isEqualTo(400);
+        assertThat(overRest.jsonPath().getString("reason")).isEqualTo("ARGUMENT_INVALID");
+        assertThat(overRest.jsonPath().getList("data.offenders", String.class))
+            .containsExactly(KEY_ARGUMENT);
+        assertThat(DefinitionFixture.rowCounts()).as("no refused claim was carried out")
+            .isEqualTo(before);
     }
 
     @Test
@@ -298,6 +377,31 @@ class IdempotencyIT {
     }
 
     // -----------------------------------------------------------------------
+
+    /** A task created and sent in the planted instance, open to be claimed; answers its address. */
+    private String sentTask(String title) {
+        Map<String, Object> draft = InstanceWire.answer(InstanceWire.mcp(TaskWire.CREATE,
+            TaskWire.create(planted.selector(), instance, Map.of("title", title))));
+        return address(InstanceWire.answer(InstanceWire.mcp(TaskWire.SEND,
+            TaskWire.on(draft, Map.of()))));
+    }
+
+    private static Response restClaim(String task, String key) {
+        return given().contentType(ContentType.JSON).header(KEY, key)
+            .post(InstanceWire.path(task) + ":claim");
+    }
+
+    /** The rows now are the rows before and one row {@code receipt} more. */
+    private static void assertOneReceiptMore(Map<String, Long> before) {
+        Map<String, Long> after = DefinitionFixture.rowCounts();
+        assertThat(after.get("receipt")).as("one receipt more")
+            .isEqualTo(before.get("receipt") + 1);
+        after.remove("receipt");
+        Map<String, Long> rest = new java.util.TreeMap<>(before);
+        rest.remove("receipt");
+        assertThat(after).as("and nothing else: no act, no holding, no lease, no key")
+            .isEqualTo(rest);
+    }
 
     /** A key of this test alone, so that no two runs share one. */
     private static String fresh(String prefix) {

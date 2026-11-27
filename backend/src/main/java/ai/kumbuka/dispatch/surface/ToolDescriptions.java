@@ -50,4 +50,16 @@ public interface ToolDescriptions {
 
     @Message
     String send();
+
+    @Message
+    String claim();
+
+    @Message
+    String renew();
+
+    @Message
+    String release();
+
+    @Message
+    String defer();
 }

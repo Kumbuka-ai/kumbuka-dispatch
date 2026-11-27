@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Every expectation is written here from the order and the interim mapping
  * of REA-0010: the console's realm role holds the permission of each of the
  * five calls and the executor's holds none of them; the tool list and the
- * declaration name the ten calls the service offers so far and no other; every act
+ * declaration name the fourteen calls the service offers so far and no other; every act
  * carries the path {@code interface}, the token's subject as its actor and no
  * authentication level (D17); and no log line carries a title, a text, a
  * value or a reference value (D23).
@@ -54,9 +54,10 @@ class InstanceCallsIT {
     private static final String START_TOOL = PREFIX + START;
     private static final String TRANSITION = "ITEM_TRANSITION";
 
-    private static final List<String> TEN = List.of(PREFIX + "read_definition", START_TOOL,
+    private static final List<String> FOURTEEN = List.of(PREFIX + "read_definition", START_TOOL,
         PREFIX + CONCLUDE, PREFIX + WITHDRAW, PREFIX + ATTACH, PREFIX + DETACH,
-        PREFIX + "create", PREFIX + "update", PREFIX + "delete", PREFIX + "send");
+        PREFIX + "create", PREFIX + "update", PREFIX + "delete", PREFIX + "send",
+        PREFIX + "claim", PREFIX + "renew", PREFIX + "release", PREFIX + "defer");
 
     private static final String ADDRESS = "address";
     private static final String FIELDS = "fields";
@@ -115,25 +116,27 @@ class InstanceCallsIT {
     // -----------------------------------------------------------------------
 
     @Test
-    void the_tool_list_and_the_declaration_name_exactly_the_ten_calls() {
+    void the_tool_list_and_the_declaration_name_exactly_the_fourteen_calls() {
         assertThat(InstanceWire.rpc("tools/list", Map.of()).jsonPath()
                 .getList("result.tools.name", String.class))
-            .as("tools/list offers the ten tools of the service so far: the six of T2 and T3 "
-                + "and the four of the draft and the commission, and no other")
-            .containsExactlyElementsOf(TEN);
+            .as("tools/list offers the fourteen tools of the service so far: the six of T2 and "
+                + "T3, the four of the draft and the commission, and the four that hold a task, "
+                + "and no other")
+            .containsExactlyElementsOf(FOURTEEN);
         Response declaration = given().get("/api/declaration");
         assertThat(declaration.jsonPath().getList("calls.identity", String.class))
-            .as("and the declaration names the ten calls").containsExactlyElementsOf(TEN);
+            .as("and the declaration names the fourteen calls").containsExactlyElementsOf(FOURTEEN);
         assertThat(declaration.jsonPath().getList("calls.effect_class", String.class))
             .as("each in the form its effect class names: the start a custom method on a "
                 + "collection, the four calls on an instance custom methods on it, create the "
                 + "plain POST on a collection, update a PATCH and delete a DELETE on a task, "
-                + "and send a custom method on it")
+                + "and send, claim, renew, release and defer custom methods on it")
             .containsExactly("COLLECTION_READ", "COLLECTION_COMPOUND", TRANSITION, TRANSITION,
-                TRANSITION, TRANSITION, "CREATE", "FIELD_WRITE", "ITEM_DELETE", TRANSITION);
+                TRANSITION, TRANSITION, "CREATE", "FIELD_WRITE", "ITEM_DELETE", TRANSITION,
+                TRANSITION, TRANSITION, TRANSITION, TRANSITION);
         assertThat(declaration.jsonPath().getList("calls.rest_name", String.class))
             .containsExactly("read_definition", START, CONCLUDE, WITHDRAW, ATTACH, DETACH,
-                "create", "update", "delete", "send");
+                "create", "update", "delete", "send", "claim", "renew", "release", "defer");
     }
 
     // -----------------------------------------------------------------------

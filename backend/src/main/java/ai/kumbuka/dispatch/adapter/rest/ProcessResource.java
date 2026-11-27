@@ -48,6 +48,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -261,9 +262,11 @@ public class ProcessResource {
     /**
      * POST on an object with a colon verb: on an instance {@code conclude},
      * {@code withdraw}, {@code reference_attach} and {@code reference_detach},
-     * and on a task {@code send}. The object is the one the path names; a
-     * closing and a send take the conflict token from {@code If-Match}
-     * (C10.3). Answers the object, with its conflict token as {@code ETag}.
+     * and on a task {@code send}, {@code claim}, {@code renew}, {@code
+     * release} and {@code defer}. The object is the one the path names; a
+     * closing, a send, a renew and a defer take the conflict token from {@code
+     * If-Match} (C10.3). Answers the object, with its conflict token as {@code
+     * ETag}.
      */
     @POST
     @Path("{selector}/{id}")
@@ -285,6 +288,12 @@ public class ProcessResource {
             verbs.resolveScopeToWrite(actor, send.address().instance().scope());
             TaskPayload sent = calls.send(actor, send, surface);
             return Response.ok(sent).tag(sent.conflictToken()).build();
+        }
+        if (EnumSet.of(ProcessVerb.CLAIM, ProcessVerb.RENEW, ProcessVerb.RELEASE,
+                ProcessVerb.DEFER).contains(verb)) {
+            TaskPayload held = hold(verb, surface, address(scope, selector, at[0]), body, http,
+                uri);
+            return Response.ok(held).tag(held.conflictToken()).build();
         }
         VerbName call = VerbName.of(verb, surface);
 
@@ -316,10 +325,47 @@ public class ProcessResource {
     }
 
     /**
+     * One of the calls that hold a task: {@code claim} with its idempotency
+     * key from the header {@code Idempotency-Key} and nowhere else (C10.4),
+     * {@code renew} and {@code defer} with the conflict token from {@code
+     * If-Match}, and every one with its receipt and the rest from the body.
+     */
+    private TaskPayload hold(ProcessVerb verb, Surface surface, String address,
+                             @Nullable String body, HttpHeaders http, UriInfo uri) {
+        Map<String, Object> arguments = onATask(verb, surface, address, body, http, uri);
+        key(VerbName.of(verb, surface), verb, http.getRequestHeader(IDEMPOTENCY_KEY_HEADER))
+            .ifPresent(key -> arguments.put(IDEMPOTENCY_KEY, key));
+        Actor actor = caller.current();
+        return switch (verb) {
+            case CLAIM -> {
+                CallForm.Claim claim = CallForm.claim(surface, arguments);
+                verbs.resolveScopeToWrite(actor, claim.address().instance().scope());
+                yield calls.claim(actor, claim, surface);
+            }
+            case RENEW -> {
+                CallForm.Renew renew = CallForm.renew(surface, arguments);
+                verbs.resolveScopeToWrite(actor, renew.address().instance().scope());
+                yield calls.renew(actor, renew, surface);
+            }
+            case RELEASE -> {
+                CallForm.Release release = CallForm.release(surface, arguments);
+                verbs.resolveScopeToWrite(actor, release.address().instance().scope());
+                yield calls.release(actor, release, surface);
+            }
+            case DEFER -> {
+                CallForm.Defer defer = CallForm.defer(surface, arguments);
+                verbs.resolveScopeToWrite(actor, defer.address().instance().scope());
+                yield calls.defer(actor, defer, surface);
+            }
+            default -> throw notHere(surface, CustomMethod.Depth.ITEM);
+        };
+    }
+
+    /**
      * The arguments of a call on a task: the body, closed against what the
      * call takes there, the address the path names, and the conflict token
-     * of {@code If-Match}. A query is refused, since the call takes nothing
-     * there.
+     * of {@code If-Match} where the call takes one. A query is refused, since
+     * the call takes nothing there.
      */
     private Map<String, Object> onATask(ProcessVerb verb, Surface surface, String address,
                                         @Nullable String body, HttpHeaders http, UriInfo uri) {
@@ -328,7 +374,7 @@ public class ProcessResource {
         closedOutsideTheBody(verb, call, arguments, uri);
         once(verb, call, arguments, ADDRESS, address);
         String fence = http.getHeaderString(HttpHeaders.IF_MATCH);
-        if (fence != null) {
+        if (fence != null && verb.argument(CONFLICT_TOKEN).isPresent()) {
             once(verb, call, arguments, CONFLICT_TOKEN, unquoted(fence));
         }
         return arguments;
