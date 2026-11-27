@@ -133,46 +133,53 @@ final class Db {
      * it builds, so a row planted through it could never demonstrate what
      * layer 2 does on its own.
      *
-     * <p>A fresh selector row is inserted for each tenant on the fly,
-     * because {@code task.selector_id} is a foreign key onto it — a
-     * row planted without one is refused by the reference and the probe
-     * would never reach the policy behaviour it is here to measure. The
-     * scope is a random UUID (this is a tenancy probe, not a scope probe)
-     * and every planted task gets its own; two rows never sharing a
-     * scope keeps the probe honest to what it measures.
+     * <p>The chain a task of the store line hangs on is inserted for each
+     * task on the fly -- a selector, a version of its definition and an
+     * instance -- because each is a foreign key of the next, and a row
+     * planted without them is refused by the reference: the probe would never
+     * reach the policy behaviour it is here to measure. The scope is a random
+     * UUID (this is a tenancy probe, not a scope probe) and every planted task
+     * gets its own; two rows never sharing a scope keeps the probe honest to
+     * what it measures. The title stands in the task's projection.
      */
     static long insertTask(Connection c, UUID tenant, String title) throws SQLException {
         UUID scopeId = UUID.randomUUID();
+        long selector = returning(c, """
+            INSERT INTO dispatch.selector (tenant_id, scope_id, name)
+            VALUES (?::uuid, ?::uuid, 'sprint') RETURNING id
+            """, tenant, scopeId);
+        long version = returning(c, """
+            INSERT INTO dispatch.definition_version (tenant_id, scope_id, selector_id, version,
+                verdict_required, outcome_required, state)
+            VALUES (?::uuid, ?::uuid, %d, 1, false, false, 'active') RETURNING id
+            """.formatted(selector), tenant, scopeId);
+        long instance = returning(c, """
+            INSERT INTO dispatch.instance (tenant_id, scope_id, selector_id, number,
+                definition_version_id)
+            VALUES (?::uuid, ?::uuid, %d, 1, %d) RETURNING id
+            """.formatted(selector, version), tenant, scopeId);
         try (var st = c.prepareStatement("""
-                INSERT INTO dispatch.selector (tenant_id, scope_id, name)
-                VALUES (?::uuid, ?::uuid, 'sprint')
+                INSERT INTO dispatch.task (tenant_id, scope_id, instance_id, sub, title)
+                VALUES (?::uuid, ?::uuid, ?, 1, ?)
                 RETURNING id
                 """)) {
             st.setString(1, tenant.toString());
             st.setString(2, scopeId.toString());
+            st.setLong(3, instance);
+            st.setString(4, title);
             try (ResultSet rs = st.executeQuery()) {
                 rs.next();
-                long selectorId = rs.getLong(1);
-                return insertTaskUnderSelector(c, tenant, scopeId, selectorId, title);
+                return rs.getLong(1);
             }
         }
     }
 
-    private static long insertTaskUnderSelector(Connection c, UUID tenant, UUID scopeId,
-                                                long selectorId, String title)
+    /** One insert under a tenant and a scope; answers the surrogate it drew. */
+    private static long returning(Connection c, String sql, UUID tenant, UUID scopeId)
             throws SQLException {
-        try (var st = c.prepareStatement("""
-                INSERT INTO dispatch.task
-                    (tenant_id, scope_id, selector_id, number, sub, title, apparatus, updated_at)
-                VALUES (?::uuid, ?::uuid, ?,
-                        (SELECT coalesce(max(number), 0) + 1 FROM dispatch.task),
-                        0, ?, 'code', now())
-                RETURNING id
-                """)) {
+        try (var st = c.prepareStatement(sql)) {
             st.setString(1, tenant.toString());
             st.setString(2, scopeId.toString());
-            st.setLong(3, selectorId);
-            st.setString(4, title);
             try (ResultSet rs = st.executeQuery()) {
                 rs.next();
                 return rs.getLong(1);

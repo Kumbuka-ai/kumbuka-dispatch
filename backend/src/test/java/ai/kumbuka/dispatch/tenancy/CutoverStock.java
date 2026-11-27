@@ -123,7 +123,7 @@ final class CutoverStock {
         return url;
     }
 
-    /** The line db/store, V1 to V5, in the empty schema dispatch after the rename. */
+    /** The line db/store, V1 to its latest version, in the empty schema dispatch after the rename. */
     static void newStore(MigrationHarness harness, String url) {
         harness.migrateLine(url, MIGRATOR, MIGRATOR_PASSWORD, "classpath:db/store",
             new TenantMigrationCallback());
@@ -207,15 +207,23 @@ final class CutoverStock {
     /**
      * Every base table of a schema with a digest of its rows. The rows of act
      * are read without the time of an import act: that time is the time of
-     * the run, which the order names as such.
+     * the run, which the order names as such. The rows of draft are read
+     * without their token, changed_at: the copy names no token, so the store
+     * gives each draft the time of the run by the default of V6.
      */
     static Map<String, String> rows(Connection c, String schema) throws SQLException {
         Map<String, String> digests = new TreeMap<>();
         for (String table : tables(c, schema)) {
-            String row = OLD_SCHEMA.equals(schema) && "act".equals(table)
-                ? "(to_jsonb(t) - 'at')::text || CASE WHEN t.kind = 'import' THEN '' "
-                    + "ELSE t.at::text END"
-                : "t::text";
+            boolean store = OLD_SCHEMA.equals(schema);
+            String row;
+            if (store && "act".equals(table)) {
+                row = "(to_jsonb(t) - 'at')::text || CASE WHEN t.kind = 'import' THEN '' "
+                    + "ELSE t.at::text END";
+            } else if (store && "draft".equals(table)) {
+                row = "(to_jsonb(t) - 'changed_at')::text";
+            } else {
+                row = "t::text";
+            }
             digests.put(table, scalar(c, "SELECT count(*) || ':' || coalesce(md5(string_agg("
                 + row + ", '|' ORDER BY " + row + ")), '') FROM " + schema + "." + table + " t"));
         }

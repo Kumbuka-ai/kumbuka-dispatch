@@ -20,14 +20,15 @@ account of what a system did. That distinction is its whole boundary.
 ## What is here
 
 The service is being rebuilt on its store line: the migrations
-`backend/src/main/resources/db/store`, V1 to V5. An **instance** is one run of
+`backend/src/main/resources/db/store`, V1 to V6. An **instance** is one run of
 a declared process, numbered under a selector of a scope; its tasks are
 addressed as `dispatch://<scope>/<selector>/<number>.<sub>`; every change of
 its control is an **act**, appended and never changed, with who made it, by
 which permission and by which path (`interface` or `console`).
 
-**The service offers six calls: `read_definition` and the five acts on an
-instance.** The calls are rebuilt one family at a time in the changes that
+**The service offers ten calls: `read_definition`, the five acts on an
+instance, and the four calls of the draft and the commission of a task.** The
+calls are rebuilt one family at a time in the changes that
 follow, each declared, bound and offered together. `read_definition` reads a
 seeded version of the process a selector declares: the head of the version,
 its schema of control fields with the enumerations of its choice fields, its
@@ -57,14 +58,46 @@ The acts on an instance, each checking one permission:
   and end a reference of a running instance, of the kind `item` or
   `reference`; an ended reference stays with the act that ended it.
 
+The draft and the commission of a task, each checking `dispatch.task.commission`:
+
+- `create` writes a task in draft: with `parent`, the address of a running
+  instance of the selector, at the instance's next sub, from 1; without it, it
+  starts an instance of the selector as `start` does, titled as the task, with
+  an optional trigger and references and no field values, and the task is its
+  first. The draft holds the title, the role it is addressed to (`apparatus`),
+  an activity of the instance's version (the only one where the call names
+  none), another task of the instance it concerns, criteria (the service gives
+  their identifiers), free fields and a text. It writes no act. An optional
+  idempotency key, 1 to 255 printable ASCII characters, belongs to its caller
+  for 24 hours: a repeat with the same arguments answers the task, also after
+  its send; with other arguments, or once the draft is deleted, it is refused
+  as `IDEMPOTENCY_KEY_REUSED`. It answers the task
+  `dispatch://<scope>/<selector>/<number>.<sub>`.
+- `update` changes the draft: each field given takes its value, each path in
+  `clear` is emptied (the title stays), every other stays.
+- `delete` deletes the task and its draft outright; a key on it stays, without
+  its task.
+- `send` writes the act `send` and the commission from the draft -- its title,
+  activity, role, task concerned, criteria, free fields and texts -- and opens
+  the task; a draft without an activity is refused.
+
+Each of the three takes the task in draft alone and its conflict token: the
+draft's `changed_at`, moved on at every change as the later of the clock and
+the previous value plus one microsecond; from the send on, the time of the
+task's last act.
+
 - **REST** under `/api` answers `GET /api/{scope}/{selector}` with the
   optional query `version`, which is `read_definition`; `POST
   /api/{scope}/{selector}:start`; `POST
   /api/{scope}/{selector}/{number}:<call>` for the four calls on an instance,
-  the conflict token in `If-Match`; `GET /api/declaration`, the declaration,
-  which lists the six calls; and `GET /api/whoami`, the caller's view.
+  the conflict token in `If-Match`; `POST /api/{scope}/{selector}`, which is
+  `create`, its key in the header `Idempotency-Key`; `PATCH` and `DELETE` on
+  `/api/{scope}/{selector}/{number}.{sub}`, which are `update` and `delete`,
+  and `POST /api/{scope}/{selector}/{number}.{sub}:send`, the conflict token in
+  `If-Match`; `GET /api/declaration`, the declaration, which lists the ten
+  calls; and `GET /api/whoami`, the caller's view.
 - **MCP** at `POST /mcp`, JSON-RPC 2.0, answers `initialize` and `ping`, lists
-  the six tools `dispatch_<call>`, and answers a `tools/call` of any other name
+  the ten tools `dispatch_<call>`, and answers a `tools/call` of any other name
   as a call to an unknown tool. Present unless the build sets
   `kumbuka.local-mcp.enabled=false`.
 

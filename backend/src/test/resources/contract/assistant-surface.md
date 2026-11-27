@@ -526,6 +526,14 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `returnOutcomeUndeclared` | `ARGUMENT_INVALID` | `{call} names an outcome label the version does not declare; the read of the definition lists its labels under outcome_labels.` |
 | `referenceAbsent` | `ARGUMENT_INVALID` | `{call} names a reference the instance does not carry, or carries no longer: a reference ends once.` |
 | `invalidInstanceAddress` | `ADDRESS_MALFORMED` | `{path} is not valid for {call}: an instance's address is written dispatch://<scope>/<selector>/<number>.` |
+| `invalidApparatus` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a role is 1 to 128 of A-Z, a-z, 0-9, '.', '_' and '-', the first of them a letter or a digit.` |
+| `invalidClear` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: clear lists the fields to empty, each one of fields.apparatus, fields.activity, fields.concerns, fields.criteria, fields.free_fields and fields.text, once.` |
+| `invalidClearAndValue` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: a field is given a value or cleared, and this one is both.` |
+| `invalidOnlyWithoutParent` | `ARGUMENT_INVALID` | `{path} is not valid for {call}: it belongs to the instance a create without parent starts, and a create with parent joins an instance that has it.` |
+| `activityMissing` | `ARGUMENT_MISSING` | `{call} needs fields.activity: the version of the instance declares more than one activity, and the read of the definition lists them.` |
+| `activityUndeclared` | `ARGUMENT_INVALID` | `{call} names under fields.activity an activity the version of the instance does not declare; the read of the definition lists its activities.` |
+| `concernsUnrelated` | `ARGUMENT_INVALID` | `{call} names under fields.concerns a task that is no other task of the same instance.` |
+| `draftIncomplete` | `TRANSITION_REFUSED` | `{call} sends a draft that names its activity, and this one names none: give it one with {update}, then send it.` |
 
 ## 6. The declaration
 

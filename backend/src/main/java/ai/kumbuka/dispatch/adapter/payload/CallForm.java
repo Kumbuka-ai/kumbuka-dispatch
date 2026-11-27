@@ -8,8 +8,11 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.ExternalReference;
+import ai.kumbuka.dispatch.domain.IdempotencyKey;
 import ai.kumbuka.dispatch.domain.InstanceAddress;
 import ai.kumbuka.dispatch.domain.InstanceService;
+import ai.kumbuka.dispatch.domain.TaskAddress;
+import ai.kumbuka.dispatch.domain.TaskService;
 import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.Argument;
 import ai.kumbuka.dispatch.surface.ArgumentPath;
@@ -22,11 +25,13 @@ import ai.kumbuka.dispatch.surface.VerbName;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -55,6 +60,24 @@ public final class CallForm {
     private static final String SELECTOR = "selector";
     private static final String VERSION = "version";
     private static final String ADDRESS = "address";
+    private static final String PARENT = "parent";
+    private static final String CLEAR = "clear";
+    private static final String CONFLICT_TOKEN = "conflict_token";
+    private static final String IDEMPOTENCY_KEY = "idempotency_key";
+    private static final String TITLE = "title";
+    private static final String ACTIVITY = "activity";
+    private static final String CONCERNS = "concerns";
+    private static final String CRITERIA = "criteria";
+    private static final String FREE_FIELDS = "free_fields";
+    private static final String TEXT = "text";
+    private static final String TRIGGER = "trigger";
+    private static final String REFERENCES = "references";
+
+    /** An idempotency key: 1 to 255 printable ASCII characters, from the space to the tilde. */
+    private static final Pattern KEY_FORM = Pattern.compile("[\\x20-\\x7E]{1,255}");
+
+    /** A role a task is addressed to, as the store's check holds it (D16, V4). */
+    private static final Pattern ROLE = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
 
     private CallForm() {
     }
@@ -80,6 +103,23 @@ public final class CallForm {
     public record Refer(InstanceAddress address, ExternalReference.Kind kind, String value) {
     }
 
+    /** The arguments of {@code create}, read: where, and what the create hands in. */
+    public record Create(String scope, String selector, TaskService.Create create) {
+    }
+
+    /** The arguments of {@code update}, read. */
+    public record Update(TaskAddress address, TaskService.Update update) {
+    }
+
+    /**
+     * The arguments of {@code delete} or {@code send}, read.
+     *
+     * @param conflictToken the token of the caller's last answer; absent where
+     *                      none arrived, which the kernel refuses
+     */
+    public record OnADraft(TaskAddress address, @Nullable String conflictToken) {
+    }
+
     /** Reads the arguments of {@code read_definition}, or refuses their form. */
     public static ReadDefinition readDefinition(Surface surface, Map<String, Object> given) {
         ProcessVerb verb = ProcessVerb.READ_DEFINITION;
@@ -102,8 +142,8 @@ public final class CallForm {
             AddressParser::selectorOf);
         Fields fields = fields(verb, call, present);
         return new Start(scope, selector, new InstanceService.Start(
-            fields.text("title"), fields.optionalText("input"), fields.optionalText("trigger"),
-            fields.list("items"), fields.list("references"), fields.object("values")));
+            fields.text(TITLE), fields.optionalText("input"), fields.optionalText(TRIGGER),
+            fields.list("items"), fields.list(REFERENCES), fields.object("values")));
     }
 
     /** Reads the arguments of {@code conclude} or {@code withdraw}, or refuses their form. */
@@ -113,9 +153,9 @@ public final class CallForm {
         InstanceAddress address = address(verb, call, present);
         Fields fields = fields(verb, call, present);
         return new Close(verb, address, new InstanceService.Closing(
-            optionalTop(verb, call, present, "conflict_token"),
+            optionalTop(verb, call, present, CONFLICT_TOKEN),
             optionalTop(verb, call, present, "confirmation"),
-            fields.text("text"), fields.optionalOneOf("verdict"),
+            fields.text(TEXT), fields.optionalOneOf("verdict"),
             fields.optionalText("outcome"), fields.optionalText("translation_basis")));
     }
 
@@ -128,6 +168,72 @@ public final class CallForm {
         String kind = fields.oneOf("kind");
         return new Refer(address, ExternalReference.Kind.valueOf(kind.toUpperCase(Locale.ROOT)),
             fields.text("value"));
+    }
+
+    /**
+     * Reads the arguments of {@code create}, or refuses their form: a parent
+     * outside the grammar of an instance's address, or of another scope or
+     * selector than the call names; a trigger or references beside a parent;
+     * and the form of every field and of the idempotency key.
+     */
+    public static Create create(Surface surface, Map<String, Object> given) {
+        ProcessVerb verb = ProcessVerb.CREATE;
+        VerbName call = VerbName.of(verb, surface);
+        Map<String, Object> present = closed(verb, call, given);
+        String scope = name(verb, call, present, SCOPE, Form.SCOPE, AddressParser::scopeOf);
+        String selector = name(verb, call, present, SELECTOR, Form.SELECTOR,
+            AddressParser::selectorOf);
+        InstanceAddress parent = parent(verb, call, present, scope, selector);
+        IdempotencyKey key = IdempotencyKey.of(idempotencyKey(verb, call, present));
+        Fields fields = fields(verb, call, present);
+        TaskService.Drafting drafting = new TaskService.Drafting(fields.text(TITLE),
+            fields.apparatus(), fields.optionalText(ACTIVITY), fields.task(CONCERNS),
+            fields.list(CRITERIA), fields.optionalObject(FREE_FIELDS), fields.optionalText(TEXT));
+        if (parent != null) {
+            for (String instanceOnly : List.of(TRIGGER, REFERENCES)) {
+                if (fields.has(instanceOnly)) {
+                    throw new SurfaceException(Refusal.argumentInvalid(call,
+                        ArgumentPath.of(verb.declaredField(instanceOnly)),
+                        Form.ONLY_WITHOUT_PARENT));
+                }
+            }
+        }
+        return new Create(scope, selector, new TaskService.Create(parent, drafting,
+            fields.optionalText(TRIGGER), fields.list(REFERENCES), key));
+    }
+
+    /**
+     * Reads the arguments of {@code update}, or refuses their form: a path in
+     * {@code clear} that is none of the fields a draft may empty, or that
+     * stands twice, and a field both cleared and given (C7.7).
+     */
+    public static Update update(Surface surface, Map<String, Object> given) {
+        ProcessVerb verb = ProcessVerb.UPDATE;
+        VerbName call = VerbName.of(verb, surface);
+        Map<String, Object> present = closed(verb, call, given);
+        TaskAddress address = task(verb, call, present);
+        Set<TaskService.Clearable> clear = clear(verb, call, present);
+        Fields fields = fields(verb, call, present);
+        for (TaskService.Clearable cleared : clear) {
+            String name = cleared.name().toLowerCase(Locale.ROOT);
+            if (fields.has(name)) {
+                throw new SurfaceException(Refusal.argumentInvalid(call,
+                    ArgumentPath.of(verb.declaredField(name)), Form.CLEAR_AND_VALUE));
+            }
+        }
+        return new Update(address, new TaskService.Update(
+            optionalTop(verb, call, present, CONFLICT_TOKEN), fields.optionalText(TITLE),
+            fields.apparatus(), fields.optionalText(ACTIVITY), fields.task(CONCERNS),
+            fields.optionalList(CRITERIA), fields.optionalObject(FREE_FIELDS),
+            fields.optionalText(TEXT), clear));
+    }
+
+    /** Reads the arguments of {@code delete} or {@code send}, or refuses their form. */
+    public static OnADraft onADraft(ProcessVerb verb, Surface surface, Map<String, Object> given) {
+        VerbName call = VerbName.of(verb, surface);
+        Map<String, Object> present = closed(verb, call, given);
+        return new OnADraft(task(verb, call, present),
+            optionalTop(verb, call, present, CONFLICT_TOKEN));
     }
 
     // ======================================================================
@@ -195,6 +301,85 @@ public final class CallForm {
         }
         return AddressParser.instanceOf(text).orElseThrow(() ->
             new SurfaceException(Refusal.argumentInvalid(call, path, Form.INSTANCE_ADDRESS)));
+    }
+
+    /** The complete address of a task, in the grammar of its address. */
+    private static TaskAddress task(ProcessVerb verb, VerbName call, Map<String, Object> present) {
+        Argument argument = verb.declared(ADDRESS);
+        ArgumentPath path = ArgumentPath.of(argument);
+        Object value = present.get(ADDRESS);
+        if (value == null) {
+            throw new SurfaceException(Refusal.argumentMissing(call, path));
+        }
+        if (!(value instanceof String text)) {
+            throw new SurfaceException(Refusal.argumentInvalid(call, path, Form.STRING));
+        }
+        return AddressParser.taskOf(text).orElseThrow(() ->
+            new SurfaceException(Refusal.argumentInvalid(call, path, Form.ADDRESS)));
+    }
+
+    /**
+     * The parent of a create: absent where none arrived, otherwise the address
+     * of an instance of the scope and the selector the call names.
+     */
+    private static @Nullable InstanceAddress parent(ProcessVerb verb, VerbName call,
+                                                    Map<String, Object> present, String scope,
+                                                    String selector) {
+        String text = optionalTop(verb, call, present, PARENT);
+        if (text == null) {
+            return null;
+        }
+        ArgumentPath path = ArgumentPath.of(verb.declared(PARENT));
+        InstanceAddress parent = AddressParser.instanceOf(text).orElseThrow(() ->
+            new SurfaceException(Refusal.argumentInvalid(call, path, Form.INSTANCE_ADDRESS)));
+        if (!parent.scope().equals(scope) || !parent.selector().equals(selector)) {
+            throw new SurfaceException(Refusal.argumentInvalid(call, path,
+                Form.PARENT_ELSEWHERE));
+        }
+        return parent;
+    }
+
+    /**
+     * An idempotency key: absent where none arrived, otherwise 1 to 255
+     * printable ASCII characters, the space among them (C10.4). An empty key is
+     * a key outside its form, never no key.
+     */
+    private static @Nullable String idempotencyKey(ProcessVerb verb, VerbName call,
+                                                   Map<String, Object> present) {
+        String key = optionalTop(verb, call, present, IDEMPOTENCY_KEY);
+        if (key != null && !KEY_FORM.matcher(key).matches()) {
+            throw new SurfaceException(Refusal.argumentInvalid(call,
+                ArgumentPath.of(verb.declared(IDEMPOTENCY_KEY)), Form.IDEMPOTENCY_KEY));
+        }
+        return key;
+    }
+
+    /**
+     * The fields an update clears: each path once, and each one of the fields
+     * a draft may empty (C7.7); empty where none arrived.
+     */
+    private static Set<TaskService.Clearable> clear(ProcessVerb verb, VerbName call,
+                                                    Map<String, Object> present) {
+        Argument argument = verb.declared(CLEAR);
+        Object value = present.get(CLEAR);
+        if (value == null) {
+            return Set.of();
+        }
+        if (!(value instanceof List<?> list)) {
+            throw new SurfaceException(Refusal.argumentInvalid(call, ArgumentPath.of(argument),
+                Form.LIST_OF_STRINGS));
+        }
+        Pattern form = Pattern.compile(String.valueOf(argument.itemPattern()));
+        Set<TaskService.Clearable> clear = EnumSet.noneOf(TaskService.Clearable.class);
+        for (int i = 0; i < list.size(); i++) {
+            if (!(list.get(i) instanceof String path) || !form.matcher(path).matches()
+                    || !clear.add(TaskService.Clearable.valueOf(path
+                        .substring(Argument.FIELDS.length() + 1).toUpperCase(Locale.ROOT)))) {
+                throw new SurfaceException(Refusal.argumentInvalid(call,
+                    ArgumentPath.of(argument, i), Form.CLEAR));
+            }
+        }
+        return clear;
     }
 
     /** An optional string at the top level; absent where none arrived. */
@@ -335,9 +520,15 @@ public final class CallForm {
 
         /** An object of the caller's own keys; empty where none arrived. */
         Map<String, Object> object(String name) {
+            Map<String, Object> read = optionalObject(name);
+            return read == null ? Map.of() : read;
+        }
+
+        /** An object of the caller's own keys; absent where none arrived. */
+        @Nullable Map<String, Object> optionalObject(String name) {
             Object value = members.get(name);
             if (value == null) {
-                return Map.of();
+                return null;
             }
             if (!(value instanceof Map<?, ?> map)) {
                 throw new SurfaceException(Refusal.argumentInvalid(call,
@@ -346,6 +537,37 @@ public final class CallForm {
             Map<String, Object> read = new LinkedHashMap<>();
             map.forEach((key, member) -> read.put(String.valueOf(key), member));
             return read;
+        }
+
+        /** A list of strings in the argument's pattern; absent where none arrived. */
+        @Nullable List<String> optionalList(String name) {
+            return has(name) ? list(name) : null;
+        }
+
+        /** Whether the member arrived with a value. */
+        boolean has(String name) {
+            return members.get(name) != null;
+        }
+
+        /** The role a task is addressed to, in the form the store holds; absent where none arrived. */
+        @Nullable String apparatus() {
+            String role = optionalText("apparatus");
+            if (role != null && !ROLE.matcher(role).matches()) {
+                throw new SurfaceException(Refusal.argumentInvalid(call,
+                    ArgumentPath.of(verb.declaredField("apparatus")), Form.APPARATUS));
+            }
+            return role;
+        }
+
+        /** The complete address of a task; absent where none arrived. */
+        @Nullable TaskAddress task(String name) {
+            String text = optionalText(name);
+            if (text == null) {
+                return null;
+            }
+            return AddressParser.taskOf(text).orElseThrow(() ->
+                new SurfaceException(Refusal.argumentInvalid(call,
+                    ArgumentPath.of(verb.declaredField(name)), Form.ADDRESS)));
         }
     }
 }

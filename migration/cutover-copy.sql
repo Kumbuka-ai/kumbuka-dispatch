@@ -118,8 +118,8 @@ BEGIN
      WHERE h.version IS NOT NULL AND h.success
      ORDER BY h.installed_rank DESC
      LIMIT 1;
-    IF latest IS DISTINCT FROM '5' THEN
-        RAISE EXCEPTION 'cutover copy refused: the store line stands at version %, expected 5',
+    IF latest IS NULL OR latest::numeric < 5 THEN
+        RAISE EXCEPTION 'cutover copy refused: the store line stands at version %, expected 5 or later',
             coalesce(latest, 'none')
             USING ERRCODE = 'KC001';
     END IF;

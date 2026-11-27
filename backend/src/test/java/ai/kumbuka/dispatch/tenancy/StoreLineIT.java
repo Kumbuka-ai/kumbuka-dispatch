@@ -173,8 +173,9 @@ class StoreLineIT {
             "hold_reason", "resolution", "not_before", "parked", "addressed_role")),
         Map.entry("holding", Set.of("ended_by_act_id")),
         Map.entry("external_reference", Set.of("ended_by_act_id")),
+        // V6 adds changed_at, the conflict token of a draft (REA-0010 D29).
         Map.entry("draft", Set.of("title", "activity_id", "concerns_task_id", "bound_task_id",
-            "addressed_role")),
+            "addressed_role", "changed_at")),
         Map.entry("draft_criterion", Set.of("identifier", "ordinal")),
         Map.entry("draft_free_fields", Set.of("document")),
         Map.entry("draft_text", Set.of("media_type", "body")),
@@ -219,8 +220,8 @@ class StoreLineIT {
         try (Connection c = harness.adminConnection(url)) {
             assertThat(scalar(c, "SELECT string_agg(version, ',' ORDER BY installed_rank) FROM "
                     + "dispatch." + HISTORY + " WHERE success AND version IS NOT NULL"))
-                .as("the line's five migrations are recorded as applied, V1 to V5 in order")
-                .isEqualTo("1,2,3,4,5");
+                .as("the line's six migrations are recorded as applied, V1 to V6 in order")
+                .isEqualTo("1,2,3,4,5,6");
         }
         Map<String, Long> expected = new TreeMap<>();
         TABLES.forEach(table -> expected.put(table, 0L));
@@ -520,10 +521,13 @@ class StoreLineIT {
         TABLES.forEach(t -> expectedTables.put(t, new TreeSet<>(Set.of("SELECT", "INSERT"))));
         expectedTables.get("task").add("DELETE");
         DRAFT_WORKSPACE.forEach(t -> expectedTables.get(t).add("DELETE"));
+        // V6: the expired keys of a caller are deleted when it next writes one (D30).
+        expectedTables.get("idempotency_key").add("DELETE");
         assertThat(tablePrivileges)
-            .as("SELECT and INSERT on every table, DELETE on task and the four tables of the "
-                + "draft workspace alone, nothing on the history of the migration tool, and never "
-                + "UPDATE, TRUNCATE, REFERENCES or TRIGGER on a whole table")
+            .as("SELECT and INSERT on every table, DELETE on task, the four tables of the "
+                + "draft workspace and the ledger of keys alone, nothing on the history of the "
+                + "migration tool, and never UPDATE, TRUNCATE, REFERENCES or TRIGGER on a whole "
+                + "table")
             .isEqualTo(expectedTables);
 
         Map<String, Set<String>> expectedColumns = new TreeMap<>();

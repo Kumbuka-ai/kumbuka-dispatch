@@ -333,7 +333,29 @@ public class DispatchException extends RuntimeException {
         REFERENCE_ABSENT,
 
         /** An act on an instance that is closed: a closed instance takes none. */
-        INSTANCE_CLOSED
+        INSTANCE_CLOSED,
+
+        /**
+         * A task was created in a version that declares more than one
+         * activity, and named none (REA-0010 S5): only the one activity of a
+         * version is taken without being named.
+         */
+        ACTIVITY_MISSING,
+
+        /** An activity the version of the task's instance does not declare. */
+        ACTIVITY_UNDECLARED,
+
+        /**
+         * The task a draft is to concern is no other task of the draft's own
+         * instance: the store keys a concerned task to the same instance.
+         */
+        CONCERNS_UNRELATED,
+
+        /**
+         * A draft was to be sent that names no activity: a commission carries
+         * one (REA-0010 S5), and a draft gains it by {@code update}.
+         */
+        DRAFT_INCOMPLETE
     }
 
     private final transient Reason reason;
@@ -345,6 +367,11 @@ public class DispatchException extends RuntimeException {
      * names its state and the calls open on it; absent on every other.
      */
     private final transient @Nullable InstanceView standing;
+    /**
+     * The task the refusal concerns, as it stands, for a refusal that names
+     * its state and the calls open on it; absent on every other.
+     */
+    private final transient @Nullable TaskView task;
 
     public DispatchException(Reason reason, String message) {
         this(reason, message, List.of());
@@ -371,16 +398,31 @@ public class DispatchException extends RuntimeException {
      * state, its conflict token and the calls open on it.
      */
     public DispatchException(Reason reason, String message, InstanceView standing) {
-        this(reason, message, List.of(), null, standing);
+        this(reason, message, List.of(), null, standing, null);
+    }
+
+    /**
+     * A refusal about a task that names it as it stands: its address, its
+     * state, its conflict token and the calls open on it.
+     */
+    public DispatchException(Reason reason, String message, TaskView task) {
+        this(reason, message, List.of(), null, null, task);
     }
 
     private DispatchException(Reason reason, String message, List<String> offenders,
                               @Nullable String confirmation, @Nullable InstanceView standing) {
+        this(reason, message, offenders, confirmation, standing, null);
+    }
+
+    private DispatchException(Reason reason, String message, List<String> offenders,
+                              @Nullable String confirmation, @Nullable InstanceView standing,
+                              @Nullable TaskView task) {
         super(message);
         this.reason = reason;
         this.offenders = List.copyOf(offenders);
         this.confirmation = confirmation;
         this.standing = standing;
+        this.task = task;
     }
 
     public Reason reason() {
@@ -408,5 +450,10 @@ public class DispatchException extends RuntimeException {
     /** The instance the refusal concerns, as it stands, where the refusal names it. */
     public java.util.Optional<InstanceView> standing() {
         return java.util.Optional.ofNullable(standing);
+    }
+
+    /** The task the refusal concerns, as it stands, where the refusal names it. */
+    public java.util.Optional<TaskView> task() {
+        return java.util.Optional.ofNullable(task);
     }
 }

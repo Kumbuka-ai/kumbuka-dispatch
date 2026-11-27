@@ -206,7 +206,9 @@ public enum RefusalCode {
             case CONTRACT_FIELD_UNDECLARED -> ARGUMENT_UNKNOWN;
             case CONTRACT_FIELD_MISTYPED, CONTRACT_VALUE_UNENUMERATED, RETURN_OUTCOME_UNDECLARED,
                  REFERENCE_ABSENT -> ARGUMENT_INVALID;
-            case INSTANCE_CLOSED -> TRANSITION_REFUSED;
+            case INSTANCE_CLOSED, DRAFT_INCOMPLETE -> TRANSITION_REFUSED;
+            case ACTIVITY_MISSING -> ARGUMENT_MISSING;
+            case ACTIVITY_UNDECLARED, CONCERNS_UNRELATED -> ARGUMENT_INVALID;
         };
     }
 
@@ -393,7 +395,15 @@ public enum RefusalCode {
         RETURN_PART_MISSING(RefusalCode.ARGUMENT_MISSING, "returnPartMissing"),
         RETURN_OUTCOME_UNDECLARED(RefusalCode.ARGUMENT_INVALID, "returnOutcomeUndeclared"),
         REFERENCE_ABSENT(RefusalCode.ARGUMENT_INVALID, "referenceAbsent"),
-        INVALID_INSTANCE_ADDRESS(RefusalCode.ADDRESS_MALFORMED, "invalidInstanceAddress");
+        INVALID_INSTANCE_ADDRESS(RefusalCode.ADDRESS_MALFORMED, "invalidInstanceAddress"),
+        INVALID_APPARATUS(RefusalCode.ARGUMENT_INVALID, "invalidApparatus"),
+        INVALID_CLEAR(RefusalCode.ARGUMENT_INVALID, "invalidClear"),
+        INVALID_CLEAR_AND_VALUE(RefusalCode.ARGUMENT_INVALID, "invalidClearAndValue"),
+        INVALID_ONLY_WITHOUT_PARENT(RefusalCode.ARGUMENT_INVALID, "invalidOnlyWithoutParent"),
+        ACTIVITY_MISSING(RefusalCode.ARGUMENT_MISSING, "activityMissing"),
+        ACTIVITY_UNDECLARED(RefusalCode.ARGUMENT_INVALID, "activityUndeclared"),
+        CONCERNS_UNRELATED(RefusalCode.ARGUMENT_INVALID, "concernsUnrelated"),
+        DRAFT_INCOMPLETE(RefusalCode.TRANSITION_REFUSED, "draftIncomplete");
 
         private final RefusalCode code;
         private final String key;

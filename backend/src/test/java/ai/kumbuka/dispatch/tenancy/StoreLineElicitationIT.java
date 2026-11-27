@@ -132,7 +132,8 @@ class StoreLineElicitationIT {
         try (Connection c = harness.adminConnection(url)) {
             assertThat(strings(c, "SELECT string_agg(version, ',' ORDER BY installed_rank) "
                     + "FROM dispatch.flyway_schema_history WHERE success AND version IS NOT NULL"))
-                .as("the line is applied from V1 to V5").containsExactly("1,2,3,4,5");
+                .as("the line is applied from V1 to V6")
+                .containsExactly("1,2,3,4,5,6");
             Map<String, List<String>> columns = new LinkedHashMap<>();
             for (String table : COMPLEX.keySet()) {
                 columns.put(table, columnsOf(c, table));

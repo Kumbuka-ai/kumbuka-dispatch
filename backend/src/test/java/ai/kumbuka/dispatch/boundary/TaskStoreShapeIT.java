@@ -11,7 +11,6 @@ import ai.kumbuka.dispatch.tenancy.SubstrateDatabaseResource;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.eclipse.microprofile.config.ConfigProvider;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.postgresql.util.PSQLException;
 
@@ -23,18 +22,19 @@ import java.sql.Savepoint;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 
 /**
- * What the database secures about the store of the rebuilt lifecycle (V17,
- * V18, V22): the column order, the value sets, the shape of a row, the guard on the
- * texts after the send, the freeze of a sent task's content and the stamp of
- * an acceptance. Each rule is proven by a statement in plain SQL that the database
- * refuses, issued under the runtime role with its real grants and the tenant
- * bound as the service binds it.
+ * What the database secures about the task store of the store line (V1, V2,
+ * V4, V6): the column order of a task, its draft and the ledger of keys, the
+ * value sets and the shape of a row, the draft workspace deleted children
+ * first, a task with an act kept, and a key that outlives its draft. Each rule
+ * is proven by a statement in plain SQL that the database refuses, issued
+ * under the runtime role with its real grants and the tenant bound as the
+ * service binds it; each refusal stands beside the valid form, which passes.
  *
  * <p>Every probe runs in a transaction that is rolled back, under a savepoint
  * of its own, so a refused statement leaves nothing behind and does not
@@ -44,37 +44,34 @@ import static org.assertj.core.api.Assertions.fail;
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class TaskStoreShapeIT {
 
-    /** The column order of the dispatch, written out rather than read from anywhere. */
+    /** The column order of a task, written out rather than read from anywhere: V1, then V4. */
     private static final List<String> TASK_COLUMNS = List.of(
-        "id", "uuid", "tenant_id", "scope_id", "selector_id", "number", "sub", "state",
-        "hold_reason", "outcome", "state_changed_at", "state_changed_by", "question_options",
-        "not_before", "lapse_count", "holder_subject", "holder_receipt_hash", "lease_expires_at",
-        "curated_in_id", "title", "apparatus", "dispatch_metadata", "return_metadata",
-        "created_at", "created_by", "updated_at", "updated_by",
-        // V22 appends the stamp, V23 the first take-up: a column added later
-        // stands at the end.
-        "self_accepted", "first_taken_at");
+        "id", "tenant_id", "scope_id", "instance_id", "sub", "title", "activity_id",
+        "concerns_task_id", "state", "hold_reason", "resolution", "not_before", "parked",
+        "addressed_role");
 
-    private static final List<String> TASK_TEXT_COLUMNS = List.of(
-        "id", "tenant_id", "scope_id", "task_id", "text_type", "addendum_suffix", "text",
-        "created_at", "created_by");
+    /** The column order of a draft: V2, then V4 and V6. */
+    private static final List<String> DRAFT_COLUMNS = List.of(
+        "id", "tenant_id", "scope_id", "task_id", "title", "activity_id", "concerns_task_id",
+        "bound_task_id", "addressed_role", "changed_at");
 
-    /** Surrogate, tenant and scope, parent, own columns, stamps — as V14's, onto task. */
-    private static final List<String> TASK_IDEMPOTENCY_KEY_COLUMNS = List.of(
-        "id", "tenant_id", "scope_id", "task_id", "caller_subject", "idempotency_key",
-        "call_name", "argument_digest", "first_seen_at");
+    /** The column order of the ledger of keys: V1, then V6. */
+    private static final List<String> IDEMPOTENCY_KEY_COLUMNS = List.of(
+        "id", "tenant_id", "scope_id", "caller_subject", "idempotency_key", "task_id", "act_id",
+        "created_at", "argument_digest");
 
     // ------------------------------------------------------------------
-    // Criterion 1 — the column order
+    // The column order
     // ------------------------------------------------------------------
 
     @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void the_columns_stand_in_the_order_of_the_dispatch() throws SQLException {
+    void the_columns_stand_in_the_order_of_the_store_line() throws SQLException {
         try (Connection c = admin()) {
             assertThat(columns(c, "task")).isEqualTo(TASK_COLUMNS);
-            assertThat(columns(c, "task_text")).isEqualTo(TASK_TEXT_COLUMNS);
-            assertThat(columns(c, "task_idempotency_key")).isEqualTo(TASK_IDEMPOTENCY_KEY_COLUMNS);
+            assertThat(columns(c, "draft")).as("V6 appends the token of a draft")
+                .isEqualTo(DRAFT_COLUMNS);
+            assertThat(columns(c, "idempotency_key")).as("V6 appends the digest of a key")
+                .isEqualTo(IDEMPOTENCY_KEY_COLUMNS);
         }
     }
 
@@ -96,35 +93,24 @@ class TaskStoreShapeIT {
     }
 
     // ------------------------------------------------------------------
-    // The two orders a listing pages in, each with an index to walk
+    // The list of open tasks by role, with an index to walk
     // ------------------------------------------------------------------
 
-    /** The orders of a listing, written out: by address, and by creation. */
-    private static final List<String> BY_ADDRESS = List.of(
-        "tenant_id", "scope_id", "selector_id", "number", "sub");
-    private static final List<String> BY_CREATION = List.of(
-        "tenant_id", "scope_id", "selector_id", "created_at", "number", "sub");
+    /** The order the open tasks of a role are read in, written out (V4). */
+    private static final List<String> BY_ROLE = List.of(
+        "tenant_id", "scope_id", "state", "addressed_role", "instance_id", "sub");
 
     @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void a_listing_has_an_index_for_each_order_it_pages_in() throws SQLException {
+    void the_list_of_tasks_by_role_has_its_index_and_loses_it_when_dropped() throws SQLException {
         try (Connection c = admin()) {
-            assertThat(indexes(c, "task"))
-                .as("the address order walks the address key, the creation order its index")
-                .contains(BY_ADDRESS, BY_CREATION);
-        }
-    }
-
-    @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void a_dropped_index_leaves_the_order_without_one() throws SQLException {
-        try (Connection c = admin()) {
+            assertThat(indexes(c, "task")).as("the tasks by state and role walk their index")
+                .contains(BY_ROLE);
             c.setAutoCommit(false);
             try {
-                exec(c, "DROP INDEX dispatch.idx_task_created_address");
+                exec(c, "DROP INDEX dispatch.idx_task_state_addressed_role");
                 assertThat(indexes(c, "task"))
-                    .as("RED STATE, observed: without the index the creation order has none")
-                    .doesNotContain(BY_CREATION);
+                    .as("RED STATE, observed: without the index the order has none")
+                    .doesNotContain(BY_ROLE);
             } finally {
                 c.rollback();
             }
@@ -136,308 +122,167 @@ class TaskStoreShapeIT {
     // ------------------------------------------------------------------
 
     @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void every_value_set_refuses_a_value_outside_it() throws SQLException {
         withServiceRole(c -> {
-            refused(c, insertTask(1, "state", "'returned'"), "ck_task_state");
-            refused(c, insertTask(2, "state, hold_reason", "'on_hold', 'waiting'"), "ck_task_hold_reason");
-            refused(c, insertTask(3, "state, outcome", "'closed', 'consumed'"), "ck_task_outcome");
-            refused(c, insertTaskAt(0, 0), "ck_task_number");
-            refused(c, insertTaskAt(4, -1), "ck_task_sub");
-            refused(c, insertTask(5, "lapse_count", "-1"), "ck_task_lapse_count");
+            long instance = plantInstance(c);
+            refused(c, insertTask(instance, 1, "state", "'returned'"), "ck_task_state");
+            refused(c, insertTask(instance, 2, "state, hold_reason", "'on_hold', 'waiting'"),
+                "ck_task_hold_reason");
+            refused(c, insertTask(instance, 3, "state, resolution", "'closed', 'consumed'"),
+                "ck_task_resolution");
+            refused(c, insertTask(instance, -1, "state", "'draft'"), "ck_task_sub");
+            refused(c, insertTask(instance, 4, "addressed_role", "'-starts-with-a-mark'"),
+                "ck_task_addressed_role");
+            succeeds(c, insertTask(instance, 5, "addressed_role", "'code.review_2'"));
 
-            long task = id(c, insertTask(6, "state", "'draft'") + " RETURNING id");
-            refused(c, insertText(task, "'commission'", "NULL"), "ck_task_text_type");
-            refused(c, insertText(task, "'dispatch'", "'aa'"), "ck_task_text_suffix");
+            long task = id(c, insertTask(instance, 6, "state", "'draft'") + " RETURNING id");
+            refused(c, insertDraft(task, "addressed_role", "' '"), "ck_draft_addressed_role");
+            long draft = id(c, insertDraft(task, "title", "'a title'") + " RETURNING id");
+            refused(c, insertText(draft, "'return'", "NULL"), "ck_draft_text_kind");
+            refused(c, "INSERT INTO dispatch.draft_free_fields (tenant_id, scope_id, draft_id, "
+                + "document) SELECT tenant_id, scope_id, id, '[1, 2]' FROM dispatch.draft "
+                + "WHERE id = " + draft, "ck_draft_free_fields_document");
+            succeeds(c, "INSERT INTO dispatch.draft_free_fields (tenant_id, scope_id, draft_id, "
+                + "document) SELECT tenant_id, scope_id, id, '{\"k\": [1, 2]}' FROM "
+                + "dispatch.draft WHERE id = " + draft);
         });
     }
 
     @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
     void every_shape_rule_refuses_a_row_that_breaks_it() throws SQLException {
         withServiceRole(c -> {
-            // hold_reason exactly in on_hold
-            refused(c, insertTask(10, "state, hold_reason", "'open', 'question'"),
-                "ck_task_hold_reason_exactly_on_hold");
-            refused(c, insertTask(11, "state", "'on_hold'"), "ck_task_hold_reason_exactly_on_hold");
-            // outcome exactly in closed
-            refused(c, insertTask(12, "state, outcome", "'delivered', 'accepted'"),
-                "ck_task_outcome_exactly_closed");
-            refused(c, insertTask(13, "state", "'closed'"), "ck_task_outcome_exactly_closed");
-            // holder and receipt hash only together
-            refused(c, insertTask(14, "state, holder_subject", "'active', 'exec'"),
-                "ck_task_holder_whole");
-            refused(c, insertTask(15, "state, holder_receipt_hash", "'active', 'hash'"),
-                "ck_task_holder_whole");
-            // the lease only in active, and only with a holder
-            refused(c, insertTask(16, "state, hold_reason, holder_subject, holder_receipt_hash, "
-                    + "lease_expires_at", "'on_hold', 'question', 'exec', 'hash', now()"),
-                "ck_task_lease_only_active_and_held");
-            refused(c, insertTask(17, "state, lease_expires_at", "'active', now()"),
-                "ck_task_lease_only_active_and_held");
-            // question_options only on a question
-            refused(c, insertTask(18, "state, hold_reason, question_options",
-                    "'on_hold', 'dependency', '{\"options\": [], \"free_text\": true}'"),
-                "ck_task_question_options_only_on_question");
-            // not_before only in open
-            refused(c, insertTask(19, "state, not_before", "'active', now()"),
-                "ck_task_not_before_only_open");
+            long instance = plantInstance(c);
+            refused(c, insertTask(instance, 10, "state, hold_reason", "'open', 'question'"),
+                "ck_task_on_hold_reason");
+            refused(c, insertTask(instance, 11, "state", "'on_hold'"), "ck_task_on_hold_reason");
+            refused(c, insertTask(instance, 12, "state, resolution", "'delivered', 'accepted'"),
+                "ck_task_closed_resolved");
+            refused(c, insertTask(instance, 13, "state", "'closed'"), "ck_task_closed_resolved");
+            refused(c, insertTask(instance, 14, "state, not_before", "'active', now()"),
+                "ck_task_not_before_open");
+            refused(c, insertTask(instance, 15, "state, parked", "'open', true"),
+                "ck_task_parked");
 
-            // curated_in only in closed and never the task itself
-            long target = id(c, insertTask(20, "state, outcome", "'closed', 'accepted'")
-                + " RETURNING id");
-            refused(c, insertTask(21, "state, curated_in_id", "'delivered', " + target),
-                "ck_task_curated_in_only_closed_and_not_self");
-            refused(c, "UPDATE dispatch.task SET curated_in_id = id WHERE id = " + target,
-                "ck_task_curated_in_only_closed_and_not_self");
-
-            // and the same rules by UPDATE, on a row that was valid
-            long open = id(c, insertTask(22, "state", "'open'") + " RETURNING id");
-            refused(c, "UPDATE dispatch.task SET state = 'on_hold' WHERE id = " + open,
-                "ck_task_hold_reason_exactly_on_hold");
+            long open = id(c, insertTask(instance, 16, "state", "'open'") + " RETURNING id");
+            refused(c, "UPDATE dispatch.task SET concerns_task_id = id WHERE id = " + open,
+                "ck_task_concerns_other");
             refused(c, "UPDATE dispatch.task SET state = 'closed' WHERE id = " + open,
-                "ck_task_outcome_exactly_closed");
-            refused(c, "UPDATE dispatch.task SET state = 'active', not_before = now() WHERE id = " + open,
-                "ck_task_not_before_only_open");
+                "ck_task_closed_resolved");
+
+            long draftTask = id(c, insertTask(instance, 17, "state", "'draft'") + " RETURNING id");
+            long draft = id(c, insertDraft(draftTask, "title", "'a title'") + " RETURNING id");
+            refused(c, insertText(draft, "'criterion'", "NULL"), "ck_draft_text_criterion");
 
             // the valid forms pass, so the refusals above were the rules and not the base row
-            succeeds(c, insertTask(23, "state, hold_reason, holder_subject, holder_receipt_hash, "
-                + "question_options", "'on_hold', 'question', 'exec', 'hash', "
-                + "'{\"options\": [], \"free_text\": true}'"));
-            succeeds(c, insertTask(24, "state, holder_subject, holder_receipt_hash, lease_expires_at",
-                "'active', 'exec', 'hash', now()"));
-            succeeds(c, insertTask(25, "state, holder_subject, holder_receipt_hash",
-                "'delivered', 'exec', 'hash'"));
-            succeeds(c, insertTask(26, "state, not_before", "'open', now()"));
-            succeeds(c, insertTask(27, "state, outcome, curated_in_id", "'closed', 'accepted', " + target));
+            succeeds(c, insertTask(instance, 18, "state, hold_reason", "'on_hold', 'question'"));
+            succeeds(c, insertTask(instance, 19, "state, resolution", "'closed', 'withdrawn'"));
+            succeeds(c, insertTask(instance, 20, "state, not_before", "'open', now()"));
+            succeeds(c, insertTask(instance, 21, "state, hold_reason, parked",
+                "'on_hold', 'external', true"));
+            succeeds(c, "UPDATE dispatch.task SET state = 'closed', resolution = 'withdrawn' "
+                + "WHERE id = " + open);
         });
     }
 
     // ------------------------------------------------------------------
-    // The mark of a self-acceptance (V22)
+    // The draft workspace, and a task with an act
     // ------------------------------------------------------------------
+
+    @Test
+    void a_draft_is_changed_and_deleted_children_first() throws SQLException {
+        withServiceRole(c -> {
+            long instance = plantInstance(c);
+            long task = id(c, insertTask(instance, 30, "state", "'draft'") + " RETURNING id");
+            long draft = id(c, insertDraft(task, "title", "'a title'") + " RETURNING id");
+            long criterion = id(c, "INSERT INTO dispatch.draft_criterion (tenant_id, scope_id, "
+                + "draft_id, identifier, ordinal) SELECT tenant_id, scope_id, id, 'c1', 1 "
+                + "FROM dispatch.draft WHERE id = " + draft + " RETURNING id");
+            succeeds(c, insertText(draft, "'criterion'", String.valueOf(criterion)));
+            succeeds(c, insertText(draft, "'commission'", "NULL"));
+
+            assertThat(count(c, "UPDATE dispatch.draft SET title = 'changed', "
+                    + "changed_at = changed_at + interval '1 microsecond' WHERE id = " + draft))
+                .as("a draft and its token are changed under the runtime role (V6)").isEqualTo(1);
+
+            refusedByKey(c, "DELETE FROM dispatch.draft WHERE id = " + draft,
+                "the draft before its criteria and texts");
+            refusedByKey(c, "DELETE FROM dispatch.task WHERE id = " + task,
+                "the task before its draft");
+
+            assertThat(count(c, "DELETE FROM dispatch.draft_text WHERE draft_id = " + draft))
+                .as("its texts are deleted").isEqualTo(2);
+            assertThat(count(c, "DELETE FROM dispatch.draft_criterion WHERE draft_id = " + draft))
+                .as("then its criteria").isEqualTo(1);
+            assertThat(count(c, "DELETE FROM dispatch.draft WHERE id = " + draft))
+                .as("then the draft").isEqualTo(1);
+            assertThat(count(c, "DELETE FROM dispatch.task WHERE id = " + task))
+                .as("and then the task itself, under the runtime role's own DELETE").isEqualTo(1);
+        });
+    }
+
+    @Test
+    void a_task_with_an_act_is_never_deleted() throws SQLException {
+        withServiceRole(c -> {
+            long instance = plantInstance(c);
+            long sent = id(c, insertTask(instance, 40, "state", "'open'") + " RETURNING id");
+            succeeds(c, "INSERT INTO dispatch.act (tenant_id, scope_id, instance_id, sequence, "
+                + "task_id, kind, actor_subject, permission, path, at, to_state) "
+                + "SELECT tenant_id, scope_id, instance_id, 1, id, 'send', 'probe', "
+                + "'dispatch.task.commission', 'interface', now(), 'open' FROM dispatch.task "
+                + "WHERE id = " + sent);
+            refusedByKey(c, "DELETE FROM dispatch.task WHERE id = " + sent,
+                "a task with an act: its trace begins with its first send");
+            long unsent = id(c, insertTask(instance, 41, "state", "'draft'") + " RETURNING id");
+            assertThat(count(c, "DELETE FROM dispatch.task WHERE id = " + unsent))
+                .as("RED STATE, observed: a task without an act is deleted").isEqualTo(1);
+        });
+    }
 
     /**
-     * The stamp stands only on a task closed as accepted and never changes
-     * once set, to the other value or back to NULL; an insert that does not
-     * name it -- the image before V22, and every row V22 found -- holds NULL,
-     * unknown, and is never stamped false by the migration.
-     *
-     * <p>RED PROBE: with the check of V22 left out, the first two refusals
-     * pass; with its trigger left out, the three changing updates pass; with
-     * a default of false on the column, the unnamed insert reads false.
+     * The image before V6 names {@code changed_at} in no statement; its insert
+     * of a draft stands, and the row takes the time of the store (N-1).
      */
     @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void the_stamp_of_an_acceptance_stands_only_where_it_belongs_and_never_changes()
-            throws SQLException {
+    void a_draft_inserted_without_its_token_takes_the_default_of_v6() throws SQLException {
         withServiceRole(c -> {
-            refused(c, insertTask(50, "state, holder_subject, holder_receipt_hash, "
-                    + "self_accepted", "'delivered', 'exec', 'hash', false"),
-                "ck_task_self_accepted_only_accepted");
-            refused(c, insertTask(51, "state, outcome, self_accepted", "'closed', 'withdrawn', true"),
-                "ck_task_self_accepted_only_accepted");
-
-            long self = id(c, insertTask(52, "state, outcome, self_accepted",
-                "'closed', 'accepted', true") + " RETURNING id");
-            long other = id(c, insertTask(54, "state, outcome, self_accepted",
-                "'closed', 'accepted', false") + " RETURNING id");
-            refusedByStamp(c, "UPDATE dispatch.task SET self_accepted = false WHERE id = " + self);
-            refusedByStamp(c, "UPDATE dispatch.task SET self_accepted = NULL WHERE id = " + self);
-            refusedByStamp(c, "UPDATE dispatch.task SET self_accepted = true WHERE id = " + other);
-
-            long unnamed = id(c, insertTask(53, "state, outcome", "'closed', 'accepted'")
-                + " RETURNING id");
+            long instance = plantInstance(c);
+            long task = id(c, insertTask(instance, 50, "state", "'draft'") + " RETURNING id");
+            long draft = id(c, insertDraft(task, "title", "'a title'") + " RETURNING id");
             try (Statement st = c.createStatement();
-                 ResultSet rs = st.executeQuery(
-                     "SELECT self_accepted FROM dispatch.task WHERE id = " + unnamed)) {
+                 ResultSet rs = st.executeQuery("SELECT changed_at FROM dispatch.draft WHERE id = "
+                     + draft)) {
                 assertThat(rs.next()).isTrue();
-                assertThat(rs.getObject(1))
-                    .as("an insert that does not name the column, as the image before V22 "
-                        + "writes, holds NULL: unknown, never false").isNull();
+                assertThat(rs.getTimestamp(1)).as("the default fills the token").isNotNull();
             }
-            assertThat(count(c, "UPDATE dispatch.task SET self_accepted = false WHERE id = "
-                    + unnamed))
-                .as("the acceptance stamps it once, under the runtime role").isEqualTo(1);
         });
     }
 
     // ------------------------------------------------------------------
-    // The first take-up (V23)
+    // The ledger of keys
     // ------------------------------------------------------------------
 
-    /**
-     * The instant of the first take-up is set once and never changes, to
-     * another instant or back to NULL; an insert that does not name it -- the
-     * image before V23, and every row V23 found -- holds NULL.
-     *
-     * <p>RED PROBE: with the trigger of V23 left out, the two changing
-     * updates pass.
-     */
     @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void the_first_take_up_is_set_once_and_never_changes() throws SQLException {
+    void a_key_outlives_its_draft_and_an_expired_one_is_deleted() throws SQLException {
         withServiceRole(c -> {
-            long unnamed = id(c, insertTask(60, "state", "'open'") + " RETURNING id");
+            long instance = plantInstance(c);
+            long task = id(c, insertTask(instance, 60, "state", "'draft'") + " RETURNING id");
+            long key = id(c, "INSERT INTO dispatch.idempotency_key (tenant_id, scope_id, "
+                + "caller_subject, idempotency_key, task_id, argument_digest, created_at) "
+                + "SELECT tenant_id, scope_id, 'probe', 'shape-" + UUID.randomUUID() + "', id, "
+                + "'a digest', now() FROM dispatch.task WHERE id = " + task + " RETURNING id");
+
+            assertThat(count(c, "DELETE FROM dispatch.task WHERE id = " + task))
+                .as("the draft is deleted with a key on it").isEqualTo(1);
             try (Statement st = c.createStatement();
-                 ResultSet rs = st.executeQuery(
-                     "SELECT first_taken_at FROM dispatch.task WHERE id = " + unnamed)) {
-                assertThat(rs.next()).isTrue();
-                assertThat(rs.getObject(1))
-                    .as("an insert that does not name the column holds NULL").isNull();
+                 ResultSet rs = st.executeQuery("SELECT task_id, argument_digest FROM "
+                     + "dispatch.idempotency_key WHERE id = " + key)) {
+                assertThat(rs.next()).as("the key stays").isTrue();
+                assertThat(rs.getObject(1)).as("and lets go of the task by the store's own key")
+                    .isNull();
+                assertThat(rs.getString(2)).isEqualTo("a digest");
             }
-            assertThat(count(c, "UPDATE dispatch.task SET first_taken_at = now() WHERE id = "
-                    + unnamed))
-                .as("the first take-up sets it once, under the runtime role").isEqualTo(1);
-            assertThat(count(c, "UPDATE dispatch.task SET lapse_count = 1 WHERE id = " + unnamed))
-                .as("a write that leaves it stands").isEqualTo(1);
-
-            refusedByFirstTakeUp(c, "UPDATE dispatch.task SET first_taken_at = now() "
-                + "+ interval '1 hour' WHERE id = " + unnamed);
-            refusedByFirstTakeUp(c, "UPDATE dispatch.task SET first_taken_at = NULL WHERE id = "
-                + unnamed);
-        });
-    }
-
-    private static void refusedByFirstTakeUp(Connection c, String sql) throws SQLException {
-        Savepoint sp = c.setSavepoint();
-        try {
-            assertThatThrownBy(() -> exec(c, sql))
-                .as("RED STATE expected: the first take-up never changes%n  %s", sql)
-                .isInstanceOf(PSQLException.class)
-                .satisfies(e -> {
-                    assertThat(((PSQLException) e).getSQLState()).isEqualTo("P0001");
-                    assertThat(e.getMessage()).contains("never changes");
-                });
-        } finally {
-            c.rollback(sp);
-        }
-    }
-
-    private static void refusedByStamp(Connection c, String sql) throws SQLException {
-        Savepoint sp = c.setSavepoint();
-        try {
-            assertThatThrownBy(() -> exec(c, sql))
-                .as("RED STATE expected: the stamp never changes%n  %s", sql)
-                .isInstanceOf(PSQLException.class)
-                .satisfies(e -> {
-                    assertThat(((PSQLException) e).getSQLState()).isEqualTo("P0001");
-                    assertThat(e.getMessage()).contains("never changes");
-                });
-        } finally {
-            c.rollback(sp);
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // The one guard after the send
-    // ------------------------------------------------------------------
-
-    @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void a_sent_task_keeps_its_texts_and_itself() throws SQLException {
-        withServiceRole(c -> {
-            long sent = id(c, insertTask(30, "state", "'open'") + " RETURNING id");
-            long text = id(c, insertText(sent, "'dispatch'", "NULL") + " RETURNING id");
-            long sentWithoutText = id(c, insertTask(31, "state", "'active'") + " RETURNING id");
-
-            refusedByGuard(c, "UPDATE dispatch.task_text SET text = 'rewritten' WHERE id = " + text);
-            refusedByGuard(c, "DELETE FROM dispatch.task_text WHERE id = " + text);
-            refusedByGuard(c, "DELETE FROM dispatch.task WHERE id = " + sentWithoutText);
-
-            // An insert is not guarded: a transition adds a text to a sent task.
-            succeeds(c, insertText(sent, "'return'", "NULL"));
-        });
-    }
-
-    @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void a_draft_is_changed_and_deleted_texts_first() throws SQLException {
-        withServiceRole(c -> {
-            long draft = id(c, insertTask(40, "state", "'draft'") + " RETURNING id");
-            long text = id(c, insertText(draft, "'dispatch'", "NULL") + " RETURNING id");
-
-            assertThat(count(c, "UPDATE dispatch.task_text SET text = 'rewritten' WHERE id = " + text))
-                .as("a text of a draft is changed").isEqualTo(1);
-            assertThat(count(c, "DELETE FROM dispatch.task_text WHERE task_id = " + draft))
-                .as("its texts are deleted").isEqualTo(1);
-            assertThat(count(c, "DELETE FROM dispatch.task WHERE id = " + draft))
-                .as("and then the draft itself, under the runtime role's own DELETE").isEqualTo(1);
-        });
-    }
-
-    // ------------------------------------------------------------------
-    // The content of a sent task (V18)
-    // ------------------------------------------------------------------
-
-    /** Each frozen column, with a value it does not have yet. */
-    private static final List<String> CONTENT_WRITES = List.of(
-        "title = 'rewritten'",
-        "apparatus = 'design'",
-        "dispatch_metadata = '{\"pr\": \"https://example.org/pr/1\"}'");
-
-    @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void a_sent_task_keeps_its_title_apparatus_and_metadata_and_a_draft_does_not() throws SQLException {
-        withServiceRole(c -> {
-            long sent = id(c, insertTask(50, "state", "'open'") + " RETURNING id");
-            long draft = id(c, insertTask(51, "state", "'draft'") + " RETURNING id");
-            for (String write : CONTENT_WRITES) {
-                refusedByContentFreeze(c, "UPDATE dispatch.task SET " + write + " WHERE id = " + sent,
-                    "title, apparatus and dispatch_metadata are changed only while it is a draft");
-                succeeds(c, "UPDATE dispatch.task SET " + write + " WHERE id = " + draft);
-            }
-        });
-    }
-
-    @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void the_change_that_sends_a_draft_still_sets_its_content() throws SQLException {
-        withServiceRole(c -> {
-            long draft = id(c, insertTask(52, "state", "'draft'") + " RETURNING id");
-            succeeds(c, "UPDATE dispatch.task SET state = 'open', title = 'as sent', "
-                + "apparatus = 'design', dispatch_metadata = '{\"date\": \"2026-10-06\"}' "
-                + "WHERE id = " + draft);
-        });
-    }
-
-    @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void the_creation_stamps_never_change_not_even_on_a_draft() throws SQLException {
-        withServiceRole(c -> {
-            long draft = id(c, insertTask(53, "state", "'draft'") + " RETURNING id");
-            long sent = id(c, insertTask(54, "state", "'open'") + " RETURNING id");
-            for (long task : new long[] {draft, sent}) {
-                refusedByContentFreeze(c, "UPDATE dispatch.task SET created_at = created_at - "
-                    + "interval '1 day' WHERE id = " + task, "created_at and created_by");
-                refusedByContentFreeze(c, "UPDATE dispatch.task SET created_by = 'someone else' "
-                    + "WHERE id = " + task, "created_at and created_by");
-            }
-        });
-    }
-
-    @Test
-    @Disabled("rebuilt in T4: the database refuses a task row that breaks the shape of the task store")
-    void the_lifecycle_of_a_sent_task_stays_writable() throws SQLException {
-        withServiceRole(c -> {
-            long target = id(c, insertTask(55, "state, outcome", "'closed', 'accepted'") + " RETURNING id");
-            long sent = id(c, insertTask(56, "state", "'open'") + " RETURNING id");
-            String at = " WHERE id = " + sent;
-
-            succeeds(c, "UPDATE dispatch.task SET return_metadata = '{\"pr\": \"x\"}'" + at);
-            succeeds(c, "UPDATE dispatch.task SET not_before = now(), lapse_count = 1" + at);
-            succeeds(c, "UPDATE dispatch.task SET state = 'active', not_before = NULL, "
-                + "holder_subject = 'exec', holder_receipt_hash = 'hash', lease_expires_at = now(), "
-                + "state_changed_at = now(), state_changed_by = 'exec'" + at);
-            succeeds(c, "UPDATE dispatch.task SET state = 'on_hold', hold_reason = 'question', "
-                + "question_options = '{\"options\": [], \"free_text\": true}', "
-                + "lease_expires_at = NULL" + at);
-            succeeds(c, "UPDATE dispatch.task SET state = 'delivered', hold_reason = NULL, "
-                + "question_options = NULL" + at);
-            succeeds(c, "UPDATE dispatch.task SET state = 'closed', outcome = 'accepted', "
-                + "holder_subject = NULL, holder_receipt_hash = NULL, curated_in_id = " + target + at);
-            succeeds(c, "UPDATE dispatch.task SET return_metadata = '{\"pr\": \"y\"}', "
-                + "updated_at = now(), updated_by = 'kernel'" + at);
+            assertThat(count(c, "DELETE FROM dispatch.idempotency_key WHERE id = " + key))
+                .as("and an expired key is deleted under the runtime role (V6)").isEqualTo(1);
         });
     }
 
@@ -453,7 +298,8 @@ class TaskStoreShapeIT {
                 SubstrateDatabaseResource.SERVICE_ROLE, SubstrateDatabaseResource.SERVICE_PASSWORD)) {
             c.setAutoCommit(false);
             try {
-                exec(c, "SELECT set_config('app.tenant_id', '" + config("dispatch.tenant-id") + "', true)");
+                exec(c, "SELECT set_config('app.tenant_id', '" + config("dispatch.tenant-id")
+                    + "', true)");
                 probe.run(c);
             } finally {
                 c.rollback();
@@ -461,24 +307,42 @@ class TaskStoreShapeIT {
         }
     }
 
-    /** A task in the configured tenant and scope; numbers start high to stay clear of other tests. */
-    private static String insertTask(int number, String columns, String values) {
-        return "INSERT INTO dispatch.task (tenant_id, scope_id, selector_id, number, sub, title, "
-            + "apparatus, updated_at, " + columns + ") SELECT tenant_id, scope_id, id, "
-            + (9000 + number) + ", 0, 'probe', 'code', now(), " + values
-            + " FROM dispatch.selector WHERE name = 'sprint'";
+    /**
+     * A selector, a version and an instance of the configured tenant in a scope
+     * of their own, written under the runtime role; answers the instance.
+     */
+    private static long plantInstance(Connection c) throws SQLException {
+        String scope = "'" + UUID.randomUUID() + "'";
+        String tenant = "'" + config("dispatch.tenant-id") + "'";
+        long selector = id(c, "INSERT INTO dispatch.selector (tenant_id, scope_id, name) VALUES ("
+            + tenant + ", " + scope + ", 'shape') RETURNING id");
+        long version = id(c, "INSERT INTO dispatch.definition_version (tenant_id, scope_id, "
+            + "selector_id, version, verdict_required, outcome_required, state) VALUES (" + tenant
+            + ", " + scope + ", " + selector + ", 1, false, false, 'active') RETURNING id");
+        return id(c, "INSERT INTO dispatch.instance (tenant_id, scope_id, selector_id, number, "
+            + "definition_version_id) VALUES (" + tenant + ", " + scope + ", " + selector
+            + ", 1, " + version + ") RETURNING id");
     }
 
-    private static String insertTaskAt(int number, int sub) {
-        return "INSERT INTO dispatch.task (tenant_id, scope_id, selector_id, number, sub, title, "
-            + "apparatus, updated_at) SELECT tenant_id, scope_id, id, " + number + ", " + sub
-            + ", 'probe', 'code', now() FROM dispatch.selector WHERE name = 'sprint'";
+    /** A task of the instance at a sub, with the columns and values given. */
+    private static String insertTask(long instance, int sub, String columns, String values) {
+        return "INSERT INTO dispatch.task (tenant_id, scope_id, instance_id, sub, " + columns
+            + ") SELECT tenant_id, scope_id, id, " + sub + ", " + values
+            + " FROM dispatch.instance WHERE id = " + instance;
     }
 
-    private static String insertText(long task, String type, String suffix) {
-        return "INSERT INTO dispatch.task_text (tenant_id, scope_id, task_id, text_type, "
-            + "addendum_suffix, text) SELECT tenant_id, scope_id, id, " + type + ", " + suffix
-            + ", 'a text' FROM dispatch.task WHERE id = " + task;
+    /** The draft of a task, with the column and value given, the token left to its default. */
+    private static String insertDraft(long task, String column, String value) {
+        return "INSERT INTO dispatch.draft (tenant_id, scope_id, task_id, " + column
+            + ") SELECT tenant_id, scope_id, id, " + value + " FROM dispatch.task WHERE id = "
+            + task;
+    }
+
+    private static String insertText(long draft, String kind, String criterion) {
+        return "INSERT INTO dispatch.draft_text (tenant_id, scope_id, draft_id, kind, "
+            + "draft_criterion_id, media_type, body) SELECT tenant_id, scope_id, id, " + kind
+            + ", " + criterion + ", 'text/plain', 'a text' FROM dispatch.draft WHERE id = "
+            + draft;
     }
 
     /** The statement is refused by the named check constraint, and by nothing else. */
@@ -495,37 +359,15 @@ class TaskStoreShapeIT {
         }
     }
 
-    /** The statement is refused by the guard trigger after the send. */
-    private static void refusedByGuard(Connection c, String sql) throws SQLException {
+    /** The statement is refused by a foreign key, which deletes nothing along. */
+    private static void refusedByKey(Connection c, String sql, String what) throws SQLException {
         Savepoint sp = c.setSavepoint();
         try {
-            assertThatThrownBy(() -> exec(c, sql))
-                .as("RED STATE expected: the guard after the send must refuse%n  %s", sql)
-                .isInstanceOf(PSQLException.class)
-                .satisfies(e -> {
-                    assertThat(((PSQLException) e).getSQLState()).isEqualTo("P0001");
-                    assertThat(e.getMessage()).containsAnyOf("is frozen", "only a draft is deleted");
-                });
-        } finally {
-            c.rollback(sp);
-        }
-    }
-
-    /**
-     * The statement is refused by the content freeze of V18: the error class and
-     * form of the guard on the texts, with the sentence that names what is frozen.
-     */
-    private static void refusedByContentFreeze(Connection c, String sql, String frozen)
-            throws SQLException {
-        Savepoint sp = c.setSavepoint();
-        try {
-            assertThatThrownBy(() -> exec(c, sql))
-                .as("RED STATE expected: the content freeze must refuse%n  %s", sql)
-                .isInstanceOf(PSQLException.class)
-                .satisfies(e -> {
-                    assertThat(((PSQLException) e).getSQLState()).isEqualTo("P0001");
-                    assertThat(e.getMessage()).contains("is frozen").contains(frozen);
-                });
+            exec(c, sql);
+            fail("RED STATE expected: a key must refuse deleting %s%n  %s", what, sql);
+        } catch (PSQLException e) {
+            assertThat(e.getSQLState()).as("foreign key violation for: " + sql)
+                .isEqualTo("23503");
         } finally {
             c.rollback(sp);
         }

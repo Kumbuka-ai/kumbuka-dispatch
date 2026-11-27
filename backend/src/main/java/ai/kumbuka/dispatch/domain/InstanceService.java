@@ -296,6 +296,14 @@ public class InstanceService {
         instances.insert(new ExternalReference(scopeId, instance.id, kind, value, act.id()));
     }
 
+    /**
+     * The instance as it stands now, for a refusal of a call on a task of it
+     * that names the instance: a task created under a closed instance.
+     */
+    InstanceView standing(Actor actor, InstanceAddress address, Instance instance) {
+        return view(actor, address, instance, versionOf(instance.scopeId, instance));
+    }
+
     private int versionOf(UUID scopeId, Instance instance) {
         return definitions.version(scopeId, instance.definitionVersionId())
             .map(DefinitionVersion::version)

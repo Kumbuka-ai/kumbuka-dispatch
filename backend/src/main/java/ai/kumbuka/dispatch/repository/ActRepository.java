@@ -100,6 +100,20 @@ public class ActRepository {
             .getSingleResult());
     }
 
+    /**
+     * The time of the last act on a task: its conflict token from its first
+     * send on (D29). Empty where the task has no act, as a draft never sent.
+     */
+    @Transactional
+    public Optional<Instant> lastTaskAt(UUID scopeId, long taskId) {
+        return Optional.ofNullable(em.createQuery("""
+                SELECT MAX(a.at) FROM Act a WHERE a.taskId = :task AND a.scopeId = :scope
+                """, Instant.class)
+            .setParameter("task", taskId)
+            .setParameter(P_SCOPE, scopeId)
+            .getSingleResult());
+    }
+
     /** Appends an act and writes it at once, so a refusal of the store falls in this call. */
     @Transactional
     public Act append(Act act) {

@@ -38,4 +38,16 @@ public interface ToolDescriptions {
 
     @Message
     String referenceDetach();
+
+    @Message
+    String create();
+
+    @Message
+    String update();
+
+    @Message
+    String delete();
+
+    @Message
+    String send();
 }

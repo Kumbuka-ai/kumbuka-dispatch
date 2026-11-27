@@ -238,3 +238,26 @@ for ending a reference the instance does not carry; and `invalidInstanceAddress`
 `ADDRESS_MALFORMED` for an address outside the form `dispatch://<scope>/<selector>/<number>`.
 `VALUE_UNDECLARED` stays a code this service does not carry: a value of the version's vocabulary
 outside it is `ARGUMENT_INVALID`, as `SharedCodeTableTest` records.
+
+## The amendment of 2026-11-24, second: the draft and the commission (REA-0010 S5, fourth order)
+
+From REA-0010 S5, its catalogues "Calls that are not transitions" and "Transitions of a task",
+D16, D24, D29 and D30 as revised on 2026-11-24 (platform-specs `0cdc111`), DEC-0014, DEC-0015,
+C7.7 and C10.4, and the operator's answers of 2026-11-24 to the questions of this order: `create`,
+`update`, `delete` and `send` join the six calls, each under `dispatch.task.commission`. `create`
+is the plain POST on the collection, with and without `parent`; `update` the PATCH and `delete`
+the DELETE on the address of a task; `send` a custom method on it. Eight messages join the table,
+each written with this surface and the service's proposal; no code joins the catalogue, each is
+raised under a code the table names. `invalidApparatus`, `invalidClear`, `invalidClearAndValue`
+and `invalidOnlyWithoutParent`, under `ARGUMENT_INVALID`, for a role outside the form of D16, a
+path in `clear` that is none of the fields a draft may empty (C7.7), a field both cleared and
+given, and a trigger or references beside a parent. `activityMissing`, under `ARGUMENT_MISSING`,
+for a task that names no activity in a version that declares several; `activityUndeclared` and
+`concernsUnrelated`, under `ARGUMENT_INVALID`, for an activity the version does not declare and a
+task concerned that is no other task of the same instance; each names the field under
+`data.offenders` and never the value. `draftIncomplete`, under `TRANSITION_REFUSED`, for the send
+of a draft that names no activity, with the state and the calls open, the update among them. A
+call on a task outside draft is refused with the messages of the state that stand already, and a
+stale token of a draft with `conflictTokenStale`, which carries the task as it stands (DEC-0041).
+A repeat under a spent key with other arguments, or after the draft was deleted, is
+`idempotencyKeyReused`.

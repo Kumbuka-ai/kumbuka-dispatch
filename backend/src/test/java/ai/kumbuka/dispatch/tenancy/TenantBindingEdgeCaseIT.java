@@ -7,19 +7,22 @@
  */
 package ai.kumbuka.dispatch.tenancy;
 
+import ai.kumbuka.dispatch.domain.TaskService;
 import io.quarkus.hibernate.orm.PersistenceUnitExtension;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.flywaydb.core.api.callback.Event;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * The paths the tenancy machinery takes when something is wrong.
@@ -48,9 +51,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
 class TenantBindingEdgeCaseIT {
 
-    private static final String REBUILT =
-        "rebuilt in T4: a write through the ORM carries the bound tenant and reads back what it wrote";
-
+    @Inject TaskService tasks;
     @Inject TenantContext tenantContext;
     @Inject TenantDatabaseBinding binding;
     @Inject TenantResolver resolver;
@@ -191,10 +192,44 @@ class TenantBindingEdgeCaseIT {
     // The repository's count, which the fail-closed probe asserts on
     // -----------------------------------------------------------------------
 
+    /**
+     * A write through the ORM carries the bound tenant, and a read through it
+     * reads back what it wrote under that tenant and nothing under another:
+     * the count the fail-closed probe asserts on is a count of this tenant's
+     * rows.
+     */
     @Test
-    @Disabled(REBUILT)
-    void the_orm_read_is_scoped_to_the_bound_tenant() {
-        fail(REBUILT);
+    void the_orm_read_is_scoped_to_the_bound_tenant() throws Exception {
+        UUID scope = UUID.randomUUID();
+        UUID tenant = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        TenantTasks.plant(tenant, scope);
+        try (AutoCloseable ignored = tenantContext.bind(tenant)) {
+            tasks.create(TenantTasks.ACTOR, "probe", scope, TenantTasks.SELECTOR,
+                TenantTasks.create("written under the tenant", null), TenantTasks.PROVENANCE);
+        }
+        assertThat(tasksIn(scope, tenant))
+            .as("the write carried the bound tenant: read back under it by the service role")
+            .isEqualTo(1);
+        assertThat(tasksIn(scope, other))
+            .as("RED STATE, observed: under another tenant the same read finds nothing, so the "
+                + "one above was the tenant's row")
+            .isZero();
+    }
+
+    /** The tasks of a scope the service role reads with a tenant bound, past the ORM. */
+    private static long tasksIn(UUID scope, UUID tenant) throws SQLException {
+        try (Connection c = Db.asService()) {
+            Db.bindTenant(c, tenant);
+            try (PreparedStatement st = c.prepareStatement(
+                    "SELECT count(*) FROM dispatch.task WHERE scope_id = ?")) {
+                st.setObject(1, scope);
+                try (ResultSet rs = st.executeQuery()) {
+                    rs.next();
+                    return rs.getLong(1);
+                }
+            }
+        }
     }
 
     // -----------------------------------------------------------------------

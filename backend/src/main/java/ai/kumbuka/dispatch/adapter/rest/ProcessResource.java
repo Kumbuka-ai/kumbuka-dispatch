@@ -7,10 +7,12 @@
  */
 package ai.kumbuka.dispatch.adapter.rest;
 
+import ai.kumbuka.dispatch.adapter.payload.AddressPayload;
 import ai.kumbuka.dispatch.adapter.payload.CallForm;
 import ai.kumbuka.dispatch.adapter.payload.DeclaredCalls;
 import ai.kumbuka.dispatch.adapter.payload.DefinitionPayload;
 import ai.kumbuka.dispatch.adapter.payload.InstancePayload;
+import ai.kumbuka.dispatch.adapter.payload.TaskPayload;
 import ai.kumbuka.dispatch.domain.Actor;
 import ai.kumbuka.dispatch.surface.AddressParser;
 import ai.kumbuka.dispatch.surface.ArgumentPath;
@@ -29,8 +31,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HttpMethod;
+import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -43,9 +47,11 @@ import jakarta.ws.rs.core.UriInfo;
 import org.jspecify.annotations.Nullable;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
@@ -80,6 +86,31 @@ public class ProcessResource {
     /** The argument a closing takes its fence in; on this surface it arrives as {@code If-Match}. */
     private static final String CONFLICT_TOKEN = "conflict_token";
 
+    /** The argument of an idempotency key; on this surface it arrives as its header. */
+    private static final String IDEMPOTENCY_KEY = "idempotency_key";
+
+    /** The header that carries the idempotency key on this surface (C10.3, C10.4). */
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /** The method of a field write. */
+    private static final String METHOD_PATCH = "PATCH";
+
+    /** The argument and path parameter of the scope. */
+    private static final String SCOPE = "scope";
+
+    /** The argument and path parameter of the selector. */
+    private static final String SELECTOR = "selector";
+
+    /** The path parameter of an object in a collection. */
+    private static final String ID = "id";
+
+    /** The argument of an object's address; on this surface the path carries it. */
+    private static final String ADDRESS = "address";
+
+    /** The arguments the path or a header carries on this surface, never the body. */
+    private static final java.util.Set<String> PATH_OR_HEADER = java.util.Set.of(SCOPE,
+        SELECTOR, ADDRESS, CONFLICT_TOKEN, IDEMPOTENCY_KEY);
+
     /** A body read as the arguments of a call: a JSON object. */
     private static final TypeReference<Map<String, Object>> OBJECT = new TypeReference<>() {
     };
@@ -92,8 +123,8 @@ public class ProcessResource {
     /** GET on a collection: {@code read_definition}, the one call carried there. */
     @GET
     @Path("{selector}")
-    public DefinitionPayload collectionGet(@PathParam("scope") String scope,
-                                           @PathParam("selector") String segment,
+    public DefinitionPayload collectionGet(@PathParam(SCOPE) String scope,
+                                           @PathParam(SELECTOR) String segment,
                                            @Context HttpHeaders http, @Context UriInfo uri) {
         Surface surface = RefusalMapper.surfaceOf(http);
         String[] at = CustomMethod.split(segment);
@@ -103,8 +134,8 @@ public class ProcessResource {
         VerbName call = VerbName.of(verb, surface);
 
         Map<String, Object> arguments = new LinkedHashMap<>();
-        arguments.put("scope", scope);
-        arguments.put("selector", at[0]);
+        arguments.put(SCOPE, scope);
+        arguments.put(SELECTOR, at[0]);
         uri.getQueryParameters().forEach((name, values) -> {
             if (arguments.containsKey(name) || values.size() > 1) {
                 throw new SurfaceException(verb.argument(name)
@@ -122,16 +153,19 @@ public class ProcessResource {
     }
 
     /**
-     * POST on a collection with a colon verb: {@code start}, the one call
-     * carried there. Answers 201 with the instance, its address under {@code
-     * Location} and its conflict token as {@code ETag}, as the platform's
-     * vocabulary answers a thing created.
+     * POST on a collection: {@code create} as the plain POST, and {@code
+     * start} with its colon verb. Each answers 201 with what it created, its
+     * address under {@code Location} and its conflict token as {@code ETag},
+     * as the platform's vocabulary answers a thing created. {@code create}
+     * takes its idempotency key from the header {@code Idempotency-Key} and
+     * nowhere else (C10.4).
      */
     @POST
     @Path("{selector}")
-    public Response collectionPost(@PathParam("scope") String scope,
-                                   @PathParam("selector") String segment,
-                                   @Nullable String body, @Context HttpHeaders http) {
+    public Response collectionPost(@PathParam(SCOPE) String scope,
+                                   @PathParam(SELECTOR) String segment,
+                                   @Nullable String body, @Context HttpHeaders http,
+                                   @Context UriInfo uri) {
         Surface surface = RefusalMapper.surfaceOf(http);
         String[] at = CustomMethod.split(segment);
         CustomMethod route = CustomMethod.find(HttpMethod.POST, CustomMethod.Depth.COLLECTION, at[1])
@@ -140,11 +174,27 @@ public class ProcessResource {
         VerbName call = VerbName.of(verb, surface);
 
         Map<String, Object> arguments = body(call, body);
-        once(verb, call, arguments, "scope", scope);
-        once(verb, call, arguments, "selector", at[0]);
+        Actor actor;
+        if (verb == ProcessVerb.CREATE) {
+            closedOutsideTheBody(verb, call, arguments, uri);
+            key(call, verb, http.getRequestHeader(IDEMPOTENCY_KEY_HEADER))
+                .ifPresent(key -> arguments.put(IDEMPOTENCY_KEY, key));
+            once(verb, call, arguments, SCOPE, scope);
+            once(verb, call, arguments, SELECTOR, at[0]);
+            CallForm.Create create = CallForm.create(surface, arguments);
+            actor = caller.current();
+            verbs.resolveScopeToWrite(actor, create.scope());
+            TaskPayload created = calls.create(actor, create, surface);
+            return Response.created(URI.create(path(created.address())))
+                .tag(created.conflictToken())
+                .entity(created)
+                .build();
+        }
+        once(verb, call, arguments, SCOPE, scope);
+        once(verb, call, arguments, SELECTOR, at[0]);
 
         CallForm.Start start = CallForm.start(surface, arguments);
-        Actor actor = caller.current();
+        actor = caller.current();
         verbs.resolveScopeToWrite(actor, start.scope());
         InstancePayload started = calls.start(actor, start, surface);
         return Response.created(URI.create("/api/" + start.scope() + "/" + start.selector()
@@ -155,28 +205,91 @@ public class ProcessResource {
     }
 
     /**
-     * POST on an instance with a colon verb: {@code conclude}, {@code
-     * withdraw}, {@code reference_attach} and {@code reference_detach}. The
-     * instance is the one the path names; a closing takes its conflict token
-     * from {@code If-Match} (C10.3). Answers the instance, with its conflict
-     * token as {@code ETag}.
+     * PATCH on a task: {@code update}, the one call carried by this method.
+     * The task is the one the path names; its conflict token arrives as {@code
+     * If-Match} (C10.3). Answers the task, with its conflict token as {@code
+     * ETag}.
+     */
+    @PATCH
+    @Path("{selector}/{id}")
+    public Response itemPatch(@PathParam(SCOPE) String scope,
+                              @PathParam(SELECTOR) String selector,
+                              @PathParam(ID) String segment,
+                              @Nullable String body, @Context HttpHeaders http,
+                              @Context UriInfo uri) {
+        Surface surface = RefusalMapper.surfaceOf(http);
+        String[] at = CustomMethod.split(segment);
+        CustomMethod route = CustomMethod.find(METHOD_PATCH, CustomMethod.Depth.ITEM, at[1])
+            .orElseThrow(() -> notHere(surface, CustomMethod.Depth.ITEM));
+        ProcessVerb verb = route.verb();
+        Map<String, Object> arguments = onATask(verb, surface,
+            address(scope, selector, at[0]), body, http, uri);
+
+        CallForm.Update update = CallForm.update(surface, arguments);
+        Actor actor = caller.current();
+        verbs.resolveScopeToWrite(actor, update.address().instance().scope());
+        TaskPayload updated = calls.update(actor, update, surface);
+        return Response.ok(updated).tag(updated.conflictToken()).build();
+    }
+
+    /**
+     * DELETE on a task: {@code delete}, the one call carried by this method.
+     * The task is the one the path names; its conflict token arrives as {@code
+     * If-Match}, and the call takes nothing else, so it reads no body.
+     * Answers the address the draft had.
+     */
+    @DELETE
+    @Path("{selector}/{id}")
+    public AddressPayload itemDelete(@PathParam(SCOPE) String scope,
+                                     @PathParam(SELECTOR) String selector,
+                                     @PathParam(ID) String segment,
+                                     @Context HttpHeaders http, @Context UriInfo uri) {
+        Surface surface = RefusalMapper.surfaceOf(http);
+        String[] at = CustomMethod.split(segment);
+        CustomMethod route = CustomMethod.find(HttpMethod.DELETE, CustomMethod.Depth.ITEM, at[1])
+            .orElseThrow(() -> notHere(surface, CustomMethod.Depth.ITEM));
+        ProcessVerb verb = route.verb();
+        Map<String, Object> arguments = onATask(verb, surface,
+            address(scope, selector, at[0]), null, http, uri);
+
+        CallForm.OnADraft delete = CallForm.onADraft(verb, surface, arguments);
+        Actor actor = caller.current();
+        verbs.resolveScopeToWrite(actor, delete.address().instance().scope());
+        return calls.delete(actor, delete);
+    }
+
+    /**
+     * POST on an object with a colon verb: on an instance {@code conclude},
+     * {@code withdraw}, {@code reference_attach} and {@code reference_detach},
+     * and on a task {@code send}. The object is the one the path names; a
+     * closing and a send take the conflict token from {@code If-Match}
+     * (C10.3). Answers the object, with its conflict token as {@code ETag}.
      */
     @POST
     @Path("{selector}/{id}")
-    public Response itemPost(@PathParam("scope") String scope,
-                             @PathParam("selector") String selector,
-                             @PathParam("id") String segment,
-                             @Nullable String body, @Context HttpHeaders http) {
+    public Response itemPost(@PathParam(SCOPE) String scope,
+                             @PathParam(SELECTOR) String selector,
+                             @PathParam(ID) String segment,
+                             @Nullable String body, @Context HttpHeaders http,
+                             @Context UriInfo uri) {
         Surface surface = RefusalMapper.surfaceOf(http);
         String[] at = CustomMethod.split(segment);
         CustomMethod route = CustomMethod.find(HttpMethod.POST, CustomMethod.Depth.ITEM, at[1])
             .orElseThrow(() -> notHere(surface, CustomMethod.Depth.ITEM));
         ProcessVerb verb = route.verb();
+        if (verb == ProcessVerb.SEND) {
+            Map<String, Object> arguments = onATask(verb, surface,
+                address(scope, selector, at[0]), body, http, uri);
+            CallForm.OnADraft send = CallForm.onADraft(verb, surface, arguments);
+            Actor actor = caller.current();
+            verbs.resolveScopeToWrite(actor, send.address().instance().scope());
+            TaskPayload sent = calls.send(actor, send, surface);
+            return Response.ok(sent).tag(sent.conflictToken()).build();
+        }
         VerbName call = VerbName.of(verb, surface);
 
         Map<String, Object> arguments = body(call, body);
-        once(verb, call, arguments, "address",
-            AddressParser.SCHEME + "://" + scope + "/" + selector + "/" + at[0]);
+        once(verb, call, arguments, ADDRESS, address(scope, selector, at[0]));
         String fence = http.getHeaderString(HttpHeaders.IF_MATCH);
         if (fence != null && verb.argument(CONFLICT_TOKEN).isPresent()) {
             once(verb, call, arguments, CONFLICT_TOKEN, unquoted(fence));
@@ -200,6 +313,73 @@ public class ProcessResource {
             default -> throw notHere(surface, CustomMethod.Depth.ITEM);
         };
         return Response.ok(answered).tag(answered.conflictToken()).build();
+    }
+
+    /**
+     * The arguments of a call on a task: the body, closed against what the
+     * call takes there, the address the path names, and the conflict token
+     * of {@code If-Match}. A query is refused, since the call takes nothing
+     * there.
+     */
+    private Map<String, Object> onATask(ProcessVerb verb, Surface surface, String address,
+                                        @Nullable String body, HttpHeaders http, UriInfo uri) {
+        VerbName call = VerbName.of(verb, surface);
+        Map<String, Object> arguments = body(call, body);
+        closedOutsideTheBody(verb, call, arguments, uri);
+        once(verb, call, arguments, ADDRESS, address);
+        String fence = http.getHeaderString(HttpHeaders.IF_MATCH);
+        if (fence != null) {
+            once(verb, call, arguments, CONFLICT_TOKEN, unquoted(fence));
+        }
+        return arguments;
+    }
+
+    /** The address of the object the path names. */
+    private static String address(String scope, String selector, String id) {
+        return AddressParser.SCHEME + "://" + scope + "/" + selector + "/" + id;
+    }
+
+    /**
+     * Refuses an argument a call on this surface takes outside the body: any
+     * query, and the idempotency key, which travels as {@code Idempotency-Key}
+     * and nowhere else (C7.8, C10.4). The refusal lists what the body takes
+     * and names nothing that arrived.
+     */
+    private static void closedOutsideTheBody(ProcessVerb verb, VerbName call,
+                                             Map<String, Object> arguments, UriInfo uri) {
+        if (!uri.getQueryParameters().isEmpty() || arguments.get(IDEMPOTENCY_KEY) != null) {
+            List<ArgumentPath> accepts = new ArrayList<>();
+            verb.topArguments().stream()
+                .filter(argument -> !PATH_OR_HEADER.contains(argument.name()))
+                .forEach(argument -> accepts.add(ArgumentPath.of(argument)));
+            if (verb.hasFields()) {
+                accepts.add(ArgumentPath.FIELDS);
+            }
+            throw new SurfaceException(Refusal.argumentUnknown(call, false, accepts));
+        }
+    }
+
+    /**
+     * The idempotency key the header {@code Idempotency-Key} carries for a
+     * call that takes one: a header sent empty is an empty key, which the form
+     * check refuses, and never no key; a header sent twice is refused as given
+     * twice. Empty where the request carries no such header, or the call takes
+     * no key.
+     */
+    static Optional<String> key(VerbName call, ProcessVerb verb, @Nullable List<String> sent) {
+        if (verb.argument(IDEMPOTENCY_KEY).isEmpty() || sent == null || sent.isEmpty()) {
+            return Optional.empty();
+        }
+        if (sent.size() > 1) {
+            throw new SurfaceException(Refusal.argumentInvalid(call,
+                ArgumentPath.of(verb.declared(IDEMPOTENCY_KEY)), Form.ONCE));
+        }
+        return Optional.of(sent.get(0).strip());
+    }
+
+    /** The REST path of a complete address. */
+    private static String path(String address) {
+        return "/api/" + address.substring((AddressParser.SCHEME + "://").length());
     }
 
     /**

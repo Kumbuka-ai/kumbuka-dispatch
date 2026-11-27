@@ -10,6 +10,7 @@ package ai.kumbuka.dispatch.adapter.payload;
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.domain.InstanceView;
 import ai.kumbuka.dispatch.surface.NextList;
+import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Refusal;
 import ai.kumbuka.dispatch.surface.RefusalCode;
 import ai.kumbuka.dispatch.surface.Surface;
@@ -30,8 +31,10 @@ import java.util.Optional;
  * so are a locked scope and one the caller may only read. A refusal of an act
  * on an instance carries what the domain hands with it: the instance as it
  * stands, the paths of the fields or parts concerned, or the unfinished tasks
- * with the confirmation handed out now. Every other reason is a defect of ours
- * under this call.
+ * with the confirmation handed out now. A refusal of a call on a task carries
+ * the task as it stands, or the paths of the fields of its draft concerned. A
+ * repeat under a spent key is said as such and names nothing of the key. Every
+ * other reason is a defect of ours under this call.
  */
 public final class CallRefusals {
 
@@ -57,10 +60,28 @@ public final class CallRefusals {
                 .map(at -> Refusal.instanceClosed(call, situation(at, surface)))
                 .orElseGet(() -> UnexpectedFailures.refuse(call, refused));
             case CONFLICT_TOKEN_MISSING -> Refusal.conflictTokenMissing(call);
-            case CONFLICT_TOKEN_STALE -> standing(refused)
-                .map(at -> Refusal.instanceTokenStale(call, situation(at, surface),
-                    at.address().complete(), at.fields(), at.conflictToken(), SERVICE))
+            case CONFLICT_TOKEN_STALE -> refused.task()
+                .map(task -> Refusal.conflictTokenStale(call, NextList.situation(task, surface),
+                    task.address().complete(), task.fields(), task.conflictToken(), SERVICE))
+                .or(() -> standing(refused)
+                    .map(at -> Refusal.instanceTokenStale(call, situation(at, surface),
+                        at.address().complete(), at.fields(), at.conflictToken(), SERVICE)))
                 .orElseGet(() -> UnexpectedFailures.refuse(call, refused));
+            case TRANSITION_NOT_PERMITTED -> refused.task()
+                .map(task -> Refusal.ofState(call, NextList.situation(task, surface),
+                    task.closed()))
+                .orElseGet(() -> UnexpectedFailures.refuse(call, refused));
+            case DRAFT_INCOMPLETE -> refused.task()
+                .map(task -> Refusal.draftIncomplete(call, NextList.situation(task, surface),
+                    VerbName.of(ProcessVerb.UPDATE, surface)))
+                .orElseGet(() -> UnexpectedFailures.refuse(call, refused));
+            case IDEMPOTENCY_KEY_REUSED -> Refusal.idempotencyKeyReused(call);
+            case ACTIVITY_MISSING -> Refusal.ofDraft(call, RefusalCode.Message.ACTIVITY_MISSING,
+                refused.offenders());
+            case ACTIVITY_UNDECLARED -> Refusal.ofDraft(call,
+                RefusalCode.Message.ACTIVITY_UNDECLARED, refused.offenders());
+            case CONCERNS_UNRELATED -> Refusal.ofDraft(call,
+                RefusalCode.Message.CONCERNS_UNRELATED, refused.offenders());
             case CONFIRMATION_REQUIRED, CONFIRMATION_STALE -> refused.confirmation()
                 .map(confirmation -> Refusal.tasksUnfinished(call, refused.offenders(),
                     confirmation,

@@ -266,12 +266,14 @@ class ReadDefinitionIT {
         assertThat(verb.statusCode()).as("a colon verb a collection does not carry")
             .isEqualTo(405);
         assertThat(reason(verb)).isEqualTo("VERB_NOT_CARRIED");
-        assertThat(verb.jsonPath().getList("data.accepts")).containsExactly(CALL, "start");
+        assertThat(verb.jsonPath().getList("data.accepts"))
+            .containsExactly(CALL, "start", "create");
         assertThat(verb.header("Allow")).isEqualTo("GET, POST");
-        Response method = given().post(collection(SLUG, selector));
-        assertThat(method.statusCode()).as("a POST at a collection without the colon verb")
+        Response method = given().put(collection(SLUG, selector));
+        assertThat(method.statusCode()).as("a method no route at a collection takes")
             .isEqualTo(405);
-        assertThat(method.jsonPath().getList("data.accepts")).containsExactly(CALL, "start");
+        assertThat(method.jsonPath().getList("data.accepts"))
+            .containsExactly(CALL, "start", "create");
 
         assertThat(mcpReason(Map.of(SELECTOR_ARG, selector))).as("a scope missing")
             .isEqualTo("ARGUMENT_MISSING");

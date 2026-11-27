@@ -525,6 +525,38 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
     }
 
     // ======================================================================
+    // The ones about a draft the caller may see
+    // ======================================================================
+
+    /**
+     * A draft that names no activity was to be sent: {@code
+     * TRANSITION_REFUSED} with its state and the calls open on it, the way out
+     * being the update that names one.
+     */
+    public static Refusal draftIncomplete(VerbName call, Situation at, VerbName update) {
+        return of(Message.DRAFT_INCOMPLETE, Texts.refusals().draftIncomplete(call, update),
+            Data.attempted(call).situation(at));
+    }
+
+    /**
+     * A refusal of what a draft is to hold, decided against the version of its
+     * instance or the instance's tasks, by the rule it broke: the field by its
+     * path in {@code data.offenders}, never the value.
+     *
+     * @param paths the paths the kernel gives, the declared names of the call's fields
+     */
+    public static Refusal ofDraft(VerbName call, Message rule, List<String> paths) {
+        RefusalMessages refusals = Texts.refusals();
+        Data data = Data.attempted(call).offenders(paths);
+        return switch (rule) {
+            case ACTIVITY_MISSING -> of(rule, refusals.activityMissing(call), data);
+            case ACTIVITY_UNDECLARED -> of(rule, refusals.activityUndeclared(call), data);
+            case CONCERNS_UNRELATED -> of(rule, refusals.concernsUnrelated(call), data);
+            default -> throw new IllegalArgumentException(rule + " is no rule of a draft");
+        };
+    }
+
+    // ======================================================================
     // The ones decided before a task is resolved: no state travels, because
     // naming one would tell a task the caller may see from one it may not
     // ======================================================================
@@ -801,6 +833,10 @@ public record Refusal(RefusalCode code, String message, @Nullable Data data) {
             case TAG_WITHDRAWN -> refusals.invalidTagWithdrawn(call, at);
             case TAG_FILTER -> refusals.invalidTagFilter(call, at);
             case INSTANCE_ADDRESS -> refusals.invalidInstanceAddress(call, at);
+            case APPARATUS -> refusals.invalidApparatus(call, at);
+            case CLEAR -> refusals.invalidClear(call, at);
+            case CLEAR_AND_VALUE -> refusals.invalidClearAndValue(call, at);
+            case ONLY_WITHOUT_PARENT -> refusals.invalidOnlyWithoutParent(call, at);
         };
     }
 }

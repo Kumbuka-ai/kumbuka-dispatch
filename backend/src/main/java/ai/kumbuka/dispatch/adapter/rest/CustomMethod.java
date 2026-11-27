@@ -43,8 +43,8 @@ public enum CustomMethod {
     READ_DEFINITION("read_definition", HttpMethod.GET, Depth.COLLECTION, false),
 
     /**
-     * A custom method on the collection: the plain POST on it stays for
-     * {@code create}, which starts an instance with its first task.
+     * A custom method on the collection: the plain POST on it is {@code
+     * create}, which without a parent starts an instance with its first task.
      */
     START("start", HttpMethod.POST, Depth.COLLECTION, true),
 
@@ -57,7 +57,23 @@ public enum CustomMethod {
      * ended it, and a DELETE would promise that it goes.
      */
     REFERENCE_ATTACH("reference_attach", HttpMethod.POST, Depth.ITEM, true),
-    REFERENCE_DETACH("reference_detach", HttpMethod.POST, Depth.ITEM, true);
+    REFERENCE_DETACH("reference_detach", HttpMethod.POST, Depth.ITEM, true),
+
+    /**
+     * The plain POST on the collection, with and without a parent in the
+     * body: the parent names the instance the task joins, and without one the
+     * call starts an instance with the task as its first (operator,
+     * 2026-11-24).
+     */
+    CREATE("create", HttpMethod.POST, Depth.COLLECTION, false),
+
+    /** The plain PATCH on the address of a task. */
+    UPDATE("update", "PATCH", Depth.ITEM, false),
+
+    /** The plain DELETE on the address of a task: the draft goes. */
+    DELETE("delete", HttpMethod.DELETE, Depth.ITEM, false),
+
+    SEND("send", HttpMethod.POST, Depth.ITEM, true);
 
     /** Where a route acts. */
     public enum Depth {

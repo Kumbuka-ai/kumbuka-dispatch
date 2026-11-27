@@ -58,9 +58,9 @@ class StoreLineStartIT {
         try (Connection c = Db.asAdmin()) {
             assertThat(strings(c, "SELECT version FROM dispatch.flyway_schema_history "
                     + "WHERE success AND version IS NOT NULL ORDER BY installed_rank"))
-                .as("the database holds the five versions of the store line, in their order, and "
+                .as("the database holds the six versions of the store line, in their order, and "
                     + "no version of the line before it")
-                .containsExactly("1", "2", "3", "4", "5");
+                .containsExactly("1", "2", "3", "4", "5", "6");
             assertThat(strings(c, "SELECT table_name FROM information_schema.tables "
                     + "WHERE table_schema = 'dispatch' AND table_name IN "
                     + "('instance', 'act', 'task_text', 'task_tag', 'task_idempotency_key') "

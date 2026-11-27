@@ -353,4 +353,28 @@ public interface RefusalMessages {
 
     @Message
     String invalidInstanceAddress(VerbName call, ArgumentPath path);
+
+    @Message
+    String invalidApparatus(VerbName call, ArgumentPath path);
+
+    @Message
+    String invalidClear(VerbName call, ArgumentPath path);
+
+    @Message
+    String invalidClearAndValue(VerbName call, ArgumentPath path);
+
+    @Message
+    String invalidOnlyWithoutParent(VerbName call, ArgumentPath path);
+
+    @Message
+    String activityMissing(VerbName call);
+
+    @Message
+    String activityUndeclared(VerbName call);
+
+    @Message
+    String concernsUnrelated(VerbName call);
+
+    @Message
+    String draftIncomplete(VerbName call, VerbName update);
 }

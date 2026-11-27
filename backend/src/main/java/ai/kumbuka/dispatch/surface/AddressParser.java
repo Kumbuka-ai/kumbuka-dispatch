@@ -9,6 +9,7 @@ package ai.kumbuka.dispatch.surface;
 
 import ai.kumbuka.dispatch.domain.ExchangeAddress;
 import ai.kumbuka.dispatch.domain.InstanceAddress;
+import ai.kumbuka.dispatch.domain.TaskAddress;
 
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -155,6 +156,23 @@ public final class AddressParser {
         }
         String[] parts = rest.split("/", -1);
         return parts.length == 3 ? instanceOf(parts[0], parts[1], parts[2]) : Optional.empty();
+    }
+
+    /**
+     * The task a complete address {@code dispatch://<scope>/<selector>/<number>.<sub>}
+     * names, where every part is in the grammar and the number is one of an
+     * instance; empty otherwise. A trailing slash changes nothing about what
+     * is addressed and is tolerated.
+     */
+    public static Optional<TaskAddress> taskOf(String raw) {
+        return partsOf(raw).flatMap(parts -> {
+            Matcher m = ID.matcher(parts.id());
+            if (!m.matches()) {
+                return Optional.empty();
+            }
+            return instanceOf(parts.scope(), parts.selector(), m.group(1))
+                .map(instance -> new TaskAddress(instance, Integer.parseInt(m.group(2))));
+        });
     }
 
     // ======================================================================

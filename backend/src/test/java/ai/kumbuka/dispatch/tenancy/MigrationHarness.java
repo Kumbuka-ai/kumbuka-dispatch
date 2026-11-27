@@ -150,15 +150,29 @@ final class MigrationHarness implements AutoCloseable {
      */
     void migrateLine(String url, String migrator, String password, String location,
                      Callback... callbacks) {
-        Flyway.configure()
+        migrateLineTo(url, migrator, password, location, null, callbacks);
+    }
+
+    /**
+     * The same, stopping at a named version: to stand a database in the state
+     * an earlier release left, fill it as that release wrote, and let the next
+     * migration run against it.
+     *
+     * @param target the version to stop at, or null for all of them
+     */
+    void migrateLineTo(String url, String migrator, String password, String location,
+                       String target, Callback... callbacks) {
+        var flyway = Flyway.configure()
             .dataSource(url, migrator, password)
             .schemas("dispatch")
             .defaultSchema("dispatch")
             .createSchemas(true)
             .locations(location)
-            .callbacks(callbacks)
-            .load()
-            .migrate();
+            .callbacks(callbacks);
+        if (target != null) {
+            flyway = flyway.target(org.flywaydb.core.api.MigrationVersion.fromVersion(target));
+        }
+        flyway.load().migrate();
     }
 
     /** Runs statements as the migrating role, for staging a pre-upgrade state. */
