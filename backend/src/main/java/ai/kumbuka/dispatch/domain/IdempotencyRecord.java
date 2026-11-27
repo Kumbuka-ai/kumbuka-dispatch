@@ -84,10 +84,10 @@ public class IdempotencyRecord extends RuntimeRow {
      */
     static IdempotencyRecord ofClaim(UUID scopeId, String callerSubject, String key, long actId,
                                      String argumentDigest, Instant createdAt) {
-        IdempotencyRecord record = new IdempotencyRecord(scopeId, callerSubject, key,
+        IdempotencyRecord claimKey = new IdempotencyRecord(scopeId, callerSubject, key,
             argumentDigest, createdAt);
-        record.actId = actId;
-        return record;
+        claimKey.actId = actId;
+        return claimKey;
     }
 
     /** The task the first call created; empty once that draft was deleted, and for a claim. */
