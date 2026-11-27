@@ -42,11 +42,19 @@ import static org.junit.jupiter.api.Assertions.fail;
  * with {@code IDEMPOTENCY_KEY_REUSED} once the first committed, and leaves no
  * row.
  *
- * <p>The red state of each case under one key is the read the lock replaces,
- * observed while the first is open: a read of the ledger without the lock
- * finds no key, and a second create deciding on it would create a second task
- * under the key. The case under two keys observes its red state against the
- * case under one: two keys are two calls, and two tasks stand.
+ * <p>The red state of the four executable cases under one key --
+ * {@link #an_overlapping_create_under_one_key_answers_the_first_task},
+ * {@link #an_overlapping_short_form_under_one_key_starts_one_instance},
+ * {@link #an_overlapping_create_under_one_key_with_another_parent_is_refused_as_reused}
+ * and
+ * {@link #an_overlapping_short_form_under_the_key_of_a_create_with_parent_is_refused_as_reused}
+ * -- is the read the lock replaces, observed while the first is open: a read
+ * of the ledger without the lock finds no key, and a second create deciding on
+ * it would create a second task or write the key a second time. The case under
+ * two keys, {@link #two_creates_under_two_keys_at_once_take_two_tasks},
+ * observes its red state against the case under one: two keys are two calls,
+ * and two tasks stand.
+ * The two placeholders rebuilt in T5 and T11 observe nothing yet; each observes its red state once its order builds it.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
