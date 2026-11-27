@@ -34,6 +34,12 @@ import java.util.UUID;
  * the closed task meets the checks of its table: a closed task has no hold
  * reason, no deferral and is not parked. The update names the changed columns
  * alone, since the runtime role holds {@code UPDATE} on the projection only.
+ *
+ * <p>{@code claim} makes it {@code active} and spends a deferral; {@code
+ * release} makes it {@code open}, and {@code defer} {@code open} with the
+ * instant before which it is not taken up. A lapse is never written here: a
+ * task whose lease lapsed stays stored {@code active} until an act writes
+ * another state ({@link EffectiveState}).
  */
 @Entity
 @DynamicUpdate
@@ -48,6 +54,12 @@ public class Task extends RuntimeRow {
 
     /** The state of a task sent and not yet taken up, as the store writes it. */
     static final String OPEN = "open";
+
+    /** The state of a task a holder took up, as the store writes it. */
+    static final String ACTIVE = "active";
+
+    /** The state of a task that waits, as the store writes it. */
+    static final String ON_HOLD = "on_hold";
 
     @Column(name = "instance_id", nullable = false, updatable = false)
     private Long instanceId;
@@ -144,6 +156,42 @@ public class Task extends RuntimeRow {
     /** The role its commission addresses; empty until it is sent, or where it names none. */
     public Optional<String> addressedRole() {
         return Optional.ofNullable(addressedRole);
+    }
+
+    /** Why the task waits, as the store wrote it; empty while it is not on hold. */
+    public Optional<String> holdReason() {
+        return Optional.ofNullable(holdReason);
+    }
+
+    /** The instant a deferral named; empty where the task is not deferred. */
+    public Optional<Instant> notBefore() {
+        return Optional.ofNullable(notBefore);
+    }
+
+    /** Whether the store holds the task parked. */
+    public boolean parked() {
+        return parked;
+    }
+
+    /**
+     * Takes the task up: it becomes active, and a deferral it carried is
+     * spent. A hold it was parked in by lapses is no stored state, so there is
+     * none to empty.
+     */
+    void claim() {
+        this.state = ACTIVE;
+        this.notBefore = null;
+    }
+
+    /** Gives the task back: it is open again. */
+    void release() {
+        this.state = OPEN;
+    }
+
+    /** Gives the task back until an instant: it is open, and not drawn before it. */
+    void defer(Instant until) {
+        this.state = OPEN;
+        this.notBefore = until;
     }
 
     /**

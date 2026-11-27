@@ -444,7 +444,7 @@ declared bound, or a list of them, and nothing else (DEC-0043 R18).
 | `childrenConfirmationStale` | `CHILDREN_UNFINISHED` | `{call} carries a confirmation that no longer holds: the unfinished tasks of the bracket changed since it was handed out, and data.children lists them now. Repeat the call with the one in data.confirmation.` |
 | `optionUnoffered` | `OPTION_UNOFFERED` | `{call} names an option the question does not offer; data.offenders names the field, and the read of the task lists the options.` |
 | `freeTextUnoffered` | `OPTION_UNOFFERED` | `{call} answers in free text, and the question admits none; data.offenders names the field, and the read of the task lists the options.` |
-| `deferralPending` | `DEFERRAL_PENDING` | `{call} is not possible yet: the task is deferred, and {read} shows until when, in fields.not_before.` |
+| `deferralPending` | `DEFERRAL_PENDING` | `{call} is not possible yet: the task is deferred until an instant that has not come, and from that instant on an executor can take it up.` |
 | `claimDurationInvalid` | `ARGUMENT_INVALID` | `duration is not valid for {call}: it is a positive ISO-8601 duration such as PT2H.` |
 | `pageSizeRejected` | `PAGE_SIZE_REJECTED` | `page_size is not valid for {call}: it is a whole number from 1 to {max}.` |
 | `cursorMalformed` | `CURSOR_MALFORMED` | `after is not a cursor {query} handed out: it is the next_cursor of the previous page.` |

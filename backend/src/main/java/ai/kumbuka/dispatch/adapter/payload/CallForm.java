@@ -8,6 +8,7 @@
 package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.ExternalReference;
+import ai.kumbuka.dispatch.domain.HoldingService;
 import ai.kumbuka.dispatch.domain.IdempotencyKey;
 import ai.kumbuka.dispatch.domain.InstanceAddress;
 import ai.kumbuka.dispatch.domain.InstanceService;
@@ -24,6 +25,10 @@ import ai.kumbuka.dispatch.surface.SurfaceException;
 import ai.kumbuka.dispatch.surface.VerbName;
 import org.jspecify.annotations.Nullable;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -72,6 +77,16 @@ public final class CallForm {
     private static final String TEXT = "text";
     private static final String TRIGGER = "trigger";
     private static final String REFERENCES = "references";
+    private static final String RECEIPT = "receipt";
+    private static final String DURATION = "duration";
+    private static final String REMARK = "remark";
+    private static final String NOT_BEFORE = "not_before";
+
+    /** The first instant the store keeps, as an instant a call names is bounded. */
+    private static final Instant FIRST_INSTANT = Instant.parse("0001-01-01T00:00:00Z");
+
+    /** The first instant past what the store keeps. */
+    private static final Instant BOUND_INSTANT = Instant.parse("+294276-01-01T00:00:00Z");
 
     /** An idempotency key: 1 to 255 printable ASCII characters, from the space to the tilde. */
     private static final Pattern KEY_FORM = Pattern.compile("[\\x20-\\x7E]{1,255}");
@@ -118,6 +133,76 @@ public final class CallForm {
      *                      none arrived, which the kernel refuses
      */
     public record OnADraft(TaskAddress address, @Nullable String conflictToken) {
+    }
+
+    /** The arguments of {@code claim}, read. */
+    public record Claim(TaskAddress address, HoldingService.Claim claim) {
+    }
+
+    /** The arguments of {@code renew}, read. */
+    public record Renew(TaskAddress address, HoldingService.Renew renew) {
+    }
+
+    /** The arguments of {@code release}, read. */
+    public record Release(TaskAddress address, HoldingService.Release release) {
+    }
+
+    /** The arguments of {@code defer}, read. */
+    public record Defer(TaskAddress address, HoldingService.Defer defer) {
+    }
+
+    /**
+     * Reads the arguments of {@code claim}, or refuses their form: a duration
+     * that is no positive ISO-8601 duration, and the form of the idempotency key.
+     */
+    public static Claim claim(Surface surface, Map<String, Object> given) {
+        ProcessVerb verb = ProcessVerb.CLAIM;
+        VerbName call = VerbName.of(verb, surface);
+        Map<String, Object> present = closed(verb, call, given);
+        TaskAddress address = task(verb, call, present);
+        Duration duration = duration(verb, call, present);
+        return new Claim(address, new HoldingService.Claim(duration,
+            IdempotencyKey.of(idempotencyKey(verb, call, present))));
+    }
+
+    /** Reads the arguments of {@code renew}, or refuses their form. */
+    public static Renew renew(Surface surface, Map<String, Object> given) {
+        ProcessVerb verb = ProcessVerb.RENEW;
+        VerbName call = VerbName.of(verb, surface);
+        Map<String, Object> present = closed(verb, call, given);
+        TaskAddress address = task(verb, call, present);
+        String receipt = receipt(verb, call, present);
+        return new Renew(address, new HoldingService.Renew(receipt,
+            optionalTop(verb, call, present, CONFLICT_TOKEN), duration(verb, call, present)));
+    }
+
+    /** Reads the arguments of {@code release}, or refuses their form. */
+    public static Release release(Surface surface, Map<String, Object> given) {
+        ProcessVerb verb = ProcessVerb.RELEASE;
+        VerbName call = VerbName.of(verb, surface);
+        Map<String, Object> present = closed(verb, call, given);
+        TaskAddress address = task(verb, call, present);
+        String receipt = receipt(verb, call, present);
+        Fields fields = fields(verb, call, present);
+        return new Release(address, new HoldingService.Release(receipt,
+            fields.optionalText(REMARK)));
+    }
+
+    /**
+     * Reads the arguments of {@code defer}, or refuses their form: an instant
+     * that is no ISO-8601 instant with its offset, or one outside what the
+     * store keeps.
+     */
+    public static Defer defer(Surface surface, Map<String, Object> given) {
+        ProcessVerb verb = ProcessVerb.DEFER;
+        VerbName call = VerbName.of(verb, surface);
+        Map<String, Object> present = closed(verb, call, given);
+        TaskAddress address = task(verb, call, present);
+        String receipt = receipt(verb, call, present);
+        String conflictToken = optionalTop(verb, call, present, CONFLICT_TOKEN);
+        Fields fields = fields(verb, call, present);
+        return new Defer(address, new HoldingService.Defer(receipt, conflictToken,
+            fields.instant(NOT_BEFORE), fields.optionalText(REMARK)));
     }
 
     /** Reads the arguments of {@code read_definition}, or refuses their form. */
@@ -354,6 +439,41 @@ public final class CallForm {
         return key;
     }
 
+    /** The receipt a holder's call presents: required, and a string. */
+    private static String receipt(ProcessVerb verb, VerbName call, Map<String, Object> present) {
+        String receipt = optionalTop(verb, call, present, RECEIPT);
+        if (receipt == null) {
+            throw new SurfaceException(Refusal.argumentMissing(call,
+                ArgumentPath.of(verb.declared(RECEIPT))));
+        }
+        return receipt;
+    }
+
+    /**
+     * The duration of a hold: absent where none arrived, for the default the
+     * kernel takes, otherwise a positive ISO-8601 duration. Whether the lease
+     * it gives ends within what the store keeps depends on the time of the
+     * act, so the kernel decides that.
+     */
+    private static @Nullable Duration duration(ProcessVerb verb, VerbName call,
+                                               Map<String, Object> present) {
+        String text = optionalTop(verb, call, present, DURATION);
+        if (text == null) {
+            return null;
+        }
+        ArgumentPath path = ArgumentPath.of(verb.declared(DURATION));
+        Duration duration;
+        try {
+            duration = Duration.parse(text);
+        } catch (DateTimeParseException | ArithmeticException unreadable) {
+            throw new SurfaceException(Refusal.claimDurationInvalid(call, path));
+        }
+        if (duration.isNegative() || duration.isZero()) {
+            throw new SurfaceException(Refusal.claimDurationInvalid(call, path));
+        }
+        return duration;
+    }
+
     /**
      * The fields an update clears: each path once, and each one of the fields
      * a draft may empty (C7.7); empty where none arrived.
@@ -557,6 +677,26 @@ public final class CallForm {
                     ArgumentPath.of(verb.declaredField("apparatus")), Form.APPARATUS));
             }
             return role;
+        }
+
+        /**
+         * A required instant: ISO-8601 with its offset, from the year 1 up to
+         * the year 294276, the range the store keeps.
+         */
+        Instant instant(String name) {
+            ArgumentPath path = ArgumentPath.of(verb.declaredField(name));
+            String text = text(name);
+            Instant instant;
+            try {
+                instant = OffsetDateTime.parse(text).toInstant();
+            } catch (DateTimeParseException unreadable) {
+                throw new SurfaceException(Refusal.argumentInvalid(call, path, Form.INSTANT));
+            }
+            if (instant.isBefore(FIRST_INSTANT) || !instant.isBefore(BOUND_INSTANT)) {
+                throw new SurfaceException(Refusal.argumentInvalid(call, path,
+                    Form.INSTANT_RANGE));
+            }
+            return instant;
         }
 
         /** The complete address of a task; absent where none arrived. */

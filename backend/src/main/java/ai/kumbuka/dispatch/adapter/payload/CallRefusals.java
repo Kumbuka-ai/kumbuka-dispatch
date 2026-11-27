@@ -9,6 +9,8 @@ package ai.kumbuka.dispatch.adapter.payload;
 
 import ai.kumbuka.dispatch.domain.DispatchException;
 import ai.kumbuka.dispatch.domain.InstanceView;
+import ai.kumbuka.dispatch.surface.ArgumentPath;
+import ai.kumbuka.dispatch.surface.Form;
 import ai.kumbuka.dispatch.surface.NextList;
 import ai.kumbuka.dispatch.surface.ProcessVerb;
 import ai.kumbuka.dispatch.surface.Refusal;
@@ -32,9 +34,14 @@ import java.util.Optional;
  * on an instance carries what the domain hands with it: the instance as it
  * stands, the paths of the fields or parts concerned, or the unfinished tasks
  * with the confirmation handed out now. A refusal of a call on a task carries
- * the task as it stands, or the paths of the fields of its draft concerned. A
- * repeat under a spent key is said as such and names nothing of the key. Every
- * other reason is a defect of ours under this call.
+ * the task as it stands, or the paths of the fields of its draft concerned;
+ * one of a claim or of a holder's call says why the caller does not hold the
+ * task -- another holds it, nobody does, or the caller's lease lapsed -- or
+ * that its receipt is not the youngest, or that a deferral runs, with the task
+ * as it stands and never the receipt; a lease that would end past what the
+ * store keeps names the duration. A repeat under a spent key is said as such
+ * and names nothing of the key. Every other reason is a defect of ours under
+ * this call.
  */
 public final class CallRefusals {
 
@@ -71,6 +78,20 @@ public final class CallRefusals {
                 .map(task -> Refusal.ofState(call, NextList.situation(task, surface),
                     task.closed()))
                 .orElseGet(() -> UnexpectedFailures.refuse(call, refused));
+            case CLAIM_HELD -> unheld(refused, call, surface, Refusal.Unheld.OTHER);
+            case CLAIM_REQUIRED -> unheld(refused, call, surface, Refusal.Unheld.NOBODY);
+            case LEASE_LAPSED -> unheld(refused, call, surface, Refusal.Unheld.LAPSED);
+            case RECEIPT_MISMATCH -> refused.task()
+                .map(task -> Refusal.receiptWrong(call, NextList.situation(task, surface)))
+                .orElseGet(() -> UnexpectedFailures.refuse(call, refused));
+            case DEFERRAL_PENDING -> refused.task()
+                .map(task -> Refusal.deferralPending(call, NextList.situation(task, surface)))
+                .orElseGet(() -> UnexpectedFailures.refuse(call, refused));
+            case LEASE_END_INVALID -> ProcessVerb.byName(surface, call.toString())
+                .flatMap(verb -> verb.argument("duration"))
+                .map(duration -> Refusal.argumentInvalid(call, ArgumentPath.of(duration),
+                    Form.LEASE_END))
+                .orElseGet(() -> UnexpectedFailures.refuse(call, refused));
             case DRAFT_INCOMPLETE -> refused.task()
                 .map(task -> Refusal.draftIncomplete(call, NextList.situation(task, surface),
                     VerbName.of(ProcessVerb.UPDATE, surface)))
@@ -106,6 +127,17 @@ public final class CallRefusals {
 
     private static Optional<InstanceView> standing(DispatchException refused) {
         return refused.standing();
+    }
+
+    /**
+     * A holder's call, or a claim, by a caller who does not hold the task: the
+     * task as it stands, its state and the calls open, and why.
+     */
+    private static Refusal unheld(DispatchException refused, VerbName call, Surface surface,
+                                  Refusal.Unheld why) {
+        return refused.task()
+            .map(task -> Refusal.notTheHolder(call, NextList.situation(task, surface), why, false))
+            .orElseGet(() -> UnexpectedFailures.refuse(call, refused));
     }
 
     private static Refusal contract(VerbName call, RefusalCode.Message rule,

@@ -9,10 +9,10 @@ package ai.kumbuka.dispatch.domain;
 
 import ai.kumbuka.dispatch.repository.ActRepository;
 import ai.kumbuka.dispatch.repository.DefinitionRepository;
+import ai.kumbuka.dispatch.repository.HoldingRepository;
 import ai.kumbuka.dispatch.repository.InstanceRepository;
 import ai.kumbuka.dispatch.repository.TaskRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -25,7 +25,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -41,7 +40,9 @@ import static org.mockito.Mockito.when;
  * <p>The kernel refuses it as C10.4 has every repeat refused whose first result
  * is gone: with {@code IDEMPOTENCY_KEY_REUSED}, writes nothing, and names no
  * address it does not have (REA-0010 D30). The ledger keeps a key after its
- * draft is deleted with an empty task, which the store sets itself.
+ * draft is deleted with an empty task, which the store sets itself. A
+ * repeated claim whose key names an act whose holding is gone is refused the
+ * same way, before it writes an act.
  */
 class TaskReissueRefusalModuleTest {
 
@@ -111,11 +112,39 @@ class TaskReissueRefusalModuleTest {
         verify(tasks).spentKey(SCOPE, "ada", "again", NOW.minus(TaskService.KEY_LIFE));
     }
 
+    /**
+     * A repeated claim whose key names an act whose holding the scope no
+     * longer holds is refused as a reuse of the key, and takes nothing: no
+     * act, no row.
+     */
     @Test
-    @Disabled("rebuilt in T5: a repeated claim whose key names a task the scope no longer holds "
-        + "is refused as reused")
     void a_claim_key_whose_task_is_gone_is_refused_as_reused() {
-        fail("rebuilt in T5");
+        HoldingRepository holdings = Mockito.mock(HoldingRepository.class);
+        ActService acts = Mockito.mock(ActService.class);
+        HoldingService holding = new HoldingService(tasks, instances, holdings,
+            Mockito.mock(ActRepository.class), acts, Clock.fixed(NOW, ZoneOffset.UTC));
+        TaskAddress address = new TaskAddress(new InstanceAddress("probe", "sprint", 4), 1);
+        HoldingService.Claim claim = new HoldingService.Claim(null, IdempotencyKey.of("again"));
+        Task task = Task.drafted(SCOPE, 77L, 1);
+        when(tasks.lockTask(SCOPE, 77L, 1)).thenReturn(Optional.of(task));
+        IdempotencyRecord spent = Mockito.mock(IdempotencyRecord.class);
+        when(spent.sameArguments(HoldingService.digest(address, claim))).thenReturn(true);
+        when(spent.actId()).thenReturn(Optional.of(900L));
+        when(tasks.spentKey(SCOPE, "ada", "again", NOW.minus(TaskService.KEY_LIFE)))
+            .thenReturn(Optional.of(spent));
+        when(holdings.openedBy(SCOPE, 900L)).thenReturn(Optional.empty());
+        Actor executor = new Actor("ada", DispatchPermission.TASK_EXECUTE);
+
+        assertThatThrownBy(() -> holding.claim(executor, address, SCOPE, claim,
+                new Provenance("ada", null, DispatchPermission.TASK_EXECUTE,
+                    Provenance.Path.INTERFACE, null)))
+            .isInstanceOfSatisfying(DispatchException.class, refused -> {
+                assertThat(refused.reason())
+                    .isEqualTo(DispatchException.Reason.IDEMPOTENCY_KEY_REUSED);
+                assertThat(refused.task()).as("and names no task it does not have").isEmpty();
+            });
+        verify(tasks, never()).insert(any());
+        verify(acts, never()).write(any(), anyLong(), any(), any(), any(), any());
     }
 
     private static TaskService.Create create() {

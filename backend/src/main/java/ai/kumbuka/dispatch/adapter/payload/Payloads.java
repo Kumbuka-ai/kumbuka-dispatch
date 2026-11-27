@@ -82,14 +82,15 @@ public final class Payloads {
     }
 
     /**
-     * A task, as {@code create}, {@code update} and {@code send} answer it,
-     * with the calls open to the caller named on the surface the caller came
-     * through (C6.2), and what it waits for where none is open.
+     * A task, as {@code create}, {@code update}, {@code send} and the calls
+     * that hold it answer it, with the calls open to the caller named on the
+     * surface the caller came through (C6.2), what it waits for where none is
+     * open, and the receipt a claim handed out (C6.3).
      */
     public static TaskPayload task(TaskView view, Surface surface) {
         List<NextList.Step> next = NextList.ofTask(view.open(), surface);
         return new TaskPayload(view.address().complete(), view.fields(), view.conflictToken(),
-            next(next), NextList.waitingFor(view, next));
+            next(next), NextList.waitingFor(view, next), view.standing().receipt());
     }
 
     /** The address a deleted draft had, as {@code delete} answers it. */

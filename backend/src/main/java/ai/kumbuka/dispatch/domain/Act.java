@@ -119,6 +119,10 @@ public class Act {
     @Column(name = "refers_to_act_id", updatable = false)
     private @Nullable Long refersToActId;
 
+    /** Absent but on an act {@code defer}: the instant before which its task is not taken up. */
+    @Column(name = "not_before", updatable = false)
+    private @Nullable Instant notBefore;
+
     /** For the persistence provider only. */
     protected Act() {
         // The provider fills every column from the row it reads.
@@ -156,6 +160,15 @@ public class Act {
                   @Nullable Long taskId, Provenance provenance, Instant at,
                   @Nullable Long refersToActId) {
         return new Act(instance, sequence, kind, toState, taskId, provenance, at, refersToActId);
+    }
+
+    /**
+     * The act with the instant a {@code defer} names, set before it is
+     * written: every column is written once, at the insert.
+     */
+    Act until(Instant instant) {
+        this.notBefore = instant;
+        return this;
     }
 
     /** The act's surrogate, drawn by the store at the insert. */
@@ -227,5 +240,10 @@ public class Act {
     /** The act that caused this one; empty on an act a call wrote on its own account. */
     public Optional<Long> refersToActId() {
         return Optional.ofNullable(refersToActId);
+    }
+
+    /** The instant a {@code defer} named; empty on every other act. */
+    public Optional<Instant> notBefore() {
+        return Optional.ofNullable(notBefore);
     }
 }

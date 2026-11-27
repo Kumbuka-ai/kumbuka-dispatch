@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  * about its caller, the form its HTTP request takes, what it answers and the
  * arguments it takes.
  *
- * <p><strong>Ten calls are declared.</strong> The service is rebuilt on the
+ * <p><strong>Fourteen calls are declared.</strong> The service is rebuilt on the
  * store line, and a call is declared in the same change that binds it to the
  * new kernel, never before: a call declared without a binding would be offered
  * and could not be made. {@code read_definition} came first; the acts on an
@@ -30,7 +30,9 @@ import java.util.function.Supplier;
  * {@code reference_attach} and {@code reference_detach} (REA-0010, catalogue
  * "Acts on an instance") -- and then the draft and the commission of a task:
  * {@code create}, {@code update}, {@code delete} and {@code send} (catalogues
- * "Calls that are not transitions" and "Transitions of a task"). {@code
+ * "Calls that are not transitions" and "Transitions of a task"), and the
+ * holding of a task: {@code claim}, {@code renew}, {@code release} and {@code
+ * defer} (catalogue "Transitions of a task"). {@code
  * withdraw} is the call of the catalogue for an instance and for a task; it
  * takes the address of an instance alone until the order that binds it for a
  * task.
@@ -174,7 +176,54 @@ public enum ProcessVerb {
 
     /** Sends a task in draft: its draft becomes its commission, by the act send. */
     SEND("send", DispatchPermission.TASK_COMMISSION, EffectClass.ITEM_TRANSITION,
-        AnswerShape.TASK, () -> Texts.tools().send(), onADraft());
+        AnswerShape.TASK, () -> Texts.tools().send(), onADraft()),
+
+    /**
+     * Takes an open task up and makes the caller its holder, with a receipt
+     * and a lease; no conflict token (DEC-0041 C1), and an idempotency key may
+     * come with it (C10.4).
+     */
+    CLAIM("claim", DispatchPermission.TASK_EXECUTE, EffectClass.ITEM_TRANSITION,
+        AnswerShape.CLAIMED, () -> Texts.tools().claim(),
+        List.of(
+            Argument.top(Name.ADDRESS, Argument.STRING, () -> Texts.arguments().address()),
+            Argument.top(Name.DURATION, Argument.STRING, Name.DEFAULT_DURATION,
+                () -> Texts.arguments().duration()),
+            Argument.top("idempotency_key", Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().claimIdempotencyKey()))),
+
+    /** Extends the holder's lease, under its receipt and the conflict token. */
+    RENEW("renew", DispatchPermission.TASK_EXECUTE, EffectClass.ITEM_TRANSITION,
+        AnswerShape.TASK, () -> Texts.tools().renew(),
+        List.of(
+            Argument.top(Name.ADDRESS, Argument.STRING, () -> Texts.arguments().address()),
+            Argument.top(Name.RECEIPT, Argument.STRING, () -> Texts.arguments().receipt()),
+            Argument.top(Name.CONFLICT_TOKEN, Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().draftConflictToken()),
+            Argument.top(Name.DURATION, Argument.STRING, Name.DEFAULT_DURATION,
+                () -> Texts.arguments().duration()))),
+
+    /** Gives the task back, under the holder's receipt and without a conflict token (DEC-0041 C1). */
+    RELEASE("release", DispatchPermission.TASK_EXECUTE, EffectClass.ITEM_TRANSITION,
+        AnswerShape.TASK, () -> Texts.tools().release(),
+        List.of(
+            Argument.top(Name.ADDRESS, Argument.STRING, () -> Texts.arguments().address()),
+            Argument.top(Name.RECEIPT, Argument.STRING, () -> Texts.arguments().receipt()),
+            Argument.field(Name.REMARK, Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().remarkOptional()))),
+
+    /** Gives the task back until an instant, under the holder's receipt and the conflict token. */
+    DEFER("defer", DispatchPermission.TASK_EXECUTE, EffectClass.ITEM_TRANSITION,
+        AnswerShape.TASK, () -> Texts.tools().defer(),
+        List.of(
+            Argument.top(Name.ADDRESS, Argument.STRING, () -> Texts.arguments().address()),
+            Argument.top(Name.RECEIPT, Argument.STRING, () -> Texts.arguments().receipt()),
+            Argument.top(Name.CONFLICT_TOKEN, Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().draftConflictToken()),
+            Argument.field("not_before", Argument.STRING,
+                () -> Texts.arguments().deferNotBefore()),
+            Argument.field(Name.REMARK, Argument.STRING, Argument.UNSET,
+                () -> Texts.arguments().remarkOptional())));
 
     /** The prefix every call carries on the assistant surface. */
     public static final String PREFIX = "dispatch_";
@@ -188,6 +237,12 @@ public enum ProcessVerb {
         static final String CONFLICT_TOKEN = "conflict_token";
         static final String TITLE = "title";
         static final String TEXT = "text";
+        static final String RECEIPT = "receipt";
+        static final String DURATION = "duration";
+        static final String REMARK = "remark";
+
+        /** The duration of a hold where a call names none (REA-0010, parameters of the wave). */
+        static final String DEFAULT_DURATION = "PT30M";
 
         private Name() {
         }
@@ -344,7 +399,12 @@ public enum ProcessVerb {
      * is refused besides in a locked scope and in one the caller may only
      * read. A call on an instance is refused for an instance that is closed;
      * a closing besides without a conflict token, with a stale one, and for
-     * unfinished tasks until it carries their confirmation.
+     * unfinished tasks until it carries their confirmation. A claim is refused
+     * for a task another holds, a deferral that runs, a key spent otherwise,
+     * and a repeat whose hold ended; a holder's call where another holds the
+     * task, where the caller holds it no longer, and for a receipt that is not
+     * the youngest one, and {@code renew} and {@code defer} besides without a
+     * conflict token or with a stale one.
      */
     public Set<RefusalCode> refusals() {
         Set<RefusalCode> refusals = EnumSet.of(
@@ -371,6 +431,18 @@ public enum ProcessVerb {
         if (this == UPDATE || this == DELETE || this == SEND) {
             refusals.addAll(EnumSet.of(RefusalCode.TRANSITION_REFUSED,
                 RefusalCode.CONFLICT_TOKEN_MISSING, RefusalCode.CONFLICT_TOKEN_STALE));
+        }
+        if (this == CLAIM) {
+            refusals.addAll(EnumSet.of(RefusalCode.CLAIM_HELD, RefusalCode.CLAIM_ABSENT,
+                RefusalCode.DEFERRAL_PENDING, RefusalCode.IDEMPOTENCY_KEY_REUSED));
+        }
+        if (this == RENEW || this == RELEASE || this == DEFER) {
+            refusals.addAll(EnumSet.of(RefusalCode.CLAIM_HELD, RefusalCode.CLAIM_ABSENT,
+                RefusalCode.RECEIPT_WRONG));
+        }
+        if (this == RENEW || this == DEFER) {
+            refusals.addAll(EnumSet.of(RefusalCode.CONFLICT_TOKEN_MISSING,
+                RefusalCode.CONFLICT_TOKEN_STALE));
         }
         return Collections.unmodifiableSet(refusals);
     }

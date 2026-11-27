@@ -125,12 +125,25 @@ public class DispatchException extends RuntimeException {
          * cannot do that yet" where the truth is "not you, ever".
          */
         RATIFICATION_NOT_PERMITTED,
-        /** A claim is required for what was asked, and the caller holds none. */
+        /**
+         * A claim is required for what was asked, the caller holds none, and
+         * nobody else holds the task either.
+         */
         CLAIM_REQUIRED,
-        /** The receipt presented does not match the one held on the task. */
+        /**
+         * Another identity holds the task: a claim of it, or a holder's call
+         * by a caller who does not hold it.
+         */
+        CLAIM_HELD,
+        /** The receipt presented is not the youngest one of the caller's holding. */
         RECEIPT_MISMATCH,
         /** A claim duration was zero or negative. */
         CLAIM_DURATION_NOT_POSITIVE,
+        /**
+         * A lease would end at or after the year 294276, the last the store
+         * keeps an instant in: the time of its act plus the duration named.
+         */
+        LEASE_END_INVALID,
         /** Metadata carried an assertion, or a URL carrying credentials. */
         METADATA_REFUSED,
 

@@ -105,7 +105,7 @@ public interface RefusalMessages {
     String childrenPresent(VerbName call);
 
     @Message
-    String deferralPending(VerbName call, VerbName read);
+    String deferralPending(VerbName call);
 
     @Message
     String claimDurationInvalid(VerbName call);

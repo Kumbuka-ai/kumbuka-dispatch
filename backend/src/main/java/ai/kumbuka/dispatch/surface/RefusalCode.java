@@ -165,18 +165,19 @@ public enum RefusalCode {
     /**
      * The code a kernel refusal is told as.
      *
-     * <p>{@code CLAIM_REQUIRED} is told as {@link #CLAIM_HELD}: a holder's call
-     * by a caller who holds nothing. Where nobody holds the task the edge
-     * answers {@link #CLAIM_ABSENT} instead, because it reads the task's
-     * situation and the kernel's reason does not say which it was.
+     * <p>The kernel tells the three causes of a holder's call without a hold
+     * apart: another holds the task ({@code CLAIM_HELD}, told as {@link
+     * #CLAIM_HELD}), nobody does ({@code CLAIM_REQUIRED}), or the caller's own
+     * lease ended ({@code LEASE_LAPSED}); the last two are told as {@link
+     * #CLAIM_ABSENT}, each with its own message.
      */
     public static RefusalCode of(DispatchException.Reason reason) {
         return switch (reason) {
             case NOT_FOUND, SCOPE_UNRESOLVED -> NOT_FOUND;
             case TRANSITION_NOT_PERMITTED, CONTENT_FROZEN, BRACKET_OCCUPIED -> TRANSITION_REFUSED;
             case RATIFICATION_NOT_PERMITTED, ACTOR_UNKNOWN -> ROLE_INSUFFICIENT;
-            case CLAIM_REQUIRED -> CLAIM_HELD;
-            case LEASE_LAPSED -> CLAIM_ABSENT;
+            case CLAIM_HELD -> CLAIM_HELD;
+            case CLAIM_REQUIRED, LEASE_LAPSED -> CLAIM_ABSENT;
             case RECEIPT_MISMATCH -> RECEIPT_WRONG;
             case CONFIRMATION_REQUIRED, CONFIRMATION_STALE -> CHILDREN_UNFINISHED;
             case ROOT_UNSENT -> ROOT_UNSENT;
@@ -193,7 +194,8 @@ public enum RefusalCode {
             case SCOPE_KIND_UNSUPPORTED -> SCOPE_KIND_UNSUPPORTED;
             case SCOPE_READ_ONLY -> SCOPE_READ_ONLY;
             case SCOPE_LOCKED -> SCOPE_LOCKED;
-            case CLAIM_DURATION_NOT_POSITIVE, ADDENDUM_SUFFIX_EXHAUSTED, METADATA_REFUSED,
+            case CLAIM_DURATION_NOT_POSITIVE, LEASE_END_INVALID, ADDENDUM_SUFFIX_EXHAUSTED,
+                 METADATA_REFUSED,
                  FILTER_VALUE_REFUSED, CURATION_TARGET_SELF, TAG_UNKNOWN, TAG_WITHDRAWN ->
                 ARGUMENT_INVALID;
             case IDEMPOTENCY_KEY_REUSED -> IDEMPOTENCY_KEY_REUSED;

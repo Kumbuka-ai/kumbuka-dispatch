@@ -91,13 +91,36 @@ public class ActService {
     public Act write(UUID scopeId, long instanceId, Act.Kind kind, Act.State toState,
                      @Nullable Long taskId, Provenance provenance,
                      @Nullable Long refersToActId) {
-        Instance instance = acts.lockInstance(scopeId, instanceId)
+        Instance instance = locked(scopeId, instanceId);
+        return acts.append(Act.of(instance, acts.lastSequence(scopeId, instanceId) + 1, kind,
+            toState, taskId, provenance, nextTime(scopeId, instanceId), refersToActId));
+    }
+
+    /**
+     * Appends the act {@code defer} of a task, which gives it back open until
+     * an instant, and answers it as written: as {@link #write(UUID, long,
+     * Act.Kind, Act.State, Long, Provenance)}, with that instant in its column.
+     *
+     * @param until the instant before which the task is not taken up
+     */
+    @Transactional
+    public Act writeDeferral(UUID scopeId, long instanceId, long taskId, Instant until,
+                             Provenance provenance) {
+        Instance instance = locked(scopeId, instanceId);
+        return acts.append(Act.of(instance, acts.lastSequence(scopeId, instanceId) + 1,
+            Act.Kind.DEFER, Act.State.OPEN, taskId, provenance, nextTime(scopeId, instanceId),
+            null).until(until));
+    }
+
+    private Instance locked(UUID scopeId, long instanceId) {
+        return acts.lockInstance(scopeId, instanceId)
             .orElseThrow(() -> new DispatchException(DispatchException.Reason.NOT_FOUND,
                 "no instance is there to write an act to."));
-        int next = acts.lastSequence(scopeId, instanceId) + 1;
-        Instant at = timeAfter(clock.instant(), acts.lastAt(scopeId, instanceId).orElse(null));
-        return acts.append(Act.of(instance, next, kind, toState, taskId, provenance, at,
-            refersToActId));
+    }
+
+    /** The time of the next act of an instance, read under the instance's lock. */
+    private Instant nextTime(UUID scopeId, long instanceId) {
+        return timeAfter(clock.instant(), acts.lastAt(scopeId, instanceId).orElse(null));
     }
 
     /**

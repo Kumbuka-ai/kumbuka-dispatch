@@ -54,7 +54,14 @@ import static org.junit.jupiter.api.Assertions.fail;
  * two keys, {@link #two_creates_under_two_keys_at_once_take_two_tasks},
  * observes its red state against the case under one: two keys are two calls,
  * and two tasks stand.
- * The two placeholders rebuilt in T5 and T11 observe nothing yet; each observes its red state once its order builds it.
+ *
+ * <p>Two claims of one caller under one key, at once, take the lock of the
+ * task's instance first, as every call on a task does: the second decides on
+ * the key after the first committed, finds the caller holding the task by the
+ * holding the first opened, and answers the task with a new receipt, as a
+ * repeat after the commit does. Its red state is the read the lock replaces,
+ * as above. The placeholder rebuilt in T11 observes nothing yet; it observes
+ * its red state once its order builds it.
  */
 @QuarkusTest
 @QuarkusTestResource(value = SubstrateDatabaseResource.class, restrictToAnnotatedClass = true)
@@ -67,6 +74,7 @@ class TaskKeyOverlapIT {
 
     @Inject TaskService tasks;
     @Inject InstanceService instances;
+    @Inject HoldingService holdings;
     @Inject TenantContext tenantContext;
     @Inject EntityManager em;
 
@@ -191,10 +199,36 @@ class TaskKeyOverlapIT {
     }
 
     @Test
-    @Disabled("rebuilt in T5: an overlapping claim under one key answers the task with a new "
-        + "receipt")
-    void an_overlapping_claim_under_one_key_answers_the_task_with_a_new_receipt() {
-        fail("rebuilt in T5");
+    void an_overlapping_claim_under_one_key_answers_the_task_with_a_new_receipt()
+            throws Exception {
+        TaskAddress task = HoldingFixture.sent(instances, tasks, "claim-overlap");
+        String key = "claim-" + InstanceWire.suffix();
+        HoldingService.Claim claim = new HoldingService.Claim(null, IdempotencyKey.of(key));
+
+        Overlap overlap = stage().run(() -> {
+            TaskView first = holdings.claim(HoldingFixture.EXECUTOR, task, InstanceWire.SCOPE,
+                claim, HoldingFixture.executing(HoldingFixture.EXECUTOR));
+            assertThat(InstanceWire.single("SELECT count(*) FROM dispatch.idempotency_key "
+                    + "WHERE idempotency_key = ?", key))
+                .as("RED STATE, observed: while the first claim is open, a read of the ledger "
+                    + "without the lock finds no key, and a claim deciding on it would take the "
+                    + "task a second time")
+                .isZero();
+            return first;
+        }, () -> holdings.claim(HoldingFixture.EXECUTOR, task, InstanceWire.SCOPE, claim,
+            HoldingFixture.executing(HoldingFixture.EXECUTOR)));
+
+        assertThat(overlap.waited()).as("the second waited on the first's lock").isTrue();
+        assertThat(overlap.second()).as("and answered the task the first took up")
+            .isInstanceOfSatisfying(TaskView.class, second -> {
+                TaskView first = (TaskView) overlap.first();
+                assertThat(second.address()).isEqualTo(first.address());
+                assertThat(second.standing().receipt()).as("with a new receipt")
+                    .isNotEqualTo(first.standing().receipt());
+            });
+        assertThat(List.of(HoldingFixture.rows("holding", task),
+                HoldingFixture.rows("receipt", task), HoldingFixture.rows("lease", task)))
+            .as("one holding and one lease, with two receipts").containsExactly(1L, 2L, 1L);
     }
 
     @Test

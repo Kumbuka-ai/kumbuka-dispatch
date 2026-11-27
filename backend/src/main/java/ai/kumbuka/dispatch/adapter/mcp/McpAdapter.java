@@ -237,7 +237,39 @@ public class McpAdapter {
                 yield verb == ProcessVerb.DELETE ? calls.delete(actor, onADraft)
                     : calls.send(actor, onADraft, Surface.MCP);
             }
+            case CLAIM, RENEW, RELEASE, DEFER -> hold(verb, arguments);
         };
+    }
+
+    /** Makes one of the calls that hold a task, as {@link #make} makes every call. */
+    private Object hold(ProcessVerb verb, Map<String, Object> arguments) {
+        return switch (verb) {
+            case CLAIM -> {
+                CallForm.Claim claim = CallForm.claim(Surface.MCP, arguments);
+                yield calls.claim(writer(claim.address().instance().scope()), claim, Surface.MCP);
+            }
+            case RENEW -> {
+                CallForm.Renew renew = CallForm.renew(Surface.MCP, arguments);
+                yield calls.renew(writer(renew.address().instance().scope()), renew, Surface.MCP);
+            }
+            case RELEASE -> {
+                CallForm.Release release = CallForm.release(Surface.MCP, arguments);
+                yield calls.release(writer(release.address().instance().scope()), release,
+                    Surface.MCP);
+            }
+            case DEFER -> {
+                CallForm.Defer defer = CallForm.defer(Surface.MCP, arguments);
+                yield calls.defer(writer(defer.address().instance().scope()), defer, Surface.MCP);
+            }
+            default -> throw new IllegalArgumentException(verb.call() + " holds no task");
+        };
+    }
+
+    /** The caller, once the scope a writing call names is resolved for it. */
+    private Actor writer(String scope) {
+        Actor actor = caller.current();
+        verbs.resolveScopeToWrite(actor, scope);
+        return actor;
     }
 
     /** The arguments of a tool call; none where the envelope carries no object. */
